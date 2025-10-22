@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3';
-import { nanoid } from 'nanoid';
 import path from 'path';
 import fs from 'fs';
 
@@ -39,14 +38,14 @@ function getDatabase(): Database.Database {
   // Add VIN column if it doesn't exist (for existing databases)
   try {
     db.exec('ALTER TABLE leads ADD COLUMN vin TEXT');
-  } catch (error) {
+  } catch {
     // Column already exists, ignore error
   }
 
   // Add IP address column if it doesn't exist
   try {
     db.exec('ALTER TABLE leads ADD COLUMN ipAddress TEXT');
-  } catch (error) {
+  } catch {
     // Column already exists, ignore error
   }
 

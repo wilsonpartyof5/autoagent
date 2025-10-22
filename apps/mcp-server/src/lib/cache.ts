@@ -143,4 +143,4 @@ export class LRUCache<T = unknown> {
 }
 
 // Global cache instance for search results
-export const searchCache = new LRUCache<{ vehicles: any[]; totalCount: number }>(200, 60000); // 200 max entries, 60s TTL
+export const searchCache = new LRUCache<{ vehicles: unknown[]; totalCount: number }>(200, 60000); // 200 max entries, 60s TTL

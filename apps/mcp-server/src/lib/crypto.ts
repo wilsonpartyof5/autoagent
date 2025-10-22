@@ -42,7 +42,7 @@ function initializeKey(): Uint8Array {
 /**
  * Encrypt JSON object to base64 string
  */
-export async function encryptJson(obj: any): Promise<string> {
+export async function encryptJson(obj: unknown): Promise<string> {
   await sodium.ready;
   
   const key = initializeKey();
@@ -66,7 +66,7 @@ export async function encryptJson(obj: any): Promise<string> {
 /**
  * Decrypt base64 string to JSON object
  */
-export async function decryptToJson(b64: string): Promise<any> {
+export async function decryptToJson(b64: string): Promise<unknown> {
   await sodium.ready;
   
   const key = initializeKey();

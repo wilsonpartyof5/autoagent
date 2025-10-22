@@ -25,11 +25,21 @@ export class HttpError extends Error {
 }
 
 /**
+ * Node-friendly fetch options type
+ */
+type RequestOptions = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+};
+
+/**
  * Fetch with timeout using AbortController
  */
 export async function fetchWithTimeout<T = unknown>(
   url: string,
-  options: RequestInit & HttpOptions = {},
+  options: RequestOptions & HttpOptions = {},
 ): Promise<HttpResponse<T>> {
   const { timeout = 2000, headers = {}, ...fetchOptions } = options;
   

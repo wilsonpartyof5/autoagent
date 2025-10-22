@@ -119,43 +119,68 @@ export class MarketCheckClient {
   /**
    * Normalize MarketCheck vehicle to our Vehicle schema
    */
-  private normalizeVehicle(mcVehicle: any): Vehicle {
+  private normalizeVehicle(mcVehicle: unknown): Vehicle {
+    const vehicle = mcVehicle as {
+      media?: { photo_links?: string[] };
+      dealer?: {
+        street?: string;
+        city?: string;
+        state?: string;
+        zip?: string;
+        name?: string;
+        latitude?: string;
+        longitude?: string;
+      };
+      build?: {
+        year?: number;
+        make?: string;
+        model?: string;
+        trim?: string;
+        engine?: string;
+        transmission?: string;
+        drivetrain?: string;
+      };
+      id?: string;
+      price?: number;
+      miles?: number;
+      vin?: string;
+    };
+
     // Get primary image or first available image
     let imageUrl: string | undefined;
-    if (mcVehicle.media?.photo_links && mcVehicle.media.photo_links.length > 0) {
-      imageUrl = mcVehicle.media.photo_links[0];
+    if (vehicle.media?.photo_links && vehicle.media.photo_links.length > 0) {
+      imageUrl = vehicle.media.photo_links[0];
     }
     
     // Build dealer address if available
-    let dealerAddress: string | undefined;
     const parts = [
-      mcVehicle.dealer?.street,
-      mcVehicle.dealer?.city,
-      mcVehicle.dealer?.state,
-      mcVehicle.dealer?.zip,
+      vehicle.dealer?.street,
+      vehicle.dealer?.city,
+      vehicle.dealer?.state,
+      vehicle.dealer?.zip,
     ].filter(Boolean);
-    dealerAddress = parts.length > 0 ? parts.join(', ') : undefined;
+    const dealerAddress = parts.length > 0 ? parts.join(', ') : undefined;
     
     return {
-      id: mcVehicle.id,
-      year: mcVehicle.build?.year,
-      make: mcVehicle.build?.make,
-      model: mcVehicle.build?.model,
-      price: mcVehicle.price,
-      mileage: mcVehicle.miles,
+      id: vehicle.id || '',
+      year: vehicle.build?.year || 0,
+      make: vehicle.build?.make || '',
+      model: vehicle.build?.model || '',
+      price: vehicle.price || 0,
+      mileage: vehicle.miles,
       imageUrl,
-      features: mcVehicle.build ? [
-        mcVehicle.build.trim,
-        mcVehicle.build.engine,
-        mcVehicle.build.transmission,
-        mcVehicle.build.drivetrain,
-      ].filter(Boolean) : undefined,
-      vin: mcVehicle.vin,
+      features: vehicle.build ? [
+        vehicle.build.trim,
+        vehicle.build.engine,
+        vehicle.build.transmission,
+        vehicle.build.drivetrain,
+      ].filter(Boolean) as string[] : undefined,
+      vin: vehicle.vin,
       dealer: {
-        name: mcVehicle.dealer?.name,
+        name: vehicle.dealer?.name || '',
         address: dealerAddress,
-        lat: mcVehicle.dealer?.latitude ? parseFloat(mcVehicle.dealer.latitude) : undefined,
-        lng: mcVehicle.dealer?.longitude ? parseFloat(mcVehicle.dealer.longitude) : undefined,
+        lat: vehicle.dealer?.latitude ? parseFloat(vehicle.dealer.latitude) : undefined,
+        lng: vehicle.dealer?.longitude ? parseFloat(vehicle.dealer.longitude) : undefined,
       },
     };
   }

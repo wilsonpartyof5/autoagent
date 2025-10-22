@@ -21,7 +21,6 @@ const SubmitLeadSchema = z.object({
   consent: z.boolean().refine(val => val === true, 'Consent must be true'),
 });
 
-type SubmitLeadInput = z.infer<typeof SubmitLeadSchema>;
 
 export interface SubmitLeadContext {
   ipAddress?: string;

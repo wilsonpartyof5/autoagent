@@ -7,10 +7,10 @@ export const ComponentSchema = z.object({
 
 export const ToolResultSchema = z.object({
   content: z.array(z.object({ type: z.literal('text'), text: z.string() })).nonempty(),
-  structuredContent: z.any().optional(),
+  structuredContent: z.unknown().optional(),
   components: z.array(ComponentSchema).nonempty()
 });
 
-export function validateToolResult(result: any) {
+export function validateToolResult(result: unknown) {
   return ToolResultSchema.parse(result);
 }

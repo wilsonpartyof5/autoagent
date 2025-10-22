@@ -6,6 +6,7 @@ import { readFileSync } from 'fs';
 
 // Extend global interface for rate limiting
 declare global {
+  // eslint-disable-next-line no-var
   var rateLimitStore: Map<string, { count: number; resetTime: number }> | undefined;
 }
 
@@ -136,7 +137,6 @@ app.use((req, res, next) => {
   // only for mcp & health
   if (req.path !== '/mcp') return next();
   const t0 = Date.now();
-  const chunks: any[] = [];
   const origJson = res.json.bind(res);
 
   // Log request first
@@ -148,10 +148,10 @@ app.use((req, res, next) => {
     headers: req.headers,
     // body logged below after body-parser; if raw needed, add raw capture
   };
-  (res as any).__reqInfo = reqInfo;
+  (res as { __reqInfo?: typeof reqInfo }).__reqInfo = reqInfo;
 
   // Intercept json responses to log body + headers + timing
-  res.json = (body: any) => {
+  res.json = (body: unknown) => {
     const ms = Date.now() - t0;
     const log = {
       evt: 'mcp.response',
@@ -175,7 +175,7 @@ app.use((req, res, next) => {
         url: req.originalUrl,
         status: res.statusCode,
         ms,
-        reqHeaders: (res as any).__reqInfo?.headers,
+        reqHeaders: (res as { __reqInfo?: typeof reqInfo }).__reqInfo?.headers,
         resHeaders: res.getHeaders()
       }));
     }
@@ -444,7 +444,7 @@ app.get('/', (req, res) => {
 
 
 // Error handling middleware
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: Error, req: express.Request, res: express.Response) => {
   console.error('Unhandled error:', error);
   res.status(500).json({
     error: 'Internal server error',
