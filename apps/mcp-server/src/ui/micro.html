@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>AutoAgent Micro</title>
+<div style="font:14px/1.4 system-ui;padding:12px">✅ Micro widget loaded</div>
+<script>
+(function(){
+  // Emit ui:ready ASAP, without waiting for DOM events or data
+  try {
+    if (window.openai && typeof window.openai.emitToolEvent === 'function') {
+      window.openai.emitToolEvent('ui:ready', { ok:true, tag:'micro-sync', ts: Date.now() });
+    } else {
+      // Poll very aggressively for the bridge (max 2s)
+      const t0 = Date.now();
+      const id = setInterval(() => {
+        if (window.openai && typeof window.openai.emitToolEvent === 'function') {
+          window.openai.emitToolEvent('ui:ready', { ok:true, tag:'micro-poll', ts: Date.now(), elapsedMs: Date.now()-t0 });
+          clearInterval(id);
+        } else if (Date.now()-t0 > 2000) {
+          clearInterval(id);
+          // Last-ditch: still send a beacon so server sees life
+          try { fetch('/widget/beacon',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ tag:'micro-timeout', ts:Date.now() })}).catch(()=>{}); } catch(_){}
+        }
+      }, 50);
+    }
+    // Always send a beacon so we can see if the script ran at all
+    try { fetch('/widget/beacon',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ tag:'micro-loaded', ts:Date.now() })}).catch(()=>{}); } catch(_){}
+  } catch(e) {
+    try { fetch('/widget/beacon',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ tag:'micro-error', msg: String(e) })}).catch(()=>{}); } catch(_){}
+  }
+})();
+</script>

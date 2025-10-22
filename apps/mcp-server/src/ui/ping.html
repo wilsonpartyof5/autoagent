@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>AutoAgent Ping</title>
+<div style="font:14px/1.4 system-ui; padding:12px">✅ Component loaded</div>
+    <script>
+      (function () {
+        const MAX_WAIT_MS = 5000;
+        const INTERVAL_MS = 200;
+        let emitted = false;
+        const startedAt = Date.now();
+
+        function post(path, body){
+          try {
+            fetch(path, {
+              method:'POST',
+              headers:{'content-type':'application/json'},
+              body: JSON.stringify(body)
+            }).catch(()=>{});
+          } catch(_) {}
+        }
+        function log(...args){ 
+          try{ 
+            console.log('[ping-widget]', ...args);
+            (window.__log ||= []).push({ts:Date.now(),msg:args.map(String).join(' ')});
+            post('/widget/console', window.__log);
+          }catch(_){}
+        }
+        function errorLog(e){ try{ console.error('[ping-widget]', e); }catch(_){} }
+
+        function maybeEmitReady(tag) {
+          if (emitted) return;
+          const bridge = window.openai && typeof window.openai.emitToolEvent === 'function';
+          if (!bridge) return;
+          try {
+            window.openai.emitToolEvent('ui:ready', {
+              ok: true, tag, ts: Date.now(), elapsedMs: Date.now() - startedAt
+            });
+            emitted = true;
+            log('ui:ready emitted', tag);
+            post('/widget/beacon', { tag: 'ui-ready:'+tag, ts: Date.now() });
+          } catch (e) { errorLog(e); }
+        }
+
+        function heartbeat() {
+          const haveBridge = !!(window.openai && window.openai.emitToolEvent);
+          if (haveBridge) {
+            maybeEmitReady('bridge');
+          } else {
+            const elapsed = Date.now() - startedAt;
+            if (!emitted && elapsed < MAX_WAIT_MS) {
+              setTimeout(heartbeat, INTERVAL_MS);
+            } else if (!emitted) {
+              maybeEmitReady('timeout-fallback');
+            }
+          }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+          log('DOMContentLoaded');
+          heartbeat();
+        });
+        window.addEventListener('load', () => {
+          log('window.load');
+          heartbeat();
+        });
+      })();
+    </script>

@@ -1,0 +1,215 @@
+openapi: 3.0.1
+info:
+  title: AutoAgent Vehicle Search API
+  description: "A comprehensive vehicle search and lead management system that can search for vehicles by location, price, make, model, and other criteria. Can also submit leads for test drives and provide detailed vehicle information including VIN lookups."
+  version: "1.0.0"
+  contact:
+    name: AutoAgent Support
+    email: support@autoagent.com
+servers:
+  - url: https://rana-flightiest-malcolm.ngrok-free.dev
+    description: AutoAgent MCP Server
+paths:
+  /mcp:
+    post:
+      summary: MCP Protocol Endpoint
+      description: "Main endpoint for Model Context Protocol communication. Handles initialize, tools/list, tools/call, and resources/list methods."
+      operationId: mcp_protocol
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jsonrpc:
+                  type: string
+                  example: "2.0"
+                method:
+                  type: string
+                  enum: ["initialize", "tools/list", "tools/call", "resources/list", "initialized"]
+                id:
+                  type: integer
+                params:
+                  type: object
+            examples:
+              initialize:
+                summary: Initialize request
+                value:
+                  jsonrpc: "2.0"
+                  method: "initialize"
+                  id: 1
+                  params:
+                    protocolVersion: "2025-06-18"
+                    capabilities: {}
+                    clientInfo:
+                      name: "ChatGPT"
+                      version: "1.0.0"
+              tools_list:
+                summary: List available tools
+                value:
+                  method: "tools/list"
+              tools_call:
+                summary: Call a tool
+                value:
+                  method: "tools/call"
+                  params:
+                    name: "search-vehicles"
+                    arguments:
+                      location: "Seattle, WA"
+                      condition: "used"
+                      maxPrice: 30000
+      responses:
+        '200':
+          description: Successful MCP response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion:
+                    type: string
+                  capabilities:
+                    type: object
+                  serverInfo:
+                    type: object
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                  resources:
+                    type: array
+                    items:
+                      type: object
+                  result:
+                    type: object
+                  error:
+                    type: object
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /health:
+    get:
+      summary: Health Check
+      description: "Check if the MCP server is running and healthy"
+      operationId: health_check
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                    example: "autoagent-mcp-server"
+                  version:
+                    type: string
+                    example: "1.0.0"
+  /ping:
+    get:
+      summary: Ping Endpoint
+      description: "Simple ping endpoint for connectivity testing"
+      operationId: ping
+      responses:
+        '200':
+          description: Pong response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pong:
+                    type: string
+                    example: "pong"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  server:
+                    type: string
+                    example: "autoagent-mcp-server"
+components:
+  schemas:
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        price:
+          type: number
+        mileage:
+          type: integer
+        vin:
+          type: string
+        location:
+          type: string
+        dealer:
+          type: string
+    SearchParams:
+      type: object
+      properties:
+        location:
+          type: string
+        condition:
+          type: string
+          enum: ["new", "used"]
+        maxPrice:
+          type: number
+        make:
+          type: string
+        model:
+          type: string
+        radiusMiles:
+          type: number
+      required:
+        - location
+        - condition
+    Lead:
+      type: object
+      properties:
+        vehicleId:
+          type: string
+        vin:
+          type: string
+        user:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            phone:
+              type: string
+            preferredTime:
+              type: string
+          required:
+            - name
+            - email
+        consent:
+          type: boolean
+      required:
+        - vehicleId
+        - vin
+        - user
+        - consent

@@ -1,0 +1,29 @@
+{
+  "name": "@autoagent/dealer-dashboard",
+  "version": "1.0.0",
+  "description": "Dealer dashboard for AutoAgent",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .next"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "better-sqlite3": "^9.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/better-sqlite3": "^7.6.8",
+    "eslint": "^8.55.0",
+    "eslint-config-next": "^15.0.0",
+    "typescript": "^5.3.0"
+  }
+}
