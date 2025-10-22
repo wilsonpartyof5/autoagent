@@ -4,7 +4,8 @@
     "builder": "NIXPACKS",
     "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter mcp-server build",
     "env": {
-      "NIXPACKS_NODE_VERSION": "20"
+      "NIXPACKS_NODE_VERSION": "20",
+      "NIXPACKS_INSTALL_PKGS": "python3"
     }
   },
   "deploy": {
