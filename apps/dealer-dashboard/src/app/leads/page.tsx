@@ -137,7 +137,7 @@ async function DecryptedLeadDetails({ encPayload }: { encPayload: string }) {
         )}
       </div>
     );
-  } catch (error) {
+  } catch {
     return (
       <div className="text-sm text-red-500">
         Decryption failed

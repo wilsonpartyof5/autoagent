@@ -30,9 +30,20 @@ function initializeKey(): Uint8Array | null {
 }
 
 /**
+ * JSON value type for decrypted data
+ */
+type JSONValue = 
+  | string 
+  | number 
+  | boolean 
+  | null 
+  | JSONValue[] 
+  | { [key: string]: JSONValue };
+
+/**
  * Decrypt base64 string to JSON object
  */
-export async function decryptToJson(b64: string): Promise<any> {
+export async function decryptToJson(b64: string): Promise<JSONValue> {
   await sodium.ready;
   
   const key = initializeKey();
