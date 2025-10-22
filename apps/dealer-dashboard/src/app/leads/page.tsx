@@ -1,5 +1,5 @@
 import { getRecentLeads } from '../../lib/db';
-import { decryptToJson, canDecrypt } from '../../lib/crypto';
+import { decryptToJson, canDecrypt, isDecryptedLead } from '../../lib/crypto';
 
 interface Lead {
   id: string;
@@ -10,17 +10,6 @@ interface Lead {
   createdAt: number;
 }
 
-interface DecryptedLead {
-  user: {
-    name: string;
-    email: string;
-    phone?: string;
-    preferredTime?: string;
-  };
-  vehicleId: string;
-  dealerId?: string;
-  vin?: string;
-}
 
 export default async function LeadsPage() {
   const leads = getRecentLeads(100);
@@ -123,7 +112,15 @@ function LeadRow({ lead, canDecrypt }: { lead: Lead; canDecrypt: boolean }) {
 
 async function DecryptedLeadDetails({ encPayload }: { encPayload: string }) {
   try {
-    const decrypted: DecryptedLead = await decryptToJson(encPayload);
+    const decrypted = await decryptToJson(encPayload);
+    
+    if (!isDecryptedLead(decrypted)) {
+      return (
+        <div className="text-sm text-red-500">
+          Invalid lead data format
+        </div>
+      );
+    }
     
     return (
       <div className="text-sm">

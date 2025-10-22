@@ -30,20 +30,9 @@ function initializeKey(): Uint8Array | null {
 }
 
 /**
- * JSON value type for decrypted data
- */
-type JSONValue = 
-  | string 
-  | number 
-  | boolean 
-  | null 
-  | JSONValue[] 
-  | { [key: string]: JSONValue };
-
-/**
  * Decrypt base64 string to JSON object
  */
-export async function decryptToJson(b64: string): Promise<JSONValue> {
+export async function decryptToJson(b64: string): Promise<unknown> {
   await sodium.ready;
   
   const key = initializeKey();
@@ -62,6 +51,49 @@ export async function decryptToJson(b64: string): Promise<JSONValue> {
   const plaintext = sodium.to_string(plaintextBytes);
   
   return JSON.parse(plaintext);
+}
+
+/**
+ * Decrypted lead data structure
+ */
+export interface DecryptedLead {
+  user: {
+    name: string;
+    email: string;
+    phone?: string;
+    preferredTime?: string;
+  };
+  vehicleId: string;
+  dealerId?: string;
+  vin?: string;
+}
+
+/**
+ * Type guard to validate decrypted lead data
+ */
+export function isDecryptedLead(data: unknown): data is DecryptedLead {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Check if user object exists and has required fields
+  if (typeof obj.user !== 'object' || obj.user === null) {
+    return false;
+  }
+
+  const user = obj.user as Record<string, unknown>;
+
+  return (
+    typeof user.name === 'string' &&
+    typeof user.email === 'string' &&
+    (user.phone === undefined || typeof user.phone === 'string') &&
+    (user.preferredTime === undefined || typeof user.preferredTime === 'string') &&
+    typeof obj.vehicleId === 'string' &&
+    (obj.dealerId === undefined || typeof obj.dealerId === 'string') &&
+    (obj.vin === undefined || typeof obj.vin === 'string')
+  );
 }
 
 /**
