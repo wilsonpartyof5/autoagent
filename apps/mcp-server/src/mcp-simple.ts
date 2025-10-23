@@ -2,12 +2,18 @@ import { searchVehicles } from './tools/searchVehicles.js';
 import { submitLead } from './tools/submitLead.js';
 import { pingUi } from './tools/pingUi.js';
 import { pingMicroUi } from './tools/pingMicroUi.js';
+import { search } from './tools/search.js';
+import { fetchContent } from './tools/fetch.js';
 
 /**
  * Simple MCP tool handler for Express integration
  */
 export async function handleMcpToolCall(toolName: string, args: unknown, context?: { ipAddress?: string }) {
   switch (toolName) {
+    case 'search':
+      return await search(args);
+    case 'fetch':
+      return await fetchContent(args);
     case 'search-vehicles':
       return await searchVehicles(args);
     case 'submit-lead':
@@ -26,6 +32,34 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
  */
 export function getAvailableTools() {
   return [
+    {
+      name: 'search',
+      description: 'Search for information using a query string',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Search query string',
+          },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'fetch',
+      description: 'Fetch content from a URL',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'URL to fetch content from',
+          },
+        },
+        required: ['url'],
+      },
+    },
     {
       name: 'ping-ui',
       description: 'Test UI component loading and ChatGPT bridge connectivity',
