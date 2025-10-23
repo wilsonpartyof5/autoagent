@@ -1,0 +1,10 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "buildCommand": "pnpm --filter @autoagent/dealer-dashboard build",
+    "watchPaths": ["/apps/dealer-dashboard/**"]
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @autoagent/dealer-dashboard start"
+  }
+}
