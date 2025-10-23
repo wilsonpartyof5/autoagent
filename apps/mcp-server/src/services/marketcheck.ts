@@ -60,11 +60,12 @@ export class MarketCheckClient {
       });
 
       // Cap results at 20 vehicles
-      const vehicles = response.data.listings.slice(0, 20);
+      const listings = response.data.listings || [];
+      const vehicles = listings.slice(0, 20);
       
       return {
         vehicles: vehicles.map(this.normalizeVehicle),
-        totalCount: Math.min(response.data.num_found, 20),
+        totalCount: Math.min(response.data.num_found || 0, 20),
       };
     } catch (error) {
       console.error('MarketCheck API error:', {

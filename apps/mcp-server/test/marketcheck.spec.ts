@@ -23,8 +23,8 @@ describe('MarketCheck Integration', () => {
   describe('URL building and parameter mapping', () => {
     it('should build correct URL with all parameters', async () => {
       const mockResponse = {
-        vehicles: [],
-        totalCount: 0,
+        listings: [],
+        num_found: 0,
         page: 1,
         pageSize: 20,
       };
@@ -48,18 +48,18 @@ describe('MarketCheck Integration', () => {
       await client.searchVehicles(params);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('https://test-api.example.com/api/v1/vehicles/search'),
+        expect.stringContaining('https://test-api.example.com/v2/search/car/active'),
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Authorization': 'Bearer test-key',
+            'Content-Type': 'application/json',
           }),
         }),
       );
 
       const url = mockFetch.mock.calls[0][0];
       expect(url).toContain('location=Seattle%2C+WA');
-      expect(url).toContain('condition=used');
-      expect(url).toContain('maxPrice=30000');
+      expect(url).toContain('car_type=used');
+      expect(url).toContain('price_range=0-30000');
       expect(url).toContain('make=Toyota');
       expect(url).toContain('model=RAV4');
       expect(url).toContain('radius=50');
@@ -69,8 +69,8 @@ describe('MarketCheck Integration', () => {
 
     it('should build URL with only required parameters', async () => {
       const mockResponse = {
-        vehicles: [],
-        totalCount: 0,
+        listings: [],
+        num_found: 0,
         page: 1,
         pageSize: 20,
       };
@@ -91,8 +91,8 @@ describe('MarketCheck Integration', () => {
 
       const url = mockFetch.mock.calls[0][0];
       expect(url).toContain('location=New+York%2C+NY');
-      expect(url).toContain('condition=new');
-      expect(url).not.toContain('maxPrice');
+      expect(url).toContain('car_type=new');
+      expect(url).not.toContain('price_range');
       expect(url).not.toContain('make');
       expect(url).not.toContain('model');
       expect(url).not.toContain('radius');
@@ -102,32 +102,39 @@ describe('MarketCheck Integration', () => {
   describe('Vehicle normalization', () => {
     it('should normalize MarketCheck response to Vehicle schema', async () => {
       const mockMarketCheckResponse = {
-        vehicles: [
+        listings: [
           {
             id: 'mc-123',
-            year: 2022,
-            make: 'Toyota',
-            model: 'Camry',
+            build: {
+              year: 2022,
+              make: 'Toyota',
+              model: 'Camry',
+              trim: 'LE',
+              engine: '2.5L 4-Cylinder',
+              transmission: 'Automatic',
+              drivetrain: 'FWD',
+            },
             price: 28500,
-            mileage: 15000,
-            images: [
-              { url: 'https://example.com/image1.jpg', primary: false },
-              { url: 'https://example.com/image2.jpg', primary: true },
-            ],
-            features: ['Bluetooth', 'Backup Camera'],
+            miles: 15000,
+            media: {
+              photo_links: [
+                'https://example.com/image1.jpg',
+                'https://example.com/image2.jpg',
+              ],
+            },
             dealer: {
               name: 'Test Dealer',
-              address: '123 Main St',
+              street: '123 Main St',
               city: 'Seattle',
               state: 'WA',
               zip: '98101',
-              latitude: 47.6062,
-              longitude: -122.3321,
+              latitude: '47.6062',
+              longitude: '-122.3321',
             },
             condition: 'used',
           },
         ],
-        totalCount: 1,
+        num_found: 1,
         page: 1,
         pageSize: 20,
       };
@@ -154,8 +161,8 @@ describe('MarketCheck Integration', () => {
         model: 'Camry',
         price: 28500,
         mileage: 15000,
-        imageUrl: 'https://example.com/image2.jpg', // Primary image
-        features: ['Bluetooth', 'Backup Camera'],
+        imageUrl: 'https://example.com/image1.jpg', // First image
+        features: ['LE', '2.5L 4-Cylinder', 'Automatic', 'FWD'],
         dealer: {
           name: 'Test Dealer',
           address: '123 Main St, Seattle, WA, 98101',
@@ -167,19 +174,21 @@ describe('MarketCheck Integration', () => {
 
     it('should handle missing optional fields gracefully', async () => {
       const mockMarketCheckResponse = {
-        vehicles: [
+        listings: [
           {
             id: 'mc-456',
-            year: 2023,
-            make: 'Honda',
-            model: 'Civic',
+            build: {
+              year: 2023,
+              make: 'Honda',
+              model: 'Civic',
+            },
             price: 25000,
             dealer: {
               name: 'Minimal Dealer',
             },
           },
         ],
-        totalCount: 1,
+        num_found: 1,
         page: 1,
         pageSize: 20,
       };
@@ -205,7 +214,7 @@ describe('MarketCheck Integration', () => {
         price: 25000,
         mileage: undefined,
         imageUrl: undefined,
-        features: undefined,
+        features: [],
         dealer: {
           name: 'Minimal Dealer',
           address: undefined,
@@ -219,8 +228,13 @@ describe('MarketCheck Integration', () => {
   describe('Caching behavior', () => {
     it('should return cached result without HTTP call', async () => {
       const mockResponse = {
-        vehicles: [{ id: 'cached-1', year: 2022, make: 'Toyota', model: 'Camry', price: 25000, dealer: { name: 'Test Dealer' } }],
-        totalCount: 1,
+        listings: [{ 
+          id: 'cached-1', 
+          build: { year: 2022, make: 'Toyota', model: 'Camry' },
+          price: 25000, 
+          dealer: { name: 'Test Dealer' } 
+        }],
+        num_found: 1,
         page: 1,
         pageSize: 20,
       };
@@ -293,8 +307,8 @@ describe('MarketCheck Integration', () => {
       }));
 
       const mockResponse = {
-        vehicles,
-        totalCount: 25,
+        listings: vehicles,
+        num_found: 25,
         page: 1,
         pageSize: 20,
       };
