@@ -198,3 +198,4 @@ pnpm build
 Private - All rights reserved
 # Railway deployment trigger Thu Oct 23 12:23:58 EDT 2025
 # Force Railway redeploy Thu Oct 23 12:36:49 EDT 2025
+# Force Docker deployment Thu Oct 23 12:51:38 EDT 2025
