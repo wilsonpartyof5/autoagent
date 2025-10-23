@@ -28,6 +28,9 @@ export async function searchVehicles(params: unknown): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
+    vehicles?: unknown[];
+    totalCount?: number;
+    searchParams?: unknown;
     structuredContent?: unknown;
     components: { type: string; url: string; }[];
   };

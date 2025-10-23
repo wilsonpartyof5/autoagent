@@ -7,6 +7,9 @@ export const ComponentSchema = z.object({
 
 export const ToolResultSchema = z.object({
   content: z.array(z.object({ type: z.literal('text'), text: z.string() })).nonempty(),
+  vehicles: z.array(z.unknown()).optional(),
+  totalCount: z.number().optional(),
+  searchParams: z.unknown().optional(),
   structuredContent: z.unknown().optional(),
   components: z.array(ComponentSchema).nonempty()
 });
