@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { Shield, Database, Users, CreditCard, CheckCircle2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 
 const steps = [
   {
@@ -34,6 +35,9 @@ const steps = [
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState({
+    dmsProvider: ''
+  });
   
   const progressPercentage = (currentStep / 4) * 100;
   
@@ -50,6 +54,92 @@ export default function OnboardingPage() {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  const handleDmsProviderChange = (value: string) => {
+    setFormData(prev => ({ ...prev, dmsProvider: value }));
+  };
+
+  const dmsOptions = [
+    { value: 'cdk', label: 'CDK Global' },
+    { value: 'dealertrack', label: 'Dealertrack DMS' },
+    { value: 'reynolds', label: 'Reynolds & Reynolds' },
+    { value: 'automate', label: 'Automate' },
+    { value: 'csv', label: 'CSV Upload' },
+    { value: 'manual', label: 'I\'ll add vehicles manually' }
+  ];
+
+  const renderStepContent = () => {
+    if (currentStep === 1) {
+      return (
+        <div className="space-y-6">
+          {/* DMS Provider Select */}
+          <div>
+            <Select value={formData.dmsProvider} onValueChange={handleDmsProviderChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select your DMS provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {dmsOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              You can configure API integration later in Settings
+            </p>
+          </div>
+
+          {/* Conditional CSV Upload Zone */}
+          {formData.dmsProvider === 'csv' && (
+            <div className="rounded-lg border-2 border-dashed border-border p-8 text-center space-y-4">
+              <Database className="h-12 w-12 text-muted-foreground mx-auto" />
+              <div>
+                <p className="text-sm font-medium">Upload your vehicle inventory</p>
+                <p className="text-xs text-muted-foreground">
+                  Drag and drop your CSV file here, or click to browse
+                </p>
+              </div>
+              <Button variant="outline">Browse Files</Button>
+            </div>
+          )}
+
+          {/* Conditional Integration Info */}
+          {formData.dmsProvider && 
+           formData.dmsProvider !== 'csv' && 
+           formData.dmsProvider !== 'manual' && (
+            <div className="rounded-lg bg-secondary/10 border border-secondary/20 p-4 text-sm">
+              <p className="font-medium mb-1">
+                Next Step: After completing onboarding, you'll be able to connect your {dmsOptions.find(opt => opt.value === formData.dmsProvider)?.label} system in Settings → API & Integrations.
+              </p>
+            </div>
+          )}
+
+          {/* Privacy Notice */}
+          <div className="rounded-lg bg-muted/30 border p-4 text-sm">
+            <p className="text-muted-foreground">
+              Data Privacy: All inventory data is encrypted at rest and in transit. We only sync vehicle information, not customer data.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Placeholder for other steps
+    return (
+      <div className="min-h-[200px] flex items-center justify-center border-2 border-dashed border-border rounded-lg">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-2">
+            Step {currentStep} Content
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Detailed form content will be implemented here
+          </p>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -124,17 +214,7 @@ export default function OnboardingPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Step Content Placeholder */}
-            <div className="min-h-[200px] flex items-center justify-center border-2 border-dashed border-border rounded-lg">
-              <div className="text-center">
-                <p className="text-muted-foreground mb-2">
-                  Step {currentStep} Content
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Detailed form content will be implemented here
-                </p>
-              </div>
-            </div>
+            {renderStepContent()}
 
             {/* Navigation Buttons */}
             <div className="flex gap-3 mt-8 pt-6 border-t">
