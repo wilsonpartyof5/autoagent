@@ -98,6 +98,8 @@ AutoAgent/
 - ✅ **Environment Variables**: Secure variable management
 - ✅ **Health Checks**: Built-in health check monitoring
 - ✅ **Auto-scaling**: Automatic scaling based on traffic
+- ✅ **GitHub Integration**: Automatic deployment on push (no CI/CD needed)
+- ✅ **Auto-build**: Automatically builds using Dockerfile on every push
 
 #### **Supabase** (Database)
 - ✅ **Managed Postgres**: Serverless PostgreSQL with automatic backups
@@ -292,22 +294,25 @@ jobs:
           vercel-args: '--prod' # Use '--preview' for staging
 
   # Backend deployment to Railway
+  # Note: Railway auto-deploys via GitHub connection using railway.json + Dockerfile
+  # No GitHub Actions needed - Railway handles deployment automatically on push
   deploy-backend:
-    name: Deploy Backend to Railway
+    name: Verify Railway Deployment
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Railway CLI
-        run: |
-          npm install -g @railway/cli
-          railway login --token ${{ secrets.RAILWAY_TOKEN }}
+      - name: Verify Dockerfile exists
+        run: test -f Dockerfile
 
-      - name: Deploy to Railway
-        run: |
-          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
-          railway up --service mcp-server
+      - name: Verify railway.json exists
+        run: test -f railway.json
+
+      # Railway automatically deploys when code is pushed to main/staging
+      # Configuration: railway.json uses DOCKERFILE builder
+      # Build: Dockerfile runs pnpm install --frozen-lockfile and builds
+      # Start: Dockerfile CMD runs pnpm --filter @autoagent/mcp-server start
 
   # Run tests
   test:
@@ -352,7 +357,54 @@ jobs:
 - **Backend**: Deploys to Railway production service
 - **Purpose**: Live production environment
 
-### Manual Deployment
+### Railway Deployment (Automatic)
+
+#### **How Railway Works**
+Railway **automatically deploys** when code is pushed to GitHub via Railway's GitHub integration:
+
+1. **Connect Repository**: Railway is connected to GitHub repository
+2. **Auto-Detect Configuration**: Railway detects `railway.json` and `Dockerfile`
+3. **Automatic Build**: Railway builds using Dockerfile on every push
+4. **Automatic Deploy**: Railway deploys the container automatically
+
+#### **Railway Configuration**
+```json
+// railway.json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "./Dockerfile"
+  },
+  "deploy": {}
+}
+```
+
+#### **Dockerfile Build Process**
+```dockerfile
+FROM node:20-bullseye
+RUN apt-get update && apt-get install -y python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY . .
+RUN corepack enable && pnpm install --frozen-lockfile
+RUN pnpm --filter @autoagent/shared build
+RUN pnpm --filter @autoagent/mcp-server build
+EXPOSE 8787
+CMD ["pnpm", "--filter", "@autoagent/mcp-server", "start"]
+```
+
+#### **Railway Automatic Deployment**
+- **No GitHub Actions needed**: Railway handles deployment automatically
+- **No Railway CLI needed**: Railway uses GitHub webhooks
+- **Auto-build on push**: Railway builds on every push to main/staging
+- **Auto-deploy**: Railway deploys the container automatically
+
+#### **Manual Deployment (Optional)**
+If needed, you can manually trigger a redeploy in Railway dashboard:
+1. Go to Railway dashboard
+2. Select your service
+3. Click "Deployments" → "Redeploy"
+4. Railway will rebuild and redeploy
 
 #### **Frontend (Vercel)**
 ```bash
@@ -366,21 +418,6 @@ vercel --prod
 vercel
 ```
 
-#### **Backend (Railway)**
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login to Railway
-railway login
-
-# Link to project
-railway link
-
-# Deploy
-railway up
-```
-
 ### GitHub Secrets Configuration
 
 Required secrets for GitHub Actions:
@@ -390,8 +427,8 @@ Required secrets for GitHub Actions:
 | `VERCEL_TOKEN` | Vercel API token | Vercel Dashboard → Settings → Tokens |
 | `VERCEL_ORG_ID` | Vercel organization ID | Vercel Dashboard → Settings → General |
 | `VERCEL_PROJECT_ID` | Vercel project ID | Vercel Dashboard → Project Settings |
-| `RAILWAY_TOKEN` | Railway API token | Railway Dashboard → Settings → Tokens |
-| `RAILWAY_PROJECT_ID` | Railway project ID | Railway Dashboard → Project Settings |
+
+**Note**: Railway doesn't require GitHub Secrets because Railway handles deployment automatically via GitHub integration. Railway connects to your GitHub repository and deploys automatically on push.
 
 ---
 
