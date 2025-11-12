@@ -1,202 +1,203 @@
 # AutoAgent
 
-AI-powered car discovery and lead-gen app that lives inside ChatGPT via the Apps SDK + MCP.
+AutoAgent is a ChatGPT-native vehicle search and lead generation platform built on the Apps SDK and MCP. It connects live MarketCheck inventory, secure lead capture, and a dealer dashboard to deliver a complete automotive commerce workflow directly inside ChatGPT.
 
-## 🎯 What We've Built
+## Key Capabilities
+- Live MarketCheck inventory with VINs, pricing, dealer info, and availability
+- Production MCP server exposing `search-vehicles` and `submit-lead` tools plus UI widgets
+- Interactive Leaflet-powered vehicle results widget embedded as a ChatGPT component
+- Secure lead pipeline with libsodium encryption, consent management, and dashboard forwarding
+- **Universal ADF XML lead delivery** to dealer CRM systems (HTTP endpoint or Email) with delivery logging and resend capability
+- Dealer SaaS dashboard (Next.js) for analytics, lead triage, onboarding, and follow-up tracking
+- In-app onboarding banner with MarketCheck inventory sync flow (Supabase-backed progress + vehicle ingestion)
 
-AutoAgent is a **production-ready ChatGPT App** that provides real-time vehicle search and lead generation capabilities. We've successfully integrated with the MarketCheck API to deliver live vehicle inventory data directly through ChatGPT's interface.
-
-### ✅ Key Accomplishments
-
-- **Real MarketCheck API Integration**: Live vehicle inventory with VINs, pricing, and dealer information
-- **MCP Protocol Compliance**: Full ChatGPT App integration with tools and resources
-- **Lead Capture System**: Secure PII encryption, rate limiting, and database storage
-- **Interactive Widget**: Zillow-style map interface with vehicle cards and lead forms
-- **Dealer Dashboard**: Next.js SaaS platform for lead management and analytics
-- **Production Security**: Rate limiting, PII encryption, and error handling
-
-## Architecture
-
-- **MCP Server**: Node.js/Express server exposing vehicle search tools and UI widgets
-- **Dealer Dashboard**: Next.js SaaS dashboard for dealers (billing, analytics, lead management)
-- **Shared Package**: Common types and schemas
+## Architecture Snapshot
+- **MCP Server** (`apps/mcp-server`): Node.js/Express service implementing MCP, tools, and widgets
+- **Dealer Dashboard** (`apps/dealer-dashboard`): Next.js app for dealers to manage incoming leads
+- **Shared Package** (`packages/shared`): Common TypeScript types and schemas across services, including the unified vehicle inventory metafields contract.
 
 ## Quick Start
 
 ### Prerequisites
-
 - Node.js 20+
 - pnpm 8+
 
-### Installation
-
+### Install & Run
 ```bash
-# Install dependencies
+# install workspace dependencies
 pnpm install
 
-# Start development servers
+# launch all dev servers (MCP + dashboard)
 pnpm dev
+# dashboard env (Supabase auth + onboarding)
+cp apps/dealer-dashboard/.env.example apps/dealer-dashboard/.env.local
 ```
 
-### MCP Server
+### MCP Server Workflow
+```bash
+# start only the MCP server
+pnpm --filter mcp-server dev
 
-The MCP server runs on `http://localhost:8787` and exposes:
+# build for production
+pnpm --filter mcp-server build
 
-- **Tool**: `search-vehicles` - Search for vehicles with natural language queries
-- **UI Resource**: `ui://vehicle-results.html` - Renders vehicle results as interactive cards
+# run production bundle
+pnpm --filter mcp-server start
+```
 
-#### Environment Setup
-
-Copy the example environment file:
-
+Set up environment variables by copying the example file and supplying your keys:
 ```bash
 cp apps/mcp-server/env.example apps/mcp-server/.env
 ```
 
-Update the environment variables as needed.
+Ensure `MARKETCHECK_API_KEY`, `MARKETCHECK_BASE_URL`, and `LEAD_ENC_KEY` are populated for live data.
+Add Supabase credentials (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) to `apps/dealer-dashboard/.env.local`, then run the SQL migrations in `apps/dealer-dashboard/supabase/migrations` to create the `profiles` and `inventory_vehicles` tables used by the dashboard onboarding flow.
 
-#### MarketCheck Setup
+### ChatGPT Testing Checklist
+1. Start the MCP server locally: `pnpm --filter mcp-server dev`
+2. Expose it with ngrok: `npx ngrok http 8787`
+3. Use the ngrok URL when creating or updating your ChatGPT connector
+4. Verify tools with `tools/list` and `tools/call` requests against `https://<ngrok>/mcp`
 
-The MCP server integrates with MarketCheck for **real vehicle inventory data**:
+## MCP Tools & UI Resources
+- **`search-vehicles`**: Real-time inventory search (location, condition, price, make, model, radius)
+- **`submit-lead`**: Encrypted lead submission with consent enforcement and VIN validation
+- **Widget** `ui://vehicle-results.html`: Zillow-style map and card experience for search results
 
-- **`MARKETCHECK_API_KEY`**: Your MarketCheck API key (required for real data)
-- **`MARKETCHECK_BASE_URL`**: MarketCheck API base URL (configured to `https://api.marketcheck.com`)
+## Documentation Map
+- **Onboarding Portal**: `docs/README.md`
+  - Quick setup checklist: `docs/quickstart.md`
+  - System deep dive: `docs/overview.md`
+- **API Reference**: `docs/api.md`
+- **MarketCheck Endpoint Guide**: `docs/api/marketcheck-endpoints.md`
+- **Lead Delivery**: `docs/lead-delivery/adf-payload.md` - ADF XML format and CRM integration
+- **Deployment Guides**: `docs/deployment/production.md`, `docs/deployment/railway.md`
+- **Operations & Support**: `docs/operations/openai-support-ticket.md`
+- **Release History**: `CHANGELOG.md`
 
-**✅ Real Data Integration**: The system now pulls live vehicle inventory from MarketCheck with:
-- Real VINs for lead tracking
-- Live pricing from dealers
-- Actual make/model/year data
-- Dealer information and locations
-- Real-time availability
+## ChatGPT Live Test
 
-**Production Ready**: No mock data fallback - system uses only real MarketCheck API data.
+### Prerequisites
+1. **MCP Server Running**: `pnpm --filter mcp-server dev` (port 8787)
+2. **Dashboard Running**: `pnpm --filter dealer-dashboard dev` (port 3000)
+3. **HTTPS Tunnel**: Expose MCP server via ngrok or Cloudflare Tunnel
+4. **Environment Variables**: All required keys configured (see `apps/mcp-server/env.example`)
 
-#### Development
+### Handshake Validation
+
+**Step 1: Initialize Connection**
+```bash
+curl -X POST https://your-ngrok-url.ngrok-free.dev/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "chatgpt",
+        "version": "1.0.0"
+      }
+    }
+  }'
+```
+
+**Expected Response**: `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{...}}}`
+
+**Step 2: List Available Tools**
+```bash
+curl -X POST https://your-ngrok-url.ngrok-free.dev/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list"
+  }'
+```
+
+**Expected Response**: Should include `search-vehicles` and `submit-lead` tools
+
+**Step 3: Widget Readiness**
+
+The vehicle results widget (`/widget/vehicle-results`) must:
+1. Listen for `openai:set_globals` event from ChatGPT
+2. Emit `ui:ready` event when loaded
+3. Have CSP headers allowing `frame-ancestors https://chat.openai.com https://chatgpt.com`
+
+**Verify Widget**:
+```bash
+curl -I https://your-ngrok-url.ngrok-free.dev/widget/vehicle-results
+```
+
+**Check Headers**:
+- `Content-Security-Policy` should include `frame-ancestors https://chat.openai.com https://chatgpt.com`
+- No `X-Frame-Options: DENY` header
+
+### ChatGPT Connector Setup
+
+1. **Create/Update Connector**:
+   - Go to ChatGPT → Settings → Connectors
+   - Add new connector or edit existing
+   - **MCP Server URL**: `https://your-ngrok-url.ngrok-free.dev/mcp`
+   - **Authentication**: None (or bearer token if configured)
+
+2. **Test Connection**:
+   - ChatGPT should automatically call `initialize` and `tools/list`
+   - Verify tools appear in ChatGPT interface
+   - Try: "Search for used Toyota Camry near Tomball, TX"
+
+3. **Widget Embedding**:
+   - When `search-vehicles` returns a widget component, ChatGPT will embed it
+   - Widget should load and display vehicle results
+   - Lead submission form should work within ChatGPT iframe
+
+### Troubleshooting
+
+**Connection Issues**:
+- Verify ngrok/Cloudflare tunnel is active: `curl https://your-url/health`
+- Check MCP server logs for errors
+- Ensure CORS headers allow ChatGPT origin
+
+**Widget Not Loading**:
+- Check browser console for CSP violations
+- Verify `frame-ancestors` includes ChatGPT domains
+- Test widget directly: `https://your-url/widget/vehicle-results`
+
+**Tools Not Appearing**:
+- Check MCP server logs for `tools/list` response
+- Verify tool schemas are valid JSON
+- Test tools manually via curl (see examples above)
+
+> **📋 Complete Testing Guide**: For a comprehensive smoke test checklist covering environment setup, tunnel configuration, connector registration, test scenarios, and troubleshooting, see [`docs/testing/chatgpt-smoke-test.md`](docs/testing/chatgpt-smoke-test.md).
+
+### Quick Start Commands
 
 ```bash
-# Start MCP server in development mode
+# Terminal 1: Start MCP server
+cd /Users/mac/AutoAgent
 pnpm --filter mcp-server dev
 
-# Build for production
-pnpm --filter mcp-server build
-
-# Start production server
-pnpm --filter mcp-server start
-```
-
-### Dealer Dashboard
-
-```bash
-# Start dealer dashboard
+# Terminal 2: Start dashboard
 pnpm --filter dealer-dashboard dev
+
+# Terminal 3: Expose MCP server (ngrok)
+ngrok http 8787
+# Or use Cloudflare Tunnel:
+# cloudflared tunnel --url http://localhost:8787
+
+# Use the HTTPS URL from ngrok/Cloudflare in ChatGPT connector settings
 ```
-
-### Testing with ChatGPT
-
-1. Start the MCP server: `pnpm --filter mcp-server dev`
-2. Expose locally using ngrok: `npx ngrok http 8787`
-3. Use the ngrok URL in your ChatGPT Connector setup
-
-#### MCP Tool Usage
-
-The `search-vehicles` tool accepts these parameters:
-- `location` (required): Location to search (e.g., "Seattle, WA")
-- `condition` (required): "new" or "used"
-- `maxPrice` (optional): Maximum price in USD
-- `make` (optional): Vehicle make (e.g., "Toyota")
-- `model` (optional): Vehicle model (e.g., "Camry")
-- `radiusMiles` (optional): Search radius in miles (default: 50)
-
-The tool returns **real vehicle data** from MarketCheck with `structuredContent.results` that maps to the `ui://vehicle-results.html` widget for interactive display.
-
-### 🔧 MCP Tools Available
-
-1. **`search-vehicles`**: Search for real vehicles with live inventory data
-2. **`submit-lead`**: Capture leads with VIN tracking and PII encryption
-
-### 🎨 UI Resources
-
-- **`ui://vehicle-results.html`**: Interactive Zillow-style widget with map and vehicle cards
-
-## Project Structure
-
-```
-autoagent/
-├── apps/
-│   ├── mcp-server/          # MCP server (Node.js/Express)
-│   └── dealer-dashboard/    # Dealer dashboard (Next.js)
-├── packages/
-│   └── shared/              # Shared types and schemas
-├── .github/workflows/       # CI/CD
-└── README.md
-```
-
-## 🚀 Production Features
-
-### Security & Privacy
-- **PII Encryption**: All user data encrypted with libsodium
-- **Rate Limiting**: 5 leads per IP per 24 hours
-- **VIN Validation**: Proper VIN format validation
-- **Consent Management**: Required user consent for lead capture
-
-### Performance & Reliability
-- **Real-time Data**: Live MarketCheck API integration
-- **Error Handling**: Graceful API failure handling
-- **Caching**: LRU cache for search results (60s TTL)
-- **Timeout Protection**: 5-second API timeout with proper error handling
-
-### Lead Management
-- **Database Storage**: SQLite with encrypted payloads
-- **Dashboard Integration**: Automatic lead forwarding to dealer dashboard
-- **Lead Tracking**: Full audit trail with timestamps
-- **Dealer Analytics**: Lead volume and conversion tracking
 
 ## Development Scripts
+- `pnpm build` – build all workspace packages
+- `pnpm dev` – start MCP server and dealer dashboard in dev mode
+- `pnpm lint` – lint the monorepo
+- `pnpm format` – run Prettier
+- `pnpm typecheck` – TypeScript project references check
 
-- `pnpm build` - Build all packages
-- `pnpm dev` - Start all development servers
-- `pnpm lint` - Lint all packages
-- `pnpm format` - Format code with Prettier
-- `pnpm typecheck` - Type check all packages
-- `pnpm test` - Run test suites
-- `pnpm --filter mcp-server gen:key` - Generate encryption key
-
-## 🎯 Why We Built This
-
-AutoAgent solves the problem of **fragmented car buying experiences** by providing a unified, AI-powered platform that:
-
-1. **Connects Buyers to Real Inventory**: Live MarketCheck data ensures users see actual available vehicles
-2. **Streamlines Lead Generation**: Secure lead capture with VIN tracking for dealers
-3. **Provides Interactive Experience**: Zillow-style interface within ChatGPT for seamless browsing
-4. **Ensures Data Privacy**: End-to-end encryption and secure handling of PII
-5. **Scales for Dealers**: Dashboard analytics and lead management for business growth
-
-## 📚 Documentation
-
-- **[API Documentation](API.md)** - Complete API reference and integration guide
-- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment instructions
-- **[Changelog](CHANGELOG.md)** - Development history and feature releases
-
-## 🛠️ Quick Commands
-
-```bash
-# Start development
-pnpm dev
-
-# Test the system
-pnpm --filter mcp-server test
-
-# Generate encryption key
-pnpm --filter mcp-server gen:key
-
-# Build for production
-pnpm build
-```
-
-## License
-
-Private - All rights reserved
-# Railway deployment trigger Thu Oct 23 12:23:58 EDT 2025
-# Force Railway redeploy Thu Oct 23 12:36:49 EDT 2025
-# Force Docker deployment Thu Oct 23 12:51:38 EDT 2025
-# Trigger Railway Docker deployment Thu Oct 23 12:52:09 EDT 2025
+## Inventory Sync Roadmap
+- ✅ MarketCheck: one-click sync from `/app/setup` (dealer ID, radius, optional ZIP) and viewing imported vehicles under `/app/inventory`.
+- ⏳ Billing activation: build “Go Live” flow to flip `billing_active`.
+- ⏳ Additional providers: design credential flows for CDK & vAuto once ready; update settings UI to expose provider switching.
