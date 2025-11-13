@@ -1,3 +1,3 @@
-export * from './types';
-export * from './marketcheck';
-export * from './marketcheck-enrichment';
+export * from './types.js';
+export * from './marketcheck.js';
+export * from './marketcheck-enrichment.js';
