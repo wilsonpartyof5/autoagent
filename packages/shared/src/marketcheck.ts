@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type Vehicle } from './types.js';
+import { type Vehicle, type Dealer } from './types.js';
 
 export interface MarketCheckVehicle {
   id: string;
@@ -180,7 +180,7 @@ export function normalizeMarketCheckVehicle(listing: MarketCheckVehicle): Vehicl
       phone: listing.dealer?.phone ?? undefined,
       website: dealerWebsite,
       address: dealerAddress,
-    },
+    } as Dealer,
     photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
     thumbnailUrl: primaryPhoto,
     videoUrl: listing.media?.video_url ?? undefined,
