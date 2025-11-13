@@ -1,30 +1,10 @@
 import { fetchWithTimeout, HttpError } from '../lib/http.js';
-import { type Vehicle, type SearchParams } from '@autoagent/shared';
-
-/**
- * MarketCheck API response types
- */
-interface MarketCheckVehicle {
-  id: string;
-  year: number;
-  make: string;
-  model: string;
-  price: number;
-  mileage?: number;
-  images?: Array<{ url: string; primary?: boolean }>;
-  features?: string[];
-  vin?: string;
-  dealer: {
-    name: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    zip?: string;
-    latitude?: number;
-    longitude?: number;
-  };
-  condition?: 'new' | 'used';
-}
+import {
+  type Vehicle,
+  type SearchParams,
+  normalizeMarketCheckVehicle,
+  type MarketCheckVehicle,
+} from '@autoagent/shared';
 
 interface MarketCheckResponse {
   listings: MarketCheckVehicle[];
@@ -64,7 +44,7 @@ export class MarketCheckClient {
       const vehicles = listings.slice(0, 20);
       
       return {
-        vehicles: vehicles.map(this.normalizeVehicle),
+        vehicles: vehicles.map(normalizeMarketCheckVehicle),
         totalCount: Math.min(response.data.num_found || 0, 20),
       };
     } catch (error) {
@@ -115,75 +95,6 @@ export class MarketCheckClient {
     searchParams.set('pageSize', '20');
     
     return `${this.baseUrl}/v2/search/car/active?${searchParams.toString()}`;
-  }
-
-  /**
-   * Normalize MarketCheck vehicle to our Vehicle schema
-   */
-  private normalizeVehicle(mcVehicle: unknown): Vehicle {
-    const vehicle = mcVehicle as {
-      media?: { photo_links?: string[] };
-      dealer?: {
-        street?: string;
-        city?: string;
-        state?: string;
-        zip?: string;
-        name?: string;
-        latitude?: string;
-        longitude?: string;
-      };
-      build?: {
-        year?: number;
-        make?: string;
-        model?: string;
-        trim?: string;
-        engine?: string;
-        transmission?: string;
-        drivetrain?: string;
-      };
-      id?: string;
-      price?: number;
-      miles?: number;
-      vin?: string;
-    };
-
-    // Get primary image or first available image
-    let imageUrl: string | undefined;
-    if (vehicle.media?.photo_links && vehicle.media.photo_links.length > 0) {
-      imageUrl = vehicle.media.photo_links[0];
-    }
-    
-    // Build dealer address if available
-    const parts = [
-      vehicle.dealer?.street,
-      vehicle.dealer?.city,
-      vehicle.dealer?.state,
-      vehicle.dealer?.zip,
-    ].filter(Boolean);
-    const dealerAddress = parts.length > 0 ? parts.join(', ') : undefined;
-    
-    return {
-      id: vehicle.id || '',
-      year: vehicle.build?.year || 0,
-      make: vehicle.build?.make || '',
-      model: vehicle.build?.model || '',
-      price: vehicle.price || 0,
-      mileage: vehicle.miles,
-      imageUrl,
-      features: vehicle.build ? [
-        vehicle.build.trim,
-        vehicle.build.engine,
-        vehicle.build.transmission,
-        vehicle.build.drivetrain,
-      ].filter(Boolean) as string[] : undefined,
-      vin: vehicle.vin,
-      dealer: {
-        name: vehicle.dealer?.name || '',
-        address: dealerAddress,
-        lat: vehicle.dealer?.latitude ? parseFloat(vehicle.dealer.latitude) : undefined,
-        lng: vehicle.dealer?.longitude ? parseFloat(vehicle.dealer.longitude) : undefined,
-      },
-    };
   }
 
 }
