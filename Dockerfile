@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . .
 RUN corepack enable && pnpm install --frozen-lockfile
 # Build shared package first (required for mcp-server)
-# Fixed: Using bundler moduleResolution with .js extensions for ESM compatibility
+# Fixed: Using NodeNext moduleResolution to preserve .js extensions in ESM output
 RUN pnpm --filter @autoagent/shared build
 # Build mcp-server (depends on shared package)
 RUN pnpm --filter @autoagent/mcp-server build
