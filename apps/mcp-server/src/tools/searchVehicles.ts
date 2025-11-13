@@ -254,7 +254,14 @@ export async function searchVehicles(params: unknown): Promise<{
       const runId = randomUUID();
       const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
       const isDiag = process.env.AA_DIAG === '1';
-      const vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${runId}${isDiag ? '&diag=1' : ''}`;
+      
+      // Build URL using URL API to ensure proper encoding
+      const widgetUrl = new URL('/widget/vehicle-results', widgetHost);
+      widgetUrl.searchParams.set('rid', runId);
+      if (isDiag) {
+        widgetUrl.searchParams.set('diag', '1');
+      }
+      const vehicleResultsUrl = widgetUrl.toString();
       
       console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
       
@@ -488,7 +495,14 @@ export async function searchVehicles(params: unknown): Promise<{
     const runId = randomUUID();
     const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
     const isDiag = process.env.AA_DIAG === '1';
-    const vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${runId}${isDiag ? '&diag=1' : ''}`;
+    
+    // Build URL using URL API to ensure proper encoding
+    const widgetUrl = new URL('/widget/vehicle-results', widgetHost);
+    widgetUrl.searchParams.set('rid', runId);
+    if (isDiag) {
+      widgetUrl.searchParams.set('diag', '1');
+    }
+    const vehicleResultsUrl = widgetUrl.toString();
     
     console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
     

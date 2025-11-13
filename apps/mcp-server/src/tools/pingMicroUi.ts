@@ -4,7 +4,12 @@ import { validateToolResult } from '../lib/responseShape.js';
 export async function pingMicroUi() {
   const runId = uuid();
   const host = process.env.WIDGET_HOST!;
-  const url = `${host}/widget/micro?rid=${encodeURIComponent(runId)}&diag=1`;
+  
+  // Build URL using URL API to ensure proper encoding
+  const widgetUrl = new URL('/widget/micro', host);
+  widgetUrl.searchParams.set('rid', runId);
+  widgetUrl.searchParams.set('diag', '1');
+  const url = widgetUrl.toString();
 
   console.log(JSON.stringify({ evt:'diag.tool', tool:'pingMicroUi', runId, url, ts: Date.now() }));
 

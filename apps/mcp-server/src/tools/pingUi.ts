@@ -16,7 +16,12 @@ export async function pingUi(): Promise<{
     const { randomUUID } = await import('crypto');
     const runId = randomUUID();
     const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
-    const pingUrl = `${widgetHost}/widget/ping?rid=${encodeURIComponent(runId)}&diag=1`;
+    
+    // Build URL using URL API to ensure proper encoding
+    const widgetUrl = new URL('/widget/ping', widgetHost);
+    widgetUrl.searchParams.set('rid', runId);
+    widgetUrl.searchParams.set('diag', '1');
+    const pingUrl = widgetUrl.toString();
     
     console.log(JSON.stringify({ evt:'diag.tool', runId, url: pingUrl, ts: Date.now() }));
     
