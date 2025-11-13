@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type Vehicle, type Dealer } from './types.js';
+import { type Vehicle, type Dealer } from './types';
 
 export interface MarketCheckVehicle {
   id: string;
