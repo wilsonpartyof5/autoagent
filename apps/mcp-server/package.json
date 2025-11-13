@@ -2,6 +2,7 @@
   "name": "@autoagent/mcp-server",
   "version": "1.0.0",
   "description": "MCP server for AutoAgent vehicle search",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

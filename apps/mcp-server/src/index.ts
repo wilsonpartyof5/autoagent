@@ -65,6 +65,11 @@ app.use((req, res, next) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   console.log('🏥 Health check requested');
+  // Get commit SHA from environment (set by Railway) or git
+  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || 
+                     process.env.GIT_COMMIT_SHA || 
+                     process.env.COMMIT_SHA || 
+                     'unknown';
   res.json({
     ok: true,
     ts: Date.now(),
@@ -72,6 +77,8 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     service: 'autoagent-mcp-server',
     version: '1.0.0',
+    commit: commitSha.substring(0, 7), // Short SHA
+    commitFull: commitSha,
   });
 });
 
