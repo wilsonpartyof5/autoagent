@@ -18,6 +18,7 @@
   "dependencies": {
     "@autoagent/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^0.4.0",
+    "@supabase/supabase-js": "^2.77.0",
     "better-sqlite3": "^9.2.2",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
