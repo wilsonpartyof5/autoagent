@@ -33,11 +33,21 @@ export class MarketCheckClient {
     totalCount: number;
   }> {
     const url = this.buildSearchUrl(params);
+    const start = Date.now();
     
     try {
       const response = await fetchWithTimeout<MarketCheckResponse>(url, {
-        timeout: 2000,
+        timeout: 10000,
       });
+
+      const duration = Date.now() - start;
+      console.log(JSON.stringify({
+        event: 'marketcheck_request',
+        duration,
+        success: true,
+        listings: response.data.listings?.length || 0,
+        totalCount: response.data.num_found || 0,
+      }));
 
       // Cap results at 20 vehicles
       const listings = response.data.listings || [];
@@ -48,11 +58,14 @@ export class MarketCheckClient {
         totalCount: Math.min(response.data.num_found || 0, 20),
       };
     } catch (error) {
-      console.error('MarketCheck API error:', {
-        event: 'marketcheck_error',
+      const duration = Date.now() - start;
+      console.error(JSON.stringify({
+        event: 'marketcheck_timeout',
+        duration,
+        timeout: 10000,
+        error: error instanceof Error ? error.message : 'unknown',
         code: error instanceof HttpError ? error.status : undefined,
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      }));
       throw error;
     }
   }

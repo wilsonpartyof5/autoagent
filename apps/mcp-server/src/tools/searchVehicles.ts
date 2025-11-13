@@ -338,10 +338,32 @@ export async function searchVehicles(params: unknown): Promise<{
       searchParamsUrl.set('page', '1');
       searchParamsUrl.set('pageSize', '20');
 
-      const rawResponse = await fetchWithTimeout<{ listings: MarketCheckVehicle[]; num_found: number }>(
-        `${baseUrl}/v2/search/car/active?${searchParamsUrl.toString()}`,
-        { timeout: 5000 },
-      );
+      const searchStart = Date.now();
+      let rawResponse;
+      try {
+        rawResponse = await fetchWithTimeout<{ listings: MarketCheckVehicle[]; num_found: number }>(
+          `${baseUrl}/v2/search/car/active?${searchParamsUrl.toString()}`,
+          { timeout: 10000 },
+        );
+
+        const searchDuration = Date.now() - searchStart;
+        console.log(JSON.stringify({
+          event: 'marketcheck_search',
+          duration: searchDuration,
+          success: true,
+          listings: rawResponse.data.listings?.length || 0,
+          totalCount: rawResponse.data.num_found || 0,
+        }));
+      } catch (error) {
+        const searchDuration = Date.now() - searchStart;
+        console.error(JSON.stringify({
+          event: 'marketcheck_search_timeout',
+          duration: searchDuration,
+          timeout: 10000,
+          error: error instanceof Error ? error.message : 'unknown',
+        }));
+        throw error;
+      }
 
       let listings = rawResponse.data.listings || [];
       totalCount = Math.min(rawResponse.data.num_found || 0, 20);
