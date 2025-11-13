@@ -256,12 +256,27 @@ export async function searchVehicles(params: unknown): Promise<{
       const isDiag = process.env.AA_DIAG === '1';
       
       // Build URL using URL API to ensure proper encoding
-      const widgetUrl = new URL('/widget/vehicle-results', widgetHost);
-      widgetUrl.searchParams.set('rid', runId);
-      if (isDiag) {
-        widgetUrl.searchParams.set('diag', '1');
+      let vehicleResultsUrl: string;
+      try {
+        // Ensure widgetHost has protocol
+        const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://') 
+          ? widgetHost 
+          : `https://${widgetHost}`;
+        const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
+        widgetUrl.searchParams.set('rid', runId);
+        if (isDiag) {
+          widgetUrl.searchParams.set('diag', '1');
+        }
+        vehicleResultsUrl = widgetUrl.toString();
+      } catch (urlError) {
+        // Fallback to template literal if URL constructor fails
+        console.error(JSON.stringify({
+          event: 'url_construction_error',
+          widgetHost,
+          error: urlError instanceof Error ? urlError.message : 'Unknown error',
+        }));
+        vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
       }
-      const vehicleResultsUrl = widgetUrl.toString();
       
       console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
       
@@ -497,12 +512,27 @@ export async function searchVehicles(params: unknown): Promise<{
     const isDiag = process.env.AA_DIAG === '1';
     
     // Build URL using URL API to ensure proper encoding
-    const widgetUrl = new URL('/widget/vehicle-results', widgetHost);
-    widgetUrl.searchParams.set('rid', runId);
-    if (isDiag) {
-      widgetUrl.searchParams.set('diag', '1');
+    let vehicleResultsUrl: string;
+    try {
+      // Ensure widgetHost has protocol
+      const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://') 
+        ? widgetHost 
+        : `https://${widgetHost}`;
+      const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
+      widgetUrl.searchParams.set('rid', runId);
+      if (isDiag) {
+        widgetUrl.searchParams.set('diag', '1');
+      }
+      vehicleResultsUrl = widgetUrl.toString();
+    } catch (urlError) {
+      // Fallback to template literal if URL constructor fails
+      console.error(JSON.stringify({
+        event: 'url_construction_error',
+        widgetHost,
+        error: urlError instanceof Error ? urlError.message : 'Unknown error',
+      }));
+      vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
     }
-    const vehicleResultsUrl = widgetUrl.toString();
     
     console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
     
