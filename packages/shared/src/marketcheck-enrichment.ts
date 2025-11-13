@@ -60,7 +60,7 @@ export function isEnrichmentEnabled(): boolean {
 }
 
 /**
- * Fetch listing detail from MarketCheck API
+ * Fetch listing detail from MarketCheck API with timeout
  */
 async function fetchListingDetail(
   listingId: string,
@@ -68,17 +68,46 @@ async function fetchListingDetail(
   apiKey: string,
 ): Promise<MarketCheckVehicle | null> {
   const url = `${baseUrl}/v2/listing/car/${listingId}?api_key=${apiKey}`;
+  const start = Date.now();
+  const timeout = 5000; // 5 second timeout per endpoint
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { 
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       if (response.status === 404) {
         return null;
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    return (await response.json()) as MarketCheckVehicle;
+    const data = await response.json() as MarketCheckVehicle;
+    const duration = Date.now() - start;
+    console.log(JSON.stringify({
+      event: 'marketcheck_enrichment_detail',
+      listingId,
+      duration,
+      success: true,
+    }));
+    return data;
   } catch (error) {
+    clearTimeout(timeoutId);
+    const duration = Date.now() - start;
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(JSON.stringify({
+        event: 'marketcheck_enrichment_timeout',
+        endpoint: 'listing_detail',
+        listingId,
+        duration,
+        timeout,
+      }));
+      return null; // Timeout - return null instead of throwing
+    }
     if (error instanceof Error && error.message.includes('404')) {
       return null;
     }
@@ -87,7 +116,7 @@ async function fetchListingDetail(
 }
 
 /**
- * Fetch listing media from MarketCheck API
+ * Fetch listing media from MarketCheck API with timeout
  */
 async function fetchListingMedia(
   listingId: string,
@@ -95,9 +124,18 @@ async function fetchListingMedia(
   apiKey: string,
 ): Promise<EnrichmentData['media'] | null> {
   const url = `${baseUrl}/v2/listing/car/${listingId}/media?api_key=${apiKey}`;
+  const start = Date.now();
+  const timeout = 5000; // 5 second timeout per endpoint
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { 
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       if (response.status === 404) {
         return null;
@@ -105,8 +143,27 @@ async function fetchListingMedia(
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     const data = (await response.json()) as { media?: EnrichmentData['media'] };
+    const duration = Date.now() - start;
+    console.log(JSON.stringify({
+      event: 'marketcheck_enrichment_media',
+      listingId,
+      duration,
+      success: true,
+    }));
     return data.media ?? null;
   } catch (error) {
+    clearTimeout(timeoutId);
+    const duration = Date.now() - start;
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(JSON.stringify({
+        event: 'marketcheck_enrichment_timeout',
+        endpoint: 'listing_media',
+        listingId,
+        duration,
+        timeout,
+      }));
+      return null; // Timeout - return null instead of throwing
+    }
     if (error instanceof Error && error.message.includes('404')) {
       return null;
     }
@@ -115,7 +172,7 @@ async function fetchListingMedia(
 }
 
 /**
- * Fetch listing extra details from MarketCheck API
+ * Fetch listing extra details from MarketCheck API with timeout
  */
 async function fetchListingExtra(
   listingId: string,
@@ -123,17 +180,46 @@ async function fetchListingExtra(
   apiKey: string,
 ): Promise<EnrichmentData['extra'] | null> {
   const url = `${baseUrl}/v2/listing/car/${listingId}/extra?api_key=${apiKey}`;
+  const start = Date.now();
+  const timeout = 5000; // 5 second timeout per endpoint
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { 
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       if (response.status === 404) {
         return null;
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    return (await response.json()) as EnrichmentData['extra'];
+    const data = await response.json() as EnrichmentData['extra'];
+    const duration = Date.now() - start;
+    console.log(JSON.stringify({
+      event: 'marketcheck_enrichment_extra',
+      listingId,
+      duration,
+      success: true,
+    }));
+    return data;
   } catch (error) {
+    clearTimeout(timeoutId);
+    const duration = Date.now() - start;
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(JSON.stringify({
+        event: 'marketcheck_enrichment_timeout',
+        endpoint: 'listing_extra',
+        listingId,
+        duration,
+        timeout,
+      }));
+      return null; // Timeout - return null instead of throwing
+    }
     if (error instanceof Error && error.message.includes('404')) {
       return null;
     }
@@ -142,7 +228,7 @@ async function fetchListingExtra(
 }
 
 /**
- * Fetch dealer information from MarketCheck API
+ * Fetch dealer information from MarketCheck API with timeout
  */
 async function fetchDealerInfo(
   dealerId: string,
@@ -150,9 +236,18 @@ async function fetchDealerInfo(
   apiKey: string,
 ): Promise<EnrichmentData['dealer'] | null> {
   const url = `${baseUrl}/v2/dealer/${dealerId}?api_key=${apiKey}`;
+  const start = Date.now();
+  const timeout = 5000; // 5 second timeout per endpoint
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { 
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       if (response.status === 404) {
         return null;
@@ -160,8 +255,27 @@ async function fetchDealerInfo(
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     const data = (await response.json()) as { dealer?: EnrichmentData['dealer'] };
+    const duration = Date.now() - start;
+    console.log(JSON.stringify({
+      event: 'marketcheck_enrichment_dealer',
+      dealerId,
+      duration,
+      success: true,
+    }));
     return data.dealer ?? null;
   } catch (error) {
+    clearTimeout(timeoutId);
+    const duration = Date.now() - start;
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(JSON.stringify({
+        event: 'marketcheck_enrichment_timeout',
+        endpoint: 'dealer_info',
+        dealerId,
+        duration,
+        timeout,
+      }));
+      return null; // Timeout - return null instead of throwing
+    }
     if (error instanceof Error && error.message.includes('404')) {
       return null;
     }
@@ -188,9 +302,10 @@ export async function enrichListing(
     return null;
   }
 
+  const enrichStart = Date.now();
   const result: EnrichmentData = {};
 
-  // Fetch all enrichment endpoints in parallel
+  // Fetch all enrichment endpoints in parallel with individual timeouts
   const detailPromise = fetchListingDetail(listingId, baseUrl, apiKey);
   const mediaPromise = fetchListingMedia(listingId, baseUrl, apiKey);
   const extraPromise = fetchListingExtra(listingId, baseUrl, apiKey);
@@ -250,8 +365,28 @@ export async function enrichListing(
 
   // Return null if all endpoints failed, otherwise return partial data
   if (!result.detail && !result.media && !result.extra && !result.dealer) {
+    const enrichDuration = Date.now() - enrichStart;
+    console.log(JSON.stringify({
+      event: 'marketcheck_enrichment_complete',
+      listingId,
+      duration: enrichDuration,
+      success: false,
+      reason: 'all_endpoints_failed',
+    }));
     return null;
   }
+
+  const enrichDuration = Date.now() - enrichStart;
+  console.log(JSON.stringify({
+    event: 'marketcheck_enrichment_complete',
+    listingId,
+    duration: enrichDuration,
+    success: true,
+    hasDetail: !!result.detail,
+    hasMedia: !!result.media,
+    hasExtra: !!result.extra,
+    hasDealer: !!result.dealer,
+  }));
 
   return result;
 }
