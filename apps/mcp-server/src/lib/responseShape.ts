@@ -15,5 +15,17 @@ export const ToolResultSchema = z.object({
 });
 
 export function validateToolResult(result: unknown) {
-  return ToolResultSchema.parse(result);
+  try {
+    return ToolResultSchema.parse(result);
+  } catch (error) {
+    // Log detailed validation error for debugging
+    if (error instanceof Error) {
+      console.error(JSON.stringify({
+        event: 'tool_result_validation_error',
+        error: error.message,
+        result: result ? JSON.stringify(result).substring(0, 500) : 'null',
+      }));
+    }
+    throw error;
+  }
 }

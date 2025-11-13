@@ -534,7 +534,19 @@ export async function searchVehicles(params: unknown): Promise<{
       vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
     }
     
-    console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
+    console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, urlLength: vehicleResultsUrl.length, ts:Date.now()}));
+    
+    // Validate URL format before using it
+    try {
+      new URL(vehicleResultsUrl);
+      console.log(JSON.stringify({event: 'url_validation', url: vehicleResultsUrl, valid: true}));
+    } catch (urlError) {
+      console.error(JSON.stringify({
+        event: 'url_validation_failed',
+        url: vehicleResultsUrl,
+        error: urlError instanceof Error ? urlError.message : 'Unknown error',
+      }));
+    }
     
     // Build structuredContent with enriched fields
     const structuredContentVehicles = vehicles.map((vehicle, index) => {
