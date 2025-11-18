@@ -86,9 +86,7 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
       try {
         const result = await updateVehicleLiveStatus(vehicle.id, newStatus);
         if (result.success) {
-          // Use the published_at from server response if available
-          const publishedAt = result.data?.published_at || (newStatus ? new Date().toISOString() : null);
-          onStatusUpdate?.(vehicle.id, newStatus, publishedAt);
+          onStatusUpdate?.(vehicle.id, newStatus);
         } else {
           console.error("Failed to update live status:", result.error);
           alert(`Failed to update status: ${result.error || "Unknown error"}`);
