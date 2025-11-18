@@ -9,7 +9,9 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "update-docs": "node scripts/update-markdown-summary.js",
+    "watch-docs": "node scripts/update-markdown-summary.js --watch"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

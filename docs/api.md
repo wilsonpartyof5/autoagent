@@ -2,7 +2,8 @@
 
 ## Overview
 
-AutoAgent provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.
+AutoAgent provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.  
+For direct MarketCheck REST endpoints (request parameters, response fields, and integration notes), see `api/marketcheck-endpoints.md`.
 
 ## Base URL
 
@@ -144,21 +145,58 @@ Execute a tool with parameters.
   "data": {
     "vehicles": [
       {
-        "id": "1C4PJMCX4KD311132-90120861-5bd1",
-        "year": 2019,
-        "make": "Jeep",
-        "model": "Cherokee",
-        "price": 15797,
-        "mileage": 82367,
-        "vin": "1C4PJMCX4KD311132",
-        "imageUrl": "https://pictures.dealer.com/w/westgatecdjramcllc/0303/221fce3b83adfc64ba0357e1cb197c3fx.jpg",
-        "features": ["Latitude", "3.2L V6", "Automatic", "4WD"],
+        "id": "mc-123",
+        "vin": "1HGCM82633A004352",
+        "stockNumber": "AA-1234",
+        "listingId": "mc-123",
+        "year": 2022,
+        "make": "Toyota",
+        "model": "Camry",
+        "trim": "SE",
+        "condition": "used",
+        "bodyType": "Sedan",
+        "drivetrain": "FWD",
+        "fuelType": "Gasoline",
+        "transmission": "Automatic",
+        "price": 28500,
+        "msrp": 32000,
+        "priceChangeHistory": [
+          {
+            "price": 28950,
+            "timestamp": "2025-02-20T17:10:00.000Z",
+            "source": "marketcheck"
+          }
+        ],
+        "miles": 15000,
         "dealer": {
-          "name": "Westgate Chrysler Jeep Dodge Ram",
-          "address": "6421 Old Westgate Road, Raleigh, NC, 27617",
-          "lat": 35.900279,
-          "lng": -78.762276
-        }
+          "dealerId": "dealer-1",
+          "name": "Seattle Auto Center",
+          "city": "Seattle",
+          "state": "WA",
+          "latitude": 47.6062,
+          "longitude": -122.3321,
+          "phone": "206-555-0100",
+          "website": "https://dealer.example.com",
+          "address": "123 Main St, Seattle, WA 98101"
+        },
+        "photoUrls": [
+          "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400"
+        ],
+        "thumbnailUrl": "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400",
+        "imageUrl": "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400",
+        "features": ["Bluetooth", "Backup Camera", "Lane Assist"],
+        "interiorColor": "Black",
+        "exteriorColor": "Blue",
+        "certified": false,
+        "marketAveragePrice": 29200,
+        "daysOnMarket": 21,
+        "source": "marketcheck",
+        "lastSyncedAt": "2025-02-20T17:10:00.000Z",
+        "syncStatus": "success",
+        "dataSource": "marketcheck-api",
+        "leadStatus": "none",
+        "createdAt": "2025-02-20T17:10:00.000Z",
+        "updatedAt": "2025-02-20T17:10:00.000Z"
       }
     ],
     "totalCount": 10,
@@ -243,21 +281,74 @@ Serves the interactive vehicle results widget.
 
 ```typescript
 interface Vehicle {
+  // Identity
   id: string;
+  vin?: string;
+  stockNumber?: string;
+  listingId?: string;
+
+  // Specs
   year: number;
   make: string;
   model: string;
+  trim?: string;
+  condition?: 'new' | 'used' | 'certified';
+  bodyType?: string;
+  drivetrain?: string;
+  fuelType?: string;
+  transmission?: string;
+
+  // Pricing
   price: number;
-  mileage?: number;
-  imageUrl?: string;
-  features?: string[];
-  vin?: string;
+  msrp?: number;
+  priceChangeHistory?: Array<{ price: number; timestamp: string; source?: string }>;
+
+  // Mileage
+  miles?: number;
+
+  // Dealer
   dealer: {
+    dealerId?: string;
     name: string;
+    city?: string;
+    state?: string;
+    latitude?: number;
+    longitude?: number;
+    phone?: string;
+    website?: string;
     address?: string;
-    lat?: number;
-    lng?: number;
   };
+
+  // Media
+  photoUrls?: string[];
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  imageUrl?: string; // primary photo
+
+  // Features & colors
+  features?: string[];
+  interiorColor?: string;
+  exteriorColor?: string;
+  certified?: boolean;
+
+  // Market data
+  marketAveragePrice?: number;
+  daysOnMarket?: number;
+  source?: string;
+
+  // Operational metadata
+  lastSyncedAt: string;
+  syncStatus: 'pending' | 'in_progress' | 'success' | 'failed';
+  dataSource: string;
+
+  // Lead tracking
+  leadStatus: 'none' | 'submitted' | 'qualified' | 'sold';
+  lastLeadAt?: string;
+  leadId?: string;
+
+  // Audit
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 

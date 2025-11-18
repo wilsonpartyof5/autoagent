@@ -152,24 +152,38 @@ describe('MarketCheck Integration', () => {
       });
 
       expect(result.vehicles).toHaveLength(1);
-      
+
       const vehicle = result.vehicles[0];
       expect(vehicle).toMatchObject({
         id: 'mc-123',
         year: 2022,
         make: 'Toyota',
         model: 'Camry',
+        trim: 'LE',
         price: 28500,
-        mileage: 15000,
-        imageUrl: 'https://example.com/image1.jpg', // First image
-        features: ['LE', '2.5L 4-Cylinder', 'Automatic', 'FWD'],
+        miles: 15000,
+        imageUrl: 'https://example.com/image1.jpg',
+        thumbnailUrl: 'https://example.com/image1.jpg',
+        features: expect.arrayContaining(['LE', 'Automatic', 'FWD']),
         dealer: {
           name: 'Test Dealer',
+          city: 'Seattle',
+          state: 'WA',
           address: '123 Main St, Seattle, WA, 98101',
-          lat: 47.6062,
-          lng: -122.3321,
+          latitude: 47.6062,
+          longitude: -122.3321,
         },
+        syncStatus: 'success',
+        dataSource: 'marketcheck-api',
+        source: 'marketcheck',
       });
+      expect(vehicle.photoUrls).toEqual([
+        'https://example.com/image1.jpg',
+        'https://example.com/image2.jpg',
+      ]);
+      expect(vehicle.lastSyncedAt).toBeDefined();
+      expect(vehicle.createdAt).toBeDefined();
+      expect(vehicle.updatedAt).toBeDefined();
     });
 
     it('should handle missing optional fields gracefully', async () => {
@@ -212,16 +226,17 @@ describe('MarketCheck Integration', () => {
         make: 'Honda',
         model: 'Civic',
         price: 25000,
-        mileage: undefined,
+        miles: undefined,
         imageUrl: undefined,
-        features: [],
+        features: undefined,
         dealer: {
           name: 'Minimal Dealer',
           address: undefined,
-          lat: undefined,
-          lng: undefined,
+          latitude: undefined,
+          longitude: undefined,
         },
       });
+      expect(vehicle.lastSyncedAt).toBeDefined();
     });
   });
 

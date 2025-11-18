@@ -350,6 +350,53 @@
             color: var(--text);
         }
 
+        .seller-comments {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 6px;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .seller-comments-text {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .option-packages {
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .option-chip {
+            display: inline-block;
+            padding: 4px 8px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--accent);
+            cursor: help;
+        }
+
+        .option-chip-more {
+            display: inline-block;
+            padding: 4px 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
         .dealer-block {
             background: var(--bg);
             border-radius: 8px;
@@ -930,6 +977,10 @@
         };
         const kmToMiles = (km) => (km * 0.621371).toFixed(1);
         const safeText = (text) => text || '';
+        const truncateText = (text, maxLength) => {
+            if (!text || text.length <= maxLength) return text || '';
+            return text.substring(0, maxLength) + '...';
+        };
 
         // State management
         const state = {
@@ -949,15 +1000,15 @@
                 make: 'Toyota',
                 model: 'Camry',
                 price: 28500,
-                mileage: 15000,
+                miles: 15000,
                 imageUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
                 features: ['Bluetooth', 'Backup Camera', 'Lane Assist'],
                 vin: '1HGCM82633A004352',
                 dealer: {
                     name: 'Seattle Auto Center',
                     address: '123 Main St, Seattle, WA 98101',
-                    lat: 47.6062,
-                    lng: -122.3321,
+                    latitude: 47.6062,
+                    longitude: -122.3321,
                     distanceMiles: 2.3
                 }
             },
@@ -967,15 +1018,15 @@
                 make: 'Honda',
                 model: 'CR-V',
                 price: 32000,
-                mileage: 22000,
+                miles: 22000,
                 imageUrl: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
                 features: ['AWD', 'Sunroof', 'Heated Seats'],
                 vin: '2HGFC2F59MH543210',
                 dealer: {
                     name: 'Bellevue Motors',
                     address: '456 Auto Way, Bellevue, WA 98004',
-                    lat: 47.6101,
-                    lng: -122.2015,
+                    latitude: 47.6101,
+                    longitude: -122.2015,
                     distanceMiles: 5.7
                 }
             },
@@ -985,15 +1036,15 @@
                 make: 'Subaru',
                 model: 'Outback',
                 price: 35000,
-                mileage: 5000,
+                miles: 5000,
                 imageUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
                 features: ['AWD', 'Eyesight Safety', 'Apple CarPlay'],
                 vin: '4S4BSANC9P3245678',
                 dealer: {
                     name: 'Tacoma Auto Group',
                     address: '789 Car Blvd, Tacoma, WA 98402',
-                    lat: 47.2529,
-                    lng: -122.4443,
+                    latitude: 47.2529,
+                    longitude: -122.4443,
                     distanceMiles: 12.1
                 }
             }
@@ -1051,8 +1102,8 @@
 
             // Add markers for vehicles with coordinates
             state.vehicles.forEach(vehicle => {
-                if (vehicle.dealer.lat && vehicle.dealer.lng) {
-                    const marker = L.marker([vehicle.dealer.lat, vehicle.dealer.lng])
+                if (vehicle.dealer.latitude && vehicle.dealer.longitude) {
+                    const marker = L.marker([vehicle.dealer.latitude, vehicle.dealer.longitude])
                         .bindPopup(`
                             <div style="text-align: center;">
                                 <strong>${vehicle.year} ${vehicle.make} ${vehicle.model}</strong><br>
@@ -1114,9 +1165,18 @@
 
         // Create vehicle card HTML
         function createCardHTML(vehicle) {
+            // Prefer enriched photos if available (from structuredContent)
+            const photoUrls = vehicle.photoUrls || [];
+            const enrichedPrimaryPhoto = photoUrls[0] || vehicle.imageUrl;
+            const primaryPhoto = enrichedPrimaryPhoto || vehicle.imageUrl || '/placeholder-car.jpg';
+            
+            // Extract seller comments and options from structuredContent
+            const sellerComments = vehicle.sellerComments;
+            const optionPackages = vehicle.optionPackages || [];
+            
             return `
                 <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
-                    <img src="${vehicle.imageUrl || '/placeholder-car.jpg'}" 
+                    <img src="${primaryPhoto}" 
                          alt="${vehicle.year} ${vehicle.make} ${vehicle.model}" 
                          class="card-image"
                          onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
@@ -1124,10 +1184,25 @@
                         <div class="card-header">
                             <div>
                                 <div class="vehicle-title">${vehicle.year} ${vehicle.make} ${vehicle.model}</div>
-                                <div class="vehicle-subtitle">${vehicle.mileage ? vehicle.mileage.toLocaleString() + ' miles' : 'New'}</div>
+                                <div class="vehicle-subtitle">${vehicle.miles ? vehicle.miles.toLocaleString() + ' miles' : 'New'}</div>
                             </div>
                             <div class="price-badge">${fmtPrice(vehicle.price)}</div>
                         </div>
+                        ${sellerComments ? `
+                            <div class="seller-comments" title="${safeText(sellerComments)}">
+                                <div class="seller-comments-text">${truncateText(safeText(sellerComments), 80)}</div>
+                            </div>
+                        ` : ''}
+                        ${optionPackages.length > 0 ? `
+                            <div class="option-packages">
+                                ${optionPackages.slice(0, 2).map(opt => `
+                                    <span class="option-chip" title="${safeText(opt.description || opt.name || '')}">
+                                        ${safeText(opt.name || opt.code || 'Option')}
+                                    </span>
+                                `).join('')}
+                                ${optionPackages.length > 2 ? `<span class="option-chip-more">+${optionPackages.length - 2}</span>` : ''}
+                            </div>
+                        ` : ''}
                         <div class="dealer-info">
                             <div>${safeText(vehicle.dealer.name)}</div>
                             ${vehicle.dealer.distanceMiles ? `<div class="distance">${vehicle.dealer.distanceMiles} mi away</div>` : ''}
@@ -1172,8 +1247,17 @@
 
             title.textContent = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
             
+            // Prefer enriched photos if available
+            const photoUrls = vehicle.photoUrls || [];
+            const enrichedPrimaryPhoto = photoUrls[0] || vehicle.imageUrl;
+            const drawerPhoto = enrichedPrimaryPhoto || vehicle.imageUrl || '/placeholder-car.jpg';
+            
+            // Extract enriched data
+            const sellerComments = vehicle.sellerComments;
+            const optionPackages = vehicle.optionPackages || [];
+            
             content.innerHTML = `
-                <img src="${vehicle.imageUrl || '/placeholder-car.jpg'}" 
+                <img src="${drawerPhoto}" 
                      alt="${vehicle.year} ${vehicle.make} ${vehicle.model}" 
                      class="drawer-image"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
@@ -1185,7 +1269,7 @@
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Mileage</div>
-                        <div class="spec-value">${vehicle.mileage ? vehicle.mileage.toLocaleString() + ' mi' : 'New'}</div>
+                        <div class="spec-value">${vehicle.miles ? vehicle.miles.toLocaleString() + ' mi' : 'New'}</div>
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Price</div>
@@ -1193,9 +1277,29 @@
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Condition</div>
-                        <div class="spec-value">${vehicle.mileage ? 'Used' : 'New'}</div>
+                        <div class="spec-value">${vehicle.miles ? 'Used' : 'New'}</div>
                     </div>
                 </div>
+
+                ${sellerComments ? `
+                    <div class="seller-comments" style="margin-top: 16px;">
+                        <div class="features-title">Seller Comments</div>
+                        <div class="seller-comments-text" style="-webkit-line-clamp: 4;">${safeText(sellerComments)}</div>
+                    </div>
+                ` : ''}
+
+                ${optionPackages.length > 0 ? `
+                    <div class="features" style="margin-top: 16px;">
+                        <div class="features-title">Option Packages</div>
+                        <div class="option-packages">
+                            ${optionPackages.map(opt => `
+                                <span class="option-chip" title="${safeText(opt.description || opt.name || '')}">
+                                    ${safeText(opt.name || opt.code || 'Option')}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
 
                 ${vehicle.features && vehicle.features.length > 0 ? `
                     <div class="features">

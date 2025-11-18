@@ -1,0 +1,20 @@
+# Cursor Rules for AutoAgent
+
+## Markdown Documentation
+
+When creating new markdown files, run the documentation updater to keep the summary current:
+
+```bash
+pnpm update-docs
+```
+
+Or use watch mode to automatically update:
+
+```bash
+pnpm watch-docs
+```
+
+This will automatically analyze and add new markdown files to `MARKDOWN_FILES_SUMMARY.md`.
+
+See `scripts/README_MARKDOWN_UPDATER.md` for details.
+

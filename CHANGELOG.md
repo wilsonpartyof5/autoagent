@@ -2,6 +2,26 @@
 
 All notable changes to AutoAgent are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Universal ADF XML Lead Delivery**: Replaced ad-hoc CRM integrations with industry-standard ADF (AutoLead Data Format) XML delivery system. Dealers configure HTTP endpoint or email delivery in Settings, and all leads are automatically delivered in ADF format compatible with major CRM systems (DealerSocket, CDK, Reynolds & Reynolds, etc.).
+- **Lead Delivery Settings**: New settings panel at `/app/settings` for configuring lead delivery method (HTTP endpoint or Email) and target URL/email address.
+- **Delivery Logging & Resend**: All delivery attempts are logged in `lead_delivery_logs` table with status, HTTP response, and error details. Failed deliveries can be manually resent from the Leads Dashboard with one click.
+- **ADF XML Generator**: Server-side service generates compliant ADF XML payloads with prospect, vehicle, customer, vendor, and provider sections following AutoLead Data Format specification.
+- **Enhanced Leads Dashboard**: Updated `/app/leads` page shows delivery status (Success/Failed/Pending) with method indicator, error messages, and resend functionality for failed deliveries.
+- Inventory metafields schema shared across MCP, dashboard, and Supabase; includes VIN/stock identifiers, pricing history, media, market data, and lead tracking fields.
+- Documentation for core MarketCheck endpoints at `docs/api/marketcheck-endpoints.md`, including request parameters, response fields, and integration checklist.
+- Integrated dealer dashboard shell with responsive sidebar/header and reusable navigation components.
+- Leads dashboard scaffolding with setup banner that reflects Supabase profile state.
+- MarketCheck-powered inventory sync at `/app/setup` with dealer ID/radius controls, Supabase persistence, and real vehicle imports into the new `inventory_vehicles` table.
+- Settings panel let dealers update MarketCheck dealer ID/zip.
+
+### Changed
+- Supabase migrations and dashboard inventory view updated to store and surface the expanded metafields (pricing, mileage, media, dealer geo, market stats).
+- Onboarding banner now reads dealer state from Supabase and hides once inventory sync and billing are complete.
+- Supabase setup documentation updated with new `inventory_connected`, `billing_active`, `dms_provider`, `marketcheck_dealer_id`, and `marketcheck_zip` fields on `profiles`, plus the `inventory_vehicles` table schema.
+
 ## [1.0.0] - 2025-10-20
 
 ### 🎉 Initial Release - Production Ready ChatGPT App

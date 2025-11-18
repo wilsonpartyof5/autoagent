@@ -25,7 +25,7 @@
   - `AA_DIAG=1` (diagnostics enabled)
 
 ### 4. Documentation Updates
-- ✅ Updated `DEPLOYMENT.md` with comprehensive Railway deployment guide
+- ✅ Updated `deployment/production.md` with comprehensive Railway deployment guide
 - ✅ Added step-by-step deployment instructions
 - ✅ Included verification commands and troubleshooting
 
@@ -86,10 +86,10 @@ curl https://your-railway-domain.railway.app/widget/vehicle-results
 ### New Files:
 - `railway.json` - Railway deployment configuration
 - `env.production.example` - Production environment template
-- `RAILWAY_DEPLOYMENT_SUMMARY.md` - This summary
+- `docs/deployment/railway.md` - This summary
 
 ### Modified Files:
-- `DEPLOYMENT.md` - Added Railway deployment section
+- `docs/deployment/production.md` - Added Railway deployment section
 
 ## 🔧 Railway Configuration Details
 

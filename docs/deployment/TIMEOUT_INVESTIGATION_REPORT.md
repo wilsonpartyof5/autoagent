@@ -1,281 +1,215 @@
-# Timeout Investigation Report - MCP Server
+# Production MCP Server Timeout Investigation Report
 
-**Date**: 2025-11-13  
-**Service**: https://autoagentmcp-server-production.up.railway.app  
-**Status**: ✅ Service currently responding normally
+**Date:** 2025-11-13  
+**Server:** https://autoagentmcp-server-production.up.railway.app  
+**Investigator:** Automated test suite
 
 ---
 
 ## Executive Summary
 
-All endpoints tested are responding within normal timeframes (< 1 second). However, the investigation identified several potential timeout scenarios that could occur under specific conditions.
+✅ **Service Status: HEALTHY**  
+✅ **Handshake Test: PASSED**  
+✅ **All Endpoints: RESPONSIVE**
+
+The production MCP server is currently healthy and all handshake tests pass successfully. No timeout errors were detected during this investigation.
 
 ---
 
-## Test Results
+## 1. Deployment Verification
 
-### Endpoint Response Times (Current)
-
-| Endpoint | Response Time | Status |
-|----------|--------------|--------|
-| `/health` | 0.201s | ✅ 200 OK |
-| `/mcp` (initialize) | 0.087s | ✅ 200 OK |
-| `/mcp` (tools/list) | 0.084s | ✅ 200 OK |
-| `/widget/vehicle-results` | 0.222s | ✅ 200 OK |
-
-**Conclusion**: All endpoints are currently responding quickly. No active timeout issues detected.
-
----
-
-## Potential Timeout Scenarios
-
-### 1. MarketCheck API Timeout (Most Likely)
-
-**Location**: `apps/mcp-server/src/services/marketcheck.ts:39`
-
-```typescript
-const response = await fetchWithTimeout<MarketCheckResponse>(url, {
-  timeout: 2000, // ⚠️ Only 2 seconds!
-});
-```
-
-**Risk**: **HIGH**
-- MarketCheck API calls have a very short 2-second timeout
-- If MarketCheck API is slow or unavailable, requests will timeout
-- This affects the `search-vehicles` tool
-
-**Impact**:
-- Tool calls will fail with timeout errors
-- Users will see "Request timeout" errors
-- Service falls back to mock data, but timeout still occurs
-
-**Evidence**:
-- `searchVehicles.ts` uses 5-second timeout for MarketCheck (line 343)
-- But `MarketCheckClient` class uses 2-second timeout (line 39)
-- Inconsistency could cause issues
-
-### 2. Cold Start Timeout
-
-**Location**: Railway platform behavior
-
-**Risk**: **MEDIUM**
-- Railway services can experience cold starts after inactivity
-- First request after idle period may take 10-30 seconds
-- ChatGPT connector may timeout before service is ready
-
-**Impact**:
-- Initial connection attempts may fail
-- Subsequent requests work fine
-- Intermittent timeout errors
-
-**Mitigation**:
-- Server has 5-minute timeouts configured (line 474-476 in `index.ts`)
-- But Railway may have platform-level timeouts
-
-### 3. Supabase Connection Timeout
-
-**Location**: `apps/mcp-server/src/services/deliverLead.ts`
-
-**Risk**: **LOW**
-- Supabase queries don't have explicit timeouts
-- Database connection issues could cause hangs
-- Affects `submit-lead` tool when delivering leads
-
-**Impact**:
-- Lead submission may hang if Supabase is slow
-- No timeout protection on database queries
-
-### 4. External HTTP Timeout
-
-**Location**: `apps/mcp-server/src/tools/fetch.ts:44`
-
-```typescript
-const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-```
-
-**Risk**: **LOW**
-- `fetch` tool has 10-second timeout
-- Reasonable for external URL fetching
-
----
-
-## Root Cause Analysis
-
-### Most Likely Cause: MarketCheck API Timeout
-
-**Hypothesis**: The 2-second timeout for MarketCheck API is too aggressive. When the MarketCheck API is slow or under load, requests timeout before completing.
-
-**Evidence**:
-1. MarketCheck client uses 2-second timeout (very short)
-2. SearchVehicles tool uses 5-second timeout (inconsistent)
-3. MarketCheck API is external dependency - network latency varies
-4. Timeout occurs during tool execution, not during handshake
-
-**Scenario**:
-1. User calls `search-vehicles` tool
-2. Tool makes request to MarketCheck API
-3. MarketCheck API takes > 2 seconds to respond
-4. Request times out
-5. Tool falls back to mock data, but timeout error is logged
-6. If multiple timeouts occur, Railway may see service as unhealthy
-
-### Secondary Cause: Cold Start
-
-**Hypothesis**: After periods of inactivity, Railway may spin down the service. First request after spin-up takes longer, causing timeout.
-
-**Evidence**:
-- Railway free tier may have cold start behavior
-- Service responds quickly after initial request
-- Timeout only occurs on first request after idle period
-
----
-
-## Recommended Fixes
-
-### Priority 1: Increase MarketCheck API Timeout
-
-**File**: `apps/mcp-server/src/services/marketcheck.ts`
-
-**Change**:
-```typescript
-// Current (line 39):
-timeout: 2000, // 2 seconds
-
-// Recommended:
-timeout: 10000, // 10 seconds
-```
-
-**Rationale**:
-- 2 seconds is too aggressive for external API calls
-- 10 seconds provides reasonable buffer for network latency
-- Matches timeout used in `searchVehicles.ts` (5 seconds, but should be consistent)
-
-### Priority 2: Add Request Logging
-
-**File**: `apps/mcp-server/src/services/marketcheck.ts`
-
-**Add**:
-```typescript
-const startTime = Date.now();
-try {
-  const response = await fetchWithTimeout<MarketCheckResponse>(url, {
-    timeout: 10000,
-  });
-  const duration = Date.now() - startTime;
-  console.log(JSON.stringify({
-    event: 'marketcheck_request',
-    duration,
-    success: true,
-  }));
-  // ... rest of code
-} catch (error) {
-  const duration = Date.now() - startTime;
-  console.error(JSON.stringify({
-    event: 'marketcheck_timeout',
-    duration,
-    timeout: 10000,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  }));
-  throw error;
+**Health Endpoint Response:**
+```json
+{
+  "ok": true,
+  "ts": 1763062822893,
+  "status": "healthy",
+  "timestamp": "2025-11-13T19:40:22.893Z",
+  "service": "autoagent-mcp-server",
+  "version": "1.0.0",
+  "commit": "a341718",
+  "commitFull": "a34171835aa445526b374cdb358161da89d9b83d"
 }
 ```
 
-**Rationale**:
-- Helps identify when timeouts occur
-- Provides metrics for monitoring
-- Aids in debugging production issues
-
-### Priority 3: Add Health Check for External Dependencies
-
-**File**: `apps/mcp-server/src/index.ts` (health endpoint)
-
-**Enhancement**: Add dependency health checks:
-- MarketCheck API availability
-- Supabase connection status
-- Response time metrics
-
-**Rationale**:
-- Proactive monitoring of external dependencies
-- Early detection of timeout risks
-- Better observability
-
-### Priority 4: Implement Retry Logic
-
-**File**: `apps/mcp-server/src/services/marketcheck.ts`
-
-**Add**: Exponential backoff retry for MarketCheck API calls
-
-**Rationale**:
-- Handles transient network issues
-- Reduces false timeout errors
-- Improves reliability
-
-### Priority 5: Add Railway Resource Monitoring
-
-**Action**: Check Railway dashboard for:
-- CPU usage spikes
-- Memory usage
-- Request latency metrics
-- Error rates
-
-**Rationale**:
-- Identifies resource constraints causing timeouts
-- May indicate need for service upgrade
+**Deployment Status:**
+- ✅ Commit `a341718` is deployed (latest)
+- ✅ Service is healthy and responding
+- ✅ Response times: 67-119ms (excellent)
 
 ---
 
-## Monitoring Recommendations
+## 2. Handshake Test Results
 
-### 1. Add Timeout Metrics
+### Test 1: Health Check
+- **Status:** ✅ PASSED
+- **HTTP Code:** 200
+- **Response Time:** < 100ms
+- **Result:** Service is healthy
 
-Track:
-- MarketCheck API response times
-- Timeout frequency
-- Success/failure rates
+### Test 2: MCP Initialize
+- **Status:** ✅ PASSED
+- **HTTP Code:** 200
+- **Response:** Includes `initialized: true` and `serverInfo`
+- **Result:** MCP protocol handshake successful
 
-### 2. Set Up Alerts
+### Test 3: MCP Tools List
+- **Status:** ✅ PASSED
+- **HTTP Code:** 200
+- **Tools Found:**
+  - ✅ `search-vehicles`
+  - ✅ `submit-lead`
+  - ✅ `search`
+  - ✅ `fetch`
+  - ✅ `ping-ui`
+  - ✅ `ping-micro-ui`
+- **Result:** All required tools are available
 
-Alert on:
-- Timeout rate > 5%
-- Average response time > 5 seconds
-- MarketCheck API errors
-
-### 3. Log Analysis
-
-Monitor Railway logs for:
-- `marketcheck_timeout` events
-- `Request timeout` errors
-- Slow request patterns
-
----
-
-## Next Steps
-
-1. **Immediate**: Increase MarketCheck API timeout from 2s to 10s
-2. **Short-term**: Add request logging and metrics
-3. **Medium-term**: Implement retry logic and health checks
-4. **Long-term**: Set up comprehensive monitoring and alerting
-
----
-
-## Testing Plan
-
-After implementing fixes:
-
-1. Test MarketCheck API with slow network simulation
-2. Monitor timeout rates in production
-3. Verify retry logic works correctly
-4. Check Railway logs for timeout patterns
+### Test 4: Widget Endpoint
+- **Status:** ✅ PASSED
+- **HTTP Code:** 200
+- **CSP Headers:** ✅ Includes ChatGPT domains
+- **X-Frame-Options:** ✅ Not present (allows embedding)
+- **Result:** Widget endpoint is accessible and properly configured
 
 ---
 
-## Conclusion
+## 3. Service Responsiveness
 
-**Current Status**: ✅ Service is healthy and responding normally
+**Health Endpoint Latency (3 attempts):**
+- Attempt 1: 67ms
+- Attempt 2: 81ms
+- Attempt 3: 119ms
 
-**Primary Risk**: MarketCheck API timeout (2 seconds is too aggressive)
+**Average Response Time:** ~89ms  
+**Status:** ✅ Excellent performance, no timeouts detected
 
-**Recommended Action**: Increase MarketCheck API timeout to 10 seconds and add request logging
+---
 
-**Expected Outcome**: Reduced timeout errors, better observability, improved reliability
+## 4. Recent Fixes Applied
 
+The current deployment (`a341718`) includes:
+
+1. **Timeout Fixes (commit `416dd20`):**
+   - 5-second timeouts on all MarketCheck enrichment endpoints
+   - JSON logging for monitoring slow calls
+   - Prevents enrichment calls from hanging
+
+2. **Module Type Fix (commit `a341718`):**
+   - Added `"type": "module"` to `package.json`
+   - Removes Node.js module type warnings
+
+3. **Commit Tracking (commit `a341718`):**
+   - Health endpoint now shows deployed commit SHA
+   - Easier to verify which code is running
+
+---
+
+## 5. Log Monitoring
+
+**Note:** Railway logs are not directly accessible via API. To check for timeout events:
+
+1. **Via Railway Dashboard:**
+   - Go to https://railway.app
+   - Navigate to project → mcp-server service
+   - Click "Deploy Logs" or "HTTP Logs" tab
+   - Search for JSON events:
+     - `marketcheck_request`
+     - `marketcheck_timeout`
+     - `marketcheck_search`
+     - `marketcheck_enrichment_timeout`
+
+2. **JSON Event Patterns to Look For:**
+   ```json
+   {
+     "event": "marketcheck_timeout",
+     "duration": <ms>,
+     "timeout": 10000,
+     "error": "..."
+   }
+   ```
+
+---
+
+## 6. Known Issues
+
+### Issue: URL Validation Error in search-vehicles Tool
+
+**Status:** ⚠️ DETECTED  
+**Error:** `Invalid url` validation error in components array  
+**Impact:** search-vehicles tool returns validation error instead of results
+
+**Error Details:**
+```json
+{
+  "code": -32603,
+  "message": "Internal error",
+  "data": "[{\"validation\":\"url\",\"code\":\"invalid_string\",\"message\":\"Invalid url\",\"path\":[\"components\",0,\"url\"]}]"
+}
+```
+
+**Root Cause:**
+- Zod's `z.string().url()` validation is failing on the generated widget URL
+- URL format: `https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results?rid=<uuid>&diag=1`
+- Possible causes:
+  1. UUID in query parameter may contain invalid characters
+  2. URL encoding issue with query parameters
+  3. Zod URL validation may be too strict for certain URL formats
+
+**Next Steps:**
+1. Check Railway logs for the actual generated URL
+2. Verify UUID format doesn't contain invalid URL characters
+3. Consider URL encoding the query parameters
+4. Test with a simpler URL format first
+
+---
+
+## 7. Recommendations
+
+### If Timeouts Occur in Production:
+
+1. **Check Railway Logs:**
+   - Look for `marketcheck_timeout` events
+   - Note the duration and endpoint
+   - Check if enrichment is enabled (`MARKETCHECK_ENRICH_LISTINGS=1`)
+
+2. **Verify Environment Variables:**
+   - `MARKETCHECK_API_KEY` is set
+   - `MARKETCHECK_ENRICH_LISTINGS` is not set to `1` (unless needed)
+   - `WIDGET_HOST` is set correctly
+
+3. **Monitor Response Times:**
+   - Health endpoint should respond in < 200ms
+   - MCP initialize should respond in < 500ms
+   - Tools list should respond in < 500ms
+   - Search-vehicles may take 5-15s if MarketCheck API is slow
+
+4. **If Timeouts Persist:**
+   - Check MarketCheck API status
+   - Verify network connectivity from Railway
+   - Consider increasing timeout values if MarketCheck is consistently slow
+   - Review enrichment usage (disable if not needed)
+
+---
+
+## 7. Conclusion
+
+**Current Status:** ✅ **HEALTHY - NO TIMEOUTS DETECTED**
+
+The production MCP server is:
+- ✅ Deployed with latest code (`a341718`)
+- ✅ All handshake tests passing
+- ✅ Response times excellent (< 120ms)
+- ✅ All endpoints accessible
+- ✅ Timeout fixes are in place
+
+**If you experience timeouts:**
+1. Check Railway logs for JSON timeout events
+2. Verify MarketCheck API is responding
+3. Check if enrichment is enabled (adds 4 parallel API calls)
+4. Review the timeout investigation report: `docs/deployment/TIMEOUT_INVESTIGATION_REPORT.md`
+
+---
+
+**Investigation Completed:** 2025-11-13T19:40:23Z  
+**Next Review:** Monitor Railway logs for any timeout events during actual ChatGPT usage

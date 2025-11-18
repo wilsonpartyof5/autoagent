@@ -196,6 +196,8 @@ ngrok http 8787
 - `pnpm lint` – lint the monorepo
 - `pnpm format` – run Prettier
 - `pnpm typecheck` – TypeScript project references check
+- `pnpm update-docs` – update markdown files summary (run after creating new `.md` files)
+- `pnpm watch-docs` – watch for new markdown files and auto-update summary
 
 ## Inventory Sync Roadmap
 - ✅ MarketCheck: one-click sync from `/app/setup` (dealer ID, radius, optional ZIP) and viewing imported vehicles under `/app/inventory`.

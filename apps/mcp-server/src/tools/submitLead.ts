@@ -4,6 +4,7 @@ import pino from 'pino';
 import { encryptJson } from '../lib/crypto.js';
 import { insertLead, countRecentLeadsByIp } from '../data/db.js';
 import { forwardLead } from '../services/forwardLead.js';
+import { deliverLead } from '../services/deliverLead.js';
 
 const logger = pino();
 
@@ -103,6 +104,19 @@ export async function submitLead(
     }).catch(error => {
       logger.error('Failed to forward lead', { leadId, error: error.message });
     });
+
+    // Deliver to dealer's CRM via ADF XML (fire-and-forget)
+    if (dealerId) {
+      deliverLead({
+        leadId,
+        dealerId,
+        vehicleId,
+        vin,
+        encPayload,
+      }).catch(error => {
+        logger.error('Failed to deliver lead to CRM', { leadId, dealerId, error: error.message });
+      });
+    }
 
     // Log lead creation (non-PII)
     logger.info('Lead created', {
