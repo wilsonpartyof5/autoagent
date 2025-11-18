@@ -1,39 +1,26 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+// Stub implementation for Vercel deployment (better-sqlite3 not available in serverless)
+// TODO: Replace with Supabase-based implementation
 
-let db: Database.Database | null = null;
+let db: any = null;
 
 /**
  * Initialize SQLite database for dashboard
+ * Stubbed for Vercel deployment
  */
-function getDatabase(): Database.Database {
+function getDatabase(): any {
   if (db) {
     return db;
   }
-
-  // Ensure data directory exists
-  const dataDir = path.join(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
-  const dbPath = path.join(dataDir, 'dashboard.db');
-  db = new Database(dbPath);
-
-  // Create leads table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS leads (
-      id TEXT PRIMARY KEY,
-      dealerId TEXT,
-      vehicleId TEXT,
-      vin TEXT,
-      encPayload TEXT,
-      createdAt INTEGER
-    )
-  `);
-
-  return db;
+  
+  // Return a stub object that matches the expected interface
+  return {
+    prepare: () => ({
+      run: () => {},
+      all: () => [],
+    }),
+    exec: () => {},
+    close: () => {},
+  };
 }
 
 /**
