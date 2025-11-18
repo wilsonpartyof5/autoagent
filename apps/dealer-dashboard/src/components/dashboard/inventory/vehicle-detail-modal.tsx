@@ -154,7 +154,11 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="xl" onClose={() => onOpenChange(false)}>
+        <DialogContent
+          size="xl"
+          onClose={() => onOpenChange(false)}
+          className="bg-white text-foreground"
+        >
           <div className="p-6 space-y-6">
             {/* Header */}
             <div className="flex items-start justify-between border-b border-border/60 pb-4">
@@ -190,7 +194,7 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
 
             {/* Analytics Section - Above the Fold */}
             {isLive && (
-              <div className="rounded-xl border border-border/60 bg-gradient-to-br from-primary/5 to-primary/10 p-6">
+              <div className="rounded-xl border border-border/60 bg-white p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-foreground">Performance Analytics</h3>
                   <div className="flex items-center gap-2">
@@ -528,8 +532,8 @@ function LiveStatusBanner({
     <div
       className={`rounded-md border p-3 transition-colors ${
         isLive
-          ? "border-green-500/30 bg-green-50 dark:bg-green-950/20"
-          : "border-border bg-slate-100 dark:bg-slate-800/50"
+          ? "border-green-500/30 bg-green-50"
+          : "border-border bg-slate-100"
       }`}
     >
       <div className="flex items-center justify-between gap-4">
@@ -537,8 +541,8 @@ function LiveStatusBanner({
           <div
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
               isLive
-                ? "bg-green-500/20 text-green-600 dark:text-green-400"
-                : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                ? "bg-green-500/20 text-green-600"
+                : "bg-slate-200 text-slate-700"
             }`}
           >
             {isLive ? (
@@ -552,8 +556,8 @@ function LiveStatusBanner({
               <span
                 className={`text-sm font-semibold ${
                   isLive
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-slate-900 dark:text-slate-100"
+                    ? "text-green-600"
+                    : "text-slate-900"
                 }`}
               >
                 {isLive ? "Published" : "Not Published"}
@@ -562,8 +566,8 @@ function LiveStatusBanner({
             <p
               className={`text-xs truncate ${
                 isLive
-                  ? "text-green-700/80 dark:text-green-300/80"
-                  : "text-slate-700 dark:text-slate-300"
+                  ? "text-green-700/80"
+                  : "text-slate-700"
               }`}
             >
               {isLive
@@ -580,8 +584,8 @@ function LiveStatusBanner({
           disabled={disabled}
           className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
             isLive
-              ? "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
-              : "bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500"
+              ? "bg-green-600 hover:bg-green-700"
+              : "bg-slate-300 hover:bg-slate-400"
           }`}
           role="switch"
           aria-checked={isLive}
@@ -648,4 +652,3 @@ function DetailItem({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
