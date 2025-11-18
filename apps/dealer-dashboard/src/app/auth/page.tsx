@@ -21,34 +21,58 @@ export default function AuthPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
-
     try {
+      let supabase;
+      try {
+        supabase = createClient();
+      } catch (clientError) {
+        throw new Error(
+          `Failed to initialize Supabase client: ${clientError instanceof Error ? clientError.message : 'Unknown error'}. Please check that NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in your environment variables.`
+        );
+      }
+
       if (isSignUp) {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { error: signUpError, data } = await supabase.auth.signUp({
           email,
           password,
         });
 
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          throw new Error(signUpError.message || 'Sign up failed. Please try again.');
+        }
 
         // After sign up, redirect to setup
         window.location.href = '/app/setup';
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { error: signInError, data } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (signInError) throw signInError;
+        if (signInError) {
+          throw new Error(signInError.message || 'Invalid email or password. Please try again.');
+        }
 
         // After sign in, redirect based on onboarding status
         // Use window.location for full page reload to ensure session is set
         window.location.href = '/app/inventory';
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
+      // Extract error message from various error types
+      let errorMessage = 'An error occurred';
+      
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'object' && err !== null) {
+        // Handle Supabase error objects
+        if ('message' in err && typeof err.message === 'string') {
+          errorMessage = err.message;
+        } else if ('error_description' in err && typeof err.error_description === 'string') {
+          errorMessage = err.error_description;
+        }
+      }
+      
+      setError(errorMessage);
       setLoading(false);
     }
   };
