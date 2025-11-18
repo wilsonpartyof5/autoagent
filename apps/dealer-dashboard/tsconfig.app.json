@@ -4,8 +4,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@autoagent/shared": ["../../packages/shared/src/index.ts"],
-      "@autoagent/shared/*": ["../../packages/shared/src/*"]
+      "@autoagent/shared": ["../../packages/shared/dist/index.js"],
+      "@autoagent/shared/*": ["../../packages/shared/dist/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
