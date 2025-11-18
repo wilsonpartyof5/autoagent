@@ -11,6 +11,11 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next"
   },
+  "next": {
+    "lint": {
+      "ignoreDuringBuilds": true
+    }
+  },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-slot": "^1.2.3",

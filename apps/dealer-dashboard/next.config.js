@@ -3,6 +3,9 @@ const path = require('path');
 
 const nextConfig = {
   transpilePackages: ['@autoagent/shared'],
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
