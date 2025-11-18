@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import React from 'react';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AutoAgent Dealer Dashboard',
-  description: 'Dealer dashboard for AutoAgent - AI-powered car discovery and lead generation',
+  title: 'AutoAgent - AI-Powered Car Discovery for Dealers',
+  description: 'Put your inventory where AI shoppers are looking. Appear in ChatGPT searches instantly and capture high-intent buyers before they visit competitor sites.',
 };
 
 export default function RootLayout({
