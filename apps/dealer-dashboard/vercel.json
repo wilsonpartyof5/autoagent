@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @autoagent/dealer-dashboard build",
+  "buildCommand": "cd ../.. && pnpm --filter @autoagent/dealer-dashboard build",
   "outputDirectory": ".next",
   "framework": "nextjs"
 }
