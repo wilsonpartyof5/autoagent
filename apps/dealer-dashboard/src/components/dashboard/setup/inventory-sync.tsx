@@ -44,15 +44,17 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
   // Handle provider change
   const handleProviderChange = (newProvider: InventoryProvider) => {
     setProvider(newProvider);
-    startTransition(async () => {
-      try {
-        await setInventoryProvider(newProvider);
-      } catch (error) {
-        setFeedback({
-          variant: "error",
-          message: error instanceof Error ? error.message : "Failed to update provider selection.",
-        });
-      }
+    startTransition(() => {
+      (async () => {
+        try {
+          await setInventoryProvider(newProvider);
+        } catch (error) {
+          setFeedback({
+            variant: "error",
+            message: error instanceof Error ? error.message : "Failed to update provider selection.",
+          });
+        }
+      })();
     });
   };
 
@@ -115,26 +117,28 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const result = await syncMarketCheckInventory({
-          dealerId: dealerId.trim(),
-          zip: zip.trim() || undefined,
-          radiusMiles: radius,
-          condition,
-        });
+    startTransition(() => {
+      (async () => {
+        try {
+          const result = await syncMarketCheckInventory({
+            dealerId: dealerId.trim(),
+            zip: zip.trim() || undefined,
+            radiusMiles: radius,
+            condition,
+          });
 
-        setFeedback({
-          variant: "success",
-          message: `Inventory synced from MarketCheck. Imported ${result.imported} vehicles.`,
-        });
-      } catch (error) {
-        setFeedback({
-          variant: "error",
-          message:
-            error instanceof Error ? error.message : "We couldn't sync inventory. Please try again.",
-        });
-      }
+          setFeedback({
+            variant: "success",
+            message: `Inventory synced from MarketCheck. Imported ${result.imported} vehicles.`,
+          });
+        } catch (error) {
+          setFeedback({
+            variant: "error",
+            message:
+              error instanceof Error ? error.message : "We couldn't sync inventory. Please try again.",
+          });
+        }
+      })();
     });
   };
 
@@ -319,7 +323,7 @@ function MarketCheckForm({
   feedback: { variant: "success" | "error"; message: string } | null;
   setFeedback: (value: { variant: "success" | "error"; message: string } | null) => void;
   isPending: boolean;
-  startTransition: (fn: () => void | Promise<void>) => void;
+  startTransition: (fn: () => void) => void;
   rooftops: DealerRooftop[];
   setRooftops: (value: DealerRooftop[]) => void;
   selectedRooftop: DealerRooftop | null;
