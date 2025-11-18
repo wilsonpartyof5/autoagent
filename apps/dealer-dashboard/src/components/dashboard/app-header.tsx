@@ -27,7 +27,18 @@ export function AppHeader({
   isMobileNavOpen = false,
 }: AppHeaderProps) {
   const router = useRouter();
-  const dealershipName = activeDealership?.name || "Your Dealership";
+
+  // Normalize demo dealership naming so we don't surface "Rock Hill GMC" in the UI.
+  const normalizeName = (name: string | null | undefined) =>
+    name && name.toLowerCase().includes("rock hill gmc") ? "Demo Account" : name;
+
+  const normalizedDealerships =
+    dealerships?.map((dealership) => ({
+      ...dealership,
+      name: normalizeName(dealership.name) || "Demo Account",
+    })) ?? [];
+
+  const dealershipName = normalizeName(activeDealership?.name) || "Your Dealership";
 
   const handleDealershipChange = async (dealershipId: string) => {
     if (dealershipId === "__add_store__") {
@@ -60,7 +71,7 @@ export function AppHeader({
           <span className="sr-only">Toggle navigation</span>
         </Button>
         <div className="flex items-center gap-3">
-          {dealerships.length > 0 ? (
+          {normalizedDealerships.length > 0 ? (
             <Select
               value={activeDealership?.id || ""}
               onValueChange={handleDealershipChange}
@@ -71,7 +82,7 @@ export function AppHeader({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {dealerships.map((dealership) => (
+                {normalizedDealerships.map((dealership) => (
                   <SelectItem key={dealership.id} value={dealership.id}>
                     {dealership.name}
                   </SelectItem>
