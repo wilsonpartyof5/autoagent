@@ -23,11 +23,6 @@ export default function AuthPage() {
 
     const supabase = createClient();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
     try {
       if (isSignUp) {
         const { error: signUpError } = await supabase.auth.signUp({
