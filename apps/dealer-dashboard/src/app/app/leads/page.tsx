@@ -39,7 +39,7 @@ export default async function LeadsPage() {
     .order("attempted_at", { ascending: false });
 
   // Create a map of lead_id -> latest delivery log
-  const deliveryMap = new Map<string, typeof deliveryLogs[0]>();
+  const deliveryMap = new Map<string, NonNullable<typeof deliveryLogs>[0]>();
   deliveryLogs?.forEach((log) => {
     if (!deliveryMap.has(log.lead_id)) {
       deliveryMap.set(log.lead_id, log);
