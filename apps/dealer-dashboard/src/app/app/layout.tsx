@@ -19,9 +19,28 @@ const navItems = [
 ];
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const profile = await getDealerProfile();
-  const dealerships = await fetchUserDealerships();
-  const activeDealership = await getActiveDealership();
+  // Load data with error handling to prevent hangs
+  let profile = null;
+  let dealerships: Awaited<ReturnType<typeof fetchUserDealerships>> = [];
+  let activeDealership: Awaited<ReturnType<typeof getActiveDealership>> = null;
+
+  try {
+    profile = await getDealerProfile();
+  } catch (error) {
+    console.error('[app/layout] Failed to load profile:', error);
+  }
+
+  try {
+    dealerships = await fetchUserDealerships();
+  } catch (error) {
+    console.error('[app/layout] Failed to load dealerships:', error);
+  }
+
+  try {
+    activeDealership = await getActiveDealership();
+  } catch (error) {
+    console.error('[app/layout] Failed to load active dealership:', error);
+  }
 
   return (
     <AppShell navItems={navItems} dealerships={dealerships} activeDealership={activeDealership}>
