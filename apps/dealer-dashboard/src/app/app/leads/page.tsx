@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getRecentLeads } from "@/lib/db";
 import { LeadsTable } from "@/components/dashboard/leads/leads-table";
 import { getActiveDealership } from "@/lib/supabase/dealerships";
 
@@ -16,18 +15,37 @@ export default async function LeadsPage() {
   // Get active dealership to scope leads
   const activeDealership = await getActiveDealership();
 
-  // Fetch leads from SQLite
-  let leads = getRecentLeads(100);
+  // Fetch leads from Supabase
+  let leadsQuery = supabase
+    .from("leads")
+    .select("id, dealer_id, vehicle_id, vin, enc_payload, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
-  // Filter leads by active dealership's MarketCheck dealer ID
+  // Filter by active dealership's MarketCheck dealer ID
   if (activeDealership?.marketcheckDealerId) {
-    leads = leads.filter(
-      (lead) => lead.dealerId === activeDealership.marketcheckDealerId
-    );
+    leadsQuery = leadsQuery.eq("dealer_id", activeDealership.marketcheckDealerId);
   } else if (activeDealership) {
     // If dealership exists but no MarketCheck ID, show empty state
-    leads = [];
+    leadsQuery = leadsQuery.eq("dealer_id", "__none__");
   }
+
+  const { data: leadsData, error: leadsError } = await leadsQuery;
+
+  if (leadsError) {
+    console.error("Error fetching leads:", leadsError);
+  }
+
+  // Transform Supabase leads to match expected format
+  const leads = (leadsData || []).map((lead) => ({
+    id: lead.id,
+    dealerId: lead.dealer_id || undefined,
+    vehicleId: lead.vehicle_id,
+    vin: lead.vin || undefined,
+    encPayload: lead.enc_payload,
+    createdAt: new Date(lead.created_at).getTime(),
+  }));
 
   // Fetch delivery logs from Supabase for these leads
   const leadIds = leads.map((l) => l.id);
