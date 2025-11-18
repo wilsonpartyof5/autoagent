@@ -33,7 +33,7 @@ export default function AuthPage() {
         if (signUpError) throw signUpError;
 
         // After sign up, redirect to setup
-        router.push('/app/setup');
+        window.location.href = '/app/setup';
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -42,8 +42,9 @@ export default function AuthPage() {
 
         if (signInError) throw signInError;
 
-        // After sign in, redirect to setup
-        router.push('/app/setup');
+        // After sign in, redirect based on onboarding status
+        // Use window.location for full page reload to ensure session is set
+        window.location.href = '/app/inventory';
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred');
