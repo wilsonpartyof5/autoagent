@@ -3,6 +3,29 @@ import { LeadsTable } from "@/components/dashboard/leads/leads-table";
 import { getActiveDealership } from "@/lib/supabase/dealerships";
 import { decryptToJson, isDecryptedLead, type DecryptedLead } from "@/lib/crypto";
 
+// Import Lead type from leads-table to ensure type compatibility
+type Lead = {
+  id: string;
+  dealerId?: string;
+  vehicleId: string;
+  vin?: string;
+  createdAt: number;
+  repliedAt: number | null;
+  status: string;
+  source: string;
+  vehicle?: {
+    year: number;
+    make: string;
+    model: string;
+    trim?: string;
+  };
+  decrypted: {
+    name: string;
+    email: string;
+    phone?: string;
+  } | null;
+};
+
 export default async function LeadsPage() {
   const supabase = await createClient();
   const {
@@ -19,7 +42,9 @@ export default async function LeadsPage() {
   // Fetch leads from Supabase
   let leadsQuery = supabase
     .from("leads")
-    .select("id, dealer_id, vehicle_id, vin, enc_payload, created_at, status, source")
+    .select(
+      "id, dealer_id, vehicle_id, vin, enc_payload, created_at, replied_at, closed_at, status, source"
+    )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -75,13 +100,13 @@ export default async function LeadsPage() {
         console.error(`Failed to decrypt lead ${lead.id}:`, error);
       }
 
-      return {
+      const leadObj: Lead = {
         id: lead.id,
         dealerId: lead.dealer_id || undefined,
         vehicleId: lead.vehicle_id,
         vin: lead.vin || vehicle?.vin || undefined,
-        encPayload: lead.enc_payload,
         createdAt: new Date(lead.created_at).getTime(),
+        repliedAt: lead.replied_at ? new Date(lead.replied_at).getTime() : null,
         status: lead.status || "new",
         source: lead.source || "chatgpt",
         vehicle: vehicle
@@ -100,6 +125,7 @@ export default async function LeadsPage() {
             }
           : null,
       };
+      return leadObj;
     })
   );
 
@@ -120,6 +146,54 @@ export default async function LeadsPage() {
     }
   });
 
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  const totalLeads = leads.length;
+  const leadsThisWeek = leads.filter((lead) => lead.createdAt >= weekAgo).length;
+  const newLeadCount = leads.filter(
+    (lead) => lead.status?.toLowerCase() === "new"
+  ).length;
+  const closedLeadCount = leads.filter(
+    (lead) => lead.status?.toLowerCase() === "closed"
+  ).length;
+  const closeRate =
+    totalLeads > 0 ? Math.round((closedLeadCount / totalLeads) * 100) : 0;
+
+  const responseTimes = leads
+    .filter((lead) => lead.repliedAt)
+    .map((lead) => {
+      const repliedAt = lead.repliedAt as number;
+      return (repliedAt - lead.createdAt) / (1000 * 60 * 60);
+    });
+  const avgResponseHours =
+    responseTimes.length > 0
+      ? Number((responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length).toFixed(1))
+      : null;
+
+  const summaryCards = [
+    {
+      label: "Total Leads",
+      value: totalLeads,
+      helper: `+${leadsThisWeek} this week`,
+    },
+    {
+      label: "New",
+      value: newLeadCount,
+      helper: "Awaiting contact",
+    },
+    {
+      label: "Close Rate",
+      value: closeRate ? `${closeRate}%` : "—",
+      helper: closeRate ? "+vs last month" : "No closed leads yet",
+    },
+    {
+      label: "Avg Response",
+      value: avgResponseHours !== null ? `${avgResponseHours}h` : "—",
+      helper: "Response time",
+    },
+  ];
+
   return (
     <section className="space-y-6">
       <header className="space-y-2">
@@ -133,6 +207,23 @@ export default async function LeadsPage() {
           )}
         </p>
       </header>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {summaryCards.map((card) => (
+          <div
+            key={card.label}
+            className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-sm"
+          >
+            <p className="text-sm font-medium text-muted-foreground">
+              {card.label}
+            </p>
+            <p className="mt-2 text-3xl font-semibold text-foreground">
+              {card.value}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{card.helper}</p>
+          </div>
+        ))}
+      </div>
 
       {!activeDealership ? (
         <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-10 text-center">
