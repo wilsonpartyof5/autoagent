@@ -199,6 +199,10 @@ async function seedDemoLeads() {
 
       const encPayload = await encryptPayload(payload);
 
+      // Mix of statuses for demo
+      const leadStatuses = ['new', 'contacted', 'qualified', 'closed', 'test_drive_booked'];
+      const status = leadStatuses[Math.floor(Math.random() * leadStatuses.length)];
+      
       leadsToInsert.push({
         id: nanoid(),
         dealer_id: ROCK_HILL_DEALER_ID,
@@ -208,6 +212,8 @@ async function seedDemoLeads() {
         consent: true,
         user_id: demoUserId,
         created_at: createdAt.toISOString(),
+        status: status,
+        source: 'chatgpt',
       });
     }
 

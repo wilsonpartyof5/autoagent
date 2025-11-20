@@ -1,9 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { resendLeadDelivery } from "@/app/app/leads/actions";
-import { RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+
+interface Vehicle {
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+}
+
+interface DecryptedUser {
+  name: string;
+  email: string;
+  phone?: string;
+}
 
 interface Lead {
   id: string;
@@ -12,6 +25,10 @@ interface Lead {
   vin?: string;
   encPayload: string;
   createdAt: number;
+  status: string;
+  source: string;
+  vehicle?: Vehicle;
+  decrypted: DecryptedUser | null;
 }
 
 interface DeliveryLog {
@@ -28,74 +45,130 @@ interface Props {
   deliveryLogs: Map<string, DeliveryLog>;
 }
 
-export function LeadsTable({ leads, deliveryLogs }: Props) {
-  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
-  const [feedback, setFeedback] = useState<Map<string, { variant: "success" | "error"; message: string }>>(new Map());
+function formatVehicleName(vehicle?: Vehicle): string {
+  if (!vehicle) return "Unknown Vehicle";
+  const parts = [
+    vehicle.year?.toString(),
+    vehicle.make,
+    vehicle.model,
+    vehicle.trim,
+  ].filter(Boolean);
+  return parts.join(" ") || "Unknown Vehicle";
+}
 
-  const handleResend = async (leadId: string) => {
-    setResendingIds((prev) => new Set(prev).add(leadId));
-    setFeedback((prev) => {
-      const next = new Map(prev);
-      next.delete(leadId);
-      return next;
-    });
+function formatStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    closed: "Closed",
+    test_drive_booked: "Test Drive Booked",
+  };
+  return statusMap[status.toLowerCase()] || status;
+}
 
+function getStatusColor(status: string): string {
+  const statusLower = status.toLowerCase();
+  if (statusLower === "new") return "bg-blue-100 text-blue-700";
+  if (statusLower === "contacted") return "bg-orange-100 text-orange-700";
+  if (statusLower === "qualified") return "bg-purple-100 text-purple-700";
+  if (statusLower === "closed") return "bg-gray-100 text-gray-700";
+  if (statusLower === "test_drive_booked") return "bg-green-100 text-green-700";
+  return "bg-gray-100 text-gray-700";
+}
+
+function LeadRow({ lead, deliveryLog }: { lead: Lead; deliveryLog?: DeliveryLog }) {
+  const [isResending, setIsResending] = useState(false);
+
+  const handleResend = async () => {
+    setIsResending(true);
     try {
-      const result = await resendLeadDelivery(leadId);
+      const result = await resendLeadDelivery(lead.id);
       if (result.success) {
-        setFeedback((prev) => {
-          const next = new Map(prev);
-          next.set(leadId, { variant: "success", message: "Lead resent successfully" });
-          return next;
-        });
-        // Refresh page after a short delay to show updated status
         setTimeout(() => {
           window.location.reload();
         }, 1500);
-      } else {
-        setFeedback((prev) => {
-          const next = new Map(prev);
-          next.set(leadId, { variant: "error", message: result.error || "Failed to resend" });
-          return next;
-        });
       }
     } catch (error) {
-      setFeedback((prev) => {
-        const next = new Map(prev);
-        next.set(leadId, {
-          variant: "error",
-          message: error instanceof Error ? error.message : "Unknown error",
-        });
-        return next;
-      });
+      console.error("Failed to resend:", error);
     } finally {
-      setResendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(leadId);
-        return next;
-      });
+      setIsResending(false);
     }
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
+    const date = new Date(timestamp);
+    return date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
-  const getDeliveryStatus = (leadId: string) => {
-    const log = deliveryLogs.get(leadId);
-    if (!log) {
-      return { status: "pending" as const, label: "Pending", icon: Clock };
-    }
+  return (
+    <tr className="text-foreground hover:bg-muted/50">
+      <td className="px-6 py-4 text-sm text-muted-foreground">
+        {formatDate(lead.createdAt)}
+      </td>
+      <td className="px-6 py-4 text-sm">
+        {formatVehicleName(lead.vehicle)}
+      </td>
+      <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+        {lead.vin || "N/A"}
+      </td>
+      <td className="px-6 py-4 text-sm">
+        {lead.decrypted ? (
+          <span className="font-medium">{lead.decrypted.name}</span>
+        ) : (
+          <span className="text-muted-foreground">N/A</span>
+        )}
+      </td>
+      <td className="px-6 py-4 text-sm text-muted-foreground">
+        {lead.decrypted ? (
+          lead.decrypted.email
+        ) : (
+          <span className="text-muted-foreground">N/A</span>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(
+            lead.status
+          )}`}
+        >
+          {formatStatus(lead.status)}
+        </span>
+      </td>
+      <td className="px-6 py-4 text-right">
+        {deliveryLog && deliveryLog.status === "failed" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResend}
+            disabled={isResending}
+            className="gap-2"
+          >
+            {isResending ? (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Resending...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-3 w-3" />
+                Resend
+              </>
+            )}
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}
 
-    if (log.status === "success") {
-      return { status: "success" as const, label: "Delivered", icon: CheckCircle2 };
-    } else if (log.status === "failed") {
-      return { status: "failed" as const, label: "Failed", icon: XCircle };
-    } else {
-      return { status: "pending" as const, label: "Pending", icon: Clock };
-    }
-  };
-
+export function LeadsTable({ leads, deliveryLogs }: Props) {
   if (leads.length === 0) {
     return (
       <div className="rounded-xl border border-border/60 bg-card p-10 text-center text-muted-foreground">
@@ -110,101 +183,24 @@ export function LeadsTable({ leads, deliveryLogs }: Props) {
         <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-6 py-3 font-medium">Created</th>
+            <th className="px-6 py-3 font-medium">Vehicle</th>
             <th className="px-6 py-3 font-medium">VIN</th>
-            <th className="px-6 py-3 font-medium">Vehicle ID</th>
-            <th className="px-6 py-3 font-medium">Delivery Status</th>
+            <th className="px-6 py-3 font-medium">Buyer</th>
+            <th className="px-6 py-3 font-medium">Contact</th>
+            <th className="px-6 py-3 font-medium">Status</th>
             <th className="px-6 py-3 font-medium text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/60">
-          {leads.map((lead) => {
-            const deliveryStatus = getDeliveryStatus(lead.id);
-            const log = deliveryLogs.get(lead.id);
-            const isResending = resendingIds.has(lead.id);
-            const leadFeedback = feedback.get(lead.id);
-            const StatusIcon = deliveryStatus.icon;
-
-            return (
-              <tr key={lead.id} className="text-foreground">
-                <td className="px-6 py-4 text-sm text-muted-foreground">
-                  {formatDate(lead.createdAt)}
-                </td>
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                  {lead.vin || "N/A"}
-                </td>
-                <td className="px-6 py-4 text-sm">{lead.vehicleId}</td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <StatusIcon
-                      className={`h-4 w-4 ${
-                        deliveryStatus.status === "success"
-                          ? "text-green-600"
-                          : deliveryStatus.status === "failed"
-                            ? "text-red-600"
-                            : "text-yellow-600"
-                      }`}
-                    />
-                    <span
-                      className={`text-xs font-medium ${
-                        deliveryStatus.status === "success"
-                          ? "text-green-700"
-                          : deliveryStatus.status === "failed"
-                            ? "text-red-700"
-                            : "text-yellow-700"
-                      }`}
-                    >
-                      {deliveryStatus.label}
-                    </span>
-                    {log && log.delivery_method && (
-                      <span className="text-xs text-muted-foreground">
-                        ({log.delivery_method.toUpperCase()})
-                      </span>
-                    )}
-                  </div>
-                  {log?.error_message && (
-                    <p className="mt-1 text-xs text-red-600">{log.error_message}</p>
-                  )}
-                  {leadFeedback && (
-                    <div
-                      className={`mt-2 rounded px-2 py-1 text-xs ${
-                        leadFeedback.variant === "success"
-                          ? "bg-green-50 text-green-700"
-                          : "bg-red-50 text-red-700"
-                      }`}
-                    >
-                      {leadFeedback.message}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  {log && log.status === "failed" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleResend(lead.id)}
-                      disabled={isResending}
-                      className="gap-2"
-                    >
-                      {isResending ? (
-                        <>
-                          <RefreshCw className="h-3 w-3 animate-spin" />
-                          Resending...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="h-3 w-3" />
-                          Resend
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+        <tbody className="divide-y divide-border/60 bg-white">
+          {leads.map((lead) => (
+            <LeadRow
+              key={lead.id}
+              lead={lead}
+              deliveryLog={deliveryLogs.get(lead.id)}
+            />
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
-

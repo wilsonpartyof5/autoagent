@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { LeadsTable } from "@/components/dashboard/leads/leads-table";
 import { getActiveDealership } from "@/lib/supabase/dealerships";
+import { decryptToJson, isDecryptedLead, type DecryptedLead } from "@/lib/crypto";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -18,7 +19,7 @@ export default async function LeadsPage() {
   // Fetch leads from Supabase
   let leadsQuery = supabase
     .from("leads")
-    .select("id, dealer_id, vehicle_id, vin, enc_payload, created_at")
+    .select("id, dealer_id, vehicle_id, vin, enc_payload, created_at, status, source")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -37,15 +38,70 @@ export default async function LeadsPage() {
     console.error("Error fetching leads:", leadsError);
   }
 
-  // Transform Supabase leads to match expected format
-  const leads = (leadsData || []).map((lead) => ({
-    id: lead.id,
-    dealerId: lead.dealer_id || undefined,
-    vehicleId: lead.vehicle_id,
-    vin: lead.vin || undefined,
-    encPayload: lead.enc_payload,
-    createdAt: new Date(lead.created_at).getTime(),
-  }));
+  // Fetch vehicle details for all leads
+  const vehicleIds = [...new Set((leadsData || []).map((l) => l.vehicle_id))];
+  const { data: vehicles } = await supabase
+    .from("inventory_vehicles")
+    .select("id, year, make, model, trim, vin")
+    .in("id", vehicleIds.length > 0 ? vehicleIds : ["__none__"]);
+
+  const vehicleMap = new Map(
+    (vehicles || []).map((v) => [
+      v.id,
+      {
+        year: v.year,
+        make: v.make,
+        model: v.model,
+        trim: v.trim,
+        vin: v.vin,
+      },
+    ])
+  );
+
+  // Transform Supabase leads to match expected format and decrypt payloads
+  const leads = await Promise.all(
+    (leadsData || []).map(async (lead) => {
+      const vehicle = vehicleMap.get(lead.vehicle_id);
+      let decrypted: DecryptedLead | null = null;
+      
+      // Try to decrypt the payload (server-side only)
+      try {
+        const payload = await decryptToJson(lead.enc_payload);
+        if (isDecryptedLead(payload)) {
+          decrypted = payload;
+        }
+      } catch (error) {
+        // Decryption failed - will show N/A in UI
+        console.error(`Failed to decrypt lead ${lead.id}:`, error);
+      }
+
+      return {
+        id: lead.id,
+        dealerId: lead.dealer_id || undefined,
+        vehicleId: lead.vehicle_id,
+        vin: lead.vin || vehicle?.vin || undefined,
+        encPayload: lead.enc_payload,
+        createdAt: new Date(lead.created_at).getTime(),
+        status: lead.status || "new",
+        source: lead.source || "chatgpt",
+        vehicle: vehicle
+          ? {
+              year: vehicle.year,
+              make: vehicle.make,
+              model: vehicle.model,
+              trim: vehicle.trim,
+            }
+          : undefined,
+        decrypted: decrypted
+          ? {
+              name: decrypted.user.name,
+              email: decrypted.user.email,
+              phone: decrypted.user.phone,
+            }
+          : null,
+      };
+    })
+  );
 
   // Fetch delivery logs from Supabase for these leads
   const leadIds = leads.map((l) => l.id);
