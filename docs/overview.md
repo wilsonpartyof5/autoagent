@@ -88,12 +88,12 @@ The AutoAgent platform delivers real-time vehicle discovery, lead capture, and d
 ## Key URLs (Current ngrok Session)
 | Component            | URL                                                                     |
 | -------------------- | ----------------------------------------------------------------------- |
-| MCP endpoint         | `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`                    |
-| Vehicle widget       | `https://rana-flightiest-malcolm.ngrok-free.dev/widget/vehicle-results` |
-| Micro widget         | `https://rana-flightiest-malcolm.ngrok-free.dev/widget/micro`           |
-| Beacon ingest        | `https://rana-flightiest-malcolm.ngrok-free.dev/widget/beacon`          |
-| Console relay        | `https://rana-flightiest-malcolm.ngrok-free.dev/widget/console`         |
-| Dealer dashboard     | `https://rana-flightiest-malcolm.ngrok-free.dev/dashboard`              |
+| MCP endpoint         | `https://autoagentmcp-server-production.up.railway.app/mcp`                    |
+| Vehicle widget       | `https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results` |
+| Micro widget         | `https://autoagentmcp-server-production.up.railway.app/widget/micro`           |
+| Beacon ingest        | `https://autoagentmcp-server-production.up.railway.app/widget/beacon`          |
+| Console relay        | `https://autoagentmcp-server-production.up.railway.app/widget/console`         |
+| Dealer dashboard     | `https://autoagentmcp-server-production.up.railway.app/dashboard`              |
 
 ## Developer Field Notes
 - If ChatGPT connector creation hangs, rerun `initialize` and confirm `initialized: true` plus `notification`.

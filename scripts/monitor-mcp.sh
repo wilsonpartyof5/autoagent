@@ -5,7 +5,7 @@
 
 set -e
 
-SERVER_URL="https://rana-flightiest-malcolm.ngrok-free.dev"
+SERVER_URL="https://autoagentmcp-server-production.up.railway.app"
 MCP_ENDPOINT="$SERVER_URL/mcp"
 HEALTH_ENDPOINT="$SERVER_URL/health"
 

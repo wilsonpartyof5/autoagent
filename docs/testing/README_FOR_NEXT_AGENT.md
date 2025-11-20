@@ -57,7 +57,7 @@
 
 ### Current Status
 - ✅ MCP server running on port 8787
-- ✅ ngrok tunnel: `https://rana-flightiest-malcolm.ngrok-free.dev`
+- ✅ ngrok tunnel: `https://autoagentmcp-server-production.up.railway.app`
 - ✅ Handshake tests passing
 - ⚠️ Timeout issue: ngrok free tier 60-second limit
 
@@ -97,7 +97,7 @@
 
 ## 🔗 Important Links
 
-- **ChatGPT Connector URL**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`
+- **ChatGPT Connector URL**: `https://autoagentmcp-server-production.up.railway.app/mcp`
 - **ngrok Web Interface**: `http://127.0.0.1:4040`
 - **MCP Server Logs**: `/tmp/mcp-server.log`
 - **ngrok Dashboard**: https://dashboard.ngrok.com
@@ -115,7 +115,7 @@ pnpm --filter mcp-server dev
 ngrok http 8787
 
 # Run handshake test
-bash scripts/testChatGPTHandshake.sh https://rana-flightiest-malcolm.ngrok-free.dev
+bash scripts/testChatGPTHandshake.sh https://autoagentmcp-server-production.up.railway.app
 
 # Check logs
 tail -f /tmp/mcp-server.log

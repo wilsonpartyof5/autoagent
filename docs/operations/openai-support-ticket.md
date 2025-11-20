@@ -4,7 +4,7 @@
 
 **Date**: October 22, 2025  
 **Incident Time**: ~12:42:45 EDT  
-**MCP Endpoint**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`  
+**MCP Endpoint**: `https://autoagentmcp-server-production.up.railway.app/mcp`  
 **Server PID**: 24107 (stable for 50+ minutes)
 
 ---
@@ -72,7 +72,7 @@ Our AutoAgent MCP server experienced a timeout during ChatGPT app creation, but 
   "result": {
     "content": [{"type": "text", "text": "Found 20 vehicles (run 683e3234-8005-4bc3-b739-fa65f1a3e20f)"}],
     "structuredContent": {"results": {"vehicles": [...], "totalCount": 20}},
-    "components": [{"type": "iframe", "url": "https://rana-flightiest-malcolm.ngrok-free.dev/widget/vehicle-results?rid=683e3234-8005-4bc3-b739-fa65f1a3e20f&diag=1"}]
+    "components": [{"type": "iframe", "url": "https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results?rid=683e3234-8005-4bc3-b739-fa65f1a3e20f&diag=1"}]
   }
 }
 ```
@@ -116,15 +116,15 @@ Our AutoAgent MCP server experienced a timeout during ChatGPT app creation, but 
 
 ```bash
 # Health Check
-curl -sI https://rana-flightiest-malcolm.ngrok-free.dev/health
+curl -sI https://autoagentmcp-server-production.up.railway.app/health
 # Result: HTTP/2 200, proper CSP headers
 
 # MCP Initialize  
-curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/mcp -H 'Content-Type: application/json' --data-binary '{"jsonrpc":"2.0","id":41,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"timeout-audit","version":"1.0.0"}}}'
+curl -sS https://autoagentmcp-server-production.up.railway.app/mcp -H 'Content-Type: application/json' --data-binary '{"jsonrpc":"2.0","id":41,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"timeout-audit","version":"1.0.0"}}}'
 # Result: Proper MCP response with initialized: true
 
 # Tools List
-curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/mcp -H 'Content-Type: application/json' --data-binary '{"jsonrpc":"2.0","id":42,"method":"tools/list","params":{}}'
+curl -sS https://autoagentmcp-server-production.up.railway.app/mcp -H 'Content-Type: application/json' --data-binary '{"jsonrpc":"2.0","id":42,"method":"tools/list","params":{}}'
 # Result: All 4 tools with complete schemas
 
 # Process Health
@@ -216,7 +216,7 @@ ps aux | grep "node dist/index.js"
 🔧 Tools/call request received
 🔍 Starting vehicle search...
 {"event":"search","hasKey":true,"fromCache":true,"results":10,"ms":0}
-{"evt":"diag.tool","runId":"683e3234-8005-4bc3-b739-fa65f1a3e20f","url":"https://rana-flightiest-malcolm.ngrok-free.dev/widget/vehicle-results?rid=683e3234-8005-4bc3-b739-fa65f1a3e20f&diag=1","ts":1761151510949}
+{"evt":"diag.tool","runId":"683e3234-8005-4bc3-b739-fa65f1a3e20f","url":"https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results?rid=683e3234-8005-4bc3-b739-fa65f1a3e20f&diag=1","ts":1761151510949}
 {"evt":"mcp.tools.call","tool":"search-vehicles","ms":0,"success":true}
 ✅ [v0tj5solv] MCP Response (0ms): {
   jsonrpc: '2.0',
@@ -258,7 +258,7 @@ Our MCP server is ready for immediate retry and should pass all validation check
 ---
 
 **Contact**: AutoAgent CTO  
-**MCP Endpoint**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`  
+**MCP Endpoint**: `https://autoagentmcp-server-production.up.railway.app/mcp`  
 **Server Status**: ✅ Fully Operational  
 **Ready for**: Immediate ChatGPT app creation retry
 

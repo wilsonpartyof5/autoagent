@@ -1,8 +1,8 @@
 # Timeout Diagnosis - ngrok Setup
 
 **Date**: 2025-11-12  
-**Tunnel**: ngrok (`https://rana-flightiest-malcolm.ngrok-free.dev`)  
-**MCP Endpoint**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`
+**Tunnel**: ngrok (`https://autoagentmcp-server-production.up.railway.app`)  
+**MCP Endpoint**: `https://autoagentmcp-server-production.up.railway.app/mcp`
 
 ---
 
@@ -74,14 +74,14 @@ user-agent: "openai-mcp/1.0.0"
 
 **Test Through ngrok**:
 ```bash
-curl -v -X POST https://rana-flightiest-malcolm.ngrok-free.dev/mcp ...
+curl -v -X POST https://autoagentmcp-server-production.up.railway.app/mcp ...
 # Exit code: 23 (timeout)
 # Connection established, TLS handshake complete, but request hangs
 ```
 
 **However**: Tool execution test through ngrok **succeeds**:
 ```bash
-curl -X POST https://rana-flightiest-malcolm.ngrok-free.dev/mcp ...
+curl -X POST https://autoagentmcp-server-production.up.railway.app/mcp ...
 # Returns full response with 20 vehicles
 # Response time: ~1 second
 ```
@@ -142,7 +142,7 @@ curl -X POST https://rana-flightiest-malcolm.ngrok-free.dev/mcp ...
 
 ### Successful ChatGPT Requests
 ```
-{"evt":"mcp.request","ts":"2025-11-12T17:22:16.089Z","method":"POST","url":"/mcp","ip":"::1","headers":{"host":"rana-flightiest-malcolm.ngrok-free.dev","user-agent":"openai-mcp/1.0.0",...}}
+{"evt":"mcp.request","ts":"2025-11-12T17:22:16.089Z","method":"POST","url":"/mcp","ip":"::1","headers":{"host":"autoagentmcp-server-production.up.railway.app","user-agent":"openai-mcp/1.0.0",...}}
 ✅ [0483tum0x] MCP Response (1ms): {...}
 {"evt":"mcp.request","method":"POST","status":200,"ms":2,"userAgent":"openai-mcp/1.0.0"}
 ```
@@ -185,7 +185,7 @@ done
 
 **If timeout happens during lead submission**:
 ```bash
-curl -X POST https://rana-flightiest-malcolm.ngrok-free.dev/mcp \
+curl -X POST https://autoagentmcp-server-production.up.railway.app/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc":"2.0",
@@ -332,4 +332,3 @@ tail -f /tmp/mcp-server.log | grep -E "(MCP Request|MCP Response|timeout|error)"
 - Slow tool execution (enrichment or Supabase queries)
 
 **Recommendation**: Identify which specific action times out, then optimize that specific tool or upgrade ngrok plan.
-

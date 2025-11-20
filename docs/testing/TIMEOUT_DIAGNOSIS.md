@@ -89,7 +89,7 @@ curl -v -X POST https://gras-retailers-matters-coal.trycloudflare.com/mcp ...
 
 **Problem**: Widget URL in tool responses points to old ngrok URL:
 ```
-"url":"https://rana-flightiest-malcolm.ngrok-free.dev/widget/vehicle-results?rid=..."
+"url":"https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results?rid=..."
 ```
 
 **Expected**: Should use current Cloudflare tunnel URL:

@@ -3,7 +3,7 @@
 Use this checklist whenever you spin up a fresh Cursor/Codex session. It captures the current MCP endpoint status, required environment, and command surface so you can become productive in minutes.
 
 ## Current Operational Snapshot
-- **Public MCP URL**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`
+- **Public MCP URL**: `https://autoagentmcp-server-production.up.railway.app/mcp`
 - **Status**: ✅ Server healthy, MCP handshake validated, widgets emitting `ui:ready`
 - **Available Tools**: `search-vehicles`, `submit-lead`, `ping-ui`, `ping-micro-ui`
 - **Critical Source Files**:
@@ -31,7 +31,7 @@ MARKETCHECK_BASE_URL=https://api.marketcheck.com
 LEAD_ENC_KEY=<32-byte-base64>
 DASHBOARD_INGEST_URL=<dealer-dashboard-endpoint>
 DASHBOARD_INGEST_TOKEN=<bearer-token>
-WIDGET_HOST=https://rana-flightiest-malcolm.ngrok-free.dev
+WIDGET_HOST=https://autoagentmcp-server-production.up.railway.app
 AA_DIAG=1
 SUPABASE_URL=https://vqoawedqmeybbndvqxta.supabase.co
 SUPABASE_ANON_KEY=<supabase-anon-key>
@@ -138,15 +138,15 @@ pnpm --filter mcp-server start
 ## Verify the Stack
 ```bash
 # Health check
-curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/health | jq .
+curl -sS https://autoagentmcp-server-production.up.railway.app/health | jq .
 
 # MCP initialize handshake
-curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/mcp \
+curl -sS https://autoagentmcp-server-production.up.railway.app/mcp \
   -H 'Content-Type: application/json' \
   --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"openai-mcp","version":"1.0.0"}}}' | jq .
 
 # Enumerate tools
-curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/mcp \
+curl -sS https://autoagentmcp-server-production.up.railway.app/mcp \
   -H 'Content-Type: application/json' \
   --data-binary '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | jq .
 ```
@@ -156,7 +156,7 @@ curl -sS https://rana-flightiest-malcolm.ngrok-free.dev/mcp \
   - Confirm initialize response includes `initialized: true` and `notification`.
   - Re-run the handshake curl above; restart the MCP server if fields are missing.
 - **Widget iframe fails inside ChatGPT**  
-  - Hit `https://rana-flightiest-malcolm.ngrok-free.dev/widget/vehicle-results?diag=1` in a browser.
+  - Hit `https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results?diag=1` in a browser.
   - Check `/widget/beacon` and `/widget/console` logs for the latest run ID.
 - **Server changes not applying**  
   - Ensure no orphaned `tsx src/index.ts` processes are running (use `pkill` command above).

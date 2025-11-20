@@ -3,7 +3,7 @@
 # Health check script for AutoAgent MCP Server
 # Usage: ./scripts/health-check.sh
 
-BASE_URL="https://rana-flightiest-malcolm.ngrok-free.dev"
+BASE_URL="https://autoagentmcp-server-production.up.railway.app"
 TIMEOUT=10
 
 echo "🏥 AutoAgent MCP Server Health Check"

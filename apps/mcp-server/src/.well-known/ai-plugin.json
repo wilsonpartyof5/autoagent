@@ -9,9 +9,9 @@
   },
   "api": {
     "type": "openapi",
-    "url": "https://rana-flightiest-malcolm.ngrok-free.dev/.well-known/openapi.yaml"
+    "url": "https://autoagentmcp-server-production.up.railway.app/.well-known/openapi.yaml"
   },
-  "logo_url": "https://rana-flightiest-malcolm.ngrok-free.dev/logo.png",
+  "logo_url": "https://autoagentmcp-server-production.up.railway.app/logo.png",
   "contact_email": "support@autoagent.com",
-  "legal_info_url": "https://rana-flightiest-malcolm.ngrok-free.dev/legal"
+  "legal_info_url": "https://autoagentmcp-server-production.up.railway.app/legal"
 }

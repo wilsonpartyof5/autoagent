@@ -107,7 +107,7 @@ Or in HTTP logs:
    - In Railway dashboard → Service → Variables
    - Update `WIDGET_HOST`:
      ```
-     WIDGET_HOST=https://mcp.autoagent.ai
+     WIDGET_HOST=https://autoagentmcp-server-production.up.railway.app
      ```
    - Or whatever your custom domain is
 
@@ -116,8 +116,8 @@ Or in HTTP logs:
    - Or trigger manual redeploy
 
 6. **Test:**
-   - Use new URL in ChatGPT connector: `https://mcp.autoagent.ai/mcp`
-   - Test handshake: `bash scripts/testChatGPTHandshake.sh https://mcp.autoagent.ai`
+   - Use new URL in ChatGPT connector: `https://autoagentmcp-server-production.up.railway.app/mcp`
+   - Test handshake: `bash scripts/testChatGPTHandshake.sh https://autoagentmcp-server-production.up.railway.app`
 
 ---
 

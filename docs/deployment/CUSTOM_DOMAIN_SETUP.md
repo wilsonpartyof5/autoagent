@@ -77,7 +77,7 @@
 2. Find `WIDGET_HOST` variable
 3. Update value:
    ```
-   WIDGET_HOST=https://mcp.autoagent.ai
+   WIDGET_HOST=https://autoagentmcp-server-production.up.railway.app
    ```
    (Replace with your actual custom domain)
 
@@ -92,11 +92,11 @@
 **Railway automatically provisions SSL:**
 - Wait 5-10 minutes after DNS propagates
 - Railway will issue Let's Encrypt certificate
-- Test: `curl https://mcp.autoagent.ai/health`
+- Test: `curl https://autoagentmcp-server-production.up.railway.app/health`
 
 **Verify certificate:**
 ```bash
-openssl s_client -connect mcp.autoagent.ai:443 -servername mcp.autoagent.ai
+openssl s_client -connect autoagentmcp-server-production.up.railway.app:443 -servername autoagentmcp-server-production.up.railway.app
 ```
 
 ---
@@ -105,7 +105,7 @@ openssl s_client -connect mcp.autoagent.ai:443 -servername mcp.autoagent.ai
 
 **Run handshake test:**
 ```bash
-bash scripts/testChatGPTHandshake.sh https://mcp.autoagent.ai
+bash scripts/testChatGPTHandshake.sh https://autoagentmcp-server-production.up.railway.app
 ```
 
 **Expected:**
@@ -120,7 +120,7 @@ bash scripts/testChatGPTHandshake.sh https://mcp.autoagent.ai
 
 **Use new URL:**
 ```
-https://mcp.autoagent.ai/mcp
+https://autoagentmcp-server-production.up.railway.app/mcp
 ```
 
 **Important:**
@@ -163,7 +163,7 @@ dig mcp.autoagent.ai
 
 **Check:**
 ```bash
-curl -I https://mcp.autoagent.ai/health
+curl -I https://autoagentmcp-server-production.up.railway.app/health
 ```
 
 **If certificate error:**
@@ -175,7 +175,7 @@ curl -I https://mcp.autoagent.ai/health
 
 **Check:**
 ```bash
-curl https://mcp.autoagent.ai/health
+curl https://autoagentmcp-server-production.up.railway.app/health
 ```
 
 **If 502/503:**
@@ -198,12 +198,12 @@ Value: cname.railway.app
 
 **Environment Variable:**
 ```
-WIDGET_HOST=https://mcp.autoagent.ai
+WIDGET_HOST=https://autoagentmcp-server-production.up.railway.app
 ```
 
 **ChatGPT Connector URL:**
 ```
-https://mcp.autoagent.ai/mcp
+https://autoagentmcp-server-production.up.railway.app/mcp
 ```
 
 ---

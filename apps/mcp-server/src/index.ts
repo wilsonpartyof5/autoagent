@@ -13,6 +13,23 @@ declare global {
 const app = express();
 const PORT = process.env.PORT || 8787;
 
+// CORS configuration for OpenAI MCP
+const ALLOWED_ORIGINS = new Set(['https://chat.openai.com', 'https://chatgpt.com']);
+
+/**
+ * Apply CORS headers for MCP endpoint according to OpenAI requirements
+ * Must be called before any response is sent
+ */
+function applyMcpCors(req: express.Request, res: express.Response) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, HEAD');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, OpenAI-Beta');
+}
+
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -193,19 +210,22 @@ app.use((req, res, next) => {
 
 // MCP endpoint - handles MCP protocol requests and health checks
 app.all('/mcp', async (req, res) => {
+  // Apply CORS headers first, before any early returns
+  applyMcpCors(req, res);
+  
   // Log headers for debugging
   console.log(JSON.stringify({ evt: 'mcp.headers', headers: req.headers }));
-  
-  // Handle HEAD requests for health checks
-  if (req.method === 'HEAD') {
-    console.log('🔍 MCP HEAD request received');
-    res.status(200).end();
-    return;
-  }
   
   // Handle OPTIONS requests for CORS preflight
   if (req.method === 'OPTIONS') {
     console.log('🔍 MCP OPTIONS request received');
+    res.status(204).end();
+    return;
+  }
+  
+  // Handle HEAD requests for health checks
+  if (req.method === 'HEAD') {
+    console.log('🔍 MCP HEAD request received');
     res.status(200).end();
     return;
   }
@@ -235,11 +255,6 @@ app.all('/mcp', async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
       timestamp: new Date().toISOString()
     });
-
-    // Set CORS headers for ChatGPT integration
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
 
     // Safety and authentication checks

@@ -151,7 +151,7 @@ tail -f /tmp/mcp-server.log | grep -E "(MCP Response|ms)"
 
 **If timeout occurs during lead submission**:
 ```bash
-curl -X POST https://rana-flightiest-malcolm.ngrok-free.dev/mcp \
+curl -X POST https://autoagentmcp-server-production.up.railway.app/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc":"2.0",

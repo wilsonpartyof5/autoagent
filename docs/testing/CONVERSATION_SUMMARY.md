@@ -56,12 +56,12 @@ This conversation focused on:
 - **Logs**: `/tmp/mcp-server.log`
 
 ### ngrok Tunnel Status ✅
-- **Running**: Forwarding `https://rana-flightiest-malcolm.ngrok-free.dev` → `http://localhost:8787`
+- **Running**: Forwarding `https://autoagentmcp-server-production.up.railway.app` → `http://localhost:8787`
 - **Web Interface**: `http://127.0.0.1:4040`
 - **Limitation**: Free tier has 60-second timeout
 
 ### ChatGPT Connector Status ⚠️
-- **Endpoint**: `https://rana-flightiest-malcolm.ngrok-free.dev/mcp`
+- **Endpoint**: `https://autoagentmcp-server-production.up.railway.app/mcp`
 - **Handshake**: ✅ All checks pass
 - **Issue**: Timeout occurs during ChatGPT requests (likely due to ngrok free tier limit)
 
@@ -132,7 +132,7 @@ This conversation focused on:
 
 ### Tunnel Setup
 - **Current**: ngrok free tier
-- **URL**: `https://rana-flightiest-malcolm.ngrok-free.dev`
+- **URL**: `https://autoagentmcp-server-production.up.railway.app`
 - **Limitation**: 60-second timeout
 - **Alternative**: Cloudflare Tunnel (tried, also has 30-second timeout on free tier)
 
@@ -188,7 +188,7 @@ ngrok http 8787
 
 ### Run Handshake Test
 ```bash
-bash scripts/testChatGPTHandshake.sh https://rana-flightiest-malcolm.ngrok-free.dev
+bash scripts/testChatGPTHandshake.sh https://autoagentmcp-server-production.up.railway.app
 ```
 
 ### Check MCP Server Logs
@@ -211,7 +211,7 @@ pgrep -f ngrok
 
 ### MCP Server (`apps/mcp-server/.env`)
 - `PORT`: 8787
-- `WIDGET_HOST`: `https://rana-flightiest-malcolm.ngrok-free.dev` (ngrok URL)
+- `WIDGET_HOST`: `https://autoagentmcp-server-production.up.railway.app` (ngrok URL)
 - `MARKETCHECK_API_KEY`: (configured)
 - `MARKETCHECK_BASE_URL`: (configured)
 - `LEAD_ENC_KEY`: (configured)
