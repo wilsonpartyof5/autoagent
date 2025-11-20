@@ -140,3 +140,52 @@ export async function resendLeadDelivery(leadId: string): Promise<{ success: boo
   }
 }
 
+const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'test_drive_booked', 'closed'] as const;
+type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export async function updateLeadStatus(
+  leadId: string,
+  status: LeadStatus,
+): Promise<{ success: boolean; error?: string }> {
+  if (!LEAD_STATUSES.includes(status)) {
+    return { success: false, error: 'Invalid lead status' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const timestamps: { replied_at: string | null; closed_at: string | null } = {
+    replied_at: null,
+    closed_at: null,
+  };
+
+  if (status !== 'new') {
+    timestamps.replied_at = new Date().toISOString();
+  }
+  if (status === 'closed') {
+    timestamps.closed_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      status,
+      replied_at: timestamps.replied_at,
+      closed_at: timestamps.closed_at,
+    })
+    .eq('id', leadId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath('/app/leads');
+  return { success: true };
+}
