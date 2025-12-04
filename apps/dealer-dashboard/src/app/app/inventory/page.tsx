@@ -173,8 +173,9 @@ export default async function InventoryPage({ searchParams }: Props) {
   }
 
   if (filters.stockNumber) {
+    const stockNumberLower = filters.stockNumber.toLowerCase();
     vehicles = vehicles.filter((v) => {
-      return v.stock_number?.toLowerCase().includes(filters.stockNumber.toLowerCase());
+      return v.stock_number?.toLowerCase().includes(stockNumberLower);
     });
   }
 
