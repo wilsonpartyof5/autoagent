@@ -6,7 +6,7 @@ function randomUUID(): string {
     return v.toString(16);
   });
 }
-import { type Vehicle, type Dealer } from './types.js';
+import { type Vehicle, type Dealer } from './types';
 
 export interface MarketCheckVehicle {
   id: string;
