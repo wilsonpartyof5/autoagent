@@ -8,7 +8,7 @@
  * - /v2/dealer/{dealer_id} - Dealer metadata
  */
 
-import type { MarketCheckVehicle } from './marketcheck.js';
+import type { MarketCheckVehicle } from './marketcheck';
 
 export interface EnrichmentData {
   detail?: MarketCheckVehicle;
