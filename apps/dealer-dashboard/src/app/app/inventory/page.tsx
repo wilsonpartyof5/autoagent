@@ -226,7 +226,11 @@ export default async function InventoryPage({ searchParams }: Props) {
   // Apply condition filter if multiple conditions selected
   if (filters.condition.length > 0 && filters.condition.length < 3) {
     vehicles = vehicles.filter((v) => {
-      return v.condition && filters.condition.includes(v.condition);
+      if (!v.condition) return false;
+      // Type guard: ensure v.condition is a valid ConditionFilter
+      const validConditions: readonly string[] = ['new', 'used', 'certified'];
+      if (!validConditions.includes(v.condition)) return false;
+      return filters.condition.includes(v.condition as 'new' | 'used' | 'certified');
     });
   }
 
