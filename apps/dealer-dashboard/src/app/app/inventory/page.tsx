@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { InventoryPageClient } from "@/components/dashboard/inventory/inventory-page-client";
 import { VehicleCard } from "@/components/dashboard/inventory/vehicle-card";
+import { ResyncButton } from "@/components/dashboard/inventory/resync-button";
 import { parseFiltersFromSearchParams } from "@/types/inventoryFilters";
-import { getActiveDealershipId } from "@/lib/supabase/dealerships";
+import { getActiveDealershipId, getActiveDealership } from "@/lib/supabase/dealerships";
+import { searchUVSVehicles, convertUVSToInventoryVehicle, type UVSVehicleSearchFilters } from "@/lib/db/uvs-vehicles";
 
 export type InventoryVehicle = {
   id: string;
@@ -86,157 +88,101 @@ export default async function InventoryPage({ searchParams }: Props) {
     );
   }
 
-  // Build query with filters
-  // Use wildcard select to handle missing columns gracefully (migrations may not be run yet)
-  // Scope by dealership_id instead of user_id
-  let query = supabase
-    .from("inventory_vehicles")
-    .select("*")
-    .eq("dealership_id", activeDealershipId);
+  // Build UVS search filters
+  const uvsFilters: UVSVehicleSearchFilters = {
+    minPrice: filters.minPrice ?? undefined,
+    maxPrice: filters.maxPrice ?? undefined,
+    availabilityStatus: 'available', // Only show available vehicles by default
+  };
 
   // Apply condition filter
-  if (filters.condition.length > 0) {
-    query = query.in("condition", filters.condition);
-  }
-
-  // Apply body type filter
-  if (filters.bodyType.length > 0) {
-    query = query.in("body_type", filters.bodyType);
-  }
-
-  // Apply price range
-  if (filters.minPrice !== null) {
-    query = query.gte("price", filters.minPrice);
-  }
-  if (filters.maxPrice !== null) {
-    query = query.lte("price", filters.maxPrice);
-  }
-
-  // Apply MSRP range
-  if (filters.minMsrp !== null) {
-    query = query.gte("msrp", filters.minMsrp);
-  }
-  if (filters.maxMsrp !== null) {
-    query = query.lte("msrp", filters.maxMsrp);
-  }
-
-  // Apply days on market filter
-  if (filters.daysOnLot !== 'any') {
-    if (filters.daysOnLot === '0-14') {
-      query = query.gte("days_on_market", 0).lte("days_on_market", 14);
-    } else if (filters.daysOnLot === '15-30') {
-      query = query.gte("days_on_market", 15).lte("days_on_market", 30);
-    } else if (filters.daysOnLot === '31+') {
-      query = query.gte("days_on_market", 31);
+  if (filters.condition.length > 0 && filters.condition.length < 3) {
+    // If not selecting all conditions, filter by the selected ones
+    // Note: UVS only supports single condition, so we'll need to filter after query
+    if (filters.condition.length === 1) {
+      uvsFilters.condition = filters.condition[0] as 'new' | 'used' | 'certified';
     }
   }
 
-  // Apply stock number filter (case-insensitive partial match)
-  if (filters.stockNumber) {
-    query = query.ilike("stock_number", `%${filters.stockNumber}%`);
-  }
+  // Search UVS vehicles with filters
+  const { vehicles: uvsVehicles, total } = await searchUVSVehicles(uvsFilters);
 
-  // Apply VIN filter (case-insensitive partial match)
-  if (filters.vin) {
-    query = query.ilike("vin", `%${filters.vin}%`);
-  }
+  // Get full row data including sync metadata
+  let query = supabase
+    .from("uvs_vehicles")
+    .select("id, uvs_data, last_synced_at, sync_status, sync_error, availability_status, data_source")
+    .in("id", uvsVehicles.map(v => v.id));
 
-  query = query.order("created_at", { ascending: false });
-
-  const { data, error } = await query;
+  const { data: rowsData, error } = await query;
 
   if (error) {
-    console.error("[inventory] failed to load vehicles", error);
-    // If query fails, try a simpler fallback query with only essential columns
-    const fallbackQuery = supabase
-      .from("inventory_vehicles")
-      .select("id, vin, year, make, model, trim, price, miles, dealer_name, dealer_address, raw, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    
-    const { data: fallbackData, error: fallbackError } = await fallbackQuery;
-    if (fallbackError) {
-      console.error("[inventory] fallback query also failed", fallbackError);
-      return (
-        <section className="space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
-            <p className="text-sm text-muted-foreground">
-              Review the vehicles imported from MarketCheck. Publish listings once you&apos;re ready to go live
-              inside ChatGPT.
-            </p>
-          </header>
-          <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-10 text-center">
-            <h2 className="text-lg font-semibold text-foreground">Error loading inventory</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Please ensure database migrations have been run. Check the console for details.
-            </p>
-          </div>
-        </section>
-      );
-    }
-    // Map fallback data to full type with nulls for missing fields
-    const fallbackVehicles: InventoryVehicle[] = (fallbackData || []).map((v: any) => ({
-      id: v.id,
-      vin: v.vin ?? null,
-      stock_number: null,
-      year: v.year ?? null,
-      make: v.make ?? null,
-      model: v.model ?? null,
-      trim: v.trim ?? null,
-      price: v.price ?? null,
-      msrp: null,
-      miles: v.miles ?? null,
-      condition: null,
-      body_type: null,
-      drivetrain: null,
-      fuel_type: null,
-      transmission: null,
-      interior_color: null,
-      exterior_color: null,
-      certified: null,
-      features: null,
-      market_average_price: null,
-      days_on_market: null,
-      thumbnail_url: null,
-      primary_photo_url: null,
-      photo_urls: null,
-      dealer_name: v.dealer_name ?? null,
-      dealer_address: v.dealer_address ?? null,
-      dealer_city: null,
-      dealer_state: null,
-      dealer_phone: null,
-      dealer_website: null,
-      is_live: null,
-      published_at: null,
-      published_by: null,
-      raw: v.raw ?? null,
-    }));
+    console.error("[inventory] failed to load UVS vehicles", error);
     return (
       <section className="space-y-6">
         <header className="space-y-2">
           <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
           <p className="text-sm text-muted-foreground">
-            Review the vehicles imported from MarketCheck. Publish listings once you&apos;re ready to go live
-            inside ChatGPT.
+            Review your UVS inventory. Publish listings once you&apos;re ready to go live inside ChatGPT.
           </p>
         </header>
-        <InventoryPageClient availableBodyTypes={[]} vehicles={fallbackVehicles}>
-          {fallbackVehicles.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {fallbackVehicles.map((vehicle) => (
-                <VehicleCard key={vehicle.id} vehicle={vehicle} />
-              ))}
-            </div>
-          )}
-        </InventoryPageClient>
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-10 text-center">
+          <h2 className="text-lg font-semibold text-foreground">Error loading inventory</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Failed to load vehicles from UVS database. Check the console for details.
+          </p>
+        </div>
       </section>
     );
   }
 
-  let vehicles: InventoryVehicle[] = (data as InventoryVehicle[] | null) ?? [];
+  // Create a map of row data by vehicle ID for metadata
+  const rowsMap = new Map((rowsData || []).map((row: any) => [row.id, row]));
+
+  // Convert UVS vehicles to InventoryVehicle format with metadata
+  let vehicles: InventoryVehicle[] = uvsVehicles.map((vehicle) => {
+    const row = rowsMap.get(vehicle.id);
+    return convertUVSToInventoryVehicle(vehicle, row);
+  });
+
+  // Apply additional filters that need to check UVS structure
+  if (filters.bodyType.length > 0) {
+    vehicles = vehicles.filter((v) => {
+      const bodyType = v.body_type;
+      return bodyType && filters.bodyType.includes(bodyType);
+    });
+  }
+
+  if (filters.minMsrp !== null || filters.maxMsrp !== null) {
+    vehicles = vehicles.filter((v) => {
+      if (v.msrp === null) return false;
+      if (filters.minMsrp !== null && v.msrp < filters.minMsrp) return false;
+      if (filters.maxMsrp !== null && v.msrp > filters.maxMsrp) return false;
+      return true;
+    });
+  }
+
+  if (filters.daysOnLot !== 'any') {
+    vehicles = vehicles.filter((v) => {
+      const days = v.days_on_market;
+      if (days === null) return false;
+      if (filters.daysOnLot === '0-14') return days >= 0 && days <= 14;
+      if (filters.daysOnLot === '15-30') return days >= 15 && days <= 30;
+      if (filters.daysOnLot === '31+') return days >= 31;
+      return true;
+    });
+  }
+
+  if (filters.stockNumber) {
+    vehicles = vehicles.filter((v) => {
+      return v.stock_number?.toLowerCase().includes(filters.stockNumber.toLowerCase());
+    });
+  }
+
+  if (filters.vin) {
+    vehicles = vehicles.filter((v) => {
+      return v.vin?.toLowerCase().includes(filters.vin.toLowerCase());
+    });
+  }
 
   // Apply boolean filters (these require checking the data structure)
   if (filters.hasPhotos) {
@@ -244,85 +190,71 @@ export default async function InventoryPage({ searchParams }: Props) {
       (v) =>
         (v.photo_urls && v.photo_urls.length > 0) ||
         v.primary_photo_url ||
-        v.thumbnail_url ||
-        (v.raw &&
-          typeof v.raw === 'object' &&
-          'enriched' in v.raw &&
-          v.raw.enriched &&
-          typeof v.raw.enriched === 'object' &&
-          'media' in v.raw.enriched &&
-          v.raw.enriched.media &&
-          typeof v.raw.enriched.media === 'object' &&
-          'photo_links' in v.raw.enriched.media &&
-          Array.isArray(v.raw.enriched.media.photo_links) &&
-          v.raw.enriched.media.photo_links.length > 0)
+        v.thumbnail_url
     );
   }
 
   if (filters.hasSellerComments) {
     vehicles = vehicles.filter((v) => {
-      if (!v.raw || typeof v.raw !== 'object' || !('enriched' in v.raw)) {
-        return false;
-      }
-      const enriched = v.raw.enriched;
-      if (!enriched || typeof enriched !== 'object' || !('extra' in enriched)) {
-        return false;
-      }
-      const extra = enriched.extra;
-      return (
-        extra &&
-        typeof extra === 'object' &&
-        'seller_comments' in extra &&
-        extra.seller_comments &&
-        typeof extra.seller_comments === 'string' &&
-        extra.seller_comments.trim().length > 0
-      );
+      const vehicle = v.raw as any;
+      const enrichment = vehicle?.enrichment;
+      if (!enrichment?.providerSpecific) return false;
+      const providerData = enrichment.providerSpecific;
+      const marketcheck = providerData?.marketcheck;
+      const comments = marketcheck?.extra?.seller_comments;
+      return comments && typeof comments === 'string' && comments.trim().length > 0;
     });
   }
 
   if (filters.hasOptions) {
     vehicles = vehicles.filter((v) => {
-      if (!v.raw || typeof v.raw !== 'object' || !('enriched' in v.raw)) {
-        return false;
+      const vehicle = v.raw as any;
+      const packages = vehicle?.featuresPackages?.packages;
+      if (Array.isArray(packages) && packages.length > 0) return true;
+      const enrichment = vehicle?.enrichment;
+      if (enrichment?.providerSpecific) {
+        const marketcheck = enrichment.providerSpecific?.marketcheck;
+        const options = marketcheck?.extra?.options;
+        return Array.isArray(options) && options.length > 0;
       }
-      const enriched = v.raw.enriched;
-      if (!enriched || typeof enriched !== 'object' || !('extra' in enriched)) {
-        return false;
-      }
-      const extra = enriched.extra;
-      return (
-        extra &&
-        typeof extra === 'object' &&
-        'options' in extra &&
-        Array.isArray(extra.options) &&
-        extra.options.length > 0
-      );
+      return false;
     });
   }
 
-  // Get distinct body types for filter options (scoped to active dealership)
-  const { data: bodyTypeData } = await supabase
-    .from("inventory_vehicles")
-    .select("body_type")
-    .eq("dealership_id", activeDealershipId)
-    .not("body_type", "is", null);
+  // Apply condition filter if multiple conditions selected
+  if (filters.condition.length > 0 && filters.condition.length < 3) {
+    vehicles = vehicles.filter((v) => {
+      return v.condition && filters.condition.includes(v.condition);
+    });
+  }
 
+  // Get distinct body types from UVS vehicles
   const availableBodyTypes = Array.from(
     new Set(
-      (bodyTypeData || [])
+      vehicles
         .map((v) => v.body_type)
         .filter((bt): bt is string => typeof bt === "string" && bt.length > 0)
     )
   ).sort();
 
+  // Get active dealership to check if re-sync is available
+  const activeDealership = await getActiveDealership();
+
   return (
     <section className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
-        <p className="text-sm text-muted-foreground">
-          Review the vehicles imported from MarketCheck. Publish listings once you&apos;re ready to go live
-          inside ChatGPT.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2 flex-1">
+            <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
+            <p className="text-sm text-muted-foreground">
+              Review the vehicles imported from MarketCheck. Publish listings once you&apos;re ready to go live
+              inside ChatGPT.
+            </p>
+          </div>
+          {activeDealership?.marketcheckDealerId && (
+            <ResyncButton />
+          )}
+        </div>
       </header>
 
       <InventoryPageClient availableBodyTypes={availableBodyTypes} vehicles={vehicles}>
@@ -355,3 +287,4 @@ function EmptyState() {
     </div>
   );
 }
+

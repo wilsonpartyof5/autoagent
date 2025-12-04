@@ -39,6 +39,68 @@ type FetchAndIngestInput = {
 };
 
 /**
+ * Re-sync inventory for the active dealership
+ * Uses the dealership's stored MarketCheck dealer ID and settings
+ */
+export async function resyncInventory() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  // Get active dealership with MarketCheck settings
+  const activeDealershipId = await getActiveDealershipId();
+  
+  if (!activeDealershipId) {
+    throw new Error('No active dealership found. Please set up a dealership first.');
+  }
+
+  // Get full dealership data including marketcheck_source
+  const { data: dealershipData, error } = await supabase
+    .from('dealerships')
+    .select('marketcheck_dealer_id, marketcheck_zip, marketcheck_source')
+    .eq('id', activeDealershipId)
+    .maybeSingle();
+
+  if (error || !dealershipData) {
+    throw new Error('Failed to load dealership information.');
+  }
+
+  if (!dealershipData.marketcheck_dealer_id) {
+    throw new Error('No MarketCheck dealer ID configured for this dealership. Please set it up in Settings.');
+  }
+
+  // Use stored source or auto-detect for known dealers
+  const dealerSourceMap: Record<string, string> = {
+    '11042155': 'myrockhillgmc.com',
+  };
+  
+  const source = dealershipData.marketcheck_source || dealerSourceMap[dealershipData.marketcheck_dealer_id] || undefined;
+
+  // Use the new fetch-and-ingest endpoint
+  const result = await fetchAndIngestMarketCheckInventory({
+    dealerId: dealershipData.marketcheck_dealer_id,
+    source,
+    zip: dealershipData.marketcheck_zip || undefined,
+    radiusMiles: 50,
+    condition: 'all',
+  });
+
+  // Revalidate inventory page to show updated data
+  revalidatePath('/app/inventory');
+
+  return {
+    success: true,
+    fetched: result.fetched,
+    imported: result.imported,
+    valid: result.valid,
+    invalid: result.invalid,
+  };
+}
+
+/**
  * Fetch and ingest MarketCheck inventory via MCP server endpoint
  * This is the new automated flow that handles both fetching and ingestion in one call
  */
