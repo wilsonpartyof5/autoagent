@@ -2,6 +2,12 @@
   "buildCommand": "cd ../.. && npx -y pnpm@8.15.0 --filter @autoagent/shared build && npx -y pnpm@8.15.0 --filter @autoagent/dealer-dashboard build",
   "outputDirectory": ".next",
   "installCommand": "cd ../.. && npx -y pnpm@8.15.0 install --filter @autoagent/shared... --filter @autoagent/dealer-dashboard... --no-frozen-lockfile",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/ingest/nightly",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }
 

@@ -28,6 +28,126 @@ type SyncInput = {
   dealershipName?: string; // Optional dealership name for creating/updating dealership
 };
 
+type FetchAndIngestInput = {
+  dealerId: string;
+  source?: string;
+  zip?: string;
+  radiusMiles?: number;
+  condition?: 'all' | 'new' | 'used';
+  pageSize?: number;
+  page?: number;
+};
+
+/**
+ * Fetch and ingest MarketCheck inventory via MCP server endpoint
+ * This is the new automated flow that handles both fetching and ingestion in one call
+ */
+export async function fetchAndIngestMarketCheckInventory({
+  dealerId,
+  source,
+  zip,
+  radiusMiles = 50,
+  condition = 'all',
+  pageSize = 100,
+  page = 1,
+}: FetchAndIngestInput) {
+  if (!dealerId && !source) {
+    throw new Error('dealerId or source is required');
+  }
+
+  const mcpServerUrl = process.env.MCP_SERVER_URL || process.env.INGESTION_SERVICE_URL;
+  if (!mcpServerUrl) {
+    throw new Error('MCP_SERVER_URL or INGESTION_SERVICE_URL must be configured');
+  }
+
+  const ingestionToken = process.env.INGESTION_API_TOKEN || process.env.MCP_SERVER_TOKEN;
+  
+  const url = `${mcpServerUrl}/api/ingest/marketcheck/fetch-and-ingest`;
+  
+  try {
+    console.log('[fetchAndIngestMarketCheckInventory] Calling MCP fetch-and-ingest endpoint:', {
+      url: url.replace(ingestionToken || '', '***REDACTED***'),
+      dealerId,
+      source,
+      zip,
+      radiusMiles,
+      condition,
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ingestionToken ? { 'Authorization': `Bearer ${ingestionToken}` } : {}),
+      },
+      body: JSON.stringify({
+        dealerId,
+        source,
+        zip,
+        radiusMiles,
+        condition,
+        pageSize,
+        page,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `MCP fetch-and-ingest failed (${response.status})`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+        if (errorJson.details) {
+          errorMessage += `: ${errorJson.details}`;
+        }
+      } catch {
+        errorMessage += `: ${errorText.substring(0, 500)}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.error || 'Fetch and ingest failed');
+    }
+
+    const ingestion = result.ingestion || {};
+    const summary = ingestion.summary || {};
+
+    console.log('[fetchAndIngestMarketCheckInventory] Fetch and ingest complete:', {
+      dealerId,
+      source,
+      fetched: result.fetched || 0,
+      stored: summary.stored || 0,
+      valid: summary.valid || 0,
+      invalid: summary.invalid || 0,
+    });
+
+    // Note: Dealership sync status tracking would require additional fields in the dealerships table
+    // For now, sync completion is tracked via the ingestion results and logs
+
+    revalidatePath('/app/inventory');
+    revalidatePath('/app/setup');
+
+    return {
+      success: true,
+      fetched: result.fetched || 0,
+      imported: summary.stored || 0,
+      valid: summary.valid || 0,
+      invalid: summary.invalid || 0,
+      summary,
+    };
+  } catch (error) {
+    console.error('[fetchAndIngestMarketCheckInventory] Error:', {
+      dealerId,
+      source,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 export type DealerRooftop = {
   name: string;
   address: string;
@@ -129,6 +249,47 @@ export async function syncMarketCheckInventory({
     throw new Error('Enter your MarketCheck dealer ID before syncing.');
   }
 
+  // Use the new fetch-and-ingest endpoint for automated flow
+  try {
+    const result = await fetchAndIngestMarketCheckInventory({
+      dealerId: dealerId.trim(),
+      source,
+      zip: zip?.trim(),
+      radiusMiles,
+      condition,
+    });
+
+    // Update dealer profile to mark inventory as connected
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      try {
+        await updateDealerProfile({
+          dmsProvider: 'marketcheck',
+          inventoryConnected: result.imported > 0,
+        });
+      } catch (profileError) {
+        // Don't throw - allow sync to complete even if profile update fails
+        console.error('[syncMarketCheckInventory] Profile update failed:', profileError);
+      }
+    }
+
+    return {
+      imported: result.imported,
+      fetched: result.fetched,
+      valid: result.valid,
+      invalid: result.invalid,
+    };
+  } catch (error) {
+    // If fetch-and-ingest fails, log warning but continue with legacy flow for backward compatibility
+    console.warn('[syncMarketCheckInventory] Fetch-and-ingest failed, falling back to legacy sync:', {
+      error: error instanceof Error ? error.message : String(error),
+      dealerId,
+    });
+  }
+
+  // Legacy implementation (kept for backward compatibility if fetch-and-ingest fails)
   const apiKey = process.env.MARKETCHECK_API_KEY;
   if (!apiKey) {
     throw new Error('MarketCheck API key is not configured on the server.');
@@ -317,166 +478,149 @@ export async function syncMarketCheckInventory({
     }),
   );
 
-  console.log('[syncMarketCheckInventory] Starting normalization and mapping:', {
+  console.log('[syncMarketCheckInventory] Starting UVS ingestion pipeline:', {
     dealerId,
     zip: zip ?? null,
     enrichedListingsCount: enrichedListings.length,
     originalListingsCount: listings.length,
   });
 
-  const records: InventoryRecord[] = [];
-  let normalizationErrors = 0;
-  let validationErrors = 0;
+  // Use UVS ingestion service to normalize, validate, and store vehicles
+  const ingestionServiceUrl = process.env.MCP_SERVER_URL || process.env.INGESTION_SERVICE_URL || 'http://localhost:8787';
+  const ingestionToken = process.env.INGESTION_API_TOKEN || process.env.MCP_SERVER_TOKEN;
 
-  for (let index = 0; index < enrichedListings.length; index++) {
-    const enrichedListing = enrichedListings[index];
-    const originalListing = listings[index] as MarketCheckVehicle;
-    
-    try {
-    // Store enriched data in raw field for reference
-    const rawData = isEnrichmentEnabled() && enrichedListing !== originalListing
-      ? { original: originalListing, enriched: enrichedListing }
-      : originalListing;
-
-      const normalized = normalizeMarketCheckVehicle(enrichedListing);
-      
-      // Log first normalized vehicle for debugging
-      if (index === 0) {
-        console.log('[syncMarketCheckInventory] First normalized vehicle sample:', {
-          vin: normalized.vin,
-          year: normalized.year,
-          make: normalized.make,
-          model: normalized.model,
-          dealerName: normalized.dealer?.name,
-          hasDealer: !!normalized.dealer,
-        });
-      }
-
-      const record = mapVehicleToRecord(normalized, rawData, user.id, dealershipId);
-      records.push(record);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[syncMarketCheckInventory] Failed to process listing ${index}:`, {
-        error: errorMsg,
-        vin: enrichedListing?.vin || originalListing?.vin || 'unknown',
-        listingId: enrichedListing?.id || originalListing?.id || 'unknown',
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      
-      if (errorMsg.includes('validation') || errorMsg.includes('schema')) {
-        validationErrors++;
-      } else {
-        normalizationErrors++;
-      }
-    }
-  }
-
-  console.log('[syncMarketCheckInventory] Normalization and mapping complete:', {
-    dealerId,
-    zip: zip ?? null,
-    recordsCreated: records.length,
-    normalizationErrors,
-    validationErrors,
-    skippedCount: enrichedListings.length - records.length,
-  });
-
-  // Delete existing inventory for this dealership (not all user inventory)
-  const { error: deleteError } = await supabase
-    .from('inventory_vehicles')
-    .delete()
-    .eq('dealership_id', dealershipId);
-
-  if (deleteError) {
-    console.error('[inventory] failed to clear inventory', deleteError);
-  }
-
-  console.log('[syncMarketCheckInventory] Prepared records for insert:', {
-    dealerId,
-    zip: zip ?? null,
-    recordsCount: records.length,
-    firstRecordVin: records.length > 0 ? records[0]?.vin : null,
-  });
-
-  if (records.length > 0) {
-    const { data: insertData, error: insertError } = await supabase.from('inventory_vehicles').insert(records).select('vin, id');
-    
-    console.log('[syncMarketCheckInventory] Supabase insert result:', {
-      dealerId,
-      zip: zip ?? null,
-      recordsAttempted: records.length,
-      insertSuccess: !insertError,
-      insertError: insertError ? {
-        message: insertError.message,
-        code: insertError.code,
-        details: insertError.details,
-        hint: insertError.hint,
-      } : null,
-      insertedCount: insertData?.length ?? 0,
-      insertedVins: insertData?.map(r => r.vin) ?? [],
-    });
-    
-    if (insertError) {
-      console.error('[syncMarketCheckInventory] Supabase insert failed:', insertError);
-      throw new Error('Unable to store inventory in Supabase. Please try again.');
-    }
-  } else {
-    console.log('[syncMarketCheckInventory] No records to insert (listings array was empty)');
-  }
-
-  // Update dealer profile to mark inventory as connected
-  // Note: Dealership info is now stored in the dealerships table, not profiles
   try {
-    console.log('[syncMarketCheckInventory] Updating dealer profile:', {
+    console.log('[syncMarketCheckInventory] Calling UVS ingestion service:', {
+      url: `${ingestionServiceUrl}/api/ingest/marketcheck`,
+      vehicleCount: enrichedListings.length,
+      dealerId,
+    });
+
+    const ingestionResponse = await fetch(`${ingestionServiceUrl}/api/ingest/marketcheck`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ingestionToken ? { 'Authorization': `Bearer ${ingestionToken}` } : {}),
+      },
+      body: JSON.stringify({
+        vehicles: enrichedListings,
+        options: {
+          provider: 'marketcheck',
+          dealerId,
+          dataSource: 'marketcheck-api',
+          deletionStrategy: 'mark_unavailable', // Mark vehicles as unavailable if not in new data
+          timeoutMs: 30000,
+          batchSize: 100,
+          continueOnError: true,
+        },
+      }),
+    });
+
+    if (!ingestionResponse.ok) {
+      const errorText = await ingestionResponse.text().catch(() => 'Unable to read error response');
+      console.error('[syncMarketCheckInventory] Ingestion service error:', {
+        status: ingestionResponse.status,
+        statusText: ingestionResponse.statusText,
+        body: errorText.substring(0, 500),
+      });
+      throw new Error(`Ingestion service failed (${ingestionResponse.status}): ${ingestionResponse.statusText}`);
+    }
+
+    const ingestionResult = await ingestionResponse.json();
+
+    console.log('[syncMarketCheckInventory] UVS ingestion complete:', {
       dealerId,
       zip: zip ?? null,
-      inventoryConnected: records.length > 0,
-      userId: user.id,
-      dealershipId,
+      summary: ingestionResult.summary,
+      invalidVehicles: ingestionResult.invalidVehicles?.length || 0,
     });
 
-    await updateDealerProfile({
-      dmsProvider: 'marketcheck',
-      inventoryConnected: records.length > 0,
-    });
+    if (!ingestionResult.success) {
+      const errors = ingestionResult.errors || [];
+      throw new Error(`Ingestion failed: ${errors.join(', ')}`);
+    }
 
-    console.log('[syncMarketCheckInventory] Profile update successful');
-  } catch (profileError) {
-    console.error('[syncMarketCheckInventory] Profile update failed:', {
-      error: profileError instanceof Error ? profileError.message : String(profileError),
-      stack: profileError instanceof Error ? profileError.stack : undefined,
-      name: profileError instanceof Error ? profileError.name : undefined,
-      userId: user.id,
-      dealerId,
-      zip: zip ?? null,
-    });
-    // Don't throw - allow sync to complete even if profile update fails
-    // The inventory sync was successful, profile update is secondary
-  }
+    const storedCount = ingestionResult.summary?.stored || 0;
+    const validCount = ingestionResult.summary?.valid || 0;
+    const invalidCount = ingestionResult.summary?.invalid || 0;
 
-  revalidatePath('/app/setup');
-  revalidatePath('/app/leads');
-  revalidatePath('/app/inventory');
+    if (storedCount === 0 && enrichedListings.length > 0) {
+      console.warn('[syncMarketCheckInventory] No vehicles were stored:', {
+        dealerId,
+        validCount,
+        invalidCount,
+        errors: ingestionResult.errors,
+      });
+    }
 
-  if (records.length > 0) {
+    // Update dealer profile to mark inventory as connected
+    // Note: Dealership info is now stored in the dealerships table, not profiles
+    try {
+      console.log('[syncMarketCheckInventory] Updating dealer profile:', {
+        dealerId,
+        zip: zip ?? null,
+        inventoryConnected: storedCount > 0,
+        userId: user.id,
+        dealershipId,
+      });
+
+      await updateDealerProfile({
+        dmsProvider: 'marketcheck',
+        inventoryConnected: storedCount > 0,
+      });
+
+      console.log('[syncMarketCheckInventory] Profile update successful');
+    } catch (profileError) {
+      console.error('[syncMarketCheckInventory] Profile update failed:', {
+        error: profileError instanceof Error ? profileError.message : String(profileError),
+        stack: profileError instanceof Error ? profileError.stack : undefined,
+        name: profileError instanceof Error ? profileError.name : undefined,
+        userId: user.id,
+        dealerId,
+        zip: zip ?? null,
+      });
+      // Don't throw - allow sync to complete even if profile update fails
+      // The inventory sync was successful, profile update is secondary
+    }
+
+    revalidatePath('/app/setup');
+    revalidatePath('/app/leads');
+    revalidatePath('/app/inventory');
+
+    // Log ingestion summary
+    const summary = ingestionResult.summary || {};
     console.log(
       JSON.stringify({
-        event: 'inventory_sync',
+        event: 'inventory_sync_uvs',
         provider: 'marketcheck',
         dealerId,
-        records: records.length,
+        fetched: enrichedListings.length,
+        valid: summary.valid || 0,
+        invalid: summary.invalid || 0,
+        stored: summary.stored || 0,
+        deleted: summary.deleted || 0,
+        markedUnavailable: summary.markedUnavailable || 0,
         enrichmentEnabled,
         enrichedCount,
         skippedCount,
-        lastSyncedAt: records[0]?.last_synced_at ?? new Date().toISOString(),
-        syncStatus: records[0]?.sync_status ?? 'success',
       }),
     );
-  }
 
-  return {
-    success: true,
-    imported: records.length,
-  };
+    return {
+      success: true,
+      imported: summary.stored || 0,
+    };
+  } catch (ingestionError) {
+    const errorMsg = ingestionError instanceof Error ? ingestionError.message : String(ingestionError);
+    console.error('[syncMarketCheckInventory] UVS ingestion failed, falling back to legacy sync:', {
+      error: errorMsg,
+      dealerId,
+    });
+
+    // Fallback: If ingestion service is unavailable, log warning and return error
+    // Don't fall back to old inventory_vehicles table - require UVS pipeline
+    throw new Error(`UVS ingestion pipeline failed: ${errorMsg}. Please ensure the MCP server is running and accessible.`);
+  }
 }
 
 type InventoryRecord = {
