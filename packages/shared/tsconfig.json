@@ -12,7 +12,17 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "verbatimModuleSyntax": false
+    "verbatimModuleSyntax": false,
+    "paths": {
+      "./uvs": ["./uvs.ts"],
+      "./uvs-provider-schemas": ["./uvs-provider-schemas.ts"],
+      "./analytics": ["./analytics.ts"],
+      "./analytics-validators": ["./analytics-validators.ts"],
+      "./analytics-tracking-core": ["./analytics-tracking-core.ts"],
+      "./types": ["./types.ts"],
+      "./marketcheck": ["./marketcheck.ts"],
+      "./marketcheck-enrichment": ["./marketcheck-enrichment.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
