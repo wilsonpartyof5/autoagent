@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import type { UnifiedVehicle } from './uvs';
+import type { UnifiedVehicle } from './uvs.js';
 
 /**
  * Fuel type enum - matches UVS schema
