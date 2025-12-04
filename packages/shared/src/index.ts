@@ -1,6 +1,6 @@
-export * from './types.js';
-export * from './marketcheck.js';
-export * from './marketcheck-enrichment.js';
+export * from './types';
+export * from './marketcheck';
+export * from './marketcheck-enrichment';
 // Export UVS types (using explicit exports to avoid conflicts)
 export type {
   UnifiedVehicle,
@@ -33,8 +33,8 @@ export type {
   Measurement,
   Engine,
   Transmission,
-} from './uvs.js';
-export { isUnifiedVehicle } from './uvs.js';
+} from './uvs';
+export { isUnifiedVehicle } from './uvs';
 // Export strict UVS provider schemas and validators
 export {
   validateStrictUVS,
@@ -52,17 +52,17 @@ export {
   OdometerUnitEnum,
   ConditionEnum,
   VehicleTypeEnum,
-} from './uvs-provider-schemas.js';
+} from './uvs-provider-schemas';
 export type {
   StrictValidationResult,
   StrictUVSProvider,
-} from './uvs-provider-schemas.js';
+} from './uvs-provider-schemas';
 // Export analytics types and functions
-export type { EventName, EventPayload } from './analytics.js';
-export { generateEventId, generateSessionId, generateRequestId } from './analytics.js';
-export * from './analytics.js';
+export type { EventName, EventPayload } from './analytics';
+export { generateEventId, generateSessionId, generateRequestId } from './analytics';
+export * from './analytics';
 // Export analytics validators
-export * from './analytics-validators.js';
+export * from './analytics-validators';
 // Export unified tracking core
-export { validateRequiredIds, prepareEventForInsert, REQUIRED_IDS } from './analytics-tracking-core.js';
-export * from './analytics-tracking-core.js';
+export { validateRequiredIds, prepareEventForInsert, REQUIRED_IDS } from './analytics-tracking-core';
+export * from './analytics-tracking-core';
