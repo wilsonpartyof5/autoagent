@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   title: "Dealer Dashboard | AutoAgent",
 };
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
+
 const navItems = [
   { href: "/app/leads", label: "Leads", icon: "leads" as const },
   { href: "/app/analytics", label: "Analytics", icon: "analytics" as const },
