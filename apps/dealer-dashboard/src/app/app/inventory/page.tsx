@@ -6,7 +6,7 @@ import { VehicleCard } from "@/components/dashboard/inventory/vehicle-card";
 import { ResyncButton } from "@/components/dashboard/inventory/resync-button";
 import { parseFiltersFromSearchParams } from "@/types/inventoryFilters";
 import { getActiveDealershipId, getActiveDealership } from "@/lib/supabase/dealerships";
-import { searchUVSVehicles, convertUVSToInventoryVehicle, type UVSVehicleSearchFilters } from "../../../lib/db/uvs-vehicles";
+import { searchUVSVehicles, convertUVSToInventoryVehicle, type UVSVehicleSearchFilters } from "@/lib/db/uvs-vehicles";
 
 export type InventoryVehicle = {
   id: string;
