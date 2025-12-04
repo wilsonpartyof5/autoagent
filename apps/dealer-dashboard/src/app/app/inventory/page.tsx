@@ -180,8 +180,9 @@ export default async function InventoryPage({ searchParams }: Props) {
   }
 
   if (filters.vin) {
+    const vinLower = filters.vin.toLowerCase();
     vehicles = vehicles.filter((v) => {
-      return v.vin?.toLowerCase().includes(filters.vin.toLowerCase());
+      return v.vin?.toLowerCase().includes(vinLower);
     });
   }
 
