@@ -13,18 +13,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "verbatimModuleSyntax": false,
-    "allowJs": true,
-    "paths": {
-      "./uvs.js": ["./src/uvs.ts"],
-      "./uvs-provider-schemas.js": ["./src/uvs-provider-schemas.ts"],
-      "./analytics.js": ["./src/analytics.ts"],
-      "./analytics-validators.js": ["./src/analytics-validators.ts"],
-      "./analytics-tracking-core.js": ["./src/analytics-tracking-core.ts"],
-      "./marketcheck.js": ["./src/marketcheck.ts"],
-      "./marketcheck-enrichment.js": ["./src/marketcheck-enrichment.ts"],
-      "./index.js": ["./src/index.ts"]
-    }
+    "verbatimModuleSyntax": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

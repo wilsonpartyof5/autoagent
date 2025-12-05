@@ -107,6 +107,8 @@ export const SearchParamsSchema = z.object({
   make: z.string().optional(),
   model: z.string().optional(),
   radiusMiles: z.number().positive().max(500).optional(),
+  bodyStyle: z.string().optional(),
+  mileageMax: z.number().positive().optional(),
 });
 
 // TypeScript types derived from schemas
