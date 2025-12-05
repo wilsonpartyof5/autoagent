@@ -460,8 +460,17 @@ export function convertUVSToInventoryVehicle(vehicle: UnifiedVehicle, row?: {
   sync_error: string | null;
 } {
   const dealer = vehicle.location?.dealer;
-  const features = vehicle.featuresPackages?.features 
-    ? vehicle.featuresPackages.features.map(f => typeof f === 'string' ? f : f.name || String(f)).filter(Boolean)
+  const rawFeatures = vehicle.featuresPackages?.features;
+  const features = Array.isArray(rawFeatures)
+    ? rawFeatures
+        .map((f) =>
+          typeof f === 'string'
+            ? f
+            : f && typeof f === 'object' && 'name' in f
+            ? (f as { name?: string }).name ?? ''
+            : ''
+        )
+        .filter(Boolean)
     : null;
   
   return {
@@ -479,16 +488,18 @@ export function convertUVSToInventoryVehicle(vehicle: UnifiedVehicle, row?: {
     body_type: vehicle.coreSpecs?.bodyType || null,
     drivetrain: vehicle.coreSpecs?.drivetrain || null,
     fuel_type: vehicle.coreSpecs?.fuelType || null,
-    transmission: vehicle.coreSpecs?.transmissionType || null,
+    transmission: vehicle.coreSpecs?.transmission?.type || null,
     interior_color: vehicle.featuresPackages?.interiorColor || null,
     exterior_color: vehicle.featuresPackages?.exteriorColor || null,
     certified: vehicle.condition === 'certified' || null,
     features,
-    market_average_price: vehicle.marketData?.averagePrice ? Number(vehicle.marketData.averagePrice) : null,
-    days_on_market: vehicle.marketData?.daysOnMarket || null,
+    market_average_price: vehicle.marketData?.marketAveragePrice ? Number(vehicle.marketData.marketAveragePrice) : null,
+    days_on_market: vehicle.availability?.daysOnMarket ?? null,
     thumbnail_url: vehicle.media?.thumbnailUrl || null,
     primary_photo_url: vehicle.media?.primaryPhotoUrl || vehicle.media?.images?.[0]?.url || null,
-    photo_urls: vehicle.media?.photoUrls || vehicle.media?.images?.map(img => img.url) || null,
+    photo_urls: vehicle.media?.photoUrls
+      ? [...vehicle.media.photoUrls]
+      : vehicle.media?.images?.map(img => img.url) || null,
     dealer_name: dealer?.name || null,
     dealer_address: dealer?.address || null,
     dealer_city: dealer?.city || null,
@@ -505,4 +516,3 @@ export function convertUVSToInventoryVehicle(vehicle: UnifiedVehicle, row?: {
     sync_error: row?.sync_error || null,
   };
 }
-
