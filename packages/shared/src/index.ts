@@ -1,40 +1,13 @@
 export * from './types';
 export * from './marketcheck';
 export * from './marketcheck-enrichment';
-// Export UVS types (using explicit exports to avoid conflicts)
+// Export UVS types and functions (full export to ensure all types are available)
+export * from './uvs';
+// Explicit type exports for clarity (using aliases to avoid conflicts)
 export type {
-  UnifiedVehicle,
-  BaseIdentity,
-  CoreSpecs,
-  DimensionsPerformance,
-  Pricing,
-  PriceChange,
-  Financing,
-  FeaturesPackages,
   Package as UVSPackage,
   Option as UVSOption,
-  Warranty,
-  Media,
-  Image,
-  History,
-  ServiceRecord,
-  UVSDealer,
-  Location,
-  BusinessHours,
-  Availability,
-  MarketData,
-  MarketPriceRange,
-  DealerDefined,
-  Operational,
-  LeadTracking,
-  AIGenerated,
-  ThirdParty,
-  Enrichment,
-  Measurement,
-  Engine,
-  Transmission,
 } from './uvs';
-export { isUnifiedVehicle } from './uvs';
 // Export strict UVS provider schemas and validators
 export {
   validateStrictUVS,
