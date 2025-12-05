@@ -6,7 +6,7 @@
     "declaration": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -16,15 +16,14 @@
     "verbatimModuleSyntax": false,
     "allowJs": true,
     "paths": {
-      "./uvs.js": ["./uvs.ts"],
-      "./uvs-provider-schemas.js": ["./uvs-provider-schemas.ts"],
-      "./analytics.js": ["./analytics.ts"],
-      "./analytics-validators.js": ["./analytics-validators.ts"],
-      "./analytics-tracking-core.js": ["./analytics-tracking-core.ts"],
-      "./marketcheck.js": ["./marketcheck.ts"],
-      "./marketcheck-enrichment.js": ["./marketcheck-enrichment.ts"],
-      "./index.js": ["./index.ts"],
-      "./types.js": ["./types.ts"]
+      "./uvs.js": ["./src/uvs.ts"],
+      "./uvs-provider-schemas.js": ["./src/uvs-provider-schemas.ts"],
+      "./analytics.js": ["./src/analytics.ts"],
+      "./analytics-validators.js": ["./src/analytics-validators.ts"],
+      "./analytics-tracking-core.js": ["./src/analytics-tracking-core.ts"],
+      "./marketcheck.js": ["./src/marketcheck.ts"],
+      "./marketcheck-enrichment.js": ["./src/marketcheck-enrichment.ts"],
+      "./index.js": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*"],
