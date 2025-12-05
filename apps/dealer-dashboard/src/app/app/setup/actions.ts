@@ -156,16 +156,29 @@ export async function fetchAndIngestMarketCheckInventory({
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `MCP fetch-and-ingest failed (${response.status})`;
+      let errorDetails: any = {
+        status: response.status,
+        statusText: response.statusText,
+        url: url.replace(ingestionToken || '', '***REDACTED***'),
+      };
+      
       try {
         const errorJson = JSON.parse(errorText);
         errorMessage = errorJson.error || errorMessage;
         if (errorJson.details) {
           errorMessage += `: ${errorJson.details}`;
         }
+        errorDetails.responseBody = errorJson;
       } catch {
         errorMessage += `: ${errorText.substring(0, 500)}`;
+        errorDetails.responseText = errorText.substring(0, 1000);
       }
-      throw new Error(errorMessage);
+      
+      console.error('[fetchAndIngestMarketCheckInventory] API error response:', errorDetails);
+      const fullError = new Error(errorMessage);
+      (fullError as any).status = response.status;
+      (fullError as any).responseBody = errorDetails;
+      throw fullError;
     }
 
     const result = await response.json();
@@ -205,7 +218,13 @@ export async function fetchAndIngestMarketCheckInventory({
       dealerId,
       source,
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
     });
+    // Log full error details for debugging
+    if (error instanceof Error) {
+      console.error('[fetchAndIngestMarketCheckInventory] Full error stack:', error.stack);
+    }
     throw error;
   }
 }
