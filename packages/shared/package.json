@@ -5,18 +5,6 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "./analytics.js": ["./src/analytics.d.ts"],
-      "./analytics-validators.js": ["./src/analytics-validators.d.ts"],
-      "./analytics-tracking-core.js": ["./src/analytics-tracking-core.d.ts"],
-      "./uvs.js": ["./src/uvs.d.ts"],
-      "./uvs-provider-schemas.js": ["./src/uvs-provider-schemas.d.ts"],
-      "./marketcheck.js": ["./src/marketcheck.d.ts"],
-      "./marketcheck-enrichment.js": ["./src/marketcheck-enrichment.d.ts"],
-      "./index.js": ["./src/index.ts"]
-    }
-  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
