@@ -1,41 +1,20 @@
 import sodium from 'libsodium-wrappers';
+import { CONFIG } from '../config/env';
 
 let encryptionKey: Uint8Array | null = null;
 
 /**
- * Initialize encryption key from environment or generate one
+ * Initialize encryption key from configuration
+ * Key is validated at startup via CONFIG.leadEncKey
  */
 function initializeKey(): Uint8Array {
   if (encryptionKey) {
     return encryptionKey;
   }
 
-  const keyBase64 = process.env.LEAD_ENC_KEY;
+  // CONFIG.leadEncKey is already validated (base64, 32 bytes) at startup
+  encryptionKey = new Uint8Array(Buffer.from(CONFIG.leadEncKey, 'base64'));
   
-  if (keyBase64) {
-    try {
-      encryptionKey = new Uint8Array(Buffer.from(keyBase64, 'base64'));
-      if (encryptionKey.length !== 32) {
-        throw new Error('LEAD_ENC_KEY must be 32 bytes (base64 encoded)');
-      }
-    } catch (error) {
-      console.error('Invalid LEAD_ENC_KEY:', error);
-      throw new Error('LEAD_ENC_KEY must be valid base64 and 32 bytes');
-    }
-  } else {
-    // Generate a random key for development
-    if (process.env.NODE_ENV !== 'production') {
-      const randomKey = crypto.getRandomValues(new Uint8Array(32));
-      encryptionKey = randomKey;
-      const keyBase64 = Buffer.from(randomKey).toString('base64');
-      console.warn('⚠️  LEAD_ENC_KEY not set. Generated random key for development:');
-      console.warn(`   Add this to your .env file: LEAD_ENC_KEY=${keyBase64}`);
-      console.warn('   ⚠️  This key will change on restart - use a persistent key in production!');
-    } else {
-      throw new Error('LEAD_ENC_KEY must be set in production');
-    }
-  }
-
   return encryptionKey;
 }
 

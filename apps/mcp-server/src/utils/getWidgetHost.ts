@@ -1,7 +1,9 @@
+import { CONFIG } from '../config/env';
+
+/**
+ * Get the widget host URL from configuration
+ * @deprecated Use CONFIG.widgetHost directly instead
+ */
 export function getWidgetHost(): string {
-  const host = process.env.WIDGET_HOST;
-  if (!host) {
-    throw new Error('WIDGET_HOST environment variable is required (e.g., https://autoagentmcp-server-production.up.railway.app)');
-  }
-  return host.replace(/\/$/, '');
+  return CONFIG.widgetHost;
 }

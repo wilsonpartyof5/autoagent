@@ -1,4 +1,5 @@
-import { validateToolResult } from '../lib/responseShape.js';
+import { validateToolResult } from '../lib/responseShape';
+import { getWidgetHost } from '../utils/getWidgetHost';
 
 /**
  * Ping UI tool for ChatGPT App validation
@@ -15,7 +16,7 @@ export async function pingUi(): Promise<{
   try {
     const { randomUUID } = await import('crypto');
     const runId = randomUUID();
-    const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
+    const widgetHost = getWidgetHost();
     
     // Build URL using URL API to ensure proper encoding
     const widgetUrl = new URL('/widget/ping', widgetHost);

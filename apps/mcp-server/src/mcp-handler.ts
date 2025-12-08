@@ -1,9 +1,9 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple';
 
 /**
  * Handle MCP protocol requests
  */
-export async function handleMcpRequest(body: unknown, context?: { ipAddress?: string; widgetState?: unknown }) {
+export async function handleMcpRequest(body: unknown, context?: { widgetState?: unknown; ipAddress?: string | undefined }) {
   try {
     const request = body as { 
       jsonrpc?: string; 
@@ -186,6 +186,20 @@ export async function handleMcpRequest(body: unknown, context?: { ipAddress?: st
     }
   } catch (error) {
     console.error('MCP handler error:', error);
+    
+    // Track system error
+    const { trackSystemError } = await import('./lib/analytics/tracking');
+    trackSystemError(
+      'mcp_handler_error',
+      error instanceof Error ? error.message : 'Unknown error',
+      'mcp-handler',
+      {
+        requestId: (body as { id?: string })?.id?.toString(),
+      }
+    ).catch(() => {
+      // Ignore tracking errors
+    });
+    
     return {
       jsonrpc: '2.0',
       id: (body as { id?: unknown })?.id || null,

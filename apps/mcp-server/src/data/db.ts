@@ -21,13 +21,17 @@ function getDatabase(): Database.Database {
   const dbPath = path.join(dataDir, 'autoagent.db');
   db = new Database(dbPath);
 
-  // Create leads table
+  // Create leads table (UVS-first schema)
   db.exec(`
     CREATE TABLE IF NOT EXISTS leads (
       id TEXT PRIMARY KEY,
-      dealerId TEXT,
+      uvs_vehicle_id TEXT NOT NULL,
+      uvs_dealer_id TEXT,
       vehicleId TEXT NOT NULL,
-      vin TEXT,
+      dealerId TEXT,
+      vin TEXT NOT NULL,
+      price NUMERIC NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
       encPayload TEXT NOT NULL,
       consent INTEGER NOT NULL,
       createdAt INTEGER NOT NULL,
@@ -49,26 +53,60 @@ function getDatabase(): Database.Database {
     // Column already exists, ignore error
   }
 
+  // Add UVS FK columns if they don't exist (for existing databases)
+  try {
+    db.exec('ALTER TABLE leads ADD COLUMN uvs_vehicle_id TEXT');
+  } catch {
+    // Column already exists, ignore error
+  }
+
+  try {
+    db.exec('ALTER TABLE leads ADD COLUMN uvs_dealer_id TEXT');
+  } catch {
+    // Column already exists, ignore error
+  }
+
+  // Add pricing columns if they don't exist
+  try {
+    db.exec('ALTER TABLE leads ADD COLUMN price NUMERIC');
+  } catch {
+    // Column already exists, ignore error
+  }
+
+  try {
+    db.exec('ALTER TABLE leads ADD COLUMN currency TEXT DEFAULT "USD"');
+  } catch {
+    // Column already exists, ignore error
+  }
+
   return db;
 }
 
 /**
- * Insert a new lead
+ * Insert a new lead (UVS-first)
  */
 export function insertLead({
   id,
+  uvsVehicleId,
+  uvsDealerId,
   dealerId,
   vehicleId,
   vin,
+  price,
+  currency,
   encPayload,
   consent,
   createdAt,
   ipAddress,
 }: {
   id: string;
-  dealerId?: string;
+  uvsVehicleId: string; // FK to uvs_vehicles.id
+  uvsDealerId?: string; // FK to uvs_vehicles.dealer_id
+  dealerId?: string; // Keep for backward compatibility
   vehicleId: string;
-  vin?: string;
+  vin: string;
+  price: number;
+  currency: string;
   encPayload: string;
   consent: boolean;
   createdAt: number;
@@ -77,11 +115,27 @@ export function insertLead({
   const database = getDatabase();
   
   const stmt = database.prepare(`
-    INSERT INTO leads (id, dealerId, vehicleId, vin, encPayload, consent, createdAt, ipAddress)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO leads (
+      id, uvs_vehicle_id, uvs_dealer_id, dealerId, vehicleId, vin, 
+      price, currency, encPayload, consent, createdAt, ipAddress
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
-  stmt.run(id, dealerId, vehicleId, vin, encPayload, consent ? 1 : 0, createdAt, ipAddress);
+  stmt.run(
+    id,
+    uvsVehicleId,
+    uvsDealerId || null,
+    dealerId || null,
+    vehicleId,
+    vin,
+    price,
+    currency,
+    encPayload,
+    consent ? 1 : 0,
+    createdAt,
+    ipAddress || null
+  );
 }
 
 /**

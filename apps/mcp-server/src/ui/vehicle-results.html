@@ -4,7 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoAgent Vehicle Search</title>
+    <!--
+        UVS-Only Widget - Tool-Driven Lead Submission
+        
+        DATA SOURCING:
+        - Vehicle data: Exclusively from structuredContent returned by MCP tools (search-vehicles)
+        - Globals: Synchronized via set_globals event (rid, locale, user, session)
+        - No query-string JSON blobs, no MarketCheck/raw provider data
+        - URL params: Only minimal routing (rid, diag) - no vehicle data
+        
+        LEAD SUBMISSION:
+        - Uses window.openai.callTool("submit-lead", payload) - no direct POSTs
+        - Payload includes: vehicleId, vin, dealerId, dealerName, pricing.price, pricing.currency, user, consent
+        - All fields extracted from UVS structure in structuredContent/globals
+        
+        ANALYTICS:
+        - No PII in analytics events (no VIN, no user data)
+        - Only UVS IDs and metadata (vehicleId, dealerId, year, make, model, price)
+    -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root {
             --bg: #111;
@@ -676,6 +695,125 @@
             display: none;
         }
 
+        /* Thumbnail mode */
+        .thumbnail-mode {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .thumbnail-mode.hidden {
+            display: none;
+        }
+
+        .thumbnail-map {
+            flex: 1;
+            position: relative;
+            min-height: 300px;
+        }
+
+        .thumbnail-map #thumbnailMap {
+            width: 100%;
+            height: 100%;
+        }
+
+        .thumbnail-featured {
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            padding: 16px;
+            max-height: 200px;
+        }
+
+        .featured-card {
+            display: flex;
+            gap: 12px;
+            background: var(--bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .featured-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px var(--shadow);
+        }
+
+        .featured-image {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+
+        .featured-content {
+            flex: 1;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .featured-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .featured-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .featured-dealer {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .expand-button {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px var(--shadow);
+            transition: all 0.2s;
+            z-index: 1001;
+        }
+
+        .expand-button:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px var(--shadow);
+        }
+
+        .price-pin {
+            background: var(--accent);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 2px solid white;
+        }
+
+        .full-view.hidden {
+            display: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .filter-pills {
@@ -697,6 +835,11 @@
             .lead-form {
                 padding: 16px;
             }
+
+            .featured-image {
+                width: 100px;
+                height: 100px;
+            }
         }
     </style>
 </head>
@@ -704,25 +847,77 @@
     <script>
     (function(){
       const params = new URLSearchParams(location.search);
-      const RID = params.get('rid') || 'none';
       const DIAG = params.get('diag') === '1';
       const T0 = performance.now();
       let emitted = false;
       const MAX_WAIT_MS = 5000, INTERVAL_MS = 150;
 
+      // GLOBALS store for OpenAI Apps SDK (make it globally accessible)
+      window.GLOBALS = {
+        rid: params.get('rid') || null,
+        locale: 'en',
+        user: {},
+        session: {}
+      };
+      const GLOBALS = window.GLOBALS;
+
+      // Update globals and acknowledge
+      function updateGlobals(payload) {
+        if (!payload) return;
+        if (payload.rid) GLOBALS.rid = payload.rid;
+        if (payload.locale) GLOBALS.locale = payload.locale;
+        if (payload.user) GLOBALS.user = payload.user;
+        if (payload.session) GLOBALS.session = payload.session;
+        log('globals updated', GLOBALS);
+        
+        // Dispatch custom event for widget to react
+        window.dispatchEvent(new CustomEvent('aa:globals', { detail: GLOBALS }));
+        
+        // Acknowledge globals to OpenAI
+        if (window.openai?.emitToolEvent && GLOBALS.rid) {
+          try {
+            window.openai.emitToolEvent('ui:ack_globals', { rid: GLOBALS.rid });
+            log('ui:ack_globals emitted', { rid: GLOBALS.rid });
+          } catch (e) {
+            log('ERR ack_globals', e?.message || e);
+          }
+        }
+      }
+
+      // Listen for set_globals via OpenAI SDK
+      if (window.openai?.on) {
+        window.openai.on('set_globals', evt => {
+          const globals = evt?.globals ?? evt;
+          updateGlobals(globals);
+        });
+      }
+
+      // Fallback: listen for postMessage (legacy openai:set_globals)
+      window.addEventListener('message', evt => {
+        if (evt.data?.type === 'openai:set_globals') {
+          updateGlobals(evt.data?.globals);
+        }
+      });
+
       function post(path, body){
-        try{ fetch(`${path}?rid=${encodeURIComponent(RID)}`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});}catch(_){}
+        const rid = GLOBALS.rid || 'none';
+        try{ fetch(`${path}?rid=${encodeURIComponent(rid)}`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});}catch(_){}
       }
       function log(...a){
         try{ (window.__log ||= []).push({t:performance.now(),m:a.join(' ')}); post('/widget/console', window.__log); }catch(_){}
       }
       function beacon(tag, extra){
-        post('/widget/beacon', Object.assign({ rid: RID, tag, t: performance.now() }, extra||{}));
+        const rid = GLOBALS.rid || 'none';
+        post('/widget/beacon', Object.assign({ rid, tag, t: performance.now() }, extra||{}));
       }
       function getResults(){
         try{
           if (window.openai && window.openai.toolOutput) {
             return window.openai.toolOutput.structuredContent?.results || null;
+          }
+          if (window.openai && typeof window.openai.getContext === 'function') {
+            const context = window.openai.getContext();
+            return context?.structuredContent?.results || context?.results || null;
           }
         }catch(e){ log('ERR getResults', e?.message||e); }
         return window.__AA_MOCK__||null;
@@ -731,7 +926,8 @@
         if (emitted) return;
         if (!(window.openai && typeof window.openai.emitToolEvent==='function')) return;
         try{
-          window.openai.emitToolEvent('ui:ready', { ok:true, tag, rid: RID, elapsedMs: performance.now()-T0 });
+          const rid = GLOBALS.rid || 'none';
+          window.openai.emitToolEvent('ui:ready', { ok:true, tag, rid, elapsedMs: performance.now()-T0 });
           emitted = true;
           beacon('ui-ready:'+tag);
           log('ui:ready emitted', tag);
@@ -744,7 +940,8 @@
         if (DIAG){
           const el = document.createElement('div');
           el.id = 'diag';
-          el.textContent = `DIAG render (rid=${RID}) vehicles=${results.totalCount ?? results.vehicles?.length ?? 'n/a'}`;
+          const rid = GLOBALS.rid || 'none';
+          el.textContent = `DIAG render (rid=${rid}) vehicles=${results.totalCount ?? results.vehicles?.length ?? 'n/a'}`;
           el.setAttribute('data-aa-results','1');
           document.body.appendChild(el);
           requestAnimationFrame(()=> maybeEmitReady('rendered-diag'));
@@ -768,7 +965,12 @@
       window.addEventListener('error', e=>{ log('window.error', e?.message||e); beacon('error',{msg:e?.message||'error'}); });
       window.addEventListener('unhandledrejection', e=>{ log('unhandledrejection', String(e?.reason||e)); beacon('error',{msg:String(e?.reason||e)}); });
 
-      document.addEventListener('DOMContentLoaded', ()=>{ log('DOMContentLoaded', `rid=${RID}`, `diag=${DIAG}`); beacon('domcontentloaded'); heartbeat(); });
+      document.addEventListener('DOMContentLoaded', ()=>{ 
+        const rid = GLOBALS.rid || 'none';
+        log('DOMContentLoaded', `rid=${rid}`, `diag=${DIAG}`); 
+        beacon('domcontentloaded'); 
+        heartbeat(); 
+      });
       window.addEventListener('load', ()=>{ log('window.load'); beacon('window.load'); heartbeat(); });
 
       // extra environment breadcrumbs
@@ -779,24 +981,35 @@
     </script>
 
     <div class="container">
-        <!-- Map -->
-        <div class="map-container">
-            <div id="map"></div>
-            
-            <!-- Result chip -->
-            <div class="result-chip" id="resultChip" style="display: none;">
-                <span id="resultCount">0</span> matches • <span id="resultLocation">Loading...</span>
+        <!-- Thumbnail mode (initial view from structuredContent) -->
+        <div class="thumbnail-mode" id="thumbnailMode">
+            <div class="thumbnail-map">
+                <div id="thumbnailMap"></div>
+                <button class="expand-button" id="expandButton" onclick="expandToFullView()">Expand</button>
             </div>
-            
-            <!-- Filter pills -->
-            <div class="filter-pills">
-                <div class="filter-pill" data-filter="condition">Condition</div>
-                <div class="filter-pill" data-filter="price">Max Price</div>
-                <div class="filter-pill" data-filter="radius">Radius</div>
-                <div class="filter-pill" data-filter="make">Make/Model</div>
-                <div class="filter-pill" data-filter="filters">Filters</div>
-            </div>
+            <div class="thumbnail-featured" id="thumbnailFeatured"></div>
         </div>
+
+        <!-- Full view (existing functionality) -->
+        <div class="full-view" id="fullView">
+            <!-- Map -->
+            <div class="map-container">
+                <div id="map"></div>
+                
+                <!-- Result chip -->
+                <div class="result-chip" id="resultChip" style="display: none;">
+                    <span id="resultCount">0</span> matches • <span id="resultLocation">Loading...</span>
+                </div>
+                
+                <!-- Filter pills -->
+                <div class="filter-pills">
+                    <div class="filter-pill" data-filter="condition">Condition</div>
+                    <div class="filter-pill" data-filter="price">Max Price</div>
+                    <div class="filter-pill" data-filter="radius">Radius</div>
+                    <div class="filter-pill" data-filter="make">Make/Model</div>
+                    <div class="filter-pill" data-filter="filters">Filters</div>
+                </div>
+            </div>
 
         <!-- Bottom sheet -->
         <div class="bottom-sheet collapsed" id="bottomSheet" role="dialog" aria-expanded="false">
@@ -818,6 +1031,9 @@
             </div>
             <div class="drawer-content" id="drawerContent"></div>
         </div>
+
+        </div>
+        <!-- End full view -->
 
         <!-- Lead form modal -->
         <div class="lead-modal" id="leadModal">
@@ -877,11 +1093,21 @@
             const INTERVAL_MS = 200;      // poll interval for bridge/data
             let emitted = false;
             const startedAt = Date.now();
+            
+            // Access GLOBALS from window (defined in first script block)
+            const GLOBALS = window.GLOBALS || {
+                rid: new URLSearchParams(location.search).get('rid') || null,
+                locale: 'en',
+                user: {},
+                session: {}
+            };
 
             // ---- logging helpers ----
             function post(path, body){
                 try {
-                    fetch(path, {
+                    const rid = GLOBALS.rid || 'none';
+                    const url = path.includes('?') ? `${path}&rid=${encodeURIComponent(rid)}` : `${path}?rid=${encodeURIComponent(rid)}`;
+                    fetch(url, {
                         method:'POST',
                         headers:{'content-type':'application/json'},
                         body: JSON.stringify(body)
@@ -899,13 +1125,15 @@
             function errorLog(e){ try{ console.error('[vehicle-widget]', e); log('ERROR', e?.message||e); }catch(_){} }
 
             // ---- data access ----
+            // UVS-only: Get vehicle data exclusively from structuredContent returned by MCP tools
+            // No query-string JSON blobs, no MarketCheck/raw provider data
             function getResults() {
                 try {
                     if (window.openai && window.openai.toolOutput) {
                         return window.openai.toolOutput.structuredContent?.results || null;
                     }
                 } catch (e) { errorLog(e); }
-                // local dev fallback
+                // local dev fallback only
                 return window.__AA_MOCK__ || null;
             }
 
@@ -915,13 +1143,14 @@
                 const bridge = window.openai && typeof window.openai.emitToolEvent === 'function';
                 if (!bridge) return;
                 try {
+                    const rid = GLOBALS.rid || 'none';
                     window.openai.emitToolEvent('ui:ready', {
-                        ok: true, tag, ts: Date.now(), elapsedMs: Date.now() - startedAt
+                        ok: true, tag, rid, ts: Date.now(), elapsedMs: Date.now() - startedAt
                     });
                     emitted = true;
                     log('ui:ready emitted', tag);
                     // beacon for server visibility
-                    post('/widget/beacon', { tag: 'ui-ready:'+tag, ts: Date.now() });
+                    post('/widget/beacon', { tag: 'ui-ready:'+tag, rid, ts: Date.now() });
                 } catch (e) { errorLog(e); }
             }
 
@@ -929,6 +1158,17 @@
             function render() {
                 const results = getResults();
                 if (!results) return false;
+                
+                // Check if we should render thumbnail mode (from structuredContent)
+                const vehicles = results.vehicles || [];
+                if (vehicles.length > 0 && hasStructuredContentData(vehicles[0])) {
+                    renderThumbnailMode(vehicles);
+                    // after first paint, confirm ready again
+                    requestAnimationFrame(() => maybeEmitReady('rendered-thumbnail'));
+                    return true;
+                }
+                
+                // Otherwise render full view (existing functionality)
                 // TODO: your existing map/list render using `results`
                 // mark the container so MutationObserver can latch onto it if you want
                 // document.querySelector('#results')?.setAttribute('data-aa-results','1');
@@ -937,6 +1177,128 @@
                 requestAnimationFrame(() => maybeEmitReady('rendered'));
                 return true;
             }
+
+            // Check if vehicle has structuredContent fields (lat, lng, price, photoUrl, title, dealerName)
+            function hasStructuredContentData(vehicle) {
+                return !!(vehicle.lat && vehicle.lng && vehicle.price && (vehicle.photoUrl || vehicle.image) && vehicle.title && vehicle.dealerName);
+            }
+
+            // Render thumbnail mode from structuredContent
+            function renderThumbnailMode(vehicles) {
+                const thumbnailMode = document.getElementById('thumbnailMode');
+                const fullView = document.getElementById('fullView');
+                
+                if (!thumbnailMode || !fullView) return;
+                
+                // Show thumbnail, hide full view
+                thumbnailMode.classList.remove('hidden');
+                fullView.classList.add('hidden');
+                
+                // Initialize thumbnail map
+                initThumbnailMap(vehicles);
+                
+                // Render featured card (first vehicle)
+                renderFeaturedCard(vehicles[0]);
+            }
+
+            // Initialize thumbnail map with price pins
+            function initThumbnailMap(vehicles) {
+                const mapEl = document.getElementById('thumbnailMap');
+                if (!mapEl) return;
+                
+                // Filter vehicles with valid coordinates
+                const validVehicles = vehicles.filter(v => v.lat && v.lng);
+                if (validVehicles.length === 0) return;
+                
+                // Initialize Leaflet map
+                const map = L.map('thumbnailMap').setView([validVehicles[0].lat, validVehicles[0].lng], 10);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Add price pins
+                const markers = [];
+                validVehicles.forEach(vehicle => {
+                    const price = vehicle.price || 0;
+                    const title = vehicle.title || 'Vehicle';
+                    const dealerName = vehicle.dealerName || '';
+                    
+                    // Create custom marker with price label
+                    const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
+                    
+                    const marker = L.marker([vehicle.lat, vehicle.lng], {
+                        icon: L.divIcon({
+                            className: 'price-pin-marker',
+                            html: `<div class="price-pin">${priceText}</div>`,
+                            iconSize: [null, null],
+                            iconAnchor: [0, 0]
+                        })
+                    }).bindPopup(`
+                        <div style="text-align: center; min-width: 120px;">
+                            <strong>${title}</strong><br>
+                            <span style="color: #3b82f6; font-weight: bold;">${priceText}</span><br>
+                            <span style="font-size: 11px; color: #666;">${dealerName}</span>
+                        </div>
+                    `);
+                    
+                    markers.push(marker);
+                    marker.addTo(map);
+                });
+
+                // Fit map to show all markers
+                if (markers.length > 0) {
+                    const group = new L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+            }
+
+            // Render featured card
+            function renderFeaturedCard(vehicle) {
+                const featuredEl = document.getElementById('thumbnailFeatured');
+                if (!featuredEl || !vehicle) return;
+                
+                const photoUrl = vehicle.photoUrl || vehicle.image || '';
+                const title = vehicle.title || 'Vehicle';
+                const price = vehicle.price || 0;
+                const dealerName = vehicle.dealerName || '';
+                const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
+                
+                featuredEl.innerHTML = `
+                    <div class="featured-card" onclick="expandToFullView()">
+                        <img src="${photoUrl}" 
+                             alt="${title}" 
+                             class="featured-image"
+                             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
+                        <div class="featured-content">
+                            <div>
+                                <div class="featured-title">${title}</div>
+                                <div class="featured-price">${priceText}</div>
+                                <div class="featured-dealer">${dealerName}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Expand to full view
+            window.expandToFullView = function() {
+                const thumbnailMode = document.getElementById('thumbnailMode');
+                const fullView = document.getElementById('fullView');
+                
+                if (!thumbnailMode || !fullView) return;
+                
+                // Hide thumbnail, show full view
+                thumbnailMode.classList.add('hidden');
+                fullView.classList.remove('hidden');
+                
+                // Initialize full view if not already done
+                if (typeof window.initFullView === 'function') {
+                    setTimeout(() => {
+                        window.initFullView();
+                    }, 100);
+                }
+            };
 
             // ---- heartbeat: poll for bridge+data, never hang ----
             function heartbeat() {
@@ -981,6 +1343,75 @@
             if (!text || text.length <= maxLength) return text || '';
             return text.substring(0, maxLength) + '...';
         };
+
+        // UVS helper functions - extract fields from UVS structure
+        function getUVSYear(vehicle) {
+            return vehicle.baseIdentity?.year || vehicle.year;
+        }
+        function getUVSMake(vehicle) {
+            return vehicle.baseIdentity?.make || vehicle.make;
+        }
+        function getUVSModel(vehicle) {
+            return vehicle.baseIdentity?.model || vehicle.model;
+        }
+        function getUVSTrim(vehicle) {
+            return vehicle.baseIdentity?.trim || vehicle.trim;
+        }
+        function getUVSVIN(vehicle) {
+            return vehicle.baseIdentity?.vin || vehicle.vin;
+        }
+        function getUVSPrice(vehicle) {
+            return vehicle.pricing?.price || vehicle.price;
+        }
+        function getUVSMSRP(vehicle) {
+            return vehicle.pricing?.msrp || vehicle.msrp;
+        }
+        function getUVSCondition(vehicle) {
+            return vehicle.condition || (vehicle.miles ? 'used' : 'new');
+        }
+        function getUVSMiles(vehicle) {
+            return vehicle.coreSpecs?.miles || vehicle.coreSpecs?.kilometers 
+                ? (vehicle.coreSpecs.miles || (vehicle.coreSpecs.kilometers * 0.621371))
+                : vehicle.miles;
+        }
+        function getUVSPhotoUrls(vehicle) {
+            return vehicle.media?.photoUrls || vehicle.media?.images?.map(img => img.url) 
+                || vehicle.photoUrls || (vehicle.imageUrl ? [vehicle.imageUrl] : []);
+        }
+        function getUVSPrimaryPhoto(vehicle) {
+            return vehicle.media?.primaryPhotoUrl || vehicle.media?.images?.[0]?.url 
+                || vehicle.media?.thumbnailUrl || vehicle.primaryPhotoUrl || vehicle.imageUrl;
+        }
+        function getUVSDealer(vehicle) {
+            return vehicle.location?.dealer || vehicle.dealer;
+        }
+        function getUVSDealerName(vehicle) {
+            const dealer = getUVSDealer(vehicle);
+            return dealer?.name || null;
+        }
+        function getUVSDealerId(vehicle) {
+            const dealer = getUVSDealer(vehicle);
+            return dealer?.dealerId || null;
+        }
+        function getUVSPricing(vehicle) {
+            return vehicle.pricing || {};
+        }
+        function getUVSCurrency(vehicle) {
+            return vehicle.pricing?.currency || 'USD';
+        }
+        function getUVSFeatures(vehicle) {
+            const features = vehicle.featuresPackages?.features;
+            if (Array.isArray(features)) {
+                return features.map(f => typeof f === 'string' ? f : f.name || f).filter(Boolean);
+            }
+            return vehicle.features || [];
+        }
+        function getUVSExteriorColor(vehicle) {
+            return vehicle.featuresPackages?.exteriorColor || vehicle.exteriorColor;
+        }
+        function getUVSInteriorColor(vehicle) {
+            return vehicle.featuresPackages?.interiorColor || vehicle.interiorColor;
+        }
 
         // State management
         const state = {
@@ -1050,7 +1481,8 @@
             }
         ];
 
-        // Load data from OpenAI tool output with retry logic
+        // Load UVS vehicle data from structuredContent (returned by MCP tools)
+        // Hydrates exclusively from structuredContent/set_globals - no URL params or raw provider data
         function loadData() {
             let retryCount = 0;
             const maxRetries = 3;
@@ -1059,17 +1491,18 @@
                 try {
                     const results = getResults();
                     if (results) {
+                        // UVS vehicles from structuredContent
                         state.vehicles = results.vehicles || results;
                         state.query = results.searchParams || results.query || {};
-                        console.log('Data loaded successfully');
+                        console.log('UVS data loaded from structuredContent');
                     } else if (retryCount < maxRetries) {
                         retryCount++;
                         console.log(`Retrying data load (${retryCount}/${maxRetries})...`);
                         setTimeout(attemptLoad, 500);
                         return;
                     } else {
-                        // Final fallback to mock data
-                        console.log('Using fallback mock data');
+                        // Final fallback to mock data (dev only)
+                        console.log('Using fallback mock data (dev mode)');
                         state.vehicles = mockVehicles;
                         state.query = {
                             location: 'Seattle, WA',
@@ -1102,12 +1535,17 @@
 
             // Add markers for vehicles with coordinates
             state.vehicles.forEach(vehicle => {
-                if (vehicle.dealer.latitude && vehicle.dealer.longitude) {
-                    const marker = L.marker([vehicle.dealer.latitude, vehicle.dealer.longitude])
+                const dealer = getUVSDealer(vehicle);
+                if (dealer?.latitude && dealer?.longitude) {
+                    const year = getUVSYear(vehicle);
+                    const make = getUVSMake(vehicle);
+                    const model = getUVSModel(vehicle);
+                    const price = getUVSPrice(vehicle);
+                    const marker = L.marker([dealer.latitude, dealer.longitude])
                         .bindPopup(`
                             <div style="text-align: center;">
-                                <strong>${vehicle.year} ${vehicle.make} ${vehicle.model}</strong><br>
-                                <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(vehicle.price)}</span>
+                                <strong>${year} ${make} ${model}</strong><br>
+                                <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(price)}</span>
                             </div>
                         `)
                         .on('click', () => {
@@ -1165,28 +1603,37 @@
 
         // Create vehicle card HTML
         function createCardHTML(vehicle) {
-            // Prefer enriched photos if available (from structuredContent)
-            const photoUrls = vehicle.photoUrls || [];
-            const enrichedPrimaryPhoto = photoUrls[0] || vehicle.imageUrl;
-            const primaryPhoto = enrichedPrimaryPhoto || vehicle.imageUrl || '/placeholder-car.jpg';
+            // Extract UVS fields using helper functions
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const miles = getUVSMiles(vehicle);
+            const dealer = getUVSDealer(vehicle);
             
-            // Extract seller comments and options from structuredContent
-            const sellerComments = vehicle.sellerComments;
-            const optionPackages = vehicle.optionPackages || [];
+            // Get photo URLs from UVS structure
+            const photoUrls = getUVSPhotoUrls(vehicle);
+            const primaryPhoto = getUVSPrimaryPhoto(vehicle) || photoUrls[0] || '/placeholder-car.jpg';
+            
+            // Extract seller comments and options from UVS structure only
+            const sellerComments = vehicle.sellerComments || null;
+            const optionPackages = vehicle.optionPackages 
+                || vehicle.featuresPackages?.packages 
+                || [];
             
             return `
                 <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
                     <img src="${primaryPhoto}" 
-                         alt="${vehicle.year} ${vehicle.make} ${vehicle.model}" 
+                         alt="${year} ${make} ${model}" 
                          class="card-image"
                          onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
                     <div class="card-content">
                         <div class="card-header">
                             <div>
-                                <div class="vehicle-title">${vehicle.year} ${vehicle.make} ${vehicle.model}</div>
-                                <div class="vehicle-subtitle">${vehicle.miles ? vehicle.miles.toLocaleString() + ' miles' : 'New'}</div>
+                                <div class="vehicle-title">${year} ${make} ${model}</div>
+                                <div class="vehicle-subtitle">${miles ? miles.toLocaleString() + ' miles' : 'New'}</div>
                             </div>
-                            <div class="price-badge">${fmtPrice(vehicle.price)}</div>
+                            <div class="price-badge">${fmtPrice(price)}</div>
                         </div>
                         ${sellerComments ? `
                             <div class="seller-comments" title="${safeText(sellerComments)}">
@@ -1204,8 +1651,8 @@
                             </div>
                         ` : ''}
                         <div class="dealer-info">
-                            <div>${safeText(vehicle.dealer.name)}</div>
-                            ${vehicle.dealer.distanceMiles ? `<div class="distance">${vehicle.dealer.distanceMiles} mi away</div>` : ''}
+                            <div>${safeText(dealer?.name)}</div>
+                            ${dealer?.distanceMiles ? `<div class="distance">${dealer.distanceMiles} mi away</div>` : ''}
                         </div>
                     </div>
                 </article>
@@ -1236,48 +1683,64 @@
 
         // Open details drawer
         function openDetails(id) {
-            logEvent('card_click', { id });
-            
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
+            
+            // Track vehicle.click event (no PII)
+            logEvent('vehicle.click', { 
+                id,
+                vehicleId: vehicle.id,
+                source: 'widget_card',
+            });
 
             const drawer = el('detailsDrawer');
             const title = el('drawerTitle');
             const content = el('drawerContent');
 
-            title.textContent = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+            // Extract UVS fields
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const miles = getUVSMiles(vehicle);
+            const condition = getUVSCondition(vehicle);
+            const vin = getUVSVIN(vehicle);
+            const dealer = getUVSDealer(vehicle);
+            const features = getUVSFeatures(vehicle);
             
-            // Prefer enriched photos if available
-            const photoUrls = vehicle.photoUrls || [];
-            const enrichedPrimaryPhoto = photoUrls[0] || vehicle.imageUrl;
-            const drawerPhoto = enrichedPrimaryPhoto || vehicle.imageUrl || '/placeholder-car.jpg';
+            title.textContent = `${year} ${make} ${model}`;
             
-            // Extract enriched data
-            const sellerComments = vehicle.sellerComments;
-            const optionPackages = vehicle.optionPackages || [];
+            // Get photo from UVS structure
+            const drawerPhoto = getUVSPrimaryPhoto(vehicle) || '/placeholder-car.jpg';
+            
+            // Extract data from UVS structure only
+            const sellerComments = vehicle.sellerComments || null;
+            const optionPackages = vehicle.optionPackages 
+                || vehicle.featuresPackages?.packages 
+                || [];
             
             content.innerHTML = `
                 <img src="${drawerPhoto}" 
-                     alt="${vehicle.year} ${vehicle.make} ${vehicle.model}" 
+                     alt="${year} ${make} ${model}" 
                      class="drawer-image"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
                 
                 <div class="specs-grid">
                     <div class="spec-item">
                         <div class="spec-label">Year</div>
-                        <div class="spec-value">${vehicle.year}</div>
+                        <div class="spec-value">${year}</div>
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Mileage</div>
-                        <div class="spec-value">${vehicle.miles ? vehicle.miles.toLocaleString() + ' mi' : 'New'}</div>
+                        <div class="spec-value">${miles ? miles.toLocaleString() + ' mi' : 'New'}</div>
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Price</div>
-                        <div class="spec-value">${fmtPrice(vehicle.price)}</div>
+                        <div class="spec-value">${fmtPrice(price)}</div>
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Condition</div>
-                        <div class="spec-value">${vehicle.miles ? 'Used' : 'New'}</div>
+                        <div class="spec-value">${condition === 'new' ? 'New' : condition === 'certified' ? 'Certified' : 'Used'}</div>
                     </div>
                 </div>
 
@@ -1301,18 +1764,19 @@
                     </div>
                 ` : ''}
 
-                ${vehicle.features && vehicle.features.length > 0 ? `
+                ${features && features.length > 0 ? `
                     <div class="features">
                         <div class="features-title">Key Features</div>
                         <div class="feature-chips">
-                            ${vehicle.features.slice(0, 6).map(feature => `<span class="feature-chip">${feature}</span>`).join('')}
+                            ${features.slice(0, 6).map(feature => `<span class="feature-chip">${safeText(feature)}</span>`).join('')}
                         </div>
                     </div>
                 ` : ''}
 
                 <div class="dealer-block">
-                    <div class="dealer-name">${safeText(vehicle.dealer.name)}</div>
-                    ${vehicle.dealer.address ? `<div class="dealer-address">${vehicle.dealer.address}</div>` : ''}
+                    <div class="dealer-name">${safeText(dealer?.name)}</div>
+                    ${dealer?.address ? `<div class="dealer-address">${safeText(dealer.address)}</div>` : 
+                      dealer?.city && dealer?.state ? `<div class="dealer-address">${safeText(dealer.city)}, ${safeText(dealer.state)}</div>` : ''}
                     <div class="dealer-actions">
                         <button class="dealer-btn" onclick="callDealer('${vehicle.id}')">Call</button>
                         <button class="dealer-btn" onclick="getDirections('${vehicle.id}')">Directions</button>
@@ -1320,11 +1784,14 @@
                 </div>
 
                 <div class="cta-buttons">
-                        <button class="cta-primary" onclick="bookTestDrive('${vehicle.id}')" ${!vehicle.vin ? 'disabled title="VIN unavailable from source"' : ''}>
-                            ${vehicle.vin ? 'Book Test Drive' : 'VIN Required'}
+                        <button class="cta-primary" onclick="bookTestDrive('${vehicle.id}')" ${!vin ? 'disabled title="VIN unavailable from source"' : ''}>
+                            ${vin ? 'Book Test Drive' : 'VIN Required'}
                         </button>
-                        <button class="cta-secondary" onclick="getQuote('${vehicle.id}')" ${!vehicle.vin ? 'disabled title="VIN unavailable from source"' : ''}>
+                        <button class="cta-secondary" onclick="getQuote('${vehicle.id}')" ${!vin ? 'disabled title="VIN unavailable from source"' : ''}>
                             Get Quote
+                        </button>
+                        <button class="cta-secondary" onclick="compareVehicle('${vehicle.id}')" style="margin-top: 8px;">
+                            Compare
                         </button>
                 </div>
             `;
@@ -1345,13 +1812,14 @@
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
 
-            // Check if VIN is available
-            if (!vehicle.vin) {
+            // Check if VIN is available from UVS structure
+            const vin = getUVSVIN(vehicle);
+            if (!vin) {
                 alert('VIN unavailable from source. Cannot proceed with test drive request.');
                 return;
             }
 
-            logEvent('lead_start', { id });
+            logEvent('lead_start', { id, vehicleId: vehicle.id });
             openLeadModal(vehicle);
         }
 
@@ -1374,6 +1842,40 @@
             console.log('dealer_directions', { id });
         }
 
+        // Compare vehicle - minimal implementation that tracks compare event
+        let compareList = [];
+        function compareVehicle(id) {
+            const vehicle = state.vehicles.find(v => v.id === id);
+            if (!vehicle) return;
+
+            // Add to compare list (max 3 vehicles)
+            if (!compareList.find(v => v.id === id)) {
+                if (compareList.length < 3) {
+                    compareList.push(vehicle);
+                } else {
+                    compareList = [vehicle]; // Replace with new selection
+                }
+            }
+
+            // If we have at least 2 vehicles, track compare event
+            if (compareList.length >= 2) {
+                const vehicleIds = compareList.map(v => v.id);
+                const dealer = getUVSDealer(compareList[0]);
+                // Extract dealerId from UVS structure: location.dealer.dealerId
+                const dealerId = dealer?.dealerId || compareList[0]?.location?.dealer?.dealerId;
+
+                // Track compare event (no PII - no VINs)
+                logEvent('vehicle.compare', {
+                    vehicleIds: vehicleIds,
+                    compareCount: vehicleIds.length,
+                });
+
+                alert(`Comparing ${vehicleIds.length} vehicle(s)`);
+            } else {
+                alert(`Added to compare list (${compareList.length}/3). Select another vehicle to compare.`);
+            }
+        }
+
         // Lead modal functions
         let currentVehicle = null;
 
@@ -1383,10 +1885,11 @@
             const vinDisplay = el('vinDisplay');
             const vinValue = el('vinValue');
             
-            // Show VIN if available
-            if (vehicle.vin) {
+            // Show VIN if available from UVS structure
+            const vin = getUVSVIN(vehicle);
+            if (vin) {
                 vinDisplay.style.display = 'block';
-                vinValue.textContent = vehicle.vin;
+                vinValue.textContent = vin;
             } else {
                 vinDisplay.style.display = 'none';
             }
@@ -1417,10 +1920,36 @@
             submitButton.textContent = 'Submitting...';
             
             try {
+                // Extract UVS fields for lead submission from structuredContent/globals
+                const vin = getUVSVIN(currentVehicle);
+                const dealer = getUVSDealer(currentVehicle);
+                const pricing = currentVehicle.pricing || {};
+                const price = pricing.price || pricing.currentPrice || 0;
+                const currency = pricing.currency || 'USD';
+                
+                // Validate required UVS fields
+                if (!vin) {
+                    throw new Error('VIN is required from UVS vehicle data');
+                }
+                if (!dealer?.dealerId) {
+                    throw new Error('dealerId is required from UVS vehicle data');
+                }
+                if (!dealer?.name) {
+                    throw new Error('dealerName is required from UVS vehicle data');
+                }
+                if (!price || price <= 0) {
+                    throw new Error('Price is required from UVS vehicle data');
+                }
+
                 const formData = {
                     vehicleId: currentVehicle.id,
-                    vin: currentVehicle.vin,
-                    dealerId: currentVehicle.dealerId || currentVehicle.dealer?.id,
+                    vin: vin,
+                    dealerId: dealer.dealerId,
+                    dealerName: dealer.name,
+                    pricing: {
+                        price: price,
+                        currency: currency,
+                    },
                     user: {
                         name: el('leadName').value,
                         email: el('leadEmail').value,
@@ -1430,24 +1959,14 @@
                     consent: el('leadConsent').checked,
                 };
 
-                // Try to submit via MCP tool
-                const response = await fetch('/mcp', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        method: 'tools/call',
-                        params: {
-                            name: 'submit-lead',
-                            arguments: formData,
-                        },
-                    }),
-                });
+                if (!window.openai?.callTool) {
+                    throw new Error('openai.callTool is not available');
+                }
 
-                const result = await response.json();
-                
-                if (result.structuredContent?.leadId) {
+                // Submit lead via tool call (no direct POSTs)
+                const toolResult = await window.openai.callTool('submit-lead', formData);
+
+                if (toolResult?.structuredContent?.leadId) {
                     successMessage.style.display = 'block';
                     errorMessage.style.display = 'none';
                     
@@ -1456,11 +1975,12 @@
                         closeLeadModal();
                     }, 2000);
                 } else {
-                    throw new Error(result.error || 'Unknown error');
+                    throw new Error(toolResult?.error || 'Unknown error');
                 }
             } catch (error) {
                 console.error('Lead submission error:', error);
                 errorMessage.style.display = 'block';
+                errorMessage.textContent = error.message || 'There was an error submitting your request. Please try again.';
                 successMessage.style.display = 'none';
             } finally {
                 submitButton.disabled = false;
@@ -1505,18 +2025,88 @@
         }
 
         // Event logging
-        function logEvent(event, data) {
-            console.log(JSON.stringify({ event, ...data }));
+        // Get or create session ID for analytics
+        function getOrCreateSessionId() {
+            let sessionId = localStorage.getItem('aa_widget_session_id');
+            if (!sessionId) {
+                sessionId = 'widget_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('aa_widget_session_id', sessionId);
+            }
+            return sessionId;
+        }
+
+        // Get widget host from current page URL
+        function getWidgetHost() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const widgetHost = urlParams.get('host') || window.location.origin;
+            return widgetHost.replace(/\/$/, '');
+        }
+
+        // Track analytics event (no PII - only UVS IDs and metadata)
+        function logEvent(eventName, data) {
+            // Log to console for debugging (no PII)
+            console.log(JSON.stringify({ event: eventName, ...data }));
+            
+            // Send to analytics endpoint (no PII)
+            const widgetHost = getWidgetHost();
+            const sessionId = getOrCreateSessionId();
+            
+            // Extract vehicle data if available (UVS structure only)
+            const vehicle = data.vehicle || state.vehicles.find(v => v.id === data.id || v.id === data.vehicleId);
+            const dealerId = vehicle?.location?.dealer?.dealerId || data.dealerId;
+            const vehicleId = vehicle?.id || data.id || data.vehicleId;
+            
+            // Send analytics event to widget tracking endpoint (no PII - no VIN, no user data)
+            fetch(`${widgetHost}/widget/track`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    eventName: eventName,
+                    payload: {
+                        // Only include non-PII metadata
+                        vehicleId: vehicleId,
+                        year: vehicle?.baseIdentity?.year,
+                        make: vehicle?.baseIdentity?.make,
+                        model: vehicle?.baseIdentity?.model,
+                        price: vehicle?.pricing?.price || vehicle?.pricing?.currentPrice,
+                        source: data.source || 'widget',
+                    },
+                    sessionId: sessionId,
+                    dealerId: dealerId,
+                    vehicleId: vehicleId,
+                    requestId: 'widget_' + Date.now(),
+                }),
+            }).catch(err => {
+                // Silently fail - analytics should not break widget
+                console.error('Failed to track event:', err);
+            });
         }
 
         // Intersection observer for card visibility
         function setupIntersectionObserver() {
+            const viewedVehicles = new Set(); // Track which vehicles have been viewed
+            
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const id = entry.target.dataset.id;
                         if (id && id !== state.activeId) {
                             setActiveVehicle(id);
+                        }
+                        
+                        // Track vehicle.view event (once per vehicle, no PII)
+                        if (id && !viewedVehicles.has(id)) {
+                            viewedVehicles.add(id);
+                            const vehicle = state.vehicles.find(v => v.id === id);
+                            if (vehicle) {
+                                logEvent('vehicle.view', {
+                                    id,
+                                    vehicleId: vehicle.id,
+                                    source: 'widget_card',
+                                });
+                            }
                         }
                     }
                 });
@@ -1571,6 +2161,21 @@
 
         // Initialize app
         function init() {
+            // Check if thumbnail mode should be shown first
+            const results = getResults();
+            const vehicles = results?.vehicles || [];
+            const shouldShowThumbnail = vehicles.length > 0 && vehicles[0] && 
+                vehicles[0].lat && vehicles[0].lng && vehicles[0].price && 
+                (vehicles[0].photoUrl || vehicles[0].image) && vehicles[0].title && vehicles[0].dealerName;
+            
+            if (shouldShowThumbnail) {
+                // Thumbnail mode will be rendered by the render() function in the first script block
+                // Just set up event listeners
+                setupEventListeners();
+                return;
+            }
+            
+            // Otherwise initialize full view
             loadData();
             initMap();
             renderCards();
@@ -1588,7 +2193,19 @@
         window.getQuote = getQuote;
         window.callDealer = callDealer;
         window.getDirections = getDirections;
+        window.compareVehicle = compareVehicle;
         window.closeLeadModal = closeLeadModal;
+        
+        // Expose full view initialization functions for expand button
+        window.initFullView = function() {
+            if (!state.map) {
+                loadData();
+                initMap();
+                renderCards();
+                updateResultChip();
+                setupIntersectionObserver();
+            }
+        };
     </script>
 </body>
 </html>

@@ -5,8 +5,8 @@
  */
 
 import express from 'express';
-import { ingestVehiclesFromProvider, type IngestionServiceOptions } from '../ingestion/service.js';
-import { CONFIG } from '../config/env.js';
+import { ingestVehiclesFromProvider, type IngestionServiceOptions } from '../ingestion/service';
+import { CONFIG } from '../config/env';
 import pino from 'pino';
 
 const logger = pino();

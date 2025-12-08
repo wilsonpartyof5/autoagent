@@ -1,23 +1,26 @@
-import { searchVehicles } from './tools/searchVehicles.js';
-import { submitLead } from './tools/submitLead.js';
-import { pingUi } from './tools/pingUi.js';
-import { pingMicroUi } from './tools/pingMicroUi.js';
-import { search } from './tools/search.js';
-import { fetchContent } from './tools/fetch.js';
+import { searchVehicles } from './tools/searchVehicles';
+import { submitLead } from './tools/submitLead';
+import { compareVehicles } from './tools/compareVehicles';
+import { pingUi } from './tools/pingUi';
+import { pingMicroUi } from './tools/pingMicroUi';
+import { search } from './tools/search';
+import { fetchContent } from './tools/fetch';
 
 /**
  * Simple MCP tool handler for Express integration
  */
-export async function handleMcpToolCall(toolName: string, args: unknown, context?: { ipAddress?: string }) {
+export async function handleMcpToolCall(toolName: string, args: unknown, context?: { /* No PII context */ }) {
   switch (toolName) {
     case 'search':
       return await search(args);
     case 'fetch':
       return await fetchContent(args);
     case 'search-vehicles':
-      return await searchVehicles(args);
+      return await searchVehicles(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
+    case 'compare-vehicles':
+      return await compareVehicles(args, context);
     case 'ping-ui':
       return await pingUi();
     case 'ping-micro-ui':
@@ -109,6 +112,14 @@ export function getAvailableTools() {
             type: 'number',
             description: 'Search radius in miles (default: 50)',
           },
+          bodyStyle: {
+            type: 'string',
+            description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
+          },
+          mileageMax: {
+            type: 'number',
+            description: 'Maximum mileage',
+          },
         },
         required: ['location', 'condition'],
       },
@@ -130,10 +141,31 @@ export function getAvailableTools() {
           },
           dealerId: {
             type: 'string',
-            description: 'ID of the dealer (optional)',
+            description: 'ID of the dealer (required)',
+          },
+          dealerName: {
+            type: 'string',
+            description: 'Name of the dealer (required)',
+          },
+          pricing: {
+            type: 'object',
+            description: 'Vehicle pricing information',
+            properties: {
+              price: {
+                type: 'number',
+                description: 'Vehicle price',
+              },
+              currency: {
+                type: 'string',
+                description: 'Currency code (ISO 3-letter, default: USD)',
+                default: 'USD',
+              },
+            },
+            required: ['price', 'currency'],
           },
           user: {
             type: 'object',
+            description: 'User contact information',
             properties: {
               name: {
                 type: 'string',
@@ -160,7 +192,31 @@ export function getAvailableTools() {
             description: 'User consent to be contacted (must be true)',
           },
         },
-        required: ['vehicleId', 'vin', 'user', 'consent'],
+        required: ['vehicleId', 'vin', 'dealerId', 'dealerName', 'pricing', 'user', 'consent'],
+      },
+    },
+    {
+      name: 'compare-vehicles',
+      description: 'Compare multiple vehicles by IDs or VINs',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          vehicleIds: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of vehicle IDs to compare',
+          },
+          vins: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of VINs to compare (when vehicleIds not available)',
+          },
+          dealerId: {
+            type: 'string',
+            description: 'ID of the dealer (optional)',
+          },
+        },
+        required: [],
       },
     },
   ];

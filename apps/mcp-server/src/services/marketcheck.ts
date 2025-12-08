@@ -1,4 +1,4 @@
-import { fetchWithTimeout, HttpError } from '../lib/http.js';
+import { fetchWithTimeout, HttpError } from '../lib/http';
 import {
   type Vehicle,
   type SearchParams,
@@ -112,16 +112,11 @@ export class MarketCheckClient {
 
 }
 
+import { CONFIG } from '../config/env';
+
 /**
  * Create MarketCheck client instance
  */
-export function createMarketCheckClient(): MarketCheckClient | null {
-  const apiKey = process.env.MARKETCHECK_API_KEY;
-  const baseUrl = process.env.MARKETCHECK_BASE_URL || 'https://mc-api.example.com';
-  
-  if (!apiKey) {
-    return null;
-  }
-  
-  return new MarketCheckClient(baseUrl, apiKey);
+export function createMarketCheckClient(): MarketCheckClient {
+  return new MarketCheckClient(CONFIG.marketcheckBaseUrl, CONFIG.marketcheckApiKey);
 }

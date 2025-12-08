@@ -5,8 +5,8 @@
 
 import pino from 'pino';
 import { createClient } from '@supabase/supabase-js';
-import { generateAdfXml, type LeadData } from './adf-generator.js';
-import { decryptToJson } from '../lib/crypto.js';
+import { generateAdfXml, type LeadData } from './adf-generator';
+import { decryptToJson } from '../lib/crypto';
 
 const logger = pino();
 
@@ -31,6 +31,7 @@ interface VehicleInfo {
   dealerState?: string;
   dealerZip?: string;
   dealerPhone?: string;
+  dealerId?: string;
 }
 
 interface DeliveryLog {
@@ -46,22 +47,26 @@ interface DeliveryLog {
   adfPayload: string;
 }
 
+import { CONFIG } from '../config/env';
+
 /**
  * Get Supabase client with service role key (for server-side operations)
+ * Supabase is optional - only used for delivery logs
  */
 function getSupabaseClient() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = CONFIG.supabaseUrl;
+  const supabaseServiceKey = CONFIG.supabaseServiceRoleKey;
+  const supabaseAnonKey = CONFIG.supabaseAnonKey;
 
   if (!supabaseUrl) {
-    throw new Error('SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL must be set');
+    throw new Error('SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL must be set for delivery logs');
   }
 
   // Use service role key if available, otherwise use anon key (limited functionality)
-  const supabaseKey = supabaseServiceKey || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = supabaseServiceKey || supabaseAnonKey;
 
   if (!supabaseKey) {
-    throw new Error('Supabase key (SERVICE_ROLE_KEY or ANON_KEY) must be set');
+    throw new Error('Supabase key (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY) must be set for delivery logs');
   }
 
   return createClient(supabaseUrl, supabaseKey);
@@ -106,15 +111,15 @@ async function getDealerDeliverySettings(dealerId: string): Promise<DealerDelive
 }
 
 /**
- * Fetch vehicle information from Supabase inventory
+ * Fetch vehicle information from UVS database
  */
 async function getVehicleInfo(vehicleId: string, vin?: string): Promise<VehicleInfo | null> {
   try {
     const supabase = getSupabaseClient();
 
     let query = supabase
-      .from('inventory_vehicles')
-      .select('vin, year, make, model, trim, stock_number, price, miles, condition, dealer_name, dealer_city, dealer_state, dealer_zip, dealer_phone, dealer_id')
+      .from('uvs_vehicles')
+      .select('uvs_data')
       .limit(1);
 
     if (vin) {
@@ -126,33 +131,38 @@ async function getVehicleInfo(vehicleId: string, vin?: string): Promise<VehicleI
     const { data, error } = await query.maybeSingle();
 
     if (error) {
-      logger.error('Failed to fetch vehicle info', { vehicleId, vin, error: error.message });
+      logger.error('Failed to fetch UVS vehicle info', { vehicleId, vin, error: error.message });
       return null;
     }
 
-    if (!data) {
-      logger.warn('Vehicle not found in inventory', { vehicleId, vin });
+    if (!data || !data.uvs_data) {
+      logger.warn('UVS vehicle not found', { vehicleId, vin });
       return null;
     }
+
+    // Extract fields from UVS structure
+    const vehicle = data.uvs_data as any; // UnifiedVehicle type
+    const dealer = vehicle.location?.dealer || {};
 
     return {
-      vin: data.vin || undefined,
-      year: data.year || undefined,
-      make: data.make || undefined,
-      model: data.model || undefined,
-      trim: data.trim || undefined,
-      stockNumber: data.stock_number || undefined,
-      price: data.price ? Number(data.price) : undefined,
-      miles: data.miles ? Number(data.miles) : undefined,
-      condition: data.condition || undefined,
-      dealerName: data.dealer_name || undefined,
-      dealerCity: data.dealer_city || undefined,
-      dealerState: data.dealer_state || undefined,
-      dealerZip: data.dealer_zip || undefined,
-      dealerPhone: data.dealer_phone || undefined,
+      vin: vehicle.baseIdentity?.vin || undefined,
+      year: vehicle.baseIdentity?.year || undefined,
+      make: vehicle.baseIdentity?.make || undefined,
+      model: vehicle.baseIdentity?.model || undefined,
+      trim: vehicle.baseIdentity?.trim || undefined,
+      stockNumber: vehicle.baseIdentity?.stockNumber || undefined,
+      price: vehicle.pricing?.price ? Number(vehicle.pricing.price) : undefined,
+      miles: vehicle.coreSpecs?.miles ? Number(vehicle.coreSpecs.miles) : undefined,
+      condition: vehicle.condition || undefined,
+      dealerName: dealer.name || undefined,
+      dealerCity: dealer.city || undefined,
+      dealerState: dealer.state || undefined,
+      dealerZip: dealer.zip || undefined,
+      dealerPhone: dealer.phone || undefined,
+      dealerId: dealer.dealerId || undefined,
     };
   } catch (error) {
-    logger.error('Error fetching vehicle info', {
+    logger.error('Error fetching UVS vehicle info', {
       vehicleId,
       vin,
       error: error instanceof Error ? error.message : 'Unknown error',

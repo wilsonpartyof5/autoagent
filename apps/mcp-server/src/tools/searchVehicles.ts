@@ -1,193 +1,16 @@
-import { SearchParamsSchema, type SearchParams, type Vehicle, normalizeMarketCheckVehicle, type MarketCheckVehicle } from '@autoagent/shared';
-import { safeParse } from '../lib/z.js';
-import { createMarketCheckClient } from '../services/marketcheck.js';
-import { searchCache } from '../lib/cache.js';
+import { SearchParamsSchema, type SearchParams } from '@autoagent/shared';
+import { safeParse } from '../lib/z';
+import { searchCache } from '../lib/cache';
 import { randomUUID } from 'crypto';
-import { validateToolResult } from '../lib/responseShape.js';
-import { fetchWithTimeout } from '../lib/http.js';
-import {
-  enrichListing,
-  mergeEnrichment,
-  isEnrichmentEnabled,
-} from '@autoagent/shared';
+import { validateToolResult } from '../lib/responseShape';
+import { getWidgetHost } from '../utils/getWidgetHost';
+import { CONFIG } from '../config/env';
+import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles';
+import type { UnifiedVehicle } from '@autoagent/shared';
+import { trackEvent } from '../lib/analytics/tracking';
+import { generateRequestId } from '@autoagent/shared';
 
-function createMockVehicles(): Vehicle[] {
-  const timestamp = new Date().toISOString();
-  return [
-    {
-      id: 'mock-1',
-      vin: '1HGCM82633A004352',
-      stockNumber: 'AA-1234',
-      listingId: 'mock-listing-1',
-      year: 2022,
-      make: 'Toyota',
-      model: 'Camry',
-      trim: 'SE',
-      condition: 'used',
-      bodyType: 'Sedan',
-      drivetrain: 'FWD',
-      fuelType: 'Gasoline',
-      transmission: 'Automatic',
-      price: 28500,
-      msrp: 32000,
-      priceChangeHistory: [
-        {
-          price: 28950,
-          timestamp,
-          source: 'mock-history',
-        },
-      ],
-      miles: 15000,
-      dealer: {
-        dealerId: 'dealer-1',
-        name: 'Seattle Auto Center',
-        city: 'Seattle',
-        state: 'WA',
-        latitude: 47.6062,
-        longitude: -122.3321,
-        phone: '206-555-0100',
-        website: 'https://dealer.example.com',
-        address: '123 Main St, Seattle, WA 98101',
-      },
-      photoUrls: [
-        'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
-        'https://images.unsplash.com/photo-1617817741679-6c9691b2db7d?w=400',
-      ],
-      thumbnailUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
-      videoUrl: undefined,
-      imageUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
-      features: ['Bluetooth', 'Backup Camera', 'Lane Assist'],
-      interiorColor: 'Black',
-      exteriorColor: 'Blue',
-      certified: false,
-      marketAveragePrice: 29200,
-      daysOnMarket: 21,
-      source: 'marketcheck',
-      lastSyncedAt: timestamp,
-      syncStatus: 'success',
-      dataSource: 'mock-data',
-      leadStatus: 'none',
-      lastLeadAt: undefined,
-      leadId: undefined,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-    {
-      id: 'mock-2',
-      vin: '2HGCM82633A004353',
-      stockNumber: 'AA-5678',
-      listingId: 'mock-listing-2',
-      year: 2021,
-      make: 'Honda',
-      model: 'CR-V',
-      trim: 'EX-L',
-      condition: 'used',
-      bodyType: 'SUV',
-      drivetrain: 'AWD',
-      fuelType: 'Gasoline',
-      transmission: 'Automatic',
-      price: 32000,
-      msrp: 35000,
-      priceChangeHistory: [
-        {
-          price: 33000,
-          timestamp,
-          source: 'mock-history',
-        },
-      ],
-      miles: 22000,
-      dealer: {
-        dealerId: 'dealer-2',
-        name: 'Bellevue Motors',
-        city: 'Bellevue',
-        state: 'WA',
-        latitude: 47.6101,
-        longitude: -122.2015,
-        phone: '425-555-0123',
-        website: 'https://bellevuemotors.example.com',
-        address: '456 Auto Way, Bellevue, WA 98004',
-      },
-      photoUrls: [
-        'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
-      ],
-      thumbnailUrl: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
-      videoUrl: undefined,
-      imageUrl: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
-      features: ['AWD', 'Sunroof', 'Heated Seats'],
-      interiorColor: 'Gray',
-      exteriorColor: 'White',
-      certified: true,
-      marketAveragePrice: 32500,
-      daysOnMarket: 12,
-      source: 'marketcheck',
-      lastSyncedAt: timestamp,
-      syncStatus: 'success',
-      dataSource: 'mock-data',
-      leadStatus: 'none',
-      lastLeadAt: undefined,
-      leadId: undefined,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-    {
-      id: 'mock-3',
-      vin: '3HGCM82633A004354',
-      stockNumber: 'AA-9012',
-      listingId: 'mock-listing-3',
-      year: 2023,
-      make: 'Subaru',
-      model: 'Outback',
-      trim: 'Limited',
-      condition: 'used',
-      bodyType: 'Wagon',
-      drivetrain: 'AWD',
-      fuelType: 'Gasoline',
-      transmission: 'CVT',
-      price: 35000,
-      msrp: 37000,
-      priceChangeHistory: [
-        {
-          price: 35500,
-          timestamp,
-          source: 'mock-history',
-        },
-      ],
-      miles: 5000,
-      dealer: {
-        dealerId: 'dealer-3',
-        name: 'Tacoma Auto Group',
-        city: 'Tacoma',
-        state: 'WA',
-        latitude: 47.2529,
-        longitude: -122.4443,
-        phone: '253-555-0199',
-        website: 'https://tacomaauto.example.com',
-        address: '789 Car Blvd, Tacoma, WA 98402',
-      },
-      photoUrls: [
-        'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
-      ],
-      thumbnailUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
-      videoUrl: undefined,
-      imageUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
-      features: ['AWD', 'Eyesight Safety', 'Apple CarPlay'],
-      interiorColor: 'Tan',
-      exteriorColor: 'Green',
-      certified: false,
-      marketAveragePrice: 34800,
-      daysOnMarket: 6,
-      source: 'marketcheck',
-      lastSyncedAt: timestamp,
-      syncStatus: 'success',
-      dataSource: 'mock-data',
-      leadStatus: 'none',
-      lastLeadAt: undefined,
-      leadId: undefined,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  ];
-}
+// Removed createMockVehicles - no longer needed, DB provides real data
 
 
 /**
@@ -204,11 +27,49 @@ function generateCacheKey(params: SearchParams): string {
   return JSON.stringify(sortedParams);
 }
 
+/**
+ * Enrich vehicle with map pin and featured card data
+ */
+function enrichVehicleForStructuredContent(vehicle: UnifiedVehicle | Record<string, unknown>): Record<string, unknown> {
+  // Type guard: check if vehicle is UnifiedVehicle
+  const isUnifiedVehicle = vehicle && typeof vehicle === 'object' && 'baseIdentity' in vehicle && 'pricing' in vehicle;
+  const v = isUnifiedVehicle ? vehicle as UnifiedVehicle : null;
+  
+  const lat = v?.location?.dealer?.latitude;
+  const lng = v?.location?.dealer?.longitude;
+  const price = v?.pricing?.price;
+  const photoUrl = v?.media?.primaryPhotoUrl || 
+                   v?.media?.photoUrls?.[0] || 
+                   v?.media?.thumbnailUrl ||
+                   v?.media?.images?.[0]?.url;
+  const year = v?.baseIdentity?.year;
+  const make = v?.baseIdentity?.make;
+  const model = v?.baseIdentity?.model;
+  const trim = v?.baseIdentity?.trim;
+  const title = trim 
+    ? `${year} ${make} ${model} ${trim}`.trim()
+    : `${year} ${make} ${model}`.trim();
+  const dealerName = v?.location?.dealer?.name;
+  
+  return {
+    ...(vehicle as Record<string, unknown>),
+    ...(lat !== undefined && { lat }),
+    ...(lng !== undefined && { lng }),
+    ...(price !== undefined && { price }),
+    ...(photoUrl !== undefined && { photoUrl, image: photoUrl }), // Alias for photoUrl
+    ...(title && { title }),
+    ...(dealerName !== undefined && { dealerName }),
+  };
+}
+
 
 /**
- * Search for vehicles using MarketCheck API with fallback to mocks
+ * Search for vehicles using UVS database (replaces MarketCheck API)
  */
-export async function searchVehicles(params: unknown): Promise<{
+export async function searchVehicles(
+  params: unknown,
+  context?: { /* No PII context */ }
+): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
@@ -238,6 +99,8 @@ export async function searchVehicles(params: unknown): Promise<{
 
     const searchParams: SearchParams = parseResult.data!;
     const cacheKey = generateCacheKey(searchParams);
+    // Use single requestId for entire request to maintain correlation
+    const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
     
     // Check cache first
     const cachedResult = searchCache.get(cacheKey);
@@ -245,22 +108,40 @@ export async function searchVehicles(params: unknown): Promise<{
       const duration = Date.now() - startTime;
       console.log(JSON.stringify({
         event: 'search',
-        hasKey: !!process.env.MARKETCHECK_API_KEY,
+        source: 'cache',
         fromCache: true,
         results: cachedResult.vehicles.length,
         ms: duration,
       }));
-      
+
+      // Track cached search event
+      trackEvent('inventory.search', {
+        make: searchParams.make,
+        model: searchParams.model,
+        condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
+        priceMin: undefined, // SearchParams only has maxPrice, not minPrice
+        priceMax: searchParams.maxPrice,
+        location: searchParams.location,
+        resultsCount: cachedResult.totalCount,
+        searchDuration: duration,
+      }, {
+        // Note: SearchParams doesn't include dealerId - get from vehicle if needed
+        requestId,
+        sessionId: requestId, // Use requestId as sessionId for request-level correlation
+      }).catch(() => {
+        // Tracking failures should not break the request
+      });
+
       const runId = randomUUID();
-      const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
-      const isDiag = process.env.AA_DIAG === '1';
-      
+      const widgetHost = getWidgetHost();
+      const isDiag = CONFIG.diagnosticsEnabled;
+
       // Build URL using URL API to ensure proper encoding
       let vehicleResultsUrl: string;
       try {
         // Ensure widgetHost has protocol
-        const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://') 
-          ? widgetHost 
+        const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
+          ? widgetHost
           : `https://${widgetHost}`;
         const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
         widgetUrl.searchParams.set('rid', runId);
@@ -277,18 +158,23 @@ export async function searchVehicles(params: unknown): Promise<{
         }));
         vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
       }
-      
+
       console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
+
+      // Enrich cached vehicles with map pin and featured card data
+      const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
+        enrichVehicleForStructuredContent(vehicle)
+      );
       
       return {
         success: true,
         data: {
           content: [{ type: 'text', text: `Found ${cachedResult.totalCount} vehicles (run ${runId})` }],
-          vehicles: cachedResult.vehicles,
+          vehicles: cachedResult.vehicles as unknown[], // Cache may contain legacy format
           totalCount: cachedResult.totalCount,
           searchParams,
-          structuredContent: { 
-            results: { vehicles: cachedResult.vehicles, totalCount: cachedResult.totalCount, searchParams }
+          structuredContent: {
+            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
           },
           components: [
             { type: 'iframe', url: vehicleResultsUrl }
@@ -297,200 +183,100 @@ export async function searchVehicles(params: unknown): Promise<{
       };
     }
 
-    // Use MarketCheck API only - no mock data fallback
-    const marketCheckClient = createMarketCheckClient();
-    let vehicles: Vehicle[] = [];
+    // Query UVS vehicles from database instead of MarketCheck API
+    let vehicles: UnifiedVehicle[] = [];
     let totalCount = 0;
     const fromCache = false;
 
-    if (!marketCheckClient) {
-      // Return mock data for development/testing
-      const mockVehicles = createMockVehicles();
-
-      // Filter mock data by search parameters
-      const filteredVehicles = mockVehicles.filter((vehicle) => {
-        if (searchParams.maxPrice && vehicle.price > searchParams.maxPrice) {
-          return false;
-        }
-        if (
-          searchParams.make &&
-          !vehicle.make.toLowerCase().includes(searchParams.make.toLowerCase())
-        ) {
-          return false;
-        }
-        if (
-          searchParams.model &&
-          !vehicle.model.toLowerCase().includes(searchParams.model.toLowerCase())
-        ) {
-          return false;
-        }
-        if (searchParams.condition === 'new' && vehicle.condition !== 'new') {
-          return false;
-        }
-        if (searchParams.condition === 'used' && vehicle.condition === 'new') {
-          return false;
-        }
-        if (
-          searchParams.condition === 'used' &&
-          typeof vehicle.miles === 'number' &&
-          vehicle.miles === 0
-        ) {
-          return false;
-        }
-        return true;
-      });
-
-      vehicles = filteredVehicles;
-      totalCount = filteredVehicles.length;
-    } else {
     try {
-      const baseUrl = process.env.MARKETCHECK_BASE_URL || 'https://marketcheck-prod.apigee.net';
-      const apiKey = process.env.MARKETCHECK_API_KEY || '';
-      
-      // Fetch raw listings first (for enrichment)
-      const searchParamsUrl = new URLSearchParams();
-      searchParamsUrl.set('api_key', apiKey);
-      if (searchParams.location) searchParamsUrl.set('location', searchParams.location);
-      if (searchParams.condition === 'used') searchParamsUrl.set('car_type', 'used');
-      if (searchParams.condition === 'new') searchParamsUrl.set('car_type', 'new');
-      if (searchParams.maxPrice) searchParamsUrl.set('price_range', `0-${searchParams.maxPrice}`);
-      if (searchParams.make) searchParamsUrl.set('make', searchParams.make);
-      if (searchParams.model) searchParamsUrl.set('model', searchParams.model);
-      if (searchParams.radiusMiles) searchParamsUrl.set('radius', searchParams.radiusMiles.toString());
-      searchParamsUrl.set('page', '1');
-      searchParamsUrl.set('pageSize', '20');
+      // Map SearchParams to UVSSearchParams
+      const uvsSearchParams: UVSSearchParams = {
+        make: searchParams.make,
+        model: searchParams.model,
+        condition: searchParams.condition, // SearchParams.condition is 'new' | 'used'
+        maxPrice: searchParams.maxPrice,
+        minMiles: searchParams.condition === 'used' ? 1 : undefined, // Used vehicles must have miles > 0
+        maxMiles: searchParams.mileageMax,
+        bodyStyle: searchParams.bodyStyle,
+        // Note: SearchParams doesn't have dealerId/dealerName, but UVSSearchParams does (optional)
+        limit: 20,
+        offset: 0,
+      };
 
+      // Query UVS vehicles from database
       const searchStart = Date.now();
-      let rawResponse;
-      try {
-        rawResponse = await fetchWithTimeout<{ listings: MarketCheckVehicle[]; num_found: number }>(
-          `${baseUrl}/v2/search/car/active?${searchParamsUrl.toString()}`,
-          { timeout: 10000 },
-        );
+      const dbResult = await searchUVSVehicles(uvsSearchParams);
 
-        const searchDuration = Date.now() - searchStart;
-        console.log(JSON.stringify({
-          event: 'marketcheck_search',
-          duration: searchDuration,
-          success: true,
-          listings: rawResponse.data.listings?.length || 0,
-          totalCount: rawResponse.data.num_found || 0,
-        }));
-      } catch (error) {
-        const searchDuration = Date.now() - searchStart;
-        console.error(JSON.stringify({
-          event: 'marketcheck_search_timeout',
-          duration: searchDuration,
-          timeout: 10000,
-          error: error instanceof Error ? error.message : 'unknown',
-        }));
-        throw error;
-      }
+      const searchDuration = Date.now() - searchStart;
+      console.log(JSON.stringify({
+        event: 'uvs_db_search',
+        duration: searchDuration,
+        success: true,
+        results: dbResult.vehicles.length,
+        totalCount: dbResult.total,
+        params: uvsSearchParams,
+      }));
 
-      let listings = rawResponse.data.listings || [];
-      totalCount = Math.min(rawResponse.data.num_found || 0, 20);
-      listings = listings.slice(0, 20);
-
-      // Enrich listings if enabled
-      let enrichedCount = 0;
-      let photosMerged = 0;
-      let featuresMerged = 0;
-      const enrichmentEnabled = isEnrichmentEnabled();
-
-      if (enrichmentEnabled) {
-        const enrichedListings = await Promise.all(
-          listings.map(async (listing, index) => {
-            const dealerId = listing.dealer?.id?.toString();
-            try {
-              const enrichment = await enrichListing(listing.id, dealerId, baseUrl, apiKey);
-              if (enrichment) {
-                enrichedCount++;
-                if (enrichment.media?.photo_links) {
-                  photosMerged += enrichment.media.photo_links.length;
-                }
-                if (enrichment.extra?.features) {
-                  featuresMerged += enrichment.extra.features.length;
-                }
-                
-                // Store enriched metadata for structuredContent
-                if (enrichment.extra) {
-                  enrichedMetadata[index] = {
-                    sellerComments: enrichment.extra.seller_comments,
-                    optionPackages: enrichment.extra.options,
-                  };
-                }
-                
-                return mergeEnrichment(listing, enrichment);
-              }
-            } catch (error) {
-              // Log but continue
-              console.error(JSON.stringify({
-                event: 'marketcheck_enrichment_failed',
-                listingId: listing.id,
-                error: error instanceof Error ? error.message : 'Unknown error',
-              }));
+      vehicles = dbResult.vehicles;
+      totalCount = dbResult.total;
+      
+      // Track vehicle.view for each vehicle returned in search results
+      vehicles.forEach((vehicle) => {
+        const vehicleId = vehicle.id;
+        const vin = vehicle.baseIdentity?.vin;
+        // Track vehicle view event (async, don't block)
+        // Note: dealerId from vehicle location, not searchParams
+        const dealerId = vehicle.location?.dealer?.dealerId;
+        if (vehicleId && dealerId) {
+          trackEvent('vehicle.view', {
+            vehicleId,
+            vin: vin || undefined,
+            year: vehicle.baseIdentity?.year,
+            make: vehicle.baseIdentity?.make,
+            model: vehicle.baseIdentity?.model,
+            price: vehicle.pricing?.price,
+            source: 'search_results',
+          }, {
+            dealerId,
+            vehicleId,
+            vin: vin || undefined,
+            requestId,
+            sessionId: requestId, // Use requestId as sessionId for correlation
+          }).catch(() => {
+            // Tracking failures should not break the request
+          });
+        }
+      });
+      
+      // Extract enriched metadata from UVS vehicles if available
+      vehicles.forEach((vehicle, index) => {
+        const enrichment = vehicle.enrichment;
+        if (enrichment?.providerSpecific) {
+          const providerData = enrichment.providerSpecific as unknown as Record<string, unknown>;
+          const marketcheck = providerData.marketcheck as unknown as Record<string, unknown> | undefined;
+          if (marketcheck && typeof marketcheck === 'object' && 'extra' in marketcheck) {
+            const extra = marketcheck.extra as unknown as Record<string, unknown> | undefined;
+            if (extra && typeof extra === 'object') {
+              enrichedMetadata[index] = {
+                sellerComments: extra.seller_comments as string | undefined,
+                optionPackages: extra.options as Array<{ name?: string; code?: string; description?: string }> | undefined,
+              };
             }
-            return listing;
-          }),
-        );
-        listings = enrichedListings;
-
-        // Log enrichment stats
-        console.log(JSON.stringify({
-          event: 'search_enrichment',
-          enrichmentEnabled,
-          enrichedCount,
-          totalListings: listings.length,
-          photosMerged,
-          featuresMerged,
-        }));
-      }
-
-      // Normalize listings to vehicles
-      vehicles = listings.map(normalizeMarketCheckVehicle);
+          }
+        }
+      });
     } catch (error) {
-        // Fall back to mock data when MarketCheck fails
-        console.error('MarketCheck API failed, falling back to mock data:', error);
-        
-        // Use the same mock data as when no API key
-        const mockVehicles = createMockVehicles();
-
-        // Filter mock data by search parameters
-        const filteredVehicles = mockVehicles.filter((vehicle) => {
-          if (searchParams.maxPrice && vehicle.price > searchParams.maxPrice) {
-            return false;
-          }
-          if (
-            searchParams.make &&
-            !vehicle.make.toLowerCase().includes(searchParams.make.toLowerCase())
-          ) {
-            return false;
-          }
-          if (
-            searchParams.model &&
-            !vehicle.model.toLowerCase().includes(searchParams.model.toLowerCase())
-          ) {
-            return false;
-          }
-          if (searchParams.condition === 'new' && vehicle.condition !== 'new') {
-            return false;
-          }
-          if (searchParams.condition === 'used' && vehicle.condition === 'new') {
-            return false;
-          }
-          if (
-            searchParams.condition === 'used' &&
-            typeof vehicle.miles === 'number' &&
-            vehicle.miles === 0
-          ) {
-            return false;
-          }
-          return true;
-        });
-
-        vehicles = filteredVehicles;
-        totalCount = filteredVehicles.length;
-      }
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(JSON.stringify({
+        event: 'uvs_db_search_failed',
+        error: errorMsg,
+        params: searchParams,
+      }));
+      
+      // Fallback: return empty results rather than failing
+      // In production, this should be handled more gracefully
+      vehicles = [];
+      totalCount = 0;
     }
 
     // Cache the result
@@ -500,16 +286,34 @@ export async function searchVehicles(params: unknown): Promise<{
     const duration = Date.now() - startTime;
     console.log(JSON.stringify({
       event: 'search',
-      hasKey: !!process.env.MARKETCHECK_API_KEY,
-      enrichmentEnabled: isEnrichmentEnabled(),
+      source: 'uvs_db',
       fromCache,
       results: vehicles.length,
+      totalCount,
       ms: duration,
     }));
 
+    // Track search event (reuse requestId from start of function)
+    trackEvent('inventory.search', {
+      make: searchParams.make,
+      model: searchParams.model,
+      condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
+      priceMin: undefined, // SearchParams only has maxPrice, not minPrice
+      priceMax: searchParams.maxPrice,
+      location: searchParams.location,
+      resultsCount: totalCount,
+      searchDuration: duration,
+    }, {
+      // Note: SearchParams doesn't include dealerId - omit from tracking
+      requestId,
+      sessionId: requestId, // Use requestId as sessionId for request-level correlation
+    }).catch(() => {
+      // Tracking failures should not break the request
+    });
+
     const runId = randomUUID();
-    const widgetHost = process.env.WIDGET_HOST || 'https://rana-flightiest-malcolm.ngrok-free.dev';
-    const isDiag = process.env.AA_DIAG === '1';
+    const widgetHost = getWidgetHost();
+    const isDiag = CONFIG.diagnosticsEnabled;
     
     // Build URL using URL API to ensure proper encoding
     let vehicleResultsUrl: string;
@@ -548,20 +352,24 @@ export async function searchVehicles(params: unknown): Promise<{
       }));
     }
     
-    // Build structuredContent with enriched fields
-    const structuredContentVehicles = vehicles.map((vehicle, index) => {
-      const base = vehicle as Record<string, unknown>;
-      // Add enriched fields if available
-      const enriched = enrichedMetadata[index];
-      if (enriched) {
-        return {
-          ...base,
-          sellerComments: enriched.sellerComments,
-          optionPackages: enriched.optionPackages,
-        };
-      }
-      return base;
-    });
+      // Build structuredContent with enriched fields for map pins and featured cards
+      const structuredContentVehicles = vehicles.map((vehicle, index) => {
+        // Add enriched metadata if available
+        const enriched = enrichedMetadata[index];
+        let base: UnifiedVehicle | Record<string, unknown> = vehicle;
+        
+        if (enriched) {
+          // Safely add enriched metadata
+          base = {
+            ...vehicle,
+            ...(enriched.sellerComments !== undefined && { sellerComments: enriched.sellerComments }),
+            ...(enriched.optionPackages !== undefined && { optionPackages: enriched.optionPackages }),
+          };
+        }
+        
+        // Enrich with map pin and featured card data
+        return enrichVehicleForStructuredContent(base);
+      });
 
     const toolResult = {
       success: true,
@@ -592,7 +400,7 @@ export async function searchVehicles(params: unknown): Promise<{
     const duration = Date.now() - startTime;
     console.error(JSON.stringify({
       event: 'search_error',
-      hasKey: !!process.env.MARKETCHECK_API_KEY,
+      source: 'uvs_db',
       ms: duration,
       error: error instanceof Error ? error.message : 'Unknown error',
     }));

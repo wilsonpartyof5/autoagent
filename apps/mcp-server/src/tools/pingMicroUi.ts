@@ -1,9 +1,10 @@
 import { randomUUID as uuid } from 'crypto';
-import { validateToolResult } from '../lib/responseShape.js';
+import { validateToolResult } from '../lib/responseShape';
+import { getWidgetHost } from '../utils/getWidgetHost';
 
 export async function pingMicroUi() {
   const runId = uuid();
-  const host = process.env.WIDGET_HOST!;
+  const host = getWidgetHost();
   
   // Build URL using URL API to ensure proper encoding
   const widgetUrl = new URL('/widget/micro', host);

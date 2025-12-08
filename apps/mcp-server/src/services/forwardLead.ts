@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { CONFIG } from '../config/env';
 
 const logger = pino();
 
@@ -15,15 +16,8 @@ export interface LeadData {
  * Forward lead to dashboard ingest API
  */
 export async function forwardLead(leadData: LeadData): Promise<void> {
-  const ingestUrl = process.env.DASHBOARD_INGEST_URL;
-  const ingestToken = process.env.DASHBOARD_INGEST_TOKEN;
-
-  if (!ingestUrl || !ingestToken) {
-    logger.warn('Dashboard ingest not configured - skipping lead forwarding', {
-      leadId: leadData.leadId,
-    });
-    return;
-  }
+  const ingestUrl = CONFIG.dashboardIngestUrl;
+  const ingestToken = CONFIG.dashboardIngestToken;
 
   try {
     const controller = new AbortController();
