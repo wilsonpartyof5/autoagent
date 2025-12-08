@@ -3,6 +3,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { join } from 'path';
 import { readFileSync } from 'fs';
+import { CONFIG } from './config/env.js';
+import { createIngestionRouter } from './api/ingest.js';
+import widgetTrackingRouter from './app/widget-tracking.js';
 
 // Extend global interface for rate limiting
 declare global {
@@ -10,8 +13,29 @@ declare global {
   var rateLimitStore: Map<string, { count: number; resetTime: number }> | undefined;
 }
 
+// Top-level crash handlers - MUST be set before any async operations
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  const errorStack = reason instanceof Error ? reason.stack : undefined;
+  console.error('UNHANDLED_REJECTION', {
+    error: errorMessage,
+    stack: errorStack,
+    promise: promise?.toString?.() || 'unknown',
+  });
+});
+
+process.on('uncaughtException', (error: Error) => {
+  console.error('UNCAUGHT_EXCEPTION', {
+    error: error.message,
+    stack: error.stack,
+    name: error.name,
+  });
+  // Let the process die for uncaught exceptions (they indicate serious bugs)
+  process.exit(1);
+});
+
 const app = express();
-const PORT = process.env.PORT || 8787;
+const PORT = CONFIG.port;
 
 // CORS configuration for OpenAI MCP
 const ALLOWED_ORIGINS = new Set(['https://chat.openai.com', 'https://chatgpt.com']);
@@ -33,6 +57,14 @@ function applyMcpCors(req: express.Request, res: express.Response) {
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Normalize paths to prevent double slashes
+app.use((req, res, next) => {
+  if (req.url.includes('//')) {
+    req.url = req.url.replace(/\/+/g, '/');
+  }
+  next();
+});
 
 // Add iframe-safe headers (CSP) for ChatGPT embedding
 app.use((req, res, next) => {
@@ -82,11 +114,8 @@ app.use((req, res, next) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   console.log('🏥 Health check requested');
-  // Get commit SHA from environment (set by Railway) or git
-  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || 
-                     process.env.GIT_COMMIT_SHA || 
-                     process.env.COMMIT_SHA || 
-                     'unknown';
+  // Get commit SHA from configuration
+  const commitSha = CONFIG.commitSha;
   res.json({
     ok: true,
     ts: Date.now(),
@@ -156,6 +185,9 @@ app.get('/.well-known/openapi.yaml', (req, res) => {
   }
 });
 
+// UVS Ingestion API
+app.use('/api/ingest', createIngestionRouter());
+
 // Deep logging middleware for /mcp endpoint
 app.use((req, res, next) => {
   // only for mcp & health
@@ -163,13 +195,15 @@ app.use((req, res, next) => {
   const t0 = Date.now();
   const origJson = res.json.bind(res);
 
-  // Log request first
+  // Log request first (guard against dumping large headers/socket objects)
   const reqInfo = {
     ts: new Date().toISOString(),
     method: req.method,
     url: req.originalUrl,
     ip: req.ip,
-    headers: req.headers,
+    // Only log essential headers, not full headers object (prevents socket dumps)
+    userAgent: req.headers['user-agent'],
+    contentType: req.headers['content-type'],
     // body logged below after body-parser; if raw needed, add raw capture
   };
   (res as { __reqInfo?: typeof reqInfo }).__reqInfo = reqInfo;
@@ -213,8 +247,13 @@ app.all('/mcp', async (req, res) => {
   // Apply CORS headers first, before any early returns
   applyMcpCors(req, res);
   
-  // Log headers for debugging
-  console.log(JSON.stringify({ evt: 'mcp.headers', headers: req.headers }));
+  // Log essential headers only (not full headers object to avoid socket dumps)
+  console.log(JSON.stringify({ 
+    evt: 'mcp.headers', 
+    userAgent: req.headers['user-agent'],
+    contentType: req.headers['content-type'],
+    origin: req.headers.origin,
+  }));
   
   // Handle OPTIONS requests for CORS preflight
   if (req.method === 'OPTIONS') {
@@ -245,34 +284,22 @@ app.all('/mcp', async (req, res) => {
   const startTime = Date.now();
   
   try {
+    // Guard against logging full request objects (prevents socket dumps)
     console.log(`🔍 [${requestId}] MCP Request received:`, {
       method: req.method,
       url: req.url,
       userAgent: req.headers['user-agent'],
       contentType: req.headers['content-type'],
       contentLength: req.headers['content-length'],
-      body: req.body,
-      ip: req.ip || req.connection.remoteAddress,
+      body: req.body, // Body is safe (parsed JSON)
+      ip: req.ip || req.connection?.remoteAddress || 'unknown',
       timestamp: new Date().toISOString()
     });
 
 
-    // Safety and authentication checks
+    // Log user-agent for diagnostics but do not restrict access
     const userAgent = req.headers['user-agent'] || '';
-    const isOpenAI = userAgent.includes('openai-mcp') || userAgent.includes('ChatGPT');
-    
-    if (!isOpenAI && !userAgent.includes('curl') && !userAgent.includes('test')) {
-      console.log(`⚠️ [${requestId}] Unauthorized request from: ${userAgent}`);
-      return res.status(401).json({
-        jsonrpc: '2.0',
-        id: req.body?.id || null,
-        error: {
-          code: -32001,
-          message: 'Unauthorized',
-          data: 'Only OpenAI MCP clients are allowed',
-        },
-      });
-    }
+    console.log(JSON.stringify({ evt: 'mcp.userAgent', userAgent }));
 
     // Rate limiting check
     const clientIP = req.ip || req.connection.remoteAddress;
@@ -392,6 +419,9 @@ app.get('/widget/micro', (req, res) => {
   }
 });
 
+// Widget tracking endpoint
+app.use('/', widgetTrackingRouter);
+
 // Serve the vehicle results widget
 app.get('/widget/vehicle-results', (req, res) => {
   const t0 = Date.now();
@@ -466,11 +496,47 @@ app.get('/', (req, res) => {
 
 
 // Error handling middleware
-app.use((error: Error, req: express.Request, res: express.Response) => {
-  console.error('Unhandled error:', error);
+app.use(async (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Ensure we have a proper Error object
+  const err = error instanceof Error ? error : new Error(String(error));
+  
+  // Log full stack trace (critical for debugging)
+  console.error('INGEST_ERROR', {
+    error: err.message,
+    stack: err.stack,
+    name: err.name,
+    path: req.path,
+    method: req.method,
+    url: req.url,
+  });
+  
+  // Track system error (non-blocking)
+  try {
+    const { trackSystemError } = await import('./lib/analytics/tracking.js');
+    trackSystemError(
+      'unhandled_error',
+      err.message,
+      'mcp-server',
+      {
+        requestId: (req as { id?: string }).id,
+      }
+    ).catch(() => {
+      // Ignore tracking errors
+    });
+  } catch (trackError) {
+    // Ignore tracking import/execution errors
+  }
+  
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+  
   res.status(500).json({
     error: 'Internal server error',
-    message: error.message,
+    message: err.message,
+    // Include stack in development (not production for security)
+    ...(process.env.NODE_ENV !== 'production' && err.stack ? { stack: err.stack } : {}),
   });
 });
 
