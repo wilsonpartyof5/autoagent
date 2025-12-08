@@ -1,6 +1,6 @@
-import { trackEvent } from '../lib/analytics/tracking';
+import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
-import { getUVSVehicleById } from '../db/uvs-vehicles';
+import { getUVSVehicleById } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 
 /**

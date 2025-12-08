@@ -9,7 +9,7 @@ import type { EventName, EventPayload } from '@autoagent/shared';
 import { generateEventId } from '@autoagent/shared';
 import { prepareEventForInsert } from '@autoagent/shared';
 import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../../config/env';
+import { CONFIG } from '../../config/env.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'analytics' });

@@ -8,7 +8,7 @@
  * Invalid payloads are quarantined and logged, not written to UVS.
  */
 
-import type { UVS } from '../types/UVS';
+import type { UVS } from '../types/UVS.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { validateStrictUVS, type StrictValidationResult } from '@autoagent/shared';
 

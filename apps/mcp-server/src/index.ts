@@ -3,9 +3,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { join } from 'path';
 import { readFileSync } from 'fs';
-import { CONFIG } from './config/env';
-import { createIngestionRouter } from './api/ingest';
-import widgetTrackingRouter from './app/widget-tracking';
+import { CONFIG } from './config/env.js';
+import { createIngestionRouter } from './api/ingest.js';
+import widgetTrackingRouter from './app/widget-tracking.js';
 
 // Extend global interface for rate limiting
 declare global {
@@ -337,7 +337,7 @@ app.all('/mcp', async (req, res) => {
     global.rateLimitStore.set(rateLimitKey, clientData);
 
     // Import and handle MCP server logic
-    const { handleMcpRequest } = await import('./mcp-handler');
+    const { handleMcpRequest } = await import('./mcp-handler.js');
     const context = {
       ipAddress: req.ip || req.connection.remoteAddress,
     };
@@ -512,7 +512,7 @@ app.use(async (error: unknown, req: express.Request, res: express.Response, next
   
   // Track system error (non-blocking)
   try {
-    const { trackSystemError } = await import('./lib/analytics/tracking');
+    const { trackSystemError } = await import('./lib/analytics/tracking.js');
     trackSystemError(
       'unhandled_error',
       err.message,

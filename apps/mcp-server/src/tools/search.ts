@@ -1,4 +1,4 @@
-import { searchVehicles } from './searchVehicles';
+import { searchVehicles } from './searchVehicles.js';
 import { type SearchParams } from '@autoagent/shared';
 
 /**

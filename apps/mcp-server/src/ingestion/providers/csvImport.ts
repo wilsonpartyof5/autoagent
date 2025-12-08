@@ -6,7 +6,7 @@
  * Phase 2: Full field population with intelligent parsing and categorization.
  */
 
-import type { UVS, CoreSpecs } from '../../types/UVS';
+import type { UVS, CoreSpecs } from '../../types/UVS.js';
 
 /**
  * CSV row as parsed object (column names may vary widely)

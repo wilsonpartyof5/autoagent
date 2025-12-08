@@ -45,7 +45,7 @@ router.post('/widget/track', async (req, res) => {
     }
 
     // Import tracking dynamically to avoid circular deps
-    const { trackEvent } = await import('../lib/analytics/tracking');
+    const { trackEvent } = await import('../lib/analytics/tracking.js');
 
     await trackEvent(
       eventName,

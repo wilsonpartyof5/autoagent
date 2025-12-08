@@ -8,10 +8,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { validateStrictUVS } from '@autoagent/shared';
-import type { IngestionSummary } from './orchestrator';
+import type { IngestionSummary } from './orchestrator.js';
 import pino from 'pino';
-import { CONFIG } from '../config/env';
-import { quarantineValidationFailure } from './quarantine';
+import { CONFIG } from '../config/env.js';
+import { quarantineValidationFailure } from './quarantine.js';
 
 const logger = pino();
 

@@ -1,10 +1,10 @@
-import { searchVehicles } from './tools/searchVehicles';
-import { submitLead } from './tools/submitLead';
-import { compareVehicles } from './tools/compareVehicles';
-import { pingUi } from './tools/pingUi';
-import { pingMicroUi } from './tools/pingMicroUi';
-import { search } from './tools/search';
-import { fetchContent } from './tools/fetch';
+import { searchVehicles } from './tools/searchVehicles.js';
+import { submitLead } from './tools/submitLead.js';
+import { compareVehicles } from './tools/compareVehicles.js';
+import { pingUi } from './tools/pingUi.js';
+import { pingMicroUi } from './tools/pingMicroUi.js';
+import { search } from './tools/search.js';
+import { fetchContent } from './tools/fetch.js';
 
 /**
  * Simple MCP tool handler for Express integration

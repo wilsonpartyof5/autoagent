@@ -8,10 +8,10 @@
  * 4. Handles deletion of vehicles no longer in provider data
  */
 
-import { ingestVehicles, type IngestionOptions, getValidVehicles, getInvalidVehicles } from './orchestrator';
-import { storeIngestedVehicles, storeUVSVehicle } from './storage';
+import { ingestVehicles, type IngestionOptions, getValidVehicles, getInvalidVehicles } from './orchestrator.js';
+import { storeIngestedVehicles, storeUVSVehicle } from './storage.js';
 import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 import pino from 'pino';
 import type { UnifiedVehicle } from '@autoagent/shared';
 

@@ -1,13 +1,13 @@
 import { SearchParamsSchema, type SearchParams } from '@autoagent/shared';
-import { safeParse } from '../lib/z';
-import { searchCache } from '../lib/cache';
+import { safeParse } from '../lib/z.js';
+import { searchCache } from '../lib/cache.js';
 import { randomUUID } from 'crypto';
-import { validateToolResult } from '../lib/responseShape';
-import { getWidgetHost } from '../utils/getWidgetHost';
-import { CONFIG } from '../config/env';
-import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles';
+import { validateToolResult } from '../lib/responseShape.js';
+import { getWidgetHost } from '../utils/getWidgetHost.js';
+import { CONFIG } from '../config/env.js';
+import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
-import { trackEvent } from '../lib/analytics/tracking';
+import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 
 // Removed createMockVehicles - no longer needed, DB provides real data

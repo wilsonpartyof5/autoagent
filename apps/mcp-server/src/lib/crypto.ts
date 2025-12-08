@@ -1,5 +1,5 @@
 import sodium from 'libsodium-wrappers';
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 
 let encryptionKey: Uint8Array | null = null;
 

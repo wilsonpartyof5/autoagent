@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import pino from 'pino';
-import { encryptJson } from '../lib/crypto';
-import { insertLead, countRecentLeadsByIp } from '../data/db';
-import { forwardLead } from '../services/forwardLead';
-import { deliverLead } from '../services/deliverLead';
-import { trackEvent } from '../lib/analytics/tracking';
+import { encryptJson } from '../lib/crypto.js';
+import { insertLead, countRecentLeadsByIp } from '../data/db.js';
+import { forwardLead } from '../services/forwardLead.js';
+import { deliverLead } from '../services/deliverLead.js';
+import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 
 const logger = pino();

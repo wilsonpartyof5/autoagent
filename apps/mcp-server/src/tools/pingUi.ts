@@ -1,5 +1,5 @@
-import { validateToolResult } from '../lib/responseShape';
-import { getWidgetHost } from '../utils/getWidgetHost';
+import { validateToolResult } from '../lib/responseShape.js';
+import { getWidgetHost } from '../utils/getWidgetHost.js';
 
 /**
  * Ping UI tool for ChatGPT App validation

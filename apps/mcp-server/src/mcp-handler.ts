@@ -1,4 +1,4 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple.js';
 
 /**
  * Handle MCP protocol requests

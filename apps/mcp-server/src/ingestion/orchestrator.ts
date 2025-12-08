@@ -13,19 +13,19 @@
 
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { validateStrictUVS } from '@autoagent/shared';
-import { validateUVS } from '../validation/validateUVS';
-import { normalize as normalizeMarketCheck } from './providers/marketcheck';
-import { normalize as normalizeCSV } from './providers/csvImport';
-import { normalize as normalizeDealerAPI } from './providers/dealerApi';
-import { normalize as normalizeDealerCom } from './providers/dealerCom';
-import { normalize as normalizeHomenet } from './providers/homenet';
-import { normalize as normalizeVAuto } from './providers/vauto';
-import type { UVS } from '../types/UVS';
+import { validateUVS } from '../validation/validateUVS.js';
+import { normalize as normalizeMarketCheck } from './providers/marketcheck.js';
+import { normalize as normalizeCSV } from './providers/csvImport.js';
+import { normalize as normalizeDealerAPI } from './providers/dealerApi.js';
+import { normalize as normalizeDealerCom } from './providers/dealerCom.js';
+import { normalize as normalizeHomenet } from './providers/homenet.js';
+import { normalize as normalizeVAuto } from './providers/vauto.js';
+import type { UVS } from '../types/UVS.js';
 import {
   quarantineValidationFailure,
   quarantineNormalizationFailure,
   logQuarantineMetricsSummary,
-} from './quarantine';
+} from './quarantine.js';
 import pino from 'pino';
 
 const logger = pino();

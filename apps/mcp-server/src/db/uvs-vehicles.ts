@@ -5,7 +5,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import pino from 'pino';
 

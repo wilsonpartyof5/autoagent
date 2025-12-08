@@ -15,7 +15,7 @@ import 'dotenv/config';
 // Import config (this will throw if required vars are missing)
 try {
   // Dynamic import to catch errors
-  await import('./env');
+  await import('./env.js');
   console.log('✅ All required environment variables are set');
   process.exit(0);
 } catch (error) {

@@ -1,6 +1,6 @@
 import { randomUUID as uuid } from 'crypto';
-import { validateToolResult } from '../lib/responseShape';
-import { getWidgetHost } from '../utils/getWidgetHost';
+import { validateToolResult } from '../lib/responseShape.js';
+import { getWidgetHost } from '../utils/getWidgetHost.js';
 
 export async function pingMicroUi() {
   const runId = uuid();

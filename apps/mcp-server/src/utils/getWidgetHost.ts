@@ -1,4 +1,4 @@
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 
 /**
  * Get the widget host URL from configuration

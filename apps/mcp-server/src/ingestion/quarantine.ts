@@ -6,7 +6,7 @@
  */
 
 import pino from 'pino';
-import type { ProviderType } from './orchestrator';
+import type { ProviderType } from './orchestrator.js';
 import type { StrictValidationResult } from '@autoagent/shared';
 
 const logger = pino();

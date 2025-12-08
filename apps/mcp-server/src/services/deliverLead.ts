@@ -5,8 +5,8 @@
 
 import pino from 'pino';
 import { createClient } from '@supabase/supabase-js';
-import { generateAdfXml, type LeadData } from './adf-generator';
-import { decryptToJson } from '../lib/crypto';
+import { generateAdfXml, type LeadData } from './adf-generator.js';
+import { decryptToJson } from '../lib/crypto.js';
 
 const logger = pino();
 
@@ -47,7 +47,7 @@ interface DeliveryLog {
   adfPayload: string;
 }
 
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 
 /**
  * Get Supabase client with service role key (for server-side operations)

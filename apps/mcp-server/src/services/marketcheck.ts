@@ -1,4 +1,4 @@
-import { fetchWithTimeout, HttpError } from '../lib/http';
+import { fetchWithTimeout, HttpError } from '../lib/http.js';
 import {
   type Vehicle,
   type SearchParams,
@@ -112,7 +112,7 @@ export class MarketCheckClient {
 
 }
 
-import { CONFIG } from '../config/env';
+import { CONFIG } from '../config/env.js';
 
 /**
  * Create MarketCheck client instance

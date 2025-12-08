@@ -5,7 +5,7 @@
  * Phase 2: Full field population with intelligent parsing and categorization.
  */
 
-import type { UVS, Feature } from '../../types/UVS';
+import type { UVS, Feature } from '../../types/UVS.js';
 
 /**
  * vAuto vehicle data structure
