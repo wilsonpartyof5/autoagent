@@ -188,7 +188,7 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
     console.error('MCP handler error:', error);
     
     // Track system error
-    const { trackSystemError } = await import('./lib/analytics/tracking');
+    const { trackSystemError } = await import('./lib/analytics/tracking.js');
     trackSystemError(
       'mcp_handler_error',
       error instanceof Error ? error.message : 'Unknown error',

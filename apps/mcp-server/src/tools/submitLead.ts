@@ -76,7 +76,7 @@ export async function submitLead(
     const { vehicleId, vin, dealerId, dealerName, pricing, user, consent } = parseResult.data;
 
     // ENFORCE UVS lookup - vehicle must exist in uvs_vehicles
-    const { getUVSVehicleById, getUVSVehicleByVIN } = await import('../db/uvs-vehicles');
+    const { getUVSVehicleById, getUVSVehicleByVIN } = await import('../db/uvs-vehicles.js');
     
     // Try by vehicleId first (primary lookup)
     let vehicle = await getUVSVehicleById(vehicleId);
