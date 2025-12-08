@@ -5,7 +5,7 @@
  * No PII fields allowed.
  */
 
-import type { EventName, EventPayload } from './analytics';
+import type { EventName, EventPayload } from './analytics.js';
 
 /**
  * Allowed fields per event type (strict allowlist - no PII)

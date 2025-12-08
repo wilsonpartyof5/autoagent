@@ -5,8 +5,8 @@
  * Provides unified validation, required ID enforcement, and payload sanitization.
  */
 
-import type { EventName, EventPayload } from './analytics';
-import { validateEventPayload, sanitizeEventPayload } from './analytics-validators';
+import type { EventName, EventPayload } from './analytics.js';
+import { validateEventPayload, sanitizeEventPayload } from './analytics-validators.js';
 
 /**
  * Required IDs per event type (unified across all sources)
