@@ -9,7 +9,7 @@ import { CONFIG } from '../config/env.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import pino from 'pino';
 
-const logger = pino();
+const logger = (pino as any)();
 
 /**
  * Get Supabase client for queries

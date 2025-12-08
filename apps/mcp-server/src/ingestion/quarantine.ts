@@ -9,7 +9,7 @@ import pino from 'pino';
 import type { ProviderType } from './orchestrator.js';
 import type { StrictValidationResult } from '@autoagent/shared';
 
-const logger = pino();
+const logger = (pino as any)();
 
 /**
  * Quarantine record metadata

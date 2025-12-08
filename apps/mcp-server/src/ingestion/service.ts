@@ -15,7 +15,7 @@ import { CONFIG } from '../config/env.js';
 import pino from 'pino';
 import type { UnifiedVehicle } from '@autoagent/shared';
 
-const logger = pino();
+const logger = (pino as any)();
 
 /**
  * Get Supabase client for deletion operations

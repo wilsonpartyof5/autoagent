@@ -13,7 +13,7 @@ import pino from 'pino';
 import { CONFIG } from '../config/env.js';
 import { quarantineValidationFailure } from './quarantine.js';
 
-const logger = pino();
+const logger = (pino as any)();
 
 /**
  * Get Supabase client for storage

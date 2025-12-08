@@ -8,7 +8,7 @@ import { deliverLead } from '../services/deliverLead.js';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 
-const logger = pino();
+const logger = (pino as any)();
 
 // Input schema for submit-lead tool (UVS-first)
 // All vehicle data must come from UVS - no provider-specific fields allowed

@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import { CONFIG } from '../../config/env.js';
 import pino from 'pino';
 
-const logger = pino({ name: 'analytics' });
+const logger = (pino as any)({ name: 'analytics' });
 
 /**
  * Get Supabase client for analytics

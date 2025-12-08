@@ -28,7 +28,7 @@ import {
 } from './quarantine.js';
 import pino from 'pino';
 
-const logger = pino();
+const logger = (pino as any)();
 
 /**
  * Provider type identifier

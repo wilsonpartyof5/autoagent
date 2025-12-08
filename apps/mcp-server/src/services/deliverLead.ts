@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateAdfXml, type LeadData } from './adf-generator.js';
 import { decryptToJson } from '../lib/crypto.js';
 
-const logger = pino();
+const logger = (pino as any)();
 
 interface DealerDeliverySettings {
   method: 'http' | 'email' | null;

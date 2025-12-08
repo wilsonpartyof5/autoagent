@@ -9,7 +9,7 @@ import { ingestVehiclesFromProvider, type IngestionServiceOptions } from '../ing
 import { CONFIG } from '../config/env.js';
 import pino from 'pino';
 
-const logger = pino();
+const logger = (pino as any)();
 const MARKETCHECK_DEFAULT_BASE = 'https://api.marketcheck.com';
 const MARKETCHECK_SOURCE_BASE = 'https://mc-api.marketcheck.com';
 

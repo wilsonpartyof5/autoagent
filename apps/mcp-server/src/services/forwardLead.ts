@@ -1,7 +1,7 @@
 import pino from 'pino';
 import { CONFIG } from '../config/env.js';
 
-const logger = pino();
+const logger = (pino as any)();
 
 export interface LeadData {
   leadId: string;
