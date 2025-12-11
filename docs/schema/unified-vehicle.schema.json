@@ -1,0 +1,1082 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autoagent.ai/schema/unified-vehicle/v1",
+  "title": "Unified Vehicle Schema (UVS)",
+  "description": "Provider-agnostic schema for vehicle inventory data supporting multiple sources (MarketCheck, Homenet, vAuto, Dealer Inspire, Dealer.com, OEM feeds, dealer CSV/API, CDK/Reynolds). Extensible via enrichment block.",
+  "type": "object",
+  "required": ["id", "baseIdentity", "pricing", "location", "operational"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique internal inventory identifier. Required. Used for deduplication and tracking across systems."
+    },
+    "baseIdentity": {
+      "type": "object",
+      "description": "Core vehicle identification fields",
+      "required": ["year", "make", "model"],
+      "properties": {
+        "vin": {
+          "type": "string",
+          "pattern": "^[A-HJ-NPR-Z0-9]{11,17}$",
+          "description": "Vehicle Identification Number. 11-17 alphanumeric characters (excluding I, O, Q). Optional but highly recommended for accurate identification."
+        },
+        "year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2100,
+          "description": "Model year. Required. Range: 1900-2100."
+        },
+        "make": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Vehicle manufacturer (e.g., 'Toyota', 'Ford'). Required."
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Vehicle model name (e.g., 'Camry', 'F-150'). Required."
+        },
+        "trim": {
+          "type": "string",
+          "description": "Trim level or package designation (e.g., 'LE', 'XLT', 'Limited'). Optional."
+        },
+        "stockNumber": {
+          "type": "string",
+          "description": "Dealer-assigned stock/inventory number. Optional. Common in dealer systems (CDK, Reynolds, Homenet)."
+        },
+        "listingId": {
+          "type": "string",
+          "description": "Provider-specific listing identifier (e.g., MarketCheck ID, vAuto listing ID). Optional."
+        },
+        "serialNumber": {
+          "type": "string",
+          "description": "Additional serial or chassis number. Optional. Used in some international markets."
+        },
+        "vehicleType": {
+          "type": "string",
+          "enum": ["car", "truck", "suv", "van", "motorcycle", "rv", "trailer", "other"],
+          "description": "High-level vehicle category. Optional."
+        }
+      }
+    },
+    "condition": {
+      "type": "string",
+      "enum": ["new", "used", "certified"],
+      "description": "Vehicle condition/type. Required for inventory classification. 'certified' indicates CPO/Manufacturer Certified Pre-Owned."
+    },
+    "coreSpecs": {
+      "type": "object",
+      "description": "Essential vehicle specifications",
+      "properties": {
+        "bodyType": {
+          "type": "string",
+          "description": "Body style (e.g., 'Sedan', 'SUV', 'Pickup Truck', 'Coupe', 'Convertible', 'Hatchback', 'Wagon'). Optional."
+        },
+        "doors": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6,
+          "description": "Number of doors. Optional."
+        },
+        "seatingCapacity": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 15,
+          "description": "Number of seats. Optional."
+        },
+        "fuelType": {
+          "type": "string",
+          "enum": ["gasoline", "diesel", "electric", "hybrid", "plug-in hybrid", "flex fuel", "natural gas", "hydrogen", "other"],
+          "description": "Primary fuel type. Optional."
+        },
+        "engine": {
+          "type": "object",
+          "description": "Engine specifications",
+          "properties": {
+            "displacement": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Engine displacement in liters (e.g., 3.5, 2.0). Optional."
+            },
+            "cylinders": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 16,
+              "description": "Number of cylinders. Optional."
+            },
+            "horsepower": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Horsepower (hp). Optional."
+            },
+            "torque": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Torque in lb-ft. Optional."
+            },
+            "aspiration": {
+              "type": "string",
+              "enum": ["naturally aspirated", "turbocharged", "supercharged", "twin-turbo", "electric"],
+              "description": "Engine aspiration type. Optional."
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable engine description (e.g., '3.5L V6'). Optional."
+            }
+          }
+        },
+        "transmission": {
+          "type": "object",
+          "description": "Transmission specifications",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["automatic", "manual", "cvt", "automated manual", "dual clutch"],
+              "description": "Transmission type. Optional."
+            },
+            "speeds": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 10,
+              "description": "Number of gears/speeds. Optional."
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable transmission description (e.g., '8-Speed Automatic'). Optional."
+            }
+          }
+        },
+        "drivetrain": {
+          "type": "string",
+          "enum": ["fwd", "rwd", "awd", "4wd", "part-time 4wd"],
+          "description": "Drivetrain configuration (FWD/RWD/AWD/4WD). Optional."
+        },
+        "miles": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Odometer reading in miles. Optional. Typically 0 for new vehicles."
+        },
+        "kilometers": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Odometer reading in kilometers. Optional. Used in metric markets."
+        }
+      }
+    },
+    "dimensionsPerformance": {
+      "type": "object",
+      "description": "Vehicle dimensions and performance metrics",
+      "properties": {
+        "length": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Length measurement value"
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["inches", "feet", "meters", "millimeters"],
+              "description": "Unit of measurement"
+            }
+          }
+        },
+        "width": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["inches", "feet", "meters", "millimeters"]
+            }
+          }
+        },
+        "height": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["inches", "feet", "meters", "millimeters"]
+            }
+          }
+        },
+        "wheelbase": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["inches", "feet", "meters", "millimeters"]
+            }
+          }
+        },
+        "groundClearance": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["inches", "feet", "meters", "millimeters"]
+            }
+          }
+        },
+        "curbWeight": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["pounds", "kilograms"]
+            }
+          }
+        },
+        "towingCapacity": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["pounds", "kilograms"]
+            }
+          }
+        },
+        "payloadCapacity": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["pounds", "kilograms"]
+            }
+          }
+        },
+        "fuelEconomy": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "number",
+              "minimum": 0,
+              "description": "City fuel economy in MPG (or L/100km if unit is metric)"
+            },
+            "highway": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Highway fuel economy in MPG (or L/100km if unit is metric)"
+            },
+            "combined": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Combined fuel economy in MPG (or L/100km if unit is metric)"
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["mpg", "l/100km", "kWh/100mi", "mi/kWh"],
+              "description": "Fuel economy unit"
+            },
+            "epaEstimate": {
+              "type": "boolean",
+              "description": "Whether values are EPA estimates"
+            }
+          }
+        },
+        "acceleration": {
+          "type": "object",
+          "properties": {
+            "zeroToSixty": {
+              "type": "number",
+              "minimum": 0,
+              "description": "0-60 mph time in seconds"
+            },
+            "zeroToHundred": {
+              "type": "number",
+              "minimum": 0,
+              "description": "0-100 km/h time in seconds (metric markets)"
+            }
+          }
+        },
+        "topSpeed": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["mph", "km/h"]
+            }
+          }
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "description": "Pricing information",
+      "required": ["price"],
+      "properties": {
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Current asking/selling price. Required. In local currency."
+        },
+        "msrp": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Manufacturer's Suggested Retail Price. Optional."
+        },
+        "invoicePrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Dealer invoice price. Optional."
+        },
+        "internetPrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Internet/special pricing. Optional. Common in vAuto/Dealer.com."
+        },
+        "retailPrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Retail/list price. Optional."
+        },
+        "wholesalePrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wholesale/trade-in value. Optional."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "default": "USD",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'CAD', 'EUR'). Default: 'USD'."
+        },
+        "priceChangeHistory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["price", "timestamp"],
+            "properties": {
+              "price": {
+                "type": "number",
+                "minimum": 0
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 datetime string"
+              },
+              "source": {
+                "type": "string",
+                "description": "Source of price change (e.g., 'marketcheck', 'vauto')"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Reason for price change (e.g., 'market adjustment', 'incentive applied')"
+              }
+            }
+          },
+          "description": "Historical price changes. Optional."
+        },
+        "priceNote": {
+          "type": "string",
+          "description": "Additional pricing notes (e.g., 'Price includes $2000 rebate'). Optional."
+        },
+        "financing": {
+          "type": "object",
+          "properties": {
+            "monthlyPayment": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Estimated monthly payment"
+            },
+            "apr": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Annual Percentage Rate (%)"
+            },
+            "termMonths": {
+              "type": "integer",
+              "minimum": 12,
+              "maximum": 84,
+              "description": "Loan term in months"
+            },
+            "downPayment": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Down payment amount"
+            }
+          }
+        }
+      }
+    },
+    "featuresPackages": {
+      "type": "object",
+      "description": "Vehicle features, options, and packages",
+      "properties": {
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of feature descriptions (e.g., 'Bluetooth', 'Backup Camera', 'Navigation System'). Optional."
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Package name (e.g., 'Technology Package', 'Sport Package')"
+              },
+              "code": {
+                "type": "string",
+                "description": "Package option code (OEM standard)"
+              },
+              "description": {
+                "type": "string",
+                "description": "Package description"
+              },
+              "price": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Package price (MSRP)"
+              }
+            }
+          },
+          "description": "Installed option packages. Optional."
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Option name (e.g., 'Sunroof', 'Leather Seats')"
+              },
+              "code": {
+                "type": "string",
+                "description": "Option code (OEM standard)"
+              },
+              "description": {
+                "type": "string",
+                "description": "Option description"
+              },
+              "price": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Option price (MSRP)"
+              }
+            }
+          },
+          "description": "Individual options/accessories. Optional."
+        },
+        "interiorColor": {
+          "type": "string",
+          "description": "Interior color/trim (e.g., 'Black Leather', 'Beige Cloth'). Optional."
+        },
+        "exteriorColor": {
+          "type": "string",
+          "description": "Exterior color/paint (e.g., 'Midnight Black Metallic', 'Arctic White'). Optional."
+        },
+        "interiorColorCode": {
+          "type": "string",
+          "description": "Interior color code (OEM standard). Optional."
+        },
+        "exteriorColorCode": {
+          "type": "string",
+          "description": "Exterior color code (OEM standard). Optional."
+        },
+        "certified": {
+          "type": "boolean",
+          "description": "Whether vehicle is certified pre-owned (CPO) or manufacturer certified. Optional."
+        },
+        "certificationType": {
+          "type": "string",
+          "enum": ["cpo", "manufacturer certified", "dealer certified", "other"],
+          "description": "Type of certification if certified=true. Optional."
+        },
+        "warranty": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["manufacturer", "extended", "dealer", "limited", "none"],
+              "description": "Warranty type"
+            },
+            "months": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Warranty duration in months"
+            },
+            "miles": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Warranty mileage limit"
+            },
+            "description": {
+              "type": "string",
+              "description": "Warranty description/details"
+            }
+          },
+          "description": "Warranty information. Optional."
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "description": "Vehicle media assets (photos, videos, 360° views)",
+      "properties": {
+        "photoUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "Array of photo URLs. Optional. Should include primary photo."
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Thumbnail image URL. Optional."
+        },
+        "primaryPhotoUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Primary/featured photo URL. Optional. Legacy field for backward compatibility."
+        },
+        "videoUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Video URL (walkaround, test drive, etc.). Optional."
+        },
+        "virtualTourUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "360° virtual tour URL. Optional."
+        },
+        "windowStickerUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Monroney sticker (window sticker) URL. Optional."
+        },
+        "buildSheetUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Build sheet URL. Optional."
+        },
+        "carfaxUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Carfax/AutoCheck report URL. Optional."
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Image URL"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["exterior", "interior", "engine", "other"],
+                "description": "Image category"
+              },
+              "caption": {
+                "type": "string",
+                "description": "Image caption/description"
+              },
+              "sortOrder": {
+                "type": "integer",
+                "description": "Display order"
+              }
+            }
+          },
+          "description": "Structured image array with metadata. Optional."
+        }
+      }
+    },
+    "history": {
+      "type": "object",
+      "description": "Vehicle history and ownership information",
+      "properties": {
+        "accidentHistory": {
+          "type": "boolean",
+          "description": "Whether vehicle has reported accident history. Optional."
+        },
+        "accidentCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of reported accidents. Optional."
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of previous owners. Optional."
+        },
+        "serviceHistory": {
+          "type": "boolean",
+          "description": "Whether service history is available. Optional."
+        },
+        "serviceRecords": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "mileage": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "service": {
+                "type": "string",
+                "description": "Service description"
+              },
+              "location": {
+                "type": "string",
+                "description": "Service location"
+              }
+            }
+          },
+          "description": "Service history records. Optional."
+        },
+        "titleStatus": {
+          "type": "string",
+          "enum": ["clean", "salvage", "rebuilt", "flood", "fire", "hail", "lien", "unknown"],
+          "description": "Vehicle title status. Optional."
+        },
+        "titleState": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "State where title was issued (US only). Optional."
+        },
+        "previousUse": {
+          "type": "string",
+          "enum": ["personal", "commercial", "lease", "rental", "fleet", "government", "taxi", "other"],
+          "description": "Previous vehicle use. Optional."
+        },
+        "inServiceDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date vehicle was first put into service. Optional."
+        },
+        "lastOwnedDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date last owner took possession. Optional."
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "description": "Vehicle physical location",
+      "properties": {
+        "dealer": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "dealerId": {
+              "type": "string",
+              "description": "Dealer identifier (provider-specific or internal). Optional."
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Dealer name. Required."
+            },
+            "address": {
+              "type": "string",
+              "description": "Full street address. Optional."
+            },
+            "street": {
+              "type": "string",
+              "description": "Street address line. Optional."
+            },
+            "city": {
+              "type": "string",
+              "description": "City. Optional."
+            },
+            "state": {
+              "type": "string",
+              "description": "State/province code (e.g., 'CA', 'ON'). Optional."
+            },
+            "zip": {
+              "type": "string",
+              "description": "ZIP/postal code. Optional."
+            },
+            "country": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$",
+              "default": "US",
+              "description": "ISO 3166-1 alpha-2 country code. Default: 'US'."
+            },
+            "latitude": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90,
+              "description": "Latitude coordinate (WGS84). Optional."
+            },
+            "longitude": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "description": "Longitude coordinate (WGS84). Optional."
+            },
+            "phone": {
+              "type": "string",
+              "description": "Dealer phone number. Optional."
+            },
+            "website": {
+              "type": "string",
+              "format": "uri",
+              "description": "Dealer website URL. Optional."
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Dealer contact email. Optional."
+            },
+            "hours": {
+              "type": "object",
+              "description": "Business hours by day of week. Optional.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "rating": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Dealer rating (0-5 scale). Optional."
+            },
+            "reviewCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of dealer reviews. Optional."
+            }
+          }
+        },
+        "locationName": {
+          "type": "string",
+          "description": "Specific lot/location name if dealer has multiple locations. Optional."
+        },
+        "lotNumber": {
+          "type": "string",
+          "description": "Lot number or location identifier within dealer. Optional."
+        }
+      }
+    },
+    "availability": {
+      "type": "object",
+      "description": "Vehicle availability status and timing",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["available", "pending", "sold", "in_transit", "on_order", "hold", "unavailable"],
+          "default": "available",
+          "description": "Current availability status. Default: 'available'."
+        },
+        "isLive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether vehicle listing is live/published. Default: true."
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When listing was first published. Optional."
+        },
+        "publishedBy": {
+          "type": "string",
+          "description": "User/system that published listing. Optional."
+        },
+        "availableDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Expected availability date (for in-transit/on-order vehicles). Optional."
+        },
+        "inTransitDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date vehicle entered transit. Optional."
+        },
+        "onLotDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date vehicle arrived at dealer lot. Optional."
+        },
+        "soldDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date vehicle was sold (if status='sold'). Optional."
+        },
+        "daysOnMarket": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of days listing has been active. Optional."
+        },
+        "daysOnLot": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of days vehicle has been on dealer lot. Optional."
+        }
+      }
+    },
+    "marketData": {
+      "type": "object",
+      "description": "Market analysis and competitive data",
+      "properties": {
+        "marketAveragePrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Market average price for similar vehicles. Optional."
+        },
+        "marketPriceRange": {
+          "type": "object",
+          "properties": {
+            "low": {
+              "type": "number",
+              "minimum": 0
+            },
+            "high": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "description": "Price range for similar vehicles in market. Optional."
+        },
+        "competitivePosition": {
+          "type": "string",
+          "enum": ["below_market", "at_market", "above_market"],
+          "description": "How vehicle price compares to market. Optional."
+        },
+        "turnRate": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Expected inventory turn rate (days). Optional."
+        },
+        "marketRank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Price rank within market (1 = lowest). Optional."
+        },
+        "similarListings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of similar vehicles in market. Optional."
+        }
+      }
+    },
+    "dealerDefined": {
+      "type": "object",
+      "description": "Dealer-specific custom fields and metadata",
+      "additionalProperties": true,
+      "properties": {
+        "customFields": {
+          "type": "object",
+          "description": "Arbitrary key-value pairs for dealer-specific data",
+          "additionalProperties": true
+        },
+        "internalNotes": {
+          "type": "string",
+          "description": "Internal dealer notes (not displayed to customers). Optional."
+        },
+        "salesperson": {
+          "type": "string",
+          "description": "Assigned salesperson. Optional."
+        },
+        "salespersonId": {
+          "type": "string",
+          "description": "Salesperson identifier. Optional."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Inventory priority/ranking (higher = more important). Optional."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Dealer-defined tags/categories. Optional."
+        },
+        "sourceSystem": {
+          "type": "string",
+          "description": "Source system identifier (e.g., 'cdk', 'reynolds', 'homenet'). Optional."
+        },
+        "sourceSystemId": {
+          "type": "string",
+          "description": "Vehicle ID in source system. Optional."
+        }
+      }
+    },
+    "operational": {
+      "type": "object",
+      "description": "Operational sync and tracking metadata",
+      "required": ["lastSyncedAt"],
+      "properties": {
+        "dataSource": {
+          "type": "string",
+          "default": "unknown",
+          "description": "Data source/provider (e.g., 'marketcheck-api', 'vauto', 'homenet', 'dealer-com', 'oem-feed', 'csv-import', 'cdk', 'reynolds'). Optional."
+        },
+        "source": {
+          "type": "string",
+          "description": "Alternate source identifier (legacy field). Optional."
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last synchronization timestamp (ISO 8601). Required."
+        },
+        "syncStatus": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "success", "failed"],
+          "default": "success",
+          "description": "Last sync operation status. Default: 'success'."
+        },
+        "syncError": {
+          "type": "string",
+          "description": "Error message from last failed sync. Optional."
+        },
+        "syncRetryCount": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of sync retry attempts. Optional."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Record creation timestamp (ISO 8601). Optional."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Record last update timestamp (ISO 8601). Optional."
+        }
+      }
+    },
+    "leadTracking": {
+      "type": "object",
+      "description": "Lead generation and tracking data",
+      "properties": {
+        "leadStatus": {
+          "type": "string",
+          "enum": ["none", "submitted", "qualified", "contacted", "sold"],
+          "default": "none",
+          "description": "Current lead status. Default: 'none'."
+        },
+        "leadId": {
+          "type": "string",
+          "description": "Associated lead identifier. Optional."
+        },
+        "lastLeadAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of last lead submission. Optional."
+        },
+        "leadCount": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Total number of leads generated. Optional."
+        }
+      }
+    },
+    "enrichment": {
+      "type": "object",
+      "description": "Extensible enrichment block for AI-generated or third-party enhanced data",
+      "additionalProperties": true,
+      "properties": {
+        "aiGenerated": {
+          "type": "object",
+          "description": "AI-generated enhancements (descriptions, SEO, recommendations)",
+          "additionalProperties": true,
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "AI-generated vehicle description"
+            },
+            "seoTitle": {
+              "type": "string",
+              "description": "SEO-optimized title"
+            },
+            "seoDescription": {
+              "type": "string",
+              "description": "SEO meta description"
+            },
+            "sellingPoints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "AI-generated key selling points"
+            },
+            "recommendedPrice": {
+              "type": "number",
+              "minimum": 0,
+              "description": "AI-suggested optimal price based on market analysis"
+            }
+          }
+        },
+        "providerSpecific": {
+          "type": "object",
+          "description": "Provider-specific raw data preserved for reference",
+          "additionalProperties": true
+        },
+        "thirdParty": {
+          "type": "object",
+          "description": "Third-party enriched data (e.g., Carfax, AutoCheck, KBB)",
+          "additionalProperties": true,
+          "properties": {
+            "carfax": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "autocheck": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "kbb": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

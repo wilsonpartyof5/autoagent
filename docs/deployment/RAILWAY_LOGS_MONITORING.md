@@ -86,14 +86,14 @@ Or in HTTP logs:
 **Solution: Use Custom Domain**
 
 1. **Get a Custom Domain:**
-   - Example: `mcp.autoagent.ai` or `api.autoagent.app`
+   - Example: `mcp.your-domain.com` or `api.autoagent.app`
    - Purchase if needed (e.g., via Namecheap, Google Domains)
 
 2. **Configure in Railway:**
    - Go to Railway dashboard
    - Service → Settings → Domains
    - Click "Add Domain"
-   - Enter your custom domain (e.g., `mcp.autoagent.ai`)
+   - Enter your custom domain (e.g., `mcp.your-domain.com`)
    - Railway will show DNS records to add
 
 3. **Update DNS:**

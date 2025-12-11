@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "v1",
+  "name": "AutoAgent Dealer Demo",
+  "description": "Car search and dealership inventory near me; find vehicles by make/model/VIN/price and submit leads for test drives/quotes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "AutoAgent",
+    "email": "support@autoagent.com"
+  },
+  "connectors": [
+    {
+      "type": "mcp",
+      "url": "https://autoagentmcp-server-production.up.railway.app/mcp",
+      "tools": [
+        "search-vehicles",
+        "submit-lead"
+      ]
+    }
+  ],
+  "ui": {
+    "widgets": [
+      {
+        "id": "vehicle-results",
+        "source": "https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "search-vehicles",
+      "description": "Search for cars by location, price, make, model, and VIN.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "Location to search for vehicles (e.g., \"Seattle, WA\", \"New York, NY\")"
+          },
+          "condition": {
+            "type": "string",
+            "enum": ["new", "used"],
+            "description": "Vehicle condition (new or used)"
+          },
+          "maxPrice": {
+            "type": "number",
+            "description": "Maximum price in USD"
+          },
+          "make": {
+            "type": "string",
+            "description": "Vehicle make (e.g., \"Toyota\", \"Honda\")"
+          },
+          "model": {
+            "type": "string",
+            "description": "Vehicle model (e.g., \"Camry\", \"CR-V\")"
+          },
+          "radiusMiles": {
+            "type": "number",
+            "description": "Search radius in miles (default: 50)"
+          },
+          "bodyStyle": {
+            "type": "string",
+            "description": "Vehicle body style (e.g., \"SUV\", \"Sedan\", \"Truck\")"
+          },
+          "mileageMax": {
+            "type": "number",
+            "description": "Maximum mileage"
+          }
+        },
+        "required": ["location", "condition"]
+      }
+    },
+    {
+      "name": "submit-lead",
+      "description": "Submit a car purchase or test-drive lead with VIN, dealer, and user info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vehicleId": {
+            "type": "string",
+            "description": "ID of the vehicle"
+          },
+          "vin": {
+            "type": "string",
+            "pattern": "^[A-HJ-NPR-Z0-9]{11,17}$",
+            "description": "Vehicle Identification Number (VIN)"
+          },
+          "dealerId": {
+            "type": "string",
+            "description": "ID of the dealer (required)"
+          },
+          "dealerName": {
+            "type": "string",
+            "description": "Name of the dealer (required)"
+          },
+          "pricing": {
+            "type": "object",
+            "description": "Vehicle pricing information",
+            "properties": {
+              "price": {
+                "type": "number",
+                "description": "Vehicle price"
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency code (ISO 3-letter)",
+                "default": "USD"
+              }
+            },
+            "required": ["price", "currency"]
+          },
+          "user": {
+            "type": "object",
+            "description": "User contact information",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Full name"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "description": "Email address"
+              },
+              "phone": {
+                "type": "string",
+                "description": "Phone number (optional)"
+              },
+              "preferredTime": {
+                "type": "string",
+                "description": "Preferred contact time (optional)"
+              }
+            },
+            "required": ["name", "email"]
+          },
+          "consent": {
+            "type": "boolean",
+            "description": "User consent to be contacted (must be true)"
+          }
+        },
+        "required": [
+          "vehicleId",
+          "vin",
+          "dealerId",
+          "dealerName",
+          "pricing",
+          "user",
+          "consent"
+        ]
+      }
+    }
+  ]
+}
+

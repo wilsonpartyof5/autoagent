@@ -24,12 +24,14 @@ export async function getDealershipStatus(dealershipId: string): Promise<Dealers
     };
   }
 
-  // Check inventory count
+  // Check UVS inventory count
   const { count: inventoryCount, error: invError } = await supabase
-    .from('inventory_vehicles')
+    .from('uvs_vehicles')
     .select('*', { count: 'exact', head: true })
-    .eq('dealership_id', dealershipId);
+    .eq('availability_status', 'available');
 
+  // Note: uvs_vehicles doesn't have dealership_id, so we count all available vehicles
+  // If we need to scope by dealership, we'd need to add dealer_id filtering
   const count = inventoryCount ?? 0;
   const hasInventory = count > 0;
 

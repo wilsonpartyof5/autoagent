@@ -9,8 +9,8 @@ Vercel is not detecting Next.js because the `rootDirectory` setting needs to be 
 ## Solution: Configure via Vercel Dashboard
 
 1. **Go to Vercel Dashboard**
-   - Visit: https://vercel.com/dustins-projects-2a4636fb/dealer-dashboard/settings
-   - Or: https://vercel.com/dashboard → Select "dealer-dashboard" project → Settings
+   - Visit: https://vercel.com/dustins-projects-2a4636fb/autoagent-dealer-dashboard/settings
+   - Or: https://vercel.com/dashboard → Select "autoagent-dealer-dashboard" project → Settings
 
 2. **Update General Settings**
    - **Root Directory**: Set to `apps/dealer-dashboard`
@@ -69,8 +69,8 @@ vercel --prod
 
 ## Current Deployment URLs
 
-- **Preview**: https://dealer-dashboard-l5feibfx5-dustins-projects-2a4636fb.vercel.app
-- **Production**: (will be set after successful deployment)
+- **Preview**: https://autoagent-dealer-dashboard.vercel.app
+- **Production**: using custom domain `autoagentapp.com`
 
 ## Next Steps After Successful Deployment
 
@@ -84,4 +84,3 @@ vercel --prod
 
 3. **Set Up Demo Account**
    - Run: `node scripts/setup-vercel-demo.js`
-

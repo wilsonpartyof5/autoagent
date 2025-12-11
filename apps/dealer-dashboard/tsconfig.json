@@ -21,8 +21,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@autoagent/shared": ["../../packages/shared/dist/index.js"],
-      "@autoagent/shared/*": ["../../packages/shared/dist/*"]
+      "@autoagent/shared": ["../../packages/shared"],
+      "@autoagent/shared/*": ["../../packages/shared/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

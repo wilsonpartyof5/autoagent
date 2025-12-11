@@ -1,33 +1,37 @@
 import { NextResponse } from 'next/server';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
-// Constants for easy updates
-const MCP_URL = 'https://autoagentmcp-server-production.up.railway.app/mcp';
-const WIDGET_URL = 'https://autoagentmcp-server-production.up.railway.app/widget/vehicle-results';
-
+/**
+ * Serves the ChatGPT App manifest from the canonical source:
+ * apps/autoagent-app/manifest.json
+ * 
+ * This ensures a single source of truth for the manifest.
+ * The static file is the authoritative source for Apps SDK validation.
+ */
 export async function GET() {
-  return NextResponse.json({
-    schema_version: 'v1',
-    name: 'AutoAgent Dealer Demo',
-    description: 'Search Rock Hill GMC inventory and submit leads.',
-    author: {
-      name: 'AutoAgent',
-      email: 'support@autoagent.com',
-    },
-    connectors: [
-      {
-        type: 'mcp',
-        url: MCP_URL,
-        tools: ['search-vehicles', 'submit-lead'],
+  try {
+    // Read manifest from the canonical location
+    // Path is relative to project root (one level up from apps/dealer-dashboard)
+    const manifestPath = join(process.cwd(), '..', 'autoagent-app', 'manifest.json');
+    const manifestContent = readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(manifestContent);
+    
+    return NextResponse.json(manifest, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
       },
-    ],
-    ui: {
-      widgets: [
-        {
-          name: 'vehicle-results',
-          url: WIDGET_URL,
-        },
-      ],
-    },
-  });
+    });
+  } catch (error) {
+    console.error('Error reading manifest.json:', error);
+    return NextResponse.json(
+      { 
+        error: 'Manifest not found',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
 }
 

@@ -9,7 +9,7 @@
 ### 1. Purchase Domain (if needed)
 
 **Recommended domains:**
-- `mcp.autoagent.ai`
+- `mcp.your-domain.com`
 - `api.autoagent.app`
 - `mcp.autoagent.com`
 
@@ -32,7 +32,7 @@
    - Click **Settings** tab
    - Scroll to **Domains** section
    - Click **"Add Domain"** or **"Generate Domain"**
-   - Enter your custom domain (e.g., `mcp.autoagent.ai`)
+   - Enter your custom domain (e.g., `mcp.your-domain.com`)
    - Railway will show DNS configuration needed
 
 3. **Note DNS Records:**
@@ -65,7 +65,7 @@
 
 3. **Save DNS Records:**
    - Wait for DNS propagation (5-60 minutes)
-   - Verify with: `nslookup mcp.autoagent.ai`
+   - Verify with: `nslookup mcp.your-domain.com`
 
 ---
 
@@ -150,8 +150,8 @@ https://autoagentmcp-server-production.up.railway.app/mcp
 
 **Check:**
 ```bash
-nslookup mcp.autoagent.ai
-dig mcp.autoagent.ai
+nslookup mcp.your-domain.com
+dig mcp.your-domain.com
 ```
 
 **If not resolving:**
@@ -187,7 +187,7 @@ curl https://autoagentmcp-server-production.up.railway.app/health
 
 ## Example Configuration
 
-**Domain:** `mcp.autoagent.ai`
+**Domain:** `mcp.your-domain.com`
 
 **Railway DNS:**
 ```

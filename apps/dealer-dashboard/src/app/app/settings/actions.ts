@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { updateDealerProfile } from '@/lib/supabase/profile';
+import { trackEvent } from '@/lib/analytics/tracking';
+import { getActiveDealership } from '@/lib/supabase/dealerships';
 
 export async function updateMarketCheckSettings({
   dealerId,
@@ -20,6 +22,17 @@ export async function updateMarketCheckSettings({
       marketcheckDealerId: dealerId.trim(),
       marketcheckZip: zip?.trim() || null,
       inventoryConnected: false,
+    });
+
+    // Track settings update
+    const activeDealership = await getActiveDealership();
+    trackEvent('dashboard.settings.update', {
+      settingsCategory: 'inventory_provider',
+      fieldsChanged: ['dmsProvider', 'marketcheckDealerId', 'marketcheckZip'],
+    }, {
+      dealerId: activeDealership?.marketcheckDealerId || undefined,
+    }).catch(() => {
+      // Tracking failures should not break the request
     });
 
     revalidatePath('/app/settings');
@@ -51,6 +64,17 @@ export async function updateLeadDeliverySettings({
       leadDeliveryMethod: method,
       leadDeliveryEndpoint: endpoint || null,
       leadDeliveryEmail: email || null,
+    });
+
+    // Track settings update
+    const activeDealership = await getActiveDealership();
+    trackEvent('dashboard.settings.update', {
+      settingsCategory: 'lead_delivery',
+      fieldsChanged: ['leadDeliveryMethod', 'leadDeliveryEndpoint', 'leadDeliveryEmail'],
+    }, {
+      dealerId: activeDealership?.marketcheckDealerId || undefined,
+    }).catch(() => {
+      // Tracking failures should not break the request
     });
 
     revalidatePath('/app/settings');

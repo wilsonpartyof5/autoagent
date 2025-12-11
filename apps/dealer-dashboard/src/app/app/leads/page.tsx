@@ -39,12 +39,30 @@ export default async function LeadsPage() {
   // Get active dealership to scope leads
   const activeDealership = await getActiveDealership();
 
-  // Fetch leads from Supabase
+  // Fetch leads from Supabase with UVS vehicle join via FK
   let leadsQuery = supabase
     .from("leads")
-    .select(
-      "id, dealer_id, vehicle_id, vin, enc_payload, created_at, replied_at, closed_at, status, source"
-    )
+    .select(`
+      id,
+      dealer_id,
+      vehicle_id,
+      vin,
+      enc_payload,
+      created_at,
+      replied_at,
+      closed_at,
+      status,
+      source,
+      uvs_vehicles!inner(
+        id,
+        vin,
+        year,
+        make,
+        model,
+        trim,
+        uvs_data
+      )
+    `)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -63,30 +81,14 @@ export default async function LeadsPage() {
     console.error("Error fetching leads:", leadsError);
   }
 
-  // Fetch vehicle details for all leads
-  const vehicleIds = [...new Set((leadsData || []).map((l) => l.vehicle_id))];
-  const { data: vehicles } = await supabase
-    .from("inventory_vehicles")
-    .select("id, year, make, model, trim, vin")
-    .in("id", vehicleIds.length > 0 ? vehicleIds : ["__none__"]);
-
-  const vehicleMap = new Map(
-    (vehicles || []).map((v) => [
-      v.id,
-      {
-        year: v.year,
-        make: v.make,
-        model: v.model,
-        trim: v.trim,
-        vin: v.vin,
-      },
-    ])
-  );
-
   // Transform Supabase leads to match expected format and decrypt payloads
+  // Vehicle data is now included via UVS FK join
   const leads = await Promise.all(
-    (leadsData || []).map(async (lead) => {
-      const vehicle = vehicleMap.get(lead.vehicle_id);
+    (leadsData || []).map(async (lead: any) => {
+      // Get UVS vehicle data from the join
+      const uvsVehicle = lead.uvs_vehicles;
+      const vehicleData = uvsVehicle?.uvs_data || {};
+      
       let decrypted: DecryptedLead | null = null;
       
       // Try to decrypt the payload (server-side only)
@@ -104,17 +106,17 @@ export default async function LeadsPage() {
         id: lead.id,
         dealerId: lead.dealer_id || undefined,
         vehicleId: lead.vehicle_id,
-        vin: lead.vin || vehicle?.vin || undefined,
+        vin: uvsVehicle?.vin || lead.vin || undefined,
         createdAt: new Date(lead.created_at).getTime(),
         repliedAt: lead.replied_at ? new Date(lead.replied_at).getTime() : null,
         status: lead.status || "new",
         source: lead.source || "chatgpt",
-        vehicle: vehicle
+        vehicle: uvsVehicle
           ? {
-              year: vehicle.year,
-              make: vehicle.make,
-              model: vehicle.model,
-              trim: vehicle.trim,
+              year: uvsVehicle.year || vehicleData?.baseIdentity?.year || null,
+              make: uvsVehicle.make || vehicleData?.baseIdentity?.make || null,
+              model: uvsVehicle.model || vehicleData?.baseIdentity?.model || null,
+              trim: uvsVehicle.trim || vehicleData?.baseIdentity?.trim || undefined,
             }
           : undefined,
         decrypted: decrypted

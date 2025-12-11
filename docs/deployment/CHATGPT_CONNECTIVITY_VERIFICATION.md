@@ -146,7 +146,7 @@ When clicking "Create" in ChatGPT connector wizard, watch Railway logs for:
 **If Railway subdomain doesn't work:**
 
 1. **Get a Custom Domain:**
-   - Example: `mcp.autoagent.ai` or `api.autoagent.app`
+   - Example: `mcp.your-domain.com` or `api.autoagent.app`
    - Purchase domain if needed
 
 2. **Configure in Railway:**

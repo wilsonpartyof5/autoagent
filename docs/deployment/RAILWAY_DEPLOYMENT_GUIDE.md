@@ -90,21 +90,34 @@ CMD ["pnpm", "--filter", "@autoagent/mcp-server", "start"]
 
 ### Required Environment Variables
 
-Based on `apps/mcp-server/env.example` and `env.production.example`, the following environment variables are required:
+**⚠️ IMPORTANT**: The MCP server now enforces required environment variables at startup. Missing required variables will cause the server to fail immediately with a clear error message.
+
+Based on `apps/mcp-server/src/config/env.ts`, the following environment variables are **REQUIRED**:
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `PORT` | ✅ Yes | Server port | `8787` |
-| `MARKETCHECK_API_KEY` | ✅ Yes | MarketCheck API key | `your-api-key` |
-| `MARKETCHECK_BASE_URL` | ⚠️ Optional | MarketCheck API base URL | `https://marketcheck-prod.apigee.net` |
-| `LEAD_ENC_KEY` | ✅ Yes | 32-byte base64 encryption key | `base64-encoded-key` |
-| `DASHBOARD_INGEST_URL` | ✅ Yes | Dashboard endpoint for leads | `https://dashboard.com/api/ingest/lead` |
-| `DASHBOARD_INGEST_TOKEN` | ✅ Yes | Secure token for lead forwarding | `your-token` |
-| `WIDGET_HOST` | ✅ Yes | Railway domain for widgets | `https://your-app.railway.app` |
-| `AA_DIAG` | ⚠️ Optional | Enable diagnostics | `1` |
-| `SUPABASE_URL` | ✅ Yes | Supabase project URL | `https://xxx.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ Yes | Supabase service role key | `your-service-role-key` |
-| `SUPABASE_ANON_KEY` | ⚠️ Optional | Supabase anon key (fallback) | `your-anon-key` |
+| `WIDGET_HOST` | ✅ **REQUIRED** | Publicly reachable MCP host URL (no trailing slash) | `https://autoagentmcp-server-production.up.railway.app` |
+| `MARKETCHECK_API_KEY` | ✅ **REQUIRED** | MarketCheck API key | `your-api-key` |
+| `LEAD_ENC_KEY` | ✅ **REQUIRED** | 32-byte base64 encryption key | Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `DASHBOARD_INGEST_URL` | ✅ **REQUIRED** | Dashboard endpoint for leads | `https://dashboard.com/api/ingest/lead` |
+| `DASHBOARD_INGEST_TOKEN` | ✅ **REQUIRED** | Secure token for lead forwarding | `your-token` |
+
+**Optional** environment variables (have defaults or are only needed for specific features):
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `PORT` | ⚠️ Optional | Server port (defaults to `8787`) | `8787` |
+| `MARKETCHECK_BASE_URL` | ⚠️ Optional | MarketCheck API base URL (defaults to `https://marketcheck-prod.apigee.net`) | `https://marketcheck-prod.apigee.net` |
+| `AA_DIAG` | ⚠️ Optional | Enable diagnostics (set to `1` or `true`) | `1` |
+| `OPENAI_APP_NAME` | ⚠️ Optional | OpenAI App name (defaults to `AutoAgent`) | `AutoAgent` |
+| `SUPABASE_URL` | ⚠️ Optional | Supabase project URL (only needed for delivery logs) | `https://xxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | ⚠️ Optional | Supabase service role key (only needed for delivery logs) | `your-service-role-key` |
+| `SUPABASE_ANON_KEY` | ⚠️ Optional | Supabase anon key (fallback, only needed for delivery logs) | `your-anon-key` |
+
+**Validation**: The server validates all required variables at startup. You can test your configuration with:
+```bash
+pnpm --filter @autoagent/mcp-server test:env
+```
 | `OPENAI_APP_NAME` | ⚠️ Optional | OpenAI app name | `AutoAgent` |
 
 **Note**: `WIDGET_HOST` should be set to the Railway domain **after** deployment. Initially, you can use a placeholder, then update it once you have the Railway URL.

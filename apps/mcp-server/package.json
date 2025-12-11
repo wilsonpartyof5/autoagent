@@ -14,6 +14,7 @@
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:env": "npm run build && node dist/config/check-env.js",
     "gen:key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
   },
   "dependencies": {

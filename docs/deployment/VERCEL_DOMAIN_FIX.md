@@ -2,10 +2,10 @@
 
 ## Current Status
 
-- **Vercel Project**: `dealer-dashboard` (dustins-projects-2a4636fb)
+- **Vercel Project**: `autoagent-dealer-dashboard` (dustins-projects-2a4636fb)
 - **Apex Domain**: `autoagentapp.com` → Redirects to `www.autoagentapp.com` (307)
-- **WWW Domain**: `www.autoagentapp.com` → Returns 200 but showing old placeholder
-- **Vercel URL**: `https://autoagent-dealer-dashboard.vercel.app` → Showing old placeholder
+- **WWW Domain**: `www.autoagentapp.com` → Returns 200
+- **Vercel URL**: `https://autoagent-dealer-dashboard.vercel.app`
 
 ## Issue
 
@@ -17,7 +17,7 @@ Since this is a monorepo, Vercel needs to be configured via the Dashboard, not j
 
 ### Step 1: Update Project Settings
 
-1. Go to: https://vercel.com/dustins-projects-2a4636fb/dealer-dashboard/settings/general
+1. Go to: https://vercel.com/dustins-projects-2a4636fb/autoagent-dealer-dashboard/settings/general
 
 2. Update these settings:
    - **Root Directory**: `apps/dealer-dashboard` ✅ (should already be set)
@@ -30,7 +30,7 @@ Since this is a monorepo, Vercel needs to be configured via the Dashboard, not j
 
 ### Step 2: Verify Domain Configuration
 
-1. Go to: https://vercel.com/dustins-projects-2a4636fb/dealer-dashboard/settings/domains
+1. Go to: https://vercel.com/dustins-projects-2a4636fb/autoagent-dealer-dashboard/settings/domains
 
 2. Verify domains are attached:
    - `autoagentapp.com` → Should be primary
@@ -147,4 +147,3 @@ Both should render the marketing components:
 - Benefits
 - Final CTA
 - Footer
-
