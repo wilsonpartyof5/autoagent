@@ -218,13 +218,14 @@ export function InventoryPageClient({ availableBodyTypes, vehicles, children, on
           {React.Children.map(children, (child) => {
             if (isValidElement(child) && child.props?.children) {
               // If child is a container (like a div with VehicleCards inside), recursively clone
-              return cloneElement(child, {
+              return cloneElement(child as React.ReactElement<any>, {
                 children: React.Children.map(child.props.children, (grandchild) => {
                   if (isValidElement(grandchild)) {
                     // Check if it's a VehicleCard by checking the component's displayName or props
                     const componentType = grandchild.type as any;
-                    if (componentType?.displayName === 'VehicleCard' || grandchild.props?.vehicle) {
-                      return cloneElement(grandchild, { onClick: handleVehicleClick });
+                    const grandchildProps = grandchild.props as any;
+                    if (componentType?.displayName === 'VehicleCard' || grandchildProps?.vehicle) {
+                      return cloneElement(grandchild as React.ReactElement<any>, { onClick: handleVehicleClick });
                     }
                   }
                   return grandchild;
@@ -234,8 +235,9 @@ export function InventoryPageClient({ availableBodyTypes, vehicles, children, on
             // Direct VehicleCard child
             if (isValidElement(child)) {
               const componentType = child.type as any;
-              if (componentType?.displayName === 'VehicleCard' || child.props?.vehicle) {
-                return cloneElement(child, { onClick: handleVehicleClick });
+              const childProps = child.props as any;
+              if (componentType?.displayName === 'VehicleCard' || childProps?.vehicle) {
+                return cloneElement(child as React.ReactElement<any>, { onClick: handleVehicleClick });
               }
             }
             return child;

@@ -188,6 +188,6 @@ function VehicleCardComponent({ vehicle, onClick }: VehicleCardProps) {
 }
 
 // Export with displayName for easier identification
-export const VehicleCard = VehicleCardComponent;
+export const VehicleCard = VehicleCardComponent as typeof VehicleCardComponent & { displayName: string };
 VehicleCard.displayName = 'VehicleCard';
 
