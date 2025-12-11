@@ -50,26 +50,34 @@ export async function resyncInventory() {
     throw new Error('Not authenticated');
   }
 
-  // Get active dealership with MarketCheck settings
-  const activeDealershipId = await getActiveDealershipId();
+  // Get active dealership (this handles RLS and auto-fixes mismatches)
+  const activeDealership = await getActiveDealership();
   
-  if (!activeDealershipId) {
+  if (!activeDealership) {
     throw new Error('No active dealership found. Please set up a dealership first.');
   }
 
-  // Get full dealership data including marketcheck_source
+  if (!activeDealership.marketcheckDealerId) {
+    throw new Error('No MarketCheck dealer ID configured for this dealership. Please set it up in Settings.');
+  }
+
+  // Get full dealership data including marketcheck_source (need to fetch for source field)
   const { data: dealershipData, error } = await supabase
     .from('dealerships')
     .select('marketcheck_dealer_id, marketcheck_zip, marketcheck_source')
-    .eq('id', activeDealershipId)
+    .eq('id', activeDealership.id)
     .maybeSingle();
 
-  if (error || !dealershipData) {
-    throw new Error('Failed to load dealership information.');
-  }
-
-  if (!dealershipData.marketcheck_dealer_id) {
-    throw new Error('No MarketCheck dealer ID configured for this dealership. Please set it up in Settings.');
+  if (error) {
+    console.error('[resyncInventory] Supabase error fetching dealership details:', {
+      error,
+      activeDealershipId: activeDealership.id,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw new Error(`Failed to load dealership information: ${error.message || 'Unknown error'}`);
   }
 
   // Use stored source or auto-detect for known dealers
@@ -77,13 +85,15 @@ export async function resyncInventory() {
     '11042155': 'myrockhillgmc.com',
   };
   
-  const source = dealershipData.marketcheck_source || dealerSourceMap[dealershipData.marketcheck_dealer_id] || undefined;
+  const marketcheckSource = dealershipData?.marketcheck_source || null;
+  const source = marketcheckSource || dealerSourceMap[activeDealership.marketcheckDealerId || ''] || undefined;
+  const zip = dealershipData?.marketcheck_zip || activeDealership.marketcheckZip || undefined;
 
   // Use the new fetch-and-ingest endpoint
   const result = await fetchAndIngestMarketCheckInventory({
-    dealerId: dealershipData.marketcheck_dealer_id,
+    dealerId: activeDealership.marketcheckDealerId,
     source,
-    zip: dealershipData.marketcheck_zip || undefined,
+    zip,
     radiusMiles: 50,
     condition: 'all',
   });
