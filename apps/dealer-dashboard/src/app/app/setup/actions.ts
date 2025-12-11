@@ -61,33 +61,13 @@ export async function resyncInventory() {
     throw new Error('No MarketCheck dealer ID configured for this dealership. Please set it up in Settings.');
   }
 
-  // Get full dealership data including marketcheck_source (need to fetch for source field)
-  const { data: dealershipData, error } = await supabase
-    .from('dealerships')
-    .select('marketcheck_dealer_id, marketcheck_zip, marketcheck_source')
-    .eq('id', activeDealership.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error('[resyncInventory] Supabase error fetching dealership details:', {
-      error,
-      activeDealershipId: activeDealership.id,
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw new Error(`Failed to load dealership information: ${error.message || 'Unknown error'}`);
-  }
-
-  // Use stored source or auto-detect for known dealers
+  // Use auto-detect for known dealers (marketcheck_source column doesn't exist in dealerships table)
   const dealerSourceMap: Record<string, string> = {
     '11042155': 'myrockhillgmc.com',
   };
   
-  const marketcheckSource = dealershipData?.marketcheck_source || null;
-  const source = marketcheckSource || dealerSourceMap[activeDealership.marketcheckDealerId || ''] || undefined;
-  const zip = dealershipData?.marketcheck_zip || activeDealership.marketcheckZip || undefined;
+  const source = dealerSourceMap[activeDealership.marketcheckDealerId] || undefined;
+  const zip = activeDealership.marketcheckZip || undefined;
 
   // Use the new fetch-and-ingest endpoint
   const result = await fetchAndIngestMarketCheckInventory({
