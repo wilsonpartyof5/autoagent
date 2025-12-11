@@ -4,7 +4,12 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import type { InventoryVehicle } from "@/app/app/inventory/page";
 
-export function VehicleCard({ vehicle }: { vehicle: InventoryVehicle }) {
+interface VehicleCardProps {
+  vehicle: InventoryVehicle;
+  onClick?: (vehicle: InventoryVehicle) => void;
+}
+
+function VehicleCardComponent({ vehicle, onClick }: VehicleCardProps) {
   // Extract enriched data from raw field
   const rawData = vehicle.raw as {
     original?: unknown;
@@ -156,7 +161,14 @@ export function VehicleCard({ vehicle }: { vehicle: InventoryVehicle }) {
           <span className="text-lg font-bold text-foreground">
             {vehicle.price ? `$${vehicle.price.toLocaleString()}` : "Price TBD"}
           </span>
-          <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick?.(vehicle);
+            }}
+          >
             View Details
           </Button>
         </div>
@@ -174,4 +186,8 @@ export function VehicleCard({ vehicle }: { vehicle: InventoryVehicle }) {
     </article>
   );
 }
+
+// Export with displayName for easier identification
+export const VehicleCard = VehicleCardComponent;
+VehicleCard.displayName = 'VehicleCard';
 

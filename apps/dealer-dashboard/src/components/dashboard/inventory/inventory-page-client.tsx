@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import React, { useState, useEffect, useTransition, cloneElement, isValidElement } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Filter, Grid3x3, Table } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,10 @@ type Props = {
   availableBodyTypes: string[];
   vehicles: InventoryVehicle[];
   children?: React.ReactNode; // Grid view (legacy support)
+  onVehicleClick?: (vehicle: InventoryVehicle) => void; // Handler to pass to VehicleCard
 };
 
-export function InventoryPageClient({ availableBodyTypes, vehicles, children }: Props) {
+export function InventoryPageClient({ availableBodyTypes, vehicles, children, onVehicleClick }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -214,7 +215,31 @@ export function InventoryPageClient({ availableBodyTypes, vehicles, children }: 
             }
           }}
         >
-          {children}
+          {React.Children.map(children, (child) => {
+            if (isValidElement(child) && child.props?.children) {
+              // If child is a container (like a div with VehicleCards inside), recursively clone
+              return cloneElement(child, {
+                children: React.Children.map(child.props.children, (grandchild) => {
+                  if (isValidElement(grandchild)) {
+                    // Check if it's a VehicleCard by checking the component's displayName or props
+                    const componentType = grandchild.type as any;
+                    if (componentType?.displayName === 'VehicleCard' || grandchild.props?.vehicle) {
+                      return cloneElement(grandchild, { onClick: handleVehicleClick });
+                    }
+                  }
+                  return grandchild;
+                }),
+              });
+            }
+            // Direct VehicleCard child
+            if (isValidElement(child)) {
+              const componentType = child.type as any;
+              if (componentType?.displayName === 'VehicleCard' || child.props?.vehicle) {
+                return cloneElement(child, { onClick: handleVehicleClick });
+              }
+            }
+            return child;
+          })}
         </div>
       )}
 

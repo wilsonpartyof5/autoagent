@@ -264,15 +264,15 @@ export default async function InventoryPage({ searchParams }: Props) {
       </header>
 
       <InventoryPageClient availableBodyTypes={availableBodyTypes} vehicles={vehicles}>
-      {vehicles.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {vehicles.map((vehicle) => (
-            <VehicleCard key={vehicle.id} vehicle={vehicle} />
-          ))}
-        </div>
-      )}
+        {vehicles.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {vehicles.map((vehicle) => (
+              <VehicleCard key={vehicle.id} vehicle={vehicle} />
+            ))}
+          </div>
+        )}
       </InventoryPageClient>
     </section>
   );
