@@ -51,18 +51,33 @@ function getCommitSha(): string {
 
 /**
  * Validate that WIDGET_HOST is a valid URL
+ * Automatically prefixes "https://" if scheme is missing for convenience
  */
 function validateWidgetHost(host: string): string {
+  let normalized = host.trim();
+  
+  // If no scheme is present, assume https://
+  if (!normalized.match(/^https?:\/\//i)) {
+    normalized = `https://${normalized}`;
+    console.log(`📝 WIDGET_HOST missing scheme, normalized to: ${normalized}`);
+  }
+  
   try {
-    const url = new URL(host);
+    const url = new URL(normalized);
     if (!['http:', 'https:'].includes(url.protocol)) {
       throw new Error('WIDGET_HOST must use http:// or https://');
     }
-    return host.replace(/\/$/, ''); // Remove trailing slash
+    // Remove trailing slash and return normalized value
+    const final = normalized.replace(/\/$/, '');
+    if (final !== host.trim()) {
+      console.log(`✅ WIDGET_HOST normalized from "${host}" to "${final}"`);
+    }
+    return final;
   } catch (error) {
     throw new Error(
       `❌ WIDGET_HOST must be a valid URL (e.g., https://autoagentmcp-server-production.up.railway.app)\n` +
       `   Received: ${host}\n` +
+      `   Normalized: ${normalized}\n` +
       `   Error: ${error instanceof Error ? error.message : 'Invalid URL'}`
     );
   }
