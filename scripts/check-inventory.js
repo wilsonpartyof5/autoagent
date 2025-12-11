@@ -169,6 +169,42 @@ async function checkInventory() {
     console.log("");
   }
 
+  // Check for any vehicles with different availability_status
+  console.log("📊 Detailed Status Breakdown:");
+  console.log("─".repeat(60));
+  const { data: allStatusData, error: allStatusError } = await supabase
+    .from('uvs_vehicles')
+    .select('availability_status, sync_status, dealer_id, data_source')
+    .limit(1000);
+
+  if (!allStatusError && allStatusData) {
+    const byDealer = {};
+    allStatusData.forEach(row => {
+      const dealerId = row.dealer_id || 'unknown';
+      if (!byDealer[dealerId]) {
+        byDealer[dealerId] = {
+          available: 0,
+          other: 0,
+          total: 0,
+        };
+      }
+      byDealer[dealerId].total++;
+      if (row.availability_status === 'available') {
+        byDealer[dealerId].available++;
+      } else {
+        byDealer[dealerId].other++;
+      }
+    });
+
+    Object.entries(byDealer).forEach(([dealerId, counts]) => {
+      console.log(`  Dealer ID: ${dealerId}`);
+      console.log(`    Total vehicles: ${counts.total}`);
+      console.log(`    Available: ${counts.available}`);
+      console.log(`    Other status: ${counts.other}`);
+    });
+  }
+  console.log('');
+
   // Summary and recommendations
   console.log("📋 Summary & Recommendations");
   console.log("============================\n");

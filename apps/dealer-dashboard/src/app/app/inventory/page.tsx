@@ -7,6 +7,7 @@ import { ResyncButton } from "@/components/dashboard/inventory/resync-button";
 import { parseFiltersFromSearchParams } from "@/types/inventoryFilters";
 import { getActiveDealershipId, getActiveDealership } from "@/lib/supabase/dealerships";
 import { searchUVSVehicles, convertUVSToInventoryVehicle, type UVSVehicleSearchFilters } from "@/lib/db/uvs-vehicles";
+import type { UnifiedVehicle } from "@autoagent/shared";
 
 export type InventoryVehicle = {
   id: string;
@@ -105,15 +106,50 @@ export default async function InventoryPage({ searchParams }: Props) {
   }
 
   // Search UVS vehicles with filters
-  const { vehicles: uvsVehicles, total } = await searchUVSVehicles(uvsFilters);
+  let uvsVehicles: UnifiedVehicle[] = [];
+  let total = 0;
+  
+  try {
+    const result = await searchUVSVehicles(uvsFilters);
+    uvsVehicles = result.vehicles;
+    total = result.total;
+  } catch (error) {
+    console.error("[inventory] failed to search UVS vehicles", error);
+    return (
+      <section className="space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
+          <p className="text-sm text-muted-foreground">
+            Review your UVS inventory. Publish listings once you&apos;re ready to go live inside ChatGPT.
+          </p>
+        </header>
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-10 text-center">
+          <h2 className="text-lg font-semibold text-foreground">Error loading inventory</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Failed to search vehicles from UVS database. Check the console for details.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   // Get full row data including sync metadata
-  let query = supabase
-    .from("uvs_vehicles")
-    .select("id, uvs_data, last_synced_at, sync_status, sync_error, availability_status, data_source")
-    .in("id", uvsVehicles.map(v => v.id));
+  let rowsData: any[] | null = null;
+  let error: any = null;
+  
+  if (uvsVehicles.length > 0) {
+    const query = supabase
+      .from("uvs_vehicles")
+      .select("id, uvs_data, last_synced_at, sync_status, sync_error, availability_status, data_source")
+      .in("id", uvsVehicles.map(v => v.id));
 
-  const { data: rowsData, error } = await query;
+    const result = await query;
+    rowsData = result.data;
+    error = result.error;
+  } else {
+    // No vehicles found, so no need to query for row data
+    rowsData = [];
+  }
 
   if (error) {
     console.error("[inventory] failed to load UVS vehicles", error);
