@@ -48,12 +48,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     console.error('[app/layout] Failed to load active dealership:', error);
   }
 
-  // Check if there's actual inventory in uvs_vehicles table
-  // This is more reliable than the profile flag
+  // Check if there's actual inventory in uvs_vehicles table for the active dealership
+  // Only check if we have an active dealership with a dealer ID
+  // This ensures new users don't see inventory as synced
   try {
     const supabase = await createClient();
     
-    // If we have an active dealership with a dealer ID, check for vehicles with that dealer_id
+    // Only check inventory if we have an active dealership with a dealer ID
+    // If no active dealership or no dealer ID, assume no inventory (new user)
     if (activeDealership?.marketcheckDealerId) {
       const { count } = await supabase
         .from('uvs_vehicles')
@@ -63,18 +65,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       
       hasInventory = (count ?? 0) > 0;
     } else {
-      // If no dealer ID, check for any available vehicles (fallback)
-      const { count } = await supabase
-        .from('uvs_vehicles')
-        .select('*', { count: 'exact', head: true })
-        .eq('availability_status', 'available');
-      
-      hasInventory = (count ?? 0) > 0;
+      // No active dealership or no dealer ID = new user, no inventory
+      hasInventory = false;
     }
   } catch (error) {
     console.error('[app/layout] Failed to check inventory:', error);
-    // Fallback to profile flag if inventory check fails
-    hasInventory = Boolean(profile?.inventoryConnected);
+    // If check fails, assume no inventory (safer for new users)
+    hasInventory = false;
   }
 
   return (
