@@ -98,46 +98,93 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
     });
   };
 
-  // Extract enriched data
-  const rawData = vehicle.raw as {
-    original?: unknown;
-    enriched?: {
-      media?: {
-        photo_links?: string[];
-        primary_photo_url?: string;
+  // Extract UVS data (vehicle.raw contains the full UnifiedVehicle)
+  const uvsData = vehicle.raw as {
+    coreSpecs?: {
+      engine?: {
+        description?: string;
+        displacement?: number;
+        cylinders?: number;
+        horsepower?: number;
+        torque?: number;
+        aspiration?: string;
       };
+      transmission?: {
+        type?: string;
+        speeds?: number;
+        description?: string;
+      };
+    };
+    enrichment?: {
       extra?: {
         seller_comments?: string;
         options?: Array<{
           name?: string;
           code?: string;
           description?: string;
+          price?: number;
         }>;
+        specifications?: Record<string, unknown>;
       };
     };
   } | null;
 
-  const enrichedListing =
-    rawData && typeof rawData === "object" && "enriched" in rawData
-      ? (rawData.enriched as {
-          media?: { photo_links?: string[]; primary_photo_url?: string };
-        })
-      : null;
+  // Extract engine specs
+  const engine = uvsData?.coreSpecs?.engine;
+  const transmission = uvsData?.coreSpecs?.transmission;
 
-  const enrichedPhotos = enrichedListing?.media?.photo_links;
-  const enrichedPrimaryPhoto = enrichedListing?.media?.primary_photo_url;
-  const enrichedExtra =
-    rawData && typeof rawData === "object" && "enriched" in rawData
-      ? (rawData.enriched as {
-          extra?: {
-            seller_comments?: string;
-            options?: Array<{ name?: string; code?: string; description?: string }>;
-          };
-        })?.extra
-      : null;
-
+  // Extract enrichment data
+  const enrichedExtra = uvsData?.enrichment?.extra;
   const sellerComments = enrichedExtra?.seller_comments;
   const options = enrichedExtra?.options ?? [];
+  
+  // Parse extra specifications for additional data
+  const extraSpecs = enrichedExtra?.specifications as Record<string, unknown> | undefined;
+  
+  // Extract common specification fields
+  const fuelEconomy = extraSpecs ? {
+    city: typeof extraSpecs.city_mpg === 'number' ? extraSpecs.city_mpg : 
+          typeof extraSpecs.fuel_economy_city === 'number' ? extraSpecs.fuel_economy_city : undefined,
+    highway: typeof extraSpecs.highway_mpg === 'number' ? extraSpecs.highway_mpg :
+             typeof extraSpecs.fuel_economy_highway === 'number' ? extraSpecs.fuel_economy_highway : undefined,
+    combined: typeof extraSpecs.combined_mpg === 'number' ? extraSpecs.combined_mpg :
+              typeof extraSpecs.fuel_economy_combined === 'number' ? extraSpecs.fuel_economy_combined : undefined,
+  } : undefined;
+  
+  const dimensions = extraSpecs ? {
+    length: typeof extraSpecs.length === 'number' ? extraSpecs.length :
+            typeof extraSpecs.length_inches === 'number' ? extraSpecs.length_inches : undefined,
+    width: typeof extraSpecs.width === 'number' ? extraSpecs.width :
+           typeof extraSpecs.width_inches === 'number' ? extraSpecs.width_inches : undefined,
+    height: typeof extraSpecs.height === 'number' ? extraSpecs.height :
+            typeof extraSpecs.height_inches === 'number' ? extraSpecs.height_inches : undefined,
+    wheelbase: typeof extraSpecs.wheelbase === 'number' ? extraSpecs.wheelbase :
+               typeof extraSpecs.wheelbase_inches === 'number' ? extraSpecs.wheelbase_inches : undefined,
+  } : undefined;
+  
+  const capacity = extraSpecs ? {
+    seating: typeof extraSpecs.seating_capacity === 'number' ? extraSpecs.seating_capacity :
+             typeof extraSpecs.seats === 'number' ? extraSpecs.seats : undefined,
+    doors: typeof extraSpecs.doors === 'number' ? extraSpecs.doors :
+           typeof extraSpecs.number_of_doors === 'number' ? extraSpecs.number_of_doors : undefined,
+  } : undefined;
+  
+  const towingCapacity = extraSpecs && typeof extraSpecs.towing_capacity === 'number' 
+    ? extraSpecs.towing_capacity 
+    : extraSpecs && typeof extraSpecs.max_towing_capacity === 'number'
+    ? extraSpecs.max_towing_capacity
+    : undefined;
+  
+  const curbWeight = extraSpecs && typeof extraSpecs.curb_weight === 'number'
+    ? extraSpecs.curb_weight
+    : extraSpecs && typeof extraSpecs.weight_lbs === 'number'
+    ? extraSpecs.weight_lbs
+    : undefined;
+
+  // Extract photos from UVS media structure (UVS uses camelCase: photoUrls, primaryPhotoUrl)
+  const uvsMedia = (vehicle.raw as { media?: { photoUrls?: readonly string[]; primaryPhotoUrl?: string; thumbnailUrl?: string } })?.media;
+  const enrichedPhotos = (uvsMedia?.photoUrls ? [...uvsMedia.photoUrls] : []) as string[];
+  const enrichedPrimaryPhoto = uvsMedia?.primaryPhotoUrl;
 
   const allPhotos = [
     enrichedPrimaryPhoto,
@@ -340,6 +387,41 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                   </div>
                 </DetailSection>
 
+                {/* Engine Specifications */}
+                {engine && (
+                  <DetailSection title="Engine Specifications">
+                    <div className="grid grid-cols-2 gap-4">
+                      {engine.description && (
+                        <DetailItem label="Engine" value={engine.description} />
+                      )}
+                      {engine.displacement && (
+                        <DetailItem label="Displacement" value={`${engine.displacement}L`} />
+                      )}
+                      {engine.cylinders && (
+                        <DetailItem label="Cylinders" value={`${engine.cylinders}`} />
+                      )}
+                      {engine.horsepower && (
+                        <DetailItem label="Horsepower" value={`${engine.horsepower} hp`} />
+                      )}
+                      {engine.torque && (
+                        <DetailItem label="Torque" value={`${engine.torque} lb-ft`} />
+                      )}
+                      {engine.aspiration && (
+                        <DetailItem label="Aspiration" value={engine.aspiration} />
+                      )}
+                      {transmission?.type && (
+                        <DetailItem 
+                          label="Transmission" 
+                          value={transmission.speeds 
+                            ? `${transmission.type} (${transmission.speeds}-speed)`
+                            : transmission.description || transmission.type
+                          } 
+                        />
+                      )}
+                    </div>
+                  </DetailSection>
+                )}
+
                 {/* Detailed Specs */}
                 {(vehicle.drivetrain ||
                   vehicle.fuel_type ||
@@ -354,7 +436,7 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                       {vehicle.fuel_type && (
                         <DetailItem label="Fuel Type" value={vehicle.fuel_type} />
                       )}
-                      {vehicle.transmission && (
+                      {vehicle.transmission && !engine?.transmission && (
                         <DetailItem label="Transmission" value={vehicle.transmission} />
                       )}
                       {vehicle.interior_color && (
@@ -365,6 +447,56 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                       )}
                       {vehicle.certified && (
                         <DetailItem label="Certified" value="Yes" />
+                      )}
+                    </div>
+                  </DetailSection>
+                )}
+
+                {/* Additional Specifications from Enrichment */}
+                {(fuelEconomy || dimensions || capacity || towingCapacity || curbWeight) && (
+                  <DetailSection title="Additional Specifications">
+                    <div className="grid grid-cols-2 gap-4">
+                      {fuelEconomy && (fuelEconomy.city || fuelEconomy.highway || fuelEconomy.combined) && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-muted-foreground mb-1">Fuel Economy</p>
+                          <div className="flex gap-4 text-sm font-medium text-foreground">
+                            {fuelEconomy.city && <span>City: {fuelEconomy.city} MPG</span>}
+                            {fuelEconomy.highway && <span>Highway: {fuelEconomy.highway} MPG</span>}
+                            {fuelEconomy.combined && <span>Combined: {fuelEconomy.combined} MPG</span>}
+                          </div>
+                        </div>
+                      )}
+                      {dimensions && (dimensions.length || dimensions.width || dimensions.height || dimensions.wheelbase) && (
+                        <>
+                          {dimensions.length && (
+                            <DetailItem label="Length" value={`${dimensions.length.toLocaleString()}"`} />
+                          )}
+                          {dimensions.width && (
+                            <DetailItem label="Width" value={`${dimensions.width.toLocaleString()}"`} />
+                          )}
+                          {dimensions.height && (
+                            <DetailItem label="Height" value={`${dimensions.height.toLocaleString()}"`} />
+                          )}
+                          {dimensions.wheelbase && (
+                            <DetailItem label="Wheelbase" value={`${dimensions.wheelbase.toLocaleString()}"`} />
+                          )}
+                        </>
+                      )}
+                      {capacity && (capacity.seating || capacity.doors) && (
+                        <>
+                          {capacity.seating && (
+                            <DetailItem label="Seating Capacity" value={`${capacity.seating} seats`} />
+                          )}
+                          {capacity.doors && (
+                            <DetailItem label="Doors" value={`${capacity.doors}`} />
+                          )}
+                        </>
+                      )}
+                      {towingCapacity && (
+                        <DetailItem label="Towing Capacity" value={`${towingCapacity.toLocaleString()} lbs`} />
+                      )}
+                      {curbWeight && (
+                        <DetailItem label="Curb Weight" value={`${curbWeight.toLocaleString()} lbs`} />
                       )}
                     </div>
                   </DetailSection>
