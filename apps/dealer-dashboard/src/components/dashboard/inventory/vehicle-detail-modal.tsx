@@ -436,7 +436,7 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                       {vehicle.fuel_type && (
                         <DetailItem label="Fuel Type" value={vehicle.fuel_type} />
                       )}
-                      {vehicle.transmission && !engine?.transmission && (
+                      {vehicle.transmission && !transmission && (
                         <DetailItem label="Transmission" value={vehicle.transmission} />
                       )}
                       {vehicle.interior_color && (
