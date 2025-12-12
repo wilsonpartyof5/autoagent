@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDealerProfile } from "@/lib/supabase/profile";
-import { getActiveDealership, fetchUserDealerships } from "@/lib/supabase/dealerships";
-import { InventorySyncForm } from "@/components/dashboard/setup/inventory-sync";
+import { getActiveDealership, fetchUserDealerships, getActiveDealershipId } from "@/lib/supabase/dealerships";
+import { InventoryProviderForm } from "@/components/dashboard/settings/inventory-provider-form";
+import { ResyncButton } from "@/components/dashboard/inventory/resync-button";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -25,6 +26,7 @@ export default async function SetupPage({ searchParams }: Props) {
   
   const profile = await getDealerProfile();
   const dealerships = await fetchUserDealerships();
+  const activeDealershipId = await getActiveDealershipId();
   
   // If dealership param is provided, use that dealership; otherwise use active
   let selectedDealership;
@@ -39,12 +41,18 @@ export default async function SetupPage({ searchParams }: Props) {
   return (
     <div className="space-y-10 pb-10">
       <Breadcrumbs />
-      <InventorySyncForm
-        initialProvider={profile?.dmsProvider ?? null}
-        initialDealerId={selectedDealership?.marketcheckDealerId ?? profile?.marketcheckDealerId}
-        initialZip={selectedDealership?.marketcheckZip ?? profile?.marketcheckZip}
-        initialDealershipName={selectedDealership?.name ?? null}
-      />
+      <div className="space-y-6">
+        <InventoryProviderForm
+          currentProvider={profile?.dmsProvider}
+          websiteUrl={selectedDealership?.marketcheckWebsiteUrl ?? profile?.marketcheckWebsiteUrl}
+        />
+        <div className="flex items-end justify-between">
+          <div className="text-sm text-muted-foreground">
+            Save your dealership website, then run a sync to pull inventory. Dealer IDs are auto-detected.
+          </div>
+          <ResyncButton />
+        </div>
+      </div>
 
       <Callouts profile={profile} />
     </div>
