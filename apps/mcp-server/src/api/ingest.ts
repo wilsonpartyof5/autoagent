@@ -161,12 +161,13 @@ export function createIngestionRouter(): express.Router {
       });
 
       // Retry logic for 429 rate limit errors with exponential backoff
-      let response: Response | null = null;
+      let response: Response;
       let retryCount = 0;
       const maxRetries = 3;
       const baseDelayMs = 1000; // Start with 1 second
 
-      while (retryCount <= maxRetries) {
+      // Always execute at least once, then retry if needed
+      do {
         response = await fetch(url, { cache: 'no-store' });
         
         // If 429 (rate limit), retry with exponential backoff
@@ -184,14 +185,14 @@ export function createIngestionRouter(): express.Router {
           });
           await new Promise(resolve => setTimeout(resolve, delayMs));
           retryCount++;
-          continue;
+        } else {
+          // Not a 429 or max retries reached, exit loop
+          break;
         }
-        
-        // Break out of retry loop if not 429 or max retries reached
-        break;
-      }
+      } while (retryCount <= maxRetries);
 
-      if (!response || !response.ok) {
+      // At this point, response is guaranteed to be set (from the while loop)
+      if (!response.ok) {
         const errorText = await response.text().catch(() => '');
         // If it's a 422 about start > num_found, we've reached the end
         if (response.status === 422 && errorText.includes('Start parameter greater than num_found')) {
