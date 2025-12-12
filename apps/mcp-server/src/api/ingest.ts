@@ -131,6 +131,24 @@ export function createIngestionRouter(): express.Router {
       if (currentPage < 1) currentPage = 1;
 
       while (pagesFetched < maxPages && allVehicles.length < maxVehicles) {
+        // Check if we're using offset-based pagination and would exceed num_found
+        if (useOffsetBased && numFound !== null) {
+          const start = (currentPage - 1) * pageSize;
+          if (start >= numFound) {
+            logger.info({
+              event: 'marketcheck_pagination_reached_end',
+              dealerId,
+              source,
+              page: currentPage,
+              start,
+              numFound,
+              totalUnique: allVehicles.length,
+              message: 'Offset exceeds num_found; all vehicles fetched',
+            });
+            break;
+          }
+        }
+
         const url = buildUrlForPage(currentPage, useOffsetBased);
 
       logger.info({
@@ -139,12 +157,27 @@ export function createIngestionRouter(): express.Router {
         source,
           page: currentPage,
           pageSizeRequested: pageSize,
+          useOffsetBased,
+          numFound: numFound ?? null,
         url: url.replace(apiKey, '***REDACTED***'),
       });
 
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
+        // If it's a 422 about start > num_found, we've reached the end
+        if (response.status === 422 && errorText.includes('Start parameter greater than num_found')) {
+          logger.info({
+            event: 'marketcheck_pagination_reached_end_422',
+            dealerId,
+            source,
+            page: currentPage,
+            numFound: numFound ?? null,
+            totalUnique: allVehicles.length,
+            message: 'MarketCheck returned 422: start > num_found; all vehicles fetched',
+          });
+          break;
+        }
         return res.status(response.status).json({
           error: `MarketCheck request failed (${response.status})`,
           details: errorText.substring(0, 500),
@@ -155,8 +188,21 @@ export function createIngestionRouter(): express.Router {
         const vehicles = Array.isArray(payload.listings) ? payload.listings : [];
         pagesFetched += 1;
 
-        if (numFound === null && typeof payload.num_found === 'number') {
-          numFound = payload.num_found;
+        // Update num_found if we get a new value (it might change between pages)
+        if (typeof payload.num_found === 'number') {
+          if (numFound === null) {
+            numFound = payload.num_found;
+          } else if (payload.num_found !== numFound) {
+            // num_found changed - log it but use the latest value
+            logger.warn({
+              event: 'marketcheck_num_found_changed',
+              dealerId,
+              source,
+              oldNumFound: numFound,
+              newNumFound: payload.num_found,
+            });
+            numFound = payload.num_found;
+          }
         }
 
         // Log sample IDs from this page for debugging
