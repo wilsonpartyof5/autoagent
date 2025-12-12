@@ -308,12 +308,13 @@ export default async function InventoryPage({ searchParams }: Props) {
         </div>
       </header>
 
-      <InventoryPageClient 
-        availableBodyTypes={availableBodyTypes} 
+      <InventoryPageClient
+        availableBodyTypes={availableBodyTypes}
         vehicles={vehicles}
         total={total}
         currentPage={currentPage}
         itemsPerPage={itemsPerPage}
+        dealershipName={activeDealership?.name || null}
       >
         {vehicles.length === 0 ? (
           <EmptyState />

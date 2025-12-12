@@ -32,6 +32,7 @@ type Props = {
   total?: number;
   currentPage?: number;
   itemsPerPage?: number;
+  dealershipName?: string | null;
   children?: React.ReactNode; // Grid view (legacy support)
   onVehicleClick?: (vehicle: InventoryVehicle) => void; // Handler to pass to VehicleCard
 };
@@ -42,6 +43,7 @@ export function InventoryPageClient({
   total = 0,
   currentPage = 1,
   itemsPerPage = 50,
+  dealershipName,
   children, 
   onVehicleClick 
 }: Props) {
@@ -321,6 +323,7 @@ export function InventoryPageClient({
         open={isDetailModalOpen}
         onOpenChange={setIsDetailModalOpen}
         onStatusUpdate={handleStatusUpdate}
+        dealershipName={dealershipName}
       />
 
       {/* Pagination Controls */}

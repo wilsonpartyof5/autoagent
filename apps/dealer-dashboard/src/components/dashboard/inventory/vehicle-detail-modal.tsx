@@ -23,6 +23,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onStatusUpdate?: (vehicleId: string, isLive: boolean) => void;
+  dealershipName?: string | null;
 };
 
 // Mock analytics data for testing
@@ -44,7 +45,7 @@ function generateMockAnalytics(vehicleId: string) {
   };
 }
 
-export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate }: Props) {
+export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate, dealershipName }: Props) {
   const [isPending, startTransition] = useTransition();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingLiveStatus, setPendingLiveStatus] = useState<boolean | null>(null);
@@ -574,7 +575,8 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                 )}
 
                 {/* Dealer Information */}
-                {(vehicle.dealer_name ||
+                {(dealershipName ||
+                  vehicle.dealer_name ||
                   vehicle.dealer_address ||
                   vehicle.dealer_city ||
                   vehicle.dealer_state ||
@@ -582,8 +584,11 @@ export function VehicleDetailModal({ vehicle, open, onOpenChange, onStatusUpdate
                   vehicle.dealer_website) && (
                   <DetailSection title="Dealer Information">
                     <div className="space-y-1 text-sm">
-                      {vehicle.dealer_name && (
-                        <p className="font-medium text-foreground">{vehicle.dealer_name}</p>
+                      {dealershipName && (
+                        <p className="font-medium text-foreground">{dealershipName}</p>
+                      )}
+                      {vehicle.dealer_name && vehicle.dealer_name !== dealershipName && (
+                        <p className="text-muted-foreground text-xs">{vehicle.dealer_name}</p>
                       )}
                       {vehicle.dealer_address && (
                         <p className="text-muted-foreground">{vehicle.dealer_address}</p>
