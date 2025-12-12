@@ -37,7 +37,6 @@ export async function updateMarketCheckSettings({
       },
       {
         dealerId: activeDealership?.marketcheckDealerId || undefined,
-        websiteUrl: normalizedWebsite,
       },
     ).catch(() => {
       // Tracking failures should not break the request
