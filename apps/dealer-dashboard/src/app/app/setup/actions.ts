@@ -43,7 +43,7 @@ type FetchAndIngestInput = {
 };
 
 type DealerLookupResult =
-  | { status: 'found'; dealerId: string; numFound?: number }
+  | { status: 'found'; dealerId: string; dealerName?: string | null; numFound?: number }
   | { status: 'no_match'; numFound?: number }
   | { status: 'error'; message: string; statusCode?: number };
 
@@ -121,6 +121,7 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
 
     const primary = mcDealerships[0];
     const dealerId = primary?.mc_dealer_id ?? primary?.dealer_id;
+    const dealerName = primary?.dealer_name ?? primary?.name ?? null;
 
     if (!dealerId) {
       console.error('[marketcheck_lookup] Missing dealer ID in response', {
@@ -137,7 +138,7 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
       durationMs: Date.now() - startedAt,
     });
 
-    return { status: 'found', dealerId: String(dealerId), numFound };
+    return { status: 'found', dealerId: String(dealerId), dealerName, numFound };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -163,10 +164,12 @@ async function cacheDealerId({
   dealerId,
   websiteUrl,
   dealershipId,
+  dealerName,
 }: {
   dealerId: string;
   websiteUrl?: string | null;
   dealershipId?: string | null;
+  dealerName?: string | null;
 }) {
   const profileUpdate = updateDealerProfile({
     marketcheckDealerId: dealerId,
@@ -181,6 +184,7 @@ async function cacheDealerId({
       ? updateDealership(dealershipId, {
           marketcheckDealerId: dealerId,
           ...(websiteUrl ? { marketcheckWebsiteUrl: websiteUrl } : {}),
+          ...(dealerName ? { name: dealerName } : {}),
         }).catch((error) => {
           console.error('[marketcheck_lookup] Failed to cache dealer ID on dealership', error);
         })
@@ -197,6 +201,7 @@ async function resolveDealerIdForUser({
   activeDealership?: Dealership | null;
 }): Promise<
   | { status: 'resolved'; dealerId: string; websiteUrl?: string | null }
+  | { status: 'resolved'; dealerId: string; dealerName?: string | null; websiteUrl?: string | null }
   | { status: 'no_match'; message: string }
   | { status: 'error'; message: string }
 > {
@@ -241,7 +246,19 @@ async function resolveDealerIdForUser({
     dealershipId: activeDealership?.id ?? null,
   });
 
-  return { status: 'resolved', dealerId: lookupResult.dealerId, websiteUrl };
+    await cacheDealerId({
+      dealerId: lookupResult.dealerId,
+      websiteUrl,
+      dealershipId: activeDealership?.id ?? null,
+      dealerName: lookupResult.dealerName ?? null,
+    });
+
+    return {
+      status: 'resolved',
+      dealerId: lookupResult.dealerId,
+      dealerName: lookupResult.dealerName ?? null,
+      websiteUrl,
+    };
 }
 
 /**

@@ -46,15 +46,29 @@ export function InventoryProviderForm({ currentProvider, websiteUrl }: Props) {
 
     startTransition(async () => {
       try {
-        await updateMarketCheckSettings({
+        const result = await updateMarketCheckSettings({
           websiteUrl: normalizedWebsite,
         });
 
-        setFeedback({
-          variant: "success",
-          message:
-            "MarketCheck settings saved. We'll auto-detect your dealer ID and reset inventory sync.",
-        });
+        if (result?.syncResult?.status === "no_match") {
+          setFeedback({
+            variant: "error",
+            message:
+              result.syncResult.message ||
+              "We requested MarketCheck to map your website. Please try again in 24-48 hours.",
+          });
+        } else if (result?.syncResult?.status === "synced") {
+          setFeedback({
+            variant: "success",
+            message: `Settings saved. Inventory sync started (fetched ${result.syncResult.fetched} vehicles, imported ${result.syncResult.imported}).`,
+          });
+        } else {
+          setFeedback({
+            variant: "success",
+            message:
+              "MarketCheck settings saved. We'll auto-detect your dealer ID and reset inventory sync.",
+          });
+        }
       } catch (error) {
         setFeedback({
           variant: "error",

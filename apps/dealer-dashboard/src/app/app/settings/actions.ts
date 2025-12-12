@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { updateDealerProfile } from '@/lib/supabase/profile';
 import { trackEvent } from '@/lib/analytics/tracking';
-import { getActiveDealership, updateDealership } from '@/lib/supabase/dealerships';
+import { getActiveDealership, updateDealership, createDealership } from '@/lib/supabase/dealerships';
+import { resyncInventory } from '@/app/app/setup/actions';
 
 export async function updateMarketCheckSettings({
   websiteUrl,
@@ -11,11 +12,19 @@ export async function updateMarketCheckSettings({
   websiteUrl: string;
 }) {
   const normalizedWebsite = normalizeWebsiteUrl(websiteUrl);
-  const activeDealership = await getActiveDealership();
+  let activeDealership = await getActiveDealership();
   const websiteChanged =
     normalizedWebsite !== (activeDealership?.marketcheckWebsiteUrl ?? null);
 
   try {
+    // If no dealership exists, create one so we can sync and show in "Your Stores"
+    if (!activeDealership) {
+      activeDealership = await createDealership({
+        name: normalizedWebsite,
+        marketcheckWebsiteUrl: normalizedWebsite,
+      });
+    }
+
     await updateDealerProfile({
       dmsProvider: 'marketcheck',
       marketcheckWebsiteUrl: normalizedWebsite,
@@ -50,6 +59,36 @@ export async function updateMarketCheckSettings({
     revalidatePath('/app/inventory');
     revalidatePath('/app/setup');
     revalidatePath('/app/leads');
+
+    // Kick off an auto-sync after saving settings
+    let syncResult:
+      | { status: 'synced'; fetched: number; imported: number }
+      | { status: 'no_match'; fetched: number; imported: number; message?: string }
+      | null = null;
+
+    try {
+      const result = await resyncInventory();
+      if (result?.status === 'no_match') {
+        syncResult = {
+          status: 'no_match',
+          fetched: result.fetched ?? 0,
+          imported: result.imported ?? 0,
+          message:
+            result.message ||
+            'We requested MarketCheck to map your website. Please try again in 24-48 hours.',
+        };
+      } else {
+        syncResult = {
+          status: 'synced',
+          fetched: result?.fetched ?? 0,
+          imported: result?.imported ?? 0,
+        };
+      }
+    } catch (syncError) {
+      console.error('[settings] MarketCheck auto-sync after save failed:', syncError);
+    }
+
+    return { success: true, syncResult };
   } catch (error) {
     throw new Error(
       error instanceof Error
@@ -57,8 +96,6 @@ export async function updateMarketCheckSettings({
         : 'Unable to update MarketCheck settings right now. Please try again.',
     );
   }
-
-  return { success: true };
 }
 
 function normalizeWebsiteUrl(raw: string): string {
