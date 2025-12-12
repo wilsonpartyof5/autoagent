@@ -212,6 +212,7 @@ export async function createDealership(payload: {
   logoUrl?: string | null;
 }): Promise<Dealership> {
   const supabase = await createClient();
+  const admin = createAdminClient(); // bypass RLS for creation
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -221,7 +222,7 @@ export async function createDealership(payload: {
   }
 
   // Create dealership
-  const { data: dealership, error: dealershipError } = await supabase
+  const { data: dealership, error: dealershipError } = await admin
     .from('dealerships')
     .insert({
       name: payload.name,
@@ -239,7 +240,7 @@ export async function createDealership(payload: {
   }
 
   // Link user to dealership
-  const { error: membershipError } = await supabase
+  const { error: membershipError } = await admin
     .from('user_dealerships')
     .insert({
       user_id: user.id,
