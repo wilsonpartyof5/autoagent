@@ -4,6 +4,13 @@ import React, { useState, useEffect, useTransition, cloneElement, isValidElement
 import { useRouter, useSearchParams } from "next/navigation";
 import { Filter, Grid3x3, Table, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { InventoryFiltersForm } from "./inventory-filters";
 import { ActiveFilterChips } from "./active-filter-chips";
@@ -90,11 +97,28 @@ export function InventoryPageClient({
   const handlePageChange = (newPage: number) => {
     const params = filtersToSearchParams(filters);
     params.set('page', String(newPage));
+    // Preserve current page size
+    if (itemsPerPage !== 50) {
+      params.set('pageSize', String(itemsPerPage));
+    }
     const newUrl = `/app/inventory?${params.toString()}`;
     
     startTransition(() => {
       router.push(newUrl);
       // Scroll to top when page changes
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
+  const handlePageSizeChange = (newPageSize: string) => {
+    const params = filtersToSearchParams(filters);
+    params.set('pageSize', newPageSize);
+    params.set('page', '1'); // Reset to page 1 when page size changes
+    const newUrl = `/app/inventory?${params.toString()}`;
+    
+    startTransition(() => {
+      router.push(newUrl);
+      // Scroll to top when page size changes
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   };
@@ -282,12 +306,33 @@ export function InventoryPageClient({
       />
 
       {/* Pagination Controls */}
-      {total > 0 && totalPages > 1 && (
-        <div className="flex items-center justify-between border-t pt-4">
-          <div className="text-sm text-muted-foreground">
-            Showing {startItem} to {endItem} of {total} vehicles
+      {total > 0 && (
+        <div className="flex flex-col gap-4 border-t pt-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing {startItem} to {endItem} of {total} vehicles
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show:</span>
+              <Select
+                value={String(itemsPerPage)}
+                onValueChange={handlePageSizeChange}
+                disabled={isPending}
+              >
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -332,7 +377,8 @@ export function InventoryPageClient({
               Next
               <ChevronRight className="h-4 w-4" />
             </Button>
-          </div>
+            </div>
+          )}
         </div>
       )}
 

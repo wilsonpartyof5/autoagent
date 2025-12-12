@@ -75,7 +75,8 @@ export default async function InventoryPage({ searchParams }: Props) {
   // Parse pagination from URL
   const pageParam = urlSearchParams.get('page');
   const currentPage = pageParam ? Math.max(1, parseInt(pageParam, 10)) : 1;
-  const itemsPerPage = 50; // Show 50 vehicles per page
+  const pageSizeParam = urlSearchParams.get('pageSize');
+  const itemsPerPage = pageSizeParam ? Math.max(10, Math.min(200, parseInt(pageSizeParam, 10))) : 50; // Default 50, min 10, max 200
   const offset = (currentPage - 1) * itemsPerPage;
 
   // Get active dealership ID
