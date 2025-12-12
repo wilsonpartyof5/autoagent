@@ -52,6 +52,10 @@ export function createIngestionRouter(): express.Router {
       condition = 'all',
       pageSize = 100,
       page = 1,
+      // Safety rails: MarketCheck pagination behavior can be inconsistent.
+      // These caps prevent runaway loops and excessively large ingestions.
+      maxPages = 50,
+      maxVehicles = 5000,
     } = req.body || {};
 
     const apiKey = process.env.MARKETCHECK_API_KEY;
@@ -68,22 +72,6 @@ export function createIngestionRouter(): express.Router {
       ? MARKETCHECK_SOURCE_BASE
       : (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
 
-    const searchParams = new URLSearchParams({
-      api_key: apiKey,
-      page: String(page),
-      pageSize: String(pageSize),
-    });
-
-    if (useSourceEndpoint) {
-      searchParams.set('source', source);
-    } else {
-      searchParams.set('dealer_id', dealerId);
-      if (zip) searchParams.set('zip', zip);
-      if (radiusMiles) searchParams.set('radius', String(radiusMiles));
-      if (condition === 'new') searchParams.set('car_type', 'new');
-      if (condition === 'used') searchParams.set('car_type', 'used');
-    }
-
     const endpoint = useSourceEndpoint
       ? '/v2/car/dealer/inventory/active'
       : '/v2/search/car/active';
@@ -91,60 +79,173 @@ export function createIngestionRouter(): express.Router {
     // Normalize URL construction to prevent double slashes
     const normalizedBase = baseUrl.replace(/\/+$/, ''); // Remove trailing slashes
     const normalizedEndpoint = endpoint.replace(/^\/+/, '/'); // Ensure single leading slash
-    const url = `${normalizedBase}${normalizedEndpoint}?${searchParams.toString()}`;
 
     try {
       logger.info({
         event: 'marketcheck_fetch_start',
         dealerId,
         source,
-        url: url.replace(apiKey, '***REDACTED***'),
+        page,
+        pageSize,
+        maxPages,
+        maxVehicles,
       });
 
-      const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        return res.status(response.status).json({
-          error: `MarketCheck request failed (${response.status})`,
-          details: errorText.substring(0, 500),
+      const buildUrlForPage = (pageNum: number) => {
+        const searchParams = new URLSearchParams({
+          api_key: apiKey,
+          page: String(pageNum),
+          pageSize: String(pageSize),
         });
+
+        if (useSourceEndpoint) {
+          searchParams.set('source', source);
+        } else {
+          searchParams.set('dealer_id', dealerId);
+          if (zip) searchParams.set('zip', zip);
+          if (radiusMiles) searchParams.set('radius', String(radiusMiles));
+          if (condition === 'new') searchParams.set('car_type', 'new');
+          if (condition === 'used') searchParams.set('car_type', 'used');
+        }
+
+        return `${normalizedBase}${normalizedEndpoint}?${searchParams.toString()}`;
+      };
+
+      const allVehicles: any[] = [];
+      const seenIds = new Set<string>();
+      let duplicatesSkipped = 0;
+      let pagesFetched = 0;
+      let numFound: number | null = null;
+
+      let currentPage = Number.isFinite(Number(page)) ? Number(page) : 1;
+      if (currentPage < 1) currentPage = 1;
+
+      while (pagesFetched < maxPages && allVehicles.length < maxVehicles) {
+        const url = buildUrlForPage(currentPage);
+
+        logger.info({
+          event: 'marketcheck_fetch_page_start',
+          dealerId,
+          source,
+          page: currentPage,
+          pageSizeRequested: pageSize,
+          url: url.replace(apiKey, '***REDACTED***'),
+        });
+
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          return res.status(response.status).json({
+            error: `MarketCheck request failed (${response.status})`,
+            details: errorText.substring(0, 500),
+          });
+        }
+
+        const payload = await response.json();
+        const vehicles = Array.isArray(payload.listings) ? payload.listings : [];
+        pagesFetched += 1;
+
+        if (numFound === null && typeof payload.num_found === 'number') {
+          numFound = payload.num_found;
+        }
+
+        let newOnThisPage = 0;
+        for (const v of vehicles) {
+          const id = (v && (v.id || v.vin)) ? String(v.id || v.vin) : undefined;
+          if (!id) {
+            // If no stable ID, include it but don't use it for progress detection.
+            allVehicles.push(v);
+            newOnThisPage += 1;
+            continue;
+          }
+          if (seenIds.has(id)) {
+            duplicatesSkipped += 1;
+            continue;
+          }
+          seenIds.add(id);
+          allVehicles.push(v);
+          newOnThisPage += 1;
+          if (allVehicles.length >= maxVehicles) break;
+        }
+
+        logger.info({
+          event: 'marketcheck_fetch_page_complete',
+          dealerId,
+          source,
+          page: currentPage,
+          listingsReturned: vehicles.length,
+          newUniqueThisPage: newOnThisPage,
+          totalUniqueSoFar: allVehicles.length,
+          numFound: numFound ?? null,
+        });
+
+        // Stop conditions:
+        if (vehicles.length === 0) break;
+        if (newOnThisPage === 0) {
+          // page param ignored / looped results; don't spin forever.
+          logger.warn({
+            event: 'marketcheck_pagination_no_progress',
+            dealerId,
+            source,
+            page: currentPage,
+            message: 'No new vehicles were discovered on this page; stopping pagination',
+          });
+          break;
+        }
+        if (typeof numFound === 'number' && allVehicles.length >= numFound) break;
+
+        currentPage += 1;
       }
 
-      const payload = await response.json();
-      const vehicles = Array.isArray(payload.listings) ? payload.listings : [];
+      if (allVehicles.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: 'No vehicles returned from MarketCheck',
+          fetched: 0,
+          pagesFetched,
+          numFound,
+          duplicatesSkipped,
+          ingested: 0,
+        });
+      }
 
       logger.info({
         event: 'marketcheck_fetch_complete',
         dealerId,
         source,
-        fetched: vehicles.length,
-        numFound: payload.num_found ?? null,
+        fetchedUnique: allVehicles.length,
+        pagesFetched,
+        numFound,
+        duplicatesSkipped,
       });
-
-      if (vehicles.length === 0) {
-        return res.status(200).json({
-          success: true,
-          message: 'No vehicles returned from MarketCheck',
-          fetched: 0,
-          ingested: 0,
-        });
-      }
 
       const ingestionOptions: IngestionServiceOptions = {
         provider: 'marketcheck',
         dataSource: 'marketcheck-api',
         dealerId,
-        deletionStrategy: 'mark_unavailable',
+        // Deletions are only safe when scoped to a dealer.
+        deletionStrategy: dealerId ? 'mark_unavailable' : 'none',
         timeoutMs: 30000,
         batchSize: 100,
         continueOnError: true,
       };
 
-      const ingestResult = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
+      if (!dealerId) {
+        logger.warn({
+          event: 'marketcheck_ingest_deletions_disabled_missing_dealerId',
+          source,
+          message: 'dealerId not provided; disabling deletionStrategy to avoid cross-dealer updates',
+        });
+      }
+
+      const ingestResult = await ingestVehiclesFromProvider(allVehicles, ingestionOptions);
 
       return res.json({
         success: true,
-        fetched: vehicles.length,
+        fetched: allVehicles.length,
+        pagesFetched,
+        numFound,
+        duplicatesSkipped,
         ingestion: ingestResult,
       });
     } catch (error) {
