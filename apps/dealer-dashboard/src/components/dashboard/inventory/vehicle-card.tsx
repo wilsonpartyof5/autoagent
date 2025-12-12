@@ -82,106 +82,94 @@ function VehicleCardComponent({ vehicle, onClick }: VehicleCardProps) {
           </div>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-3 p-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-lg font-semibold text-foreground">
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        {/* Title and Live Badge */}
+        <div className="space-y-1">
+          <div className="flex items-start gap-1.5">
+            <h3 className="text-base font-semibold text-foreground line-clamp-2 leading-tight flex-1">
               {vehicle.year ?? "—"} {vehicle.make ?? ""} {vehicle.model ?? ""}
             </h3>
             {vehicle.is_live && (
-              <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+              <span className="rounded-full bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400 shrink-0">
                 LIVE
               </span>
             )}
           </div>
-          {vehicle.trim && <p className="text-sm text-muted-foreground">{vehicle.trim}</p>}
+          {vehicle.trim && (
+            <p className="text-xs text-muted-foreground truncate">{vehicle.trim}</p>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
+
+        {/* Condition and Body Type Badges */}
+        <div className="flex flex-wrap gap-1.5">
           {vehicle.condition && (
-            <span className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">
+            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
               {vehicle.condition.toUpperCase()}
             </span>
           )}
           {vehicle.body_type && (
-            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {vehicle.body_type}
             </span>
           )}
-          {typeof vehicle.days_on_market === "number" && (
-            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-              {vehicle.days_on_market} days on lot
-            </span>
-          )}
         </div>
-        <div className="space-y-1 text-sm text-muted-foreground">
-          <p>
-            VIN: <span className="font-medium">{vehicle.vin ?? "Unavailable"}</span>
-          </p>
-          <p>
-            Mileage:{" "}
-            <span className="font-medium">
-              {vehicle.miles ? `${vehicle.miles.toLocaleString()} mi` : "—"}
-            </span>
-          </p>
-          {vehicle.market_average_price && (
-            <p>
-              Market avg:{" "}
-              <span className="font-medium">
-                ${vehicle.market_average_price.toLocaleString()}
-              </span>
-            </p>
-          )}
-          {vehicle.msrp && (
-            <p>
-              MSRP: <span className="font-medium">${vehicle.msrp.toLocaleString()}</span>
-            </p>
-          )}
-        </div>
-        {sellerComments && (
-          <div className="mt-2 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-            <p className="line-clamp-2" title={sellerComments}>
-              {sellerComments}
-            </p>
-          </div>
-        )}
-        {options.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {options.map((option, idx) => (
-              <span
-                key={idx}
-                className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                title={option.description || option.name}
-              >
-                {option.name || option.code || "Option"}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="mt-auto flex items-center justify-between text-sm">
-          <span className="text-lg font-bold text-foreground">
+
+        {/* Price - Prominent */}
+        <div className="mt-1">
+          <span className="text-xl font-bold text-foreground">
             {vehicle.price ? `$${vehicle.price.toLocaleString()}` : "Price TBD"}
           </span>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={(e) => {
-              e.stopPropagation();
-              onClick?.(vehicle);
-            }}
-          >
-            View Details
-          </Button>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          {vehicle.dealer_name && <p>{vehicle.dealer_name}</p>}
-          {vehicle.dealer_address ? (
-            <p>{vehicle.dealer_address}</p>
-          ) : vehicle.dealer_city || vehicle.dealer_state ? (
-            <p>
-              {[vehicle.dealer_city, vehicle.dealer_state].filter(Boolean).join(", ")}
+          {vehicle.msrp && vehicle.msrp !== vehicle.price && (
+            <p className="text-xs text-muted-foreground line-through mt-0.5">
+              ${vehicle.msrp.toLocaleString()}
             </p>
-          ) : null}
+          )}
         </div>
+
+        {/* Key Info - Compact Grid */}
+        <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+          {vehicle.miles !== null && (
+            <>
+              <span className="truncate">Mileage:</span>
+              <span className="font-medium truncate text-right">
+                {vehicle.miles ? `${vehicle.miles.toLocaleString()} mi` : "—"}
+              </span>
+            </>
+          )}
+          {vehicle.vin && (
+            <>
+              <span className="truncate">VIN:</span>
+              <span className="font-medium truncate text-right font-mono text-[10px]">
+                {vehicle.vin.slice(-8)}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* View Details Button */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full mt-2 text-xs h-8"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick?.(vehicle);
+          }}
+        >
+          View Details
+        </Button>
+
+        {/* Dealer Info - Compact */}
+        {(vehicle.dealer_name || vehicle.dealer_city || vehicle.dealer_state) && (
+          <div className="text-[10px] text-muted-foreground truncate mt-auto pt-1 border-t border-border/40">
+            {vehicle.dealer_name && <p className="truncate">{vehicle.dealer_name}</p>}
+            {(vehicle.dealer_city || vehicle.dealer_state) && (
+              <p className="truncate">
+                {[vehicle.dealer_city, vehicle.dealer_state].filter(Boolean).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </article>
   );
