@@ -79,9 +79,10 @@ export default async function InventoryPage({ searchParams }: Props) {
   const itemsPerPage = pageSizeParam ? Math.max(10, Math.min(200, parseInt(pageSizeParam, 10))) : 50; // Default 50, min 10, max 200
   const offset = (currentPage - 1) * itemsPerPage;
 
-  // Get active dealership ID
-  const activeDealershipId = await getActiveDealershipId();
-  
+  // Get active dealership
+  const activeDealership = await getActiveDealership();
+  const activeDealershipId = activeDealership?.id ?? null;
+
   if (!activeDealershipId) {
     // No active dealership - show empty state
     return (
@@ -104,6 +105,11 @@ export default async function InventoryPage({ searchParams }: Props) {
     limit: itemsPerPage,
     offset: offset,
   };
+
+  // Limit to the active dealership's MarketCheck dealer ID if available
+  if (activeDealership?.marketcheckDealerId) {
+    uvsFilters.dealerId = activeDealership.marketcheckDealerId;
+  }
 
   // Apply condition filter
   if (filters.condition.length > 0 && filters.condition.length < 3) {
