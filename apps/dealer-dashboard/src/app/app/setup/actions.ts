@@ -11,6 +11,7 @@ import {
   getActiveDealershipIdForUser,
   type Dealership,
 } from '@/lib/supabase/dealerships';
+import { createAdminClient } from '@/lib/supabase/admin';
 import {
   normalizeMarketCheckVehicle,
   type MarketCheckVehicle,
@@ -302,18 +303,51 @@ export async function resyncInventory() {
   }
 
   const dealerId = dealerResolution.dealerId;
+  const dealershipId = activeDealership.id;
+
+  // Persist the resolved dealer ID to the dealership row (admin client to avoid RLS issues)
+  try {
+    await updateDealership(dealershipId, {
+      marketcheckDealerId: dealerId,
+      ...(dealerResolution.websiteUrl ? { marketcheckWebsiteUrl: dealerResolution.websiteUrl } : {}),
+      ...(dealerResolution.dealerName ? { name: dealerResolution.dealerName } : {}),
+    });
+  } catch (err) {
+    console.error('[resyncInventory] Failed to persist MarketCheck dealer ID', err);
+    throw new Error('Failed to store MarketCheck dealer ID. Please try again.');
+  }
+
+  // Re-fetch to ensure the ID is stored and only use the stored value going forward
+  const admin = createAdminClient();
+  const { data: persisted, error: persistedError } = await admin
+    .from('dealerships')
+    .select('marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url')
+    .eq('id', dealershipId)
+    .maybeSingle();
+
+  if (persistedError) {
+    console.error('[resyncInventory] Failed to read persisted dealership', persistedError);
+    throw new Error('Failed to verify stored MarketCheck dealer ID.');
+  }
+
+  if (!persisted?.marketcheck_dealer_id) {
+    console.error('[resyncInventory] Dealer ID missing after persist', { dealershipId, dealerId });
+    throw new Error('MarketCheck dealer ID was not stored. Please try again.');
+  }
+
+  const dealerIdToUse = persisted.marketcheck_dealer_id;
 
   // Use auto-detect for known dealers (marketcheck_source column doesn't exist in dealerships table)
   const dealerSourceMap: Record<string, string> = {
     '11042155': 'myrockhillgmc.com',
   };
   
-  const source = dealerSourceMap[dealerId] || undefined;
+  const source = dealerSourceMap[dealerIdToUse] || undefined;
   const zip = activeDealership.marketcheckZip || undefined;
 
   // Use the new fetch-and-ingest endpoint
   const result = await fetchAndIngestMarketCheckInventory({
-    dealerId,
+    dealerId: dealerIdToUse,
     source,
     zip,
     radiusMiles: 50,
