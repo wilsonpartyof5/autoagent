@@ -294,9 +294,6 @@ export default async function InventoryPage({ searchParams }: Props) {
     )
   ).sort();
 
-  // Get active dealership to check if re-sync is available
-  const activeDealership = await getActiveDealership();
-
   return (
     <section className="space-y-6">
       <header className="space-y-2">
