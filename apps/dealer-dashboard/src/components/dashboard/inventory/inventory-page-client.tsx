@@ -212,6 +212,24 @@ export function InventoryPageClient({
               </span>
             )}
           </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Show:</span>
+            <Select
+              value={String(itemsPerPage)}
+              onValueChange={handlePageSizeChange}
+              disabled={isPending}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-input bg-background p-1">
           <button
