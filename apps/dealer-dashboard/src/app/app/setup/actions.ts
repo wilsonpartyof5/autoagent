@@ -306,11 +306,14 @@ export async function resyncInventory() {
   const dealershipId = activeDealership.id;
 
   // Persist the resolved dealer ID to the dealership row (admin client to avoid RLS issues)
+  const resolvedWebsite = 'websiteUrl' in dealerResolution ? dealerResolution.websiteUrl : undefined;
+  const resolvedDealerName = 'dealerName' in dealerResolution ? dealerResolution.dealerName : undefined;
+
   try {
     await updateDealership(dealershipId, {
       marketcheckDealerId: dealerId,
-      ...(dealerResolution.websiteUrl ? { marketcheckWebsiteUrl: dealerResolution.websiteUrl } : {}),
-      ...(dealerResolution.dealerName ? { name: dealerResolution.dealerName } : {}),
+      ...(resolvedWebsite ? { marketcheckWebsiteUrl: resolvedWebsite } : {}),
+      ...(resolvedDealerName ? { name: resolvedDealerName } : {}),
     });
   } catch (err) {
     console.error('[resyncInventory] Failed to persist MarketCheck dealer ID', err);
