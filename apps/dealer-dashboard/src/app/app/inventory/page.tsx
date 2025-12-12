@@ -72,6 +72,12 @@ export default async function InventoryPage({ searchParams }: Props) {
   });
   const filters = parseFiltersFromSearchParams(urlSearchParams);
 
+  // Parse pagination from URL
+  const pageParam = urlSearchParams.get('page');
+  const currentPage = pageParam ? Math.max(1, parseInt(pageParam, 10)) : 1;
+  const itemsPerPage = 50; // Show 50 vehicles per page
+  const offset = (currentPage - 1) * itemsPerPage;
+
   // Get active dealership ID
   const activeDealershipId = await getActiveDealershipId();
   
@@ -94,6 +100,8 @@ export default async function InventoryPage({ searchParams }: Props) {
     minPrice: filters.minPrice ?? undefined,
     maxPrice: filters.maxPrice ?? undefined,
     availabilityStatus: 'available', // Only show available vehicles by default
+    limit: itemsPerPage,
+    offset: offset,
   };
 
   // Apply condition filter
@@ -299,7 +307,13 @@ export default async function InventoryPage({ searchParams }: Props) {
         </div>
       </header>
 
-      <InventoryPageClient availableBodyTypes={availableBodyTypes} vehicles={vehicles}>
+      <InventoryPageClient 
+        availableBodyTypes={availableBodyTypes} 
+        vehicles={vehicles}
+        total={total}
+        currentPage={currentPage}
+        itemsPerPage={itemsPerPage}
+      >
         {vehicles.length === 0 ? (
           <EmptyState />
         ) : (

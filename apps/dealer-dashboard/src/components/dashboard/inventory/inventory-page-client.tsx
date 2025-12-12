@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useTransition, cloneElement, isValidElement } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Filter, Grid3x3, Table } from "lucide-react";
+import { Filter, Grid3x3, Table, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { InventoryFiltersForm } from "./inventory-filters";
@@ -22,11 +22,22 @@ type ViewMode = "grid" | "table";
 type Props = {
   availableBodyTypes: string[];
   vehicles: InventoryVehicle[];
+  total?: number;
+  currentPage?: number;
+  itemsPerPage?: number;
   children?: React.ReactNode; // Grid view (legacy support)
   onVehicleClick?: (vehicle: InventoryVehicle) => void; // Handler to pass to VehicleCard
 };
 
-export function InventoryPageClient({ availableBodyTypes, vehicles, children, onVehicleClick }: Props) {
+export function InventoryPageClient({ 
+  availableBodyTypes, 
+  vehicles, 
+  total = 0,
+  currentPage = 1,
+  itemsPerPage = 50,
+  children, 
+  onVehicleClick 
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -67,12 +78,30 @@ export function InventoryPageClient({ availableBodyTypes, vehicles, children, on
   const handleFiltersChange = (newFilters: InventoryFilters) => {
     setFilters(newFilters);
     const params = filtersToSearchParams(newFilters);
+    // Reset to page 1 when filters change
+    params.set('page', '1');
     const newUrl = params.toString() ? `/app/inventory?${params.toString()}` : '/app/inventory';
     
     startTransition(() => {
       router.push(newUrl);
     });
   };
+
+  const handlePageChange = (newPage: number) => {
+    const params = filtersToSearchParams(filters);
+    params.set('page', String(newPage));
+    const newUrl = `/app/inventory?${params.toString()}`;
+    
+    startTransition(() => {
+      router.push(newUrl);
+      // Scroll to top when page changes
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
+  const totalPages = Math.ceil(total / itemsPerPage);
+  const startItem = total > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
+  const endItem = Math.min(currentPage * itemsPerPage, total);
 
   const handleRemoveFilter = (key: keyof InventoryFilters, value?: string) => {
     const newFilters: InventoryFilters = { ...filters };
@@ -251,6 +280,61 @@ export function InventoryPageClient({ availableBodyTypes, vehicles, children, on
         onOpenChange={setIsDetailModalOpen}
         onStatusUpdate={handleStatusUpdate}
       />
+
+      {/* Pagination Controls */}
+      {total > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between border-t pt-4">
+          <div className="text-sm text-muted-foreground">
+            Showing {startItem} to {endItem} of {total} vehicles
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || isPending}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handlePageChange(pageNum)}
+                    disabled={isPending}
+                    className="min-w-[2.5rem]"
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || isPending}
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen} side="right">
         <SheetContent onClose={() => setIsFilterOpen(false)}>
