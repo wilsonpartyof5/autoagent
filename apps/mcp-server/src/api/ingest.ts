@@ -160,8 +160,38 @@ export function createIngestionRouter(): express.Router {
         url: url.replace(apiKey, '***REDACTED***'),
       });
 
-      const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) {
+      // Retry logic for 429 rate limit errors with exponential backoff
+      let response: Response | null = null;
+      let retryCount = 0;
+      const maxRetries = 3;
+      const baseDelayMs = 1000; // Start with 1 second
+
+      while (retryCount <= maxRetries) {
+        response = await fetch(url, { cache: 'no-store' });
+        
+        // If 429 (rate limit), retry with exponential backoff
+        if (response.status === 429 && retryCount < maxRetries) {
+          const delayMs = baseDelayMs * Math.pow(2, retryCount); // 1s, 2s, 4s
+          logger.warn({
+            event: 'marketcheck_rate_limit_retry',
+            dealerId,
+            source,
+            page: currentPage,
+            retryCount: retryCount + 1,
+            maxRetries,
+            delayMs,
+            message: `Rate limit hit (429), retrying after ${delayMs}ms`,
+          });
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          retryCount++;
+          continue;
+        }
+        
+        // Break out of retry loop if not 429 or max retries reached
+        break;
+      }
+
+      if (!response || !response.ok) {
         const errorText = await response.text().catch(() => '');
         // If it's a 422 about start > num_found, we've reached the end
         if (response.status === 422 && errorText.includes('Start parameter greater than num_found')) {
@@ -175,6 +205,21 @@ export function createIngestionRouter(): express.Router {
             message: 'MarketCheck returned 422: start > num_found; all vehicles fetched',
           });
           break;
+        }
+        // If 429 after retries, return error
+        if (response.status === 429) {
+          logger.error({
+            event: 'marketcheck_rate_limit_exceeded',
+            dealerId,
+            source,
+            page: currentPage,
+            retriesAttempted: retryCount,
+            message: 'Rate limit exceeded after retries',
+          });
+          return res.status(429).json({
+            error: 'MarketCheck rate limit exceeded',
+            details: 'Too many requests. Please wait a few minutes and try again.',
+          });
         }
         return res.status(response.status).json({
           error: `MarketCheck request failed (${response.status})`,
@@ -312,6 +357,13 @@ export function createIngestionRouter(): express.Router {
         // MarketCheck only returns 10 vehicles per page, so we increment by 10
         if (useOffsetBased) {
           actualStartOffset += vehicles.length; // Increment by actual vehicles returned
+        }
+        
+        // Rate limiting: Add delay between requests to respect 5 calls/second limit
+        // Free plan allows 5 calls/second = 200ms minimum between calls
+        // Using 250ms to be safe and account for network latency
+        if (pagesFetched < maxPages && allVehicles.length < maxVehicles) {
+          await new Promise(resolve => setTimeout(resolve, 250));
         }
         
         currentPage += 1;
