@@ -9,6 +9,7 @@ export type DealerProfile = {
   dmsProvider?: InventoryProvider | null;
   marketcheckDealerId?: string | null;
   marketcheckZip?: string | null;
+  marketcheckWebsiteUrl?: string | null;
   leadDeliveryMethod?: 'http' | 'email' | null;
   leadDeliveryEndpoint?: string | null;
   leadDeliveryEmail?: string | null;
@@ -27,7 +28,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "onboarding_completed, inventory_connected, billing_active, dms_provider, marketcheck_dealer_id, marketcheck_zip, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
+      "onboarding_completed, inventory_connected, billing_active, dms_provider, marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -48,6 +49,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
     dmsProvider: data?.dms_provider ?? null,
     marketcheckDealerId: data?.marketcheck_dealer_id ?? null,
     marketcheckZip: data?.marketcheck_zip ?? null,
+    marketcheckWebsiteUrl: data?.marketcheck_website_url ?? null,
     leadDeliveryMethod: (data?.lead_delivery_method as 'http' | 'email' | null) ?? null,
     leadDeliveryEndpoint: data?.lead_delivery_endpoint ?? null,
     leadDeliveryEmail: data?.lead_delivery_email ?? null,
@@ -61,6 +63,7 @@ type UpdateDealerProfileInput = {
   dmsProvider?: InventoryProvider | null;
   marketcheckDealerId?: string | null;
   marketcheckZip?: string | null;
+  marketcheckWebsiteUrl?: string | null;
   leadDeliveryMethod?: 'http' | 'email' | null;
   leadDeliveryEndpoint?: string | null;
   leadDeliveryEmail?: string | null;
@@ -98,6 +101,9 @@ export async function updateDealerProfile(input: UpdateDealerProfileInput) {
   }
   if (input.marketcheckZip !== undefined) {
     payload["marketcheck_zip"] = input.marketcheckZip;
+  }
+  if (input.marketcheckWebsiteUrl !== undefined) {
+    payload["marketcheck_website_url"] = input.marketcheckWebsiteUrl;
   }
   if (input.leadDeliveryMethod !== undefined) {
     payload["lead_delivery_method"] = input.leadDeliveryMethod;

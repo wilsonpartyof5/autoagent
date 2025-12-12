@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { type ReactNode } from "react";
+import { useState, useTransition, type InputHTMLAttributes, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { updateMarketCheckSettings } from "@/app/app/settings/actions";
 import { setInventoryProvider } from "@/app/app/setup/actions";
@@ -9,14 +8,12 @@ import { type InventoryProvider } from "@/lib/supabase/profile";
 
 type Props = {
   currentProvider?: InventoryProvider | null;
-  dealerId?: string | null;
-  zip?: string | null;
+  websiteUrl?: string | null;
 };
 
-export function InventoryProviderForm({ currentProvider, dealerId, zip }: Props) {
+export function InventoryProviderForm({ currentProvider, websiteUrl }: Props) {
   const [provider, setProvider] = useState<InventoryProvider>(currentProvider ?? "marketcheck");
-  const [marketcheckDealerId, setMarketcheckDealerId] = useState(dealerId ?? "");
-  const [marketcheckZip, setMarketcheckZip] = useState(zip ?? "");
+  const [marketcheckWebsiteUrl, setMarketcheckWebsiteUrl] = useState(websiteUrl ?? "");
   const [feedback, setFeedback] = useState<{ variant: "success" | "error"; message: string } | null>(
     null,
   );
@@ -38,10 +35,11 @@ export function InventoryProviderForm({ currentProvider, dealerId, zip }: Props)
   };
 
   const handleSave = () => {
-    if (!marketcheckDealerId.trim()) {
+    const normalizedWebsite = normalizeWebsite(marketcheckWebsiteUrl);
+    if (!normalizedWebsite) {
       setFeedback({
         variant: "error",
-        message: "Enter your MarketCheck dealer ID before saving.",
+        message: "Enter a valid dealership website URL (e.g., https://exampledealer.com).",
       });
       return;
     }
@@ -49,14 +47,13 @@ export function InventoryProviderForm({ currentProvider, dealerId, zip }: Props)
     startTransition(async () => {
       try {
         await updateMarketCheckSettings({
-          dealerId: marketcheckDealerId,
-          zip: marketcheckZip,
+          websiteUrl: normalizedWebsite,
         });
 
         setFeedback({
           variant: "success",
           message:
-            "MarketCheck settings saved. Inventory sync was reset—run the sync again to import vehicles.",
+            "MarketCheck settings saved. We'll auto-detect your dealer ID and reset inventory sync.",
         });
       } catch (error) {
         setFeedback({
@@ -73,8 +70,8 @@ export function InventoryProviderForm({ currentProvider, dealerId, zip }: Props)
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-foreground">Inventory provider</h2>
         <p className="text-sm text-muted-foreground">
-          Choose your inventory provider to sync dealer inventory. Update your dealer ID or location
-          to change which listings are imported.
+          Choose your inventory provider to sync dealer inventory. Enter your dealership website and
+          we'll auto-detect your MarketCheck dealer ID.
         </p>
       </div>
 
@@ -108,35 +105,16 @@ export function InventoryProviderForm({ currentProvider, dealerId, zip }: Props)
 
       {/* Conditional Content Based on Provider */}
       {provider === "marketcheck" && (
-        <div className="grid gap-4 md:grid-cols-2">
-        <Field
-          label="MarketCheck dealer ID"
-          required
-          value={marketcheckDealerId}
-          onChange={setMarketcheckDealerId}
-          placeholder="e.g., 102345"
-          helper={
-            <>
-              Find this in your MarketCheck dealer portal (account settings or dealer profile section).{" "}
-              <a
-                href="mailto:support@marketcheck.com"
-                className="font-medium text-primary underline-offset-2 hover:underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Need help? Contact MarketCheck support
-              </a>
-              .
-            </>
-          }
-        />
-        <Field
-          label="Zip code (optional)"
-          value={marketcheckZip}
-          onChange={setMarketcheckZip}
-          placeholder="Dealer ZIP"
-          helper="Used to refine search results for multi-store groups."
-        />
+        <div className="space-y-4">
+          <Field
+            label="Dealership website URL"
+            required
+            value={marketcheckWebsiteUrl}
+            onChange={setMarketcheckWebsiteUrl}
+            placeholder="https://exampledealer.com or mydealer.com"
+            helper="We'll auto-detect your MarketCheck dealer ID; no manual ID needed."
+            inputMode="url"
+          />
         </div>
       )}
 
@@ -233,6 +211,27 @@ function PlaceholderProvider({
   );
 }
 
+function normalizeWebsite(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    if (!parsed.hostname || !parsed.hostname.includes(".")) {
+      return null;
+    }
+
+    const hostname = parsed.hostname.startsWith("www.") ? parsed.hostname.slice(4) : parsed.hostname;
+    return hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function Field({
   label,
   helper,
@@ -240,6 +239,8 @@ function Field({
   value,
   onChange,
   placeholder,
+  type = "text",
+  inputMode,
 }: {
   label: string;
   helper?: string | ReactNode;
@@ -247,6 +248,8 @@ function Field({
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  type?: InputHTMLAttributes<HTMLInputElement>["type"];
+  inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className="space-y-2">
@@ -255,9 +258,12 @@ function Field({
         {required && <span className="ml-1 text-destructive">*</span>}
       </label>
       <input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        inputMode={inputMode}
+        autoComplete={inputMode === "url" || type === "url" ? "url" : "off"}
         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
       />
       {helper && <p className="text-xs text-muted-foreground">{helper}</p>}

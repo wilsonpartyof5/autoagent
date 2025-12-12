@@ -6,6 +6,7 @@ export type Dealership = {
   name: string;
   marketcheckDealerId: string | null;
   marketcheckZip: string | null;
+  marketcheckWebsiteUrl: string | null;
   logoUrl: string | null;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +54,7 @@ export async function fetchUserDealerships(): Promise<Dealership[]> {
       name: d.name,
       marketcheckDealerId: d.marketcheck_dealer_id ?? null,
       marketcheckZip: d.marketcheck_zip ?? null,
+      marketcheckWebsiteUrl: d.marketcheck_website_url ?? null,
       logoUrl: d.logo_url ?? null,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
@@ -147,6 +149,7 @@ export async function getActiveDealership(): Promise<Dealership | null> {
     name: data.name,
     marketcheckDealerId: data.marketcheck_dealer_id ?? null,
     marketcheckZip: data.marketcheck_zip ?? null,
+    marketcheckWebsiteUrl: data.marketcheck_website_url ?? null,
     logoUrl: data.logo_url ?? null,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -205,6 +208,7 @@ export async function createDealership(payload: {
   name: string;
   marketcheckDealerId?: string | null;
   marketcheckZip?: string | null;
+  marketcheckWebsiteUrl?: string | null;
   logoUrl?: string | null;
 }): Promise<Dealership> {
   const supabase = await createClient();
@@ -223,6 +227,7 @@ export async function createDealership(payload: {
       name: payload.name,
       marketcheck_dealer_id: payload.marketcheckDealerId ?? null,
       marketcheck_zip: payload.marketcheckZip ?? null,
+      marketcheck_website_url: payload.marketcheckWebsiteUrl ?? null,
       logo_url: payload.logoUrl ?? null,
     })
     .select()
@@ -260,6 +265,7 @@ export async function createDealership(payload: {
     name: dealership.name,
     marketcheckDealerId: dealership.marketcheck_dealer_id ?? null,
     marketcheckZip: dealership.marketcheck_zip ?? null,
+    marketcheckWebsiteUrl: dealership.marketcheck_website_url ?? null,
     logoUrl: dealership.logo_url ?? null,
     createdAt: dealership.created_at,
     updatedAt: dealership.updated_at,
@@ -275,6 +281,7 @@ export async function updateDealership(
     name?: string;
     marketcheckDealerId?: string | null;
     marketcheckZip?: string | null;
+    marketcheckWebsiteUrl?: string | null;
     logoUrl?: string | null;
   },
 ): Promise<Dealership> {
@@ -314,6 +321,9 @@ export async function updateDealership(
   if (payload.marketcheckZip !== undefined) {
     updateData.marketcheck_zip = payload.marketcheckZip;
   }
+  if (payload.marketcheckWebsiteUrl !== undefined) {
+    updateData.marketcheck_website_url = payload.marketcheckWebsiteUrl;
+  }
   if (payload.logoUrl !== undefined) {
     updateData.logo_url = payload.logoUrl;
   }
@@ -335,6 +345,7 @@ export async function updateDealership(
     name: dealership.name,
     marketcheckDealerId: dealership.marketcheck_dealer_id ?? null,
     marketcheckZip: dealership.marketcheck_zip ?? null,
+    marketcheckWebsiteUrl: dealership.marketcheck_website_url ?? null,
     logoUrl: dealership.logo_url ?? null,
     createdAt: dealership.created_at,
     updatedAt: dealership.updated_at,

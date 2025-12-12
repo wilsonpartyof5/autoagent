@@ -34,8 +34,7 @@ export default async function SettingsPage() {
 
         <InventoryProviderForm
           currentProvider={profile?.dmsProvider}
-          dealerId={activeDealership?.marketcheckDealerId ?? profile?.marketcheckDealerId}
-          zip={activeDealership?.marketcheckZip ?? profile?.marketcheckZip}
+          websiteUrl={activeDealership?.marketcheckWebsiteUrl ?? profile?.marketcheckWebsiteUrl}
         />
 
         <LeadDeliveryForm

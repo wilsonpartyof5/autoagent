@@ -3,35 +3,43 @@
 import { revalidatePath } from 'next/cache';
 import { updateDealerProfile } from '@/lib/supabase/profile';
 import { trackEvent } from '@/lib/analytics/tracking';
-import { getActiveDealership } from '@/lib/supabase/dealerships';
+import { getActiveDealership, updateDealership } from '@/lib/supabase/dealerships';
 
 export async function updateMarketCheckSettings({
-  dealerId,
-  zip,
+  websiteUrl,
 }: {
-  dealerId: string;
-  zip?: string;
+  websiteUrl: string;
 }) {
-  if (!dealerId.trim()) {
-    throw new Error('Dealer ID is required.');
-  }
+  const normalizedWebsite = normalizeWebsiteUrl(websiteUrl);
 
   try {
     await updateDealerProfile({
       dmsProvider: 'marketcheck',
-      marketcheckDealerId: dealerId.trim(),
-      marketcheckZip: zip?.trim() || null,
+      marketcheckWebsiteUrl: normalizedWebsite,
       inventoryConnected: false,
     });
+    
+    const activeDealership = await getActiveDealership();
+    if (activeDealership) {
+      updateDealership(activeDealership.id, {
+        marketcheckWebsiteUrl: normalizedWebsite,
+      }).catch(() => {
+        // Non-blocking update; fall back to profile value if dealership update fails
+      });
+    }
 
     // Track settings update
-    const activeDealership = await getActiveDealership();
-    trackEvent('dashboard.settings.update', {
-      settingsCategory: 'inventory_provider',
-      fieldsChanged: ['dmsProvider', 'marketcheckDealerId', 'marketcheckZip'],
-    }, {
-      dealerId: activeDealership?.marketcheckDealerId || undefined,
-    }).catch(() => {
+    trackEvent(
+      'dashboard.settings.update',
+      {
+        settingsCategory: 'inventory_provider',
+        fieldsChanged: ['dmsProvider', 'marketcheckWebsiteUrl'],
+      },
+      {
+        dealerId: activeDealership?.marketcheckDealerId || undefined,
+        websiteUrl: normalizedWebsite,
+      },
+    ).catch(() => {
       // Tracking failures should not break the request
     });
 
@@ -48,6 +56,29 @@ export async function updateMarketCheckSettings({
   }
 
   return { success: true };
+}
+
+function normalizeWebsiteUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('Dealership website URL is required.');
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let parsed: URL;
+
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    throw new Error('Enter a valid dealership website URL (e.g., https://exampledealer.com).');
+  }
+
+  if (!parsed.hostname || !parsed.hostname.includes('.')) {
+    throw new Error('Enter a valid dealership website URL (e.g., https://exampledealer.com).');
+  }
+
+  const hostname = parsed.hostname.startsWith('www.') ? parsed.hostname.slice(4) : parsed.hostname;
+  return hostname.toLowerCase();
 }
 
 export async function updateLeadDeliverySettings({
