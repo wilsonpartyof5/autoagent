@@ -91,22 +91,31 @@ export function createIngestionRouter(): express.Router {
         maxVehicles,
       });
 
-      const buildUrlForPage = (pageNum: number) => {
-        const searchParams = new URLSearchParams({
-          api_key: apiKey,
-          page: String(pageNum),
-          pageSize: String(pageSize),
-        });
+      const buildUrlForPage = (pageNum: number, useOffsetBased = false) => {
+    const searchParams = new URLSearchParams({
+      api_key: apiKey,
+    });
 
-        if (useSourceEndpoint) {
-          searchParams.set('source', source);
-        } else {
-          searchParams.set('dealer_id', dealerId);
-          if (zip) searchParams.set('zip', zip);
-          if (radiusMiles) searchParams.set('radius', String(radiusMiles));
-          if (condition === 'new') searchParams.set('car_type', 'new');
-          if (condition === 'used') searchParams.set('car_type', 'used');
-        }
+    // Try offset-based pagination if page-based doesn't work
+    // Some MarketCheck endpoints use 'start' and 'rows' instead of 'page' and 'pageSize'
+    if (useOffsetBased) {
+      const start = (pageNum - 1) * pageSize;
+      searchParams.set('start', String(start));
+      searchParams.set('rows', String(pageSize));
+    } else {
+      searchParams.set('page', String(pageNum));
+      searchParams.set('pageSize', String(pageSize));
+    }
+
+    if (useSourceEndpoint) {
+      searchParams.set('source', source);
+    } else {
+      searchParams.set('dealer_id', dealerId);
+      if (zip) searchParams.set('zip', zip);
+      if (radiusMiles) searchParams.set('radius', String(radiusMiles));
+      if (condition === 'new') searchParams.set('car_type', 'new');
+      if (condition === 'used') searchParams.set('car_type', 'used');
+    }
 
         return `${normalizedBase}${normalizedEndpoint}?${searchParams.toString()}`;
       };
@@ -116,30 +125,31 @@ export function createIngestionRouter(): express.Router {
       let duplicatesSkipped = 0;
       let pagesFetched = 0;
       let numFound: number | null = null;
+      let useOffsetBased = false; // Try offset-based pagination if page-based fails
 
       let currentPage = Number.isFinite(Number(page)) ? Number(page) : 1;
       if (currentPage < 1) currentPage = 1;
 
       while (pagesFetched < maxPages && allVehicles.length < maxVehicles) {
-        const url = buildUrlForPage(currentPage);
+        const url = buildUrlForPage(currentPage, useOffsetBased);
 
-        logger.info({
+      logger.info({
           event: 'marketcheck_fetch_page_start',
-          dealerId,
-          source,
+        dealerId,
+        source,
           page: currentPage,
           pageSizeRequested: pageSize,
-          url: url.replace(apiKey, '***REDACTED***'),
-        });
+        url: url.replace(apiKey, '***REDACTED***'),
+      });
 
-        const response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => '');
-          return res.status(response.status).json({
-            error: `MarketCheck request failed (${response.status})`,
-            details: errorText.substring(0, 500),
-          });
-        }
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        return res.status(response.status).json({
+          error: `MarketCheck request failed (${response.status})`,
+          details: errorText.substring(0, 500),
+        });
+      }
 
         const payload = await response.json();
         const vehicles = Array.isArray(payload.listings) ? payload.listings : [];
@@ -149,7 +159,15 @@ export function createIngestionRouter(): express.Router {
           numFound = payload.num_found;
         }
 
+        // Log sample IDs from this page for debugging
+        const sampleIds = vehicles.slice(0, 3).map((v: any) => ({
+          id: v?.id,
+          vin: v?.vin,
+          stock_no: v?.stock_no,
+        }));
+
         let newOnThisPage = 0;
+        const duplicateIds: string[] = [];
         for (const v of vehicles) {
           const id = (v && (v.id || v.vin)) ? String(v.id || v.vin) : undefined;
           if (!id) {
@@ -160,6 +178,7 @@ export function createIngestionRouter(): express.Router {
           }
           if (seenIds.has(id)) {
             duplicatesSkipped += 1;
+            if (duplicateIds.length < 5) duplicateIds.push(id);
             continue;
           }
           seenIds.add(id);
@@ -168,31 +187,68 @@ export function createIngestionRouter(): express.Router {
           if (allVehicles.length >= maxVehicles) break;
         }
 
-        logger.info({
+      logger.info({
           event: 'marketcheck_fetch_page_complete',
-          dealerId,
-          source,
+        dealerId,
+        source,
           page: currentPage,
           listingsReturned: vehicles.length,
           newUniqueThisPage: newOnThisPage,
           totalUniqueSoFar: allVehicles.length,
           numFound: numFound ?? null,
+          sampleIds: sampleIds.length > 0 ? sampleIds : undefined,
+          duplicateIdsSample: duplicateIds.length > 0 ? duplicateIds : undefined,
+          payloadKeys: Object.keys(payload),
         });
 
         // Stop conditions:
         if (vehicles.length === 0) break;
-        if (newOnThisPage === 0) {
+        if (newOnThisPage === 0 && pagesFetched > 1) {
+          // If page-based pagination failed and we haven't tried offset-based yet, switch
+          if (!useOffsetBased && currentPage === 2) {
+            logger.warn({
+              event: 'marketcheck_pagination_switch_to_offset',
+              dealerId,
+              source,
+              page: currentPage,
+              message: 'Page-based pagination returned duplicates, switching to offset-based (start/rows)',
+            });
+            useOffsetBased = true;
+            currentPage = 1; // Reset to page 1 with offset-based
+            seenIds.clear(); // Clear seen IDs to start fresh
+            allVehicles.length = 0; // Clear vehicles to start fresh
+            pagesFetched = 0; // Reset page count
+            continue; // Retry with offset-based pagination
+          }
+          
           // page param ignored / looped results; don't spin forever.
           logger.warn({
             event: 'marketcheck_pagination_no_progress',
             dealerId,
             source,
             page: currentPage,
+            pagesFetched,
+            totalUnique: allVehicles.length,
+            numFound: numFound ?? null,
+            useOffsetBased,
             message: 'No new vehicles were discovered on this page; stopping pagination',
+            sampleIds: sampleIds.length > 0 ? sampleIds : undefined,
+            duplicateIdsSample: duplicateIds.length > 0 ? duplicateIds : undefined,
           });
           break;
         }
-        if (typeof numFound === 'number' && allVehicles.length >= numFound) break;
+        if (typeof numFound === 'number' && allVehicles.length >= numFound) {
+          logger.info({
+            event: 'marketcheck_pagination_complete',
+            dealerId,
+            source,
+            totalUnique: allVehicles.length,
+            numFound,
+            pagesFetched,
+            message: 'Fetched all vehicles according to num_found',
+          });
+          break;
+        }
 
         currentPage += 1;
       }
