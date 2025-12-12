@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Get exact numbers from MarketCheck API sync
+ * Test "Re-sync Inventory" button functionality
+ * This script simulates clicking the "Re-sync Inventory" button by calling
+ * the same MCP server endpoint with the same parameters.
+ * 
  * Shows: fetched, valid, invalid, stored
  */
 
@@ -39,6 +42,11 @@ async function getInventoryNumbers() {
 
   if (INGESTION_TOKEN) {
     headers['Authorization'] = `Bearer ${INGESTION_TOKEN}`;
+    console.log('🔑 Using authentication token');
+  } else {
+    console.log('⚠️  No INGESTION_API_TOKEN found - API call may fail with 401 Unauthorized');
+    console.log('   Set INGESTION_API_TOKEN in apps/dealer-dashboard/.env.local to test');
+    console.log('   (The button in the browser uses server-side authentication)');
   }
 
   try {
