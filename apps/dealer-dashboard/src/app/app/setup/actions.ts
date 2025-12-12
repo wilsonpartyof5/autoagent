@@ -348,14 +348,37 @@ export async function resyncInventory() {
   const source = dealerSourceMap[dealerIdToUse] || undefined;
   const zip = activeDealership.marketcheckZip || undefined;
 
-  // Use the new fetch-and-ingest endpoint
-  const result = await fetchAndIngestMarketCheckInventory({
+  // Use the new fetch-and-ingest endpoint (primary: dealerId)
+  let result = await fetchAndIngestMarketCheckInventory({
     dealerId: dealerIdToUse,
     source,
     zip,
     radiusMiles: 50,
     condition: 'all',
   });
+
+  // Fallback: if nothing fetched/imported and we have a website, retry with source-based fetch
+  const hasNoResults =
+    (result?.fetched ?? 0) === 0 && (result?.imported ?? 0) === 0 && (result?.valid ?? 0) === 0;
+  if (hasNoResults && resolvedWebsite) {
+    try {
+      console.log('[resyncInventory] Primary dealerId fetch returned 0; retrying with source', {
+        dealerId: dealerIdToUse,
+        source: resolvedWebsite,
+      });
+      result = await fetchAndIngestMarketCheckInventory({
+        dealerId: dealerIdToUse, // keep dealerId for tracking; backend can prefer source when provided
+        source: resolvedWebsite,
+        zip,
+        radiusMiles: 50,
+        condition: 'all',
+      });
+    } catch (fallbackErr) {
+      console.error('[resyncInventory] Fallback source fetch failed', fallbackErr);
+      // Keep the original result (zero) but surface the fallback failure
+      throw new Error('MarketCheck sync returned no vehicles; source-based retry failed.');
+    }
+  }
 
   // Revalidate inventory page to show updated data
   revalidatePath('/app/inventory');
