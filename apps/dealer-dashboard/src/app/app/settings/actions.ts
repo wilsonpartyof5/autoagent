@@ -11,18 +11,22 @@ export async function updateMarketCheckSettings({
   websiteUrl: string;
 }) {
   const normalizedWebsite = normalizeWebsiteUrl(websiteUrl);
+  const activeDealership = await getActiveDealership();
+  const websiteChanged =
+    normalizedWebsite !== (activeDealership?.marketcheckWebsiteUrl ?? null);
 
   try {
     await updateDealerProfile({
       dmsProvider: 'marketcheck',
       marketcheckWebsiteUrl: normalizedWebsite,
+      ...(websiteChanged ? { marketcheckDealerId: null } : {}),
       inventoryConnected: false,
     });
     
-    const activeDealership = await getActiveDealership();
     if (activeDealership) {
       updateDealership(activeDealership.id, {
         marketcheckWebsiteUrl: normalizedWebsite,
+        ...(websiteChanged ? { marketcheckDealerId: null } : {}),
       }).catch(() => {
         // Non-blocking update; fall back to profile value if dealership update fails
       });

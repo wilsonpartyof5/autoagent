@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { resyncInventory } from "@/app/app/setup/actions";
 import { useRouter } from "next/navigation";
 
+const MARKETCHECK_NO_MATCH_MESSAGE =
+  "We requested MarketCheck to map your website. Please try again in 24-48 hours.";
+
 export function ResyncButton() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -28,9 +31,18 @@ export function ResyncButton() {
     startTransition(async () => {
       try {
         const result = await resyncInventory();
+
+        if (result?.status === "no_match") {
+          setFeedback({
+            type: "error",
+            message: result.message ?? MARKETCHECK_NO_MATCH_MESSAGE,
+          });
+          return;
+        }
+
         setFeedback({
           type: "success",
-          message: `Successfully synced inventory. Fetched ${result.fetched} vehicles, imported ${result.imported}.`,
+          message: `Successfully synced inventory. Fetched ${result.fetched ?? 0} vehicles, imported ${result.imported ?? 0}.`,
           result,
         });
         // Refresh the page to show updated inventory

@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { syncMarketCheckInventory, fetchDealerRooftops, setInventoryProvider, type DealerRooftop } from "@/app/app/setup/actions";
 import { type InventoryProvider } from "@/lib/supabase/profile";
 
+const MARKETCHECK_NO_MATCH_MESSAGE =
+  "We requested MarketCheck to map your website. Please try again in 24-48 hours.";
+
 type Props = {
   initialProvider?: InventoryProvider | null;
   initialDealerId?: string | null;
@@ -126,6 +129,14 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
             radiusMiles: radius,
             condition,
           });
+
+          if (result?.status === "no_match") {
+            setFeedback({
+              variant: "error",
+              message: result.message ?? MARKETCHECK_NO_MATCH_MESSAGE,
+            });
+            return;
+          }
 
           setFeedback({
             variant: "success",
@@ -414,6 +425,14 @@ function MarketCheckForm({
           condition,
           dealershipName: dealershipName.trim(),
         });
+
+        if (result?.status === "no_match") {
+          setFeedback({
+            variant: "error",
+            message: result.message ?? MARKETCHECK_NO_MATCH_MESSAGE,
+          });
+          return;
+        }
 
         setFeedback({
           variant: "success",
