@@ -91,7 +91,7 @@ export function createIngestionRouter(): express.Router {
         maxVehicles,
       });
 
-      const buildUrlForPage = (pageNum: number, useOffsetBased = false) => {
+      const buildUrlForPage = (pageNum: number, useOffsetBased = false, actualStartOffset?: number) => {
     const searchParams = new URLSearchParams({
       api_key: apiKey,
     });
@@ -99,7 +99,8 @@ export function createIngestionRouter(): express.Router {
     // Try offset-based pagination if page-based doesn't work
     // Some MarketCheck endpoints use 'start' and 'rows' instead of 'page' and 'pageSize'
     if (useOffsetBased) {
-      const start = (pageNum - 1) * pageSize;
+      // Use actual offset if provided (based on vehicles already fetched), otherwise calculate
+      const start = actualStartOffset !== undefined ? actualStartOffset : (pageNum - 1) * pageSize;
       searchParams.set('start', String(start));
       searchParams.set('rows', String(pageSize));
     } else {
@@ -126,30 +127,27 @@ export function createIngestionRouter(): express.Router {
       let pagesFetched = 0;
       let numFound: number | null = null;
       let useOffsetBased = false; // Try offset-based pagination if page-based fails
+      let actualStartOffset = 0; // Track actual offset for offset-based pagination
 
       let currentPage = Number.isFinite(Number(page)) ? Number(page) : 1;
       if (currentPage < 1) currentPage = 1;
 
       while (pagesFetched < maxPages && allVehicles.length < maxVehicles) {
-        // Check if we're using offset-based pagination and would exceed num_found
-        if (useOffsetBased && numFound !== null) {
-          const start = (currentPage - 1) * pageSize;
-          if (start >= numFound) {
-            logger.info({
-              event: 'marketcheck_pagination_reached_end',
-              dealerId,
-              source,
-              page: currentPage,
-              start,
-              numFound,
-              totalUnique: allVehicles.length,
-              message: 'Offset exceeds num_found; all vehicles fetched',
-            });
-            break;
-          }
+        // Check if we've already fetched all vehicles (based on actual count, not offset)
+        if (typeof numFound === 'number' && allVehicles.length >= numFound) {
+          logger.info({
+            event: 'marketcheck_pagination_complete',
+            dealerId,
+            source,
+            totalUnique: allVehicles.length,
+            numFound,
+            pagesFetched,
+            message: 'Fetched all vehicles according to num_found',
+          });
+          break;
         }
 
-        const url = buildUrlForPage(currentPage, useOffsetBased);
+        const url = buildUrlForPage(currentPage, useOffsetBased, useOffsetBased ? actualStartOffset : undefined);
 
       logger.info({
           event: 'marketcheck_fetch_page_start',
@@ -248,7 +246,19 @@ export function createIngestionRouter(): express.Router {
         });
 
         // Stop conditions:
-        if (vehicles.length === 0) break;
+        if (vehicles.length === 0) {
+          logger.info({
+            event: 'marketcheck_pagination_empty_page',
+            dealerId,
+            source,
+            page: currentPage,
+            totalUnique: allVehicles.length,
+            numFound: numFound ?? null,
+            message: 'MarketCheck returned empty page; stopping pagination',
+          });
+          break;
+        }
+        
         if (newOnThisPage === 0 && pagesFetched > 1) {
           // If page-based pagination failed and we haven't tried offset-based yet, switch
           if (!useOffsetBased && currentPage === 2) {
@@ -261,6 +271,7 @@ export function createIngestionRouter(): express.Router {
             });
             useOffsetBased = true;
             currentPage = 1; // Reset to page 1 with offset-based
+            actualStartOffset = 0; // Reset offset
             seenIds.clear(); // Clear seen IDs to start fresh
             allVehicles.length = 0; // Clear vehicles to start fresh
             pagesFetched = 0; // Reset page count
@@ -283,6 +294,7 @@ export function createIngestionRouter(): express.Router {
           });
           break;
         }
+        
         if (typeof numFound === 'number' && allVehicles.length >= numFound) {
           logger.info({
             event: 'marketcheck_pagination_complete',
@@ -296,6 +308,12 @@ export function createIngestionRouter(): express.Router {
           break;
         }
 
+        // For offset-based pagination, increment by actual vehicles returned (not pageSize)
+        // MarketCheck only returns 10 vehicles per page, so we increment by 10
+        if (useOffsetBased) {
+          actualStartOffset += vehicles.length; // Increment by actual vehicles returned
+        }
+        
         currentPage += 1;
       }
 
