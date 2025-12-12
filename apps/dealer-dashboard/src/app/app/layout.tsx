@@ -5,6 +5,7 @@ import { AppShell } from "@/components/dashboard/app-shell";
 import { Button } from "@/components/ui/button";
 import { getDealerProfile } from "@/lib/supabase/profile";
 import { fetchUserDealerships, getActiveDealership } from "@/lib/supabase/dealerships";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Dealer Dashboard | AutoAgent",
@@ -27,6 +28,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   let profile = null;
   let dealerships: Awaited<ReturnType<typeof fetchUserDealerships>> = [];
   let activeDealership: Awaited<ReturnType<typeof getActiveDealership>> = null;
+  let hasInventory = false;
 
   try {
     profile = await getDealerProfile();
@@ -46,9 +48,38 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     console.error('[app/layout] Failed to load active dealership:', error);
   }
 
+  // Check if there's actual inventory in uvs_vehicles table
+  // This is more reliable than the profile flag
+  try {
+    const supabase = await createClient();
+    
+    // If we have an active dealership with a dealer ID, check for vehicles with that dealer_id
+    if (activeDealership?.marketcheckDealerId) {
+      const { count } = await supabase
+        .from('uvs_vehicles')
+        .select('*', { count: 'exact', head: true })
+        .eq('dealer_id', activeDealership.marketcheckDealerId)
+        .eq('availability_status', 'available');
+      
+      hasInventory = (count ?? 0) > 0;
+    } else {
+      // If no dealer ID, check for any available vehicles (fallback)
+      const { count } = await supabase
+        .from('uvs_vehicles')
+        .select('*', { count: 'exact', head: true })
+        .eq('availability_status', 'available');
+      
+      hasInventory = (count ?? 0) > 0;
+    }
+  } catch (error) {
+    console.error('[app/layout] Failed to check inventory:', error);
+    // Fallback to profile flag if inventory check fails
+    hasInventory = Boolean(profile?.inventoryConnected);
+  }
+
   return (
     <AppShell navItems={navItems} dealerships={dealerships} activeDealership={activeDealership}>
-      <SetupBanner profile={profile} />
+      <SetupBanner profile={profile} hasInventory={hasInventory} />
       {children}
     </AppShell>
   );
@@ -56,10 +87,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
 function SetupBanner({
   profile,
+  hasInventory,
 }: {
   profile: Awaited<ReturnType<typeof getDealerProfile>>;
+  hasInventory: boolean;
 }) {
-  const inventoryConnected = Boolean(profile?.inventoryConnected);
+  // Use actual inventory check instead of profile flag
+  // This ensures the onboarding flow updates correctly when inventory is synced
+  const inventoryConnected = hasInventory;
   const billingActive = Boolean(profile?.billingActive);
 
   if (inventoryConnected && billingActive) {
