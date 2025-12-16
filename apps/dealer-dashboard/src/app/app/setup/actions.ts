@@ -339,6 +339,11 @@ export async function resyncInventory() {
   }
 
   const dealerIdToUse = persisted.marketcheck_dealer_id;
+  const fallbackSource =
+    resolvedWebsite ||
+    (activeDealership.marketcheckWebsiteUrl
+      ? normalizeInventoryUrlHost(activeDealership.marketcheckWebsiteUrl)
+      : undefined);
 
   // Use auto-detect for known dealers (marketcheck_source column doesn't exist in dealerships table)
   const dealerSourceMap: Record<string, string> = {
@@ -360,15 +365,15 @@ export async function resyncInventory() {
   // Fallback: if nothing fetched/imported and we have a website, retry with source-based fetch
   const hasNoResults =
     (result?.fetched ?? 0) === 0 && (result?.imported ?? 0) === 0 && (result?.valid ?? 0) === 0;
-  if (hasNoResults && resolvedWebsite) {
+  if (hasNoResults && fallbackSource) {
     try {
       console.log('[resyncInventory] Primary dealerId fetch returned 0; retrying with source', {
         dealerId: dealerIdToUse,
-        source: resolvedWebsite,
+        source: fallbackSource,
       });
       result = await fetchAndIngestMarketCheckInventory({
         dealerId: dealerIdToUse, // keep dealerId for tracking; backend can prefer source when provided
-        source: resolvedWebsite,
+        source: fallbackSource,
         zip,
         radiusMiles: 50,
         condition: 'all',
