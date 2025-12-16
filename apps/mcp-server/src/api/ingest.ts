@@ -91,21 +91,24 @@ export function createIngestionRouter(): express.Router {
         maxVehicles,
       });
 
+      // Use a mutable page size so we can shrink it on pagination limit errors.
+      let effectivePageSize = Number(pageSize) || 100;
+
       const buildUrlForPage = (pageNum: number, useOffsetBased = false, actualStartOffset?: number) => {
     const searchParams = new URLSearchParams({
       api_key: apiKey,
     });
 
-    // Try offset-based pagination if page-based doesn't work
+      // Try offset-based pagination if page-based doesn't work
     // Some MarketCheck endpoints use 'start' and 'rows' instead of 'page' and 'pageSize'
     if (useOffsetBased) {
       // Use actual offset if provided (based on vehicles already fetched), otherwise calculate
-      const start = actualStartOffset !== undefined ? actualStartOffset : (pageNum - 1) * pageSize;
+      const start = actualStartOffset !== undefined ? actualStartOffset : (pageNum - 1) * effectivePageSize;
       searchParams.set('start', String(start));
-      searchParams.set('rows', String(pageSize));
+      searchParams.set('rows', String(effectivePageSize));
     } else {
       searchParams.set('page', String(pageNum));
-      searchParams.set('pageSize', String(pageSize));
+      searchParams.set('pageSize', String(effectivePageSize));
     }
 
     if (useSourceEndpoint) {
@@ -154,7 +157,7 @@ export function createIngestionRouter(): express.Router {
         dealerId,
         source,
           page: currentPage,
-          pageSizeRequested: pageSize,
+          pageSizeRequested: effectivePageSize,
           useOffsetBased,
           numFound: numFound ?? null,
         url: url.replace(apiKey, '***REDACTED***'),
@@ -209,18 +212,18 @@ export function createIngestionRouter(): express.Router {
         }
         // If 422 about pagination limit, switch to offset-based with smaller rows and retry
         if (response.status === 422 && errorText.includes('pagination limit')) {
-          const newPageSize = Math.max(10, Math.floor(pageSize / 2));
+          const newPageSize = Math.max(10, Math.floor(effectivePageSize / 2));
           logger.warn({
             event: 'marketcheck_pagination_limit_422_retry_offset',
             dealerId,
             source,
             page: currentPage,
-            previousPageSize: pageSize,
+            previousPageSize: effectivePageSize,
             newPageSize,
             message: 'Pagination limit hit; switching to offset-based pagination with smaller rows',
           });
           useOffsetBased = true;
-          pageSize = newPageSize;
+          effectivePageSize = newPageSize;
           currentPage = 1;
           actualStartOffset = 0;
           seenIds.clear();
