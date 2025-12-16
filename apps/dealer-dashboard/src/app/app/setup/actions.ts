@@ -408,7 +408,7 @@ export async function fetchAndIngestMarketCheckInventory({
   zip,
   radiusMiles = 50,
   condition = 'all',
-  pageSize = 200,
+  pageSize = 100,
   page = 1,
 }: FetchAndIngestInput) {
   if (!dealerId && !source) {
@@ -434,7 +434,15 @@ export async function fetchAndIngestMarketCheckInventory({
       condition,
     });
 
-    async function callIngest(requestedPageSize: number) {
+    // paginate to avoid 500-row cap
+    const maxPages = 20;
+    let currentPage = page;
+    let totalFetched = 0;
+    let totalStored = 0;
+    let totalValid = 0;
+    let totalInvalid = 0;
+
+    async function callIngest(requestedPageSize: number, requestedPage: number) {
       return fetch(url, {
         method: 'POST',
         headers: {
@@ -448,76 +456,99 @@ export async function fetchAndIngestMarketCheckInventory({
           radiusMiles,
           condition,
           pageSize: requestedPageSize,
-          page,
+          page: requestedPage,
         }),
       });
     }
 
-    let response = await callIngest(pageSize);
+    while (currentPage <= maxPages) {
+      let response = await callIngest(pageSize, currentPage);
 
-    // If MarketCheck rejects due to pagination limits, retry with a smaller page size
-    if (!response.ok && response.status === 422) {
-      const errorText = await response.text();
-      const mentionsPaginationLimit = errorText.includes('pagination limit') || errorText.includes('500 rows');
-      if (mentionsPaginationLimit && pageSize > 100) {
-        console.warn('[fetchAndIngestMarketCheckInventory] 422 pagination limit, retrying with smaller pageSize', {
-          dealerId,
-          source,
-          attemptedPageSize: pageSize,
-          retryPageSize: 100,
-        });
-        response = await callIngest(100);
-      } else {
-        // Reconstruct the previous response object
-        response = new Response(errorText, { status: response.status, statusText: response.statusText });
-      }
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `MCP fetch-and-ingest failed (${response.status})`;
-      let errorDetails: any = {
-        status: response.status,
-        statusText: response.statusText,
-        url: url.replace(ingestionToken || '', '***REDACTED***'),
-      };
-      
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error || errorMessage;
-        if (errorJson.details) {
-          errorMessage += `: ${errorJson.details}`;
+      // If MarketCheck rejects due to pagination limits, retry this page with smaller size
+      if (!response.ok && response.status === 422) {
+        const errorText = await response.text();
+        const mentionsPaginationLimit = errorText.includes('pagination limit') || errorText.includes('500 rows');
+        if (mentionsPaginationLimit && pageSize > 50) {
+          console.warn(
+            '[fetchAndIngestMarketCheckInventory] 422 pagination limit, retrying with smaller pageSize',
+            {
+              dealerId,
+              source,
+              attemptedPageSize: pageSize,
+              retryPageSize: 50,
+              page: currentPage,
+            },
+          );
+          response = await callIngest(50, currentPage);
+        } else {
+          // Reconstruct the previous response object
+          response = new Response(errorText, { status: response.status, statusText: response.statusText });
         }
-        errorDetails.responseBody = errorJson;
-      } catch {
-        errorMessage += `: ${errorText.substring(0, 500)}`;
-        errorDetails.responseText = errorText.substring(0, 1000);
       }
-      
-      console.error('[fetchAndIngestMarketCheckInventory] API error response:', errorDetails);
-      const fullError = new Error(errorMessage);
-      (fullError as any).status = response.status;
-      (fullError as any).responseBody = errorDetails;
-      throw fullError;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `MCP fetch-and-ingest failed (${response.status})`;
+        let errorDetails: any = {
+          status: response.status,
+          statusText: response.statusText,
+          url: url.replace(ingestionToken || '', '***REDACTED***'),
+        };
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+          if (errorJson.details) {
+            errorMessage += `: ${errorJson.details}`;
+          }
+          errorDetails.responseBody = errorJson;
+        } catch {
+          errorMessage += `: ${errorText.substring(0, 500)}`;
+          errorDetails.responseText = errorText.substring(0, 1000);
+        }
+        
+        console.error('[fetchAndIngestMarketCheckInventory] API error response:', errorDetails);
+        const fullError = new Error(errorMessage);
+        (fullError as any).status = response.status;
+        (fullError as any).responseBody = errorDetails;
+        throw fullError;
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Fetch and ingest failed');
+      }
+
+      const ingestion = result.ingestion || {};
+      const summary = ingestion.summary || {};
+
+      const fetched = result.fetched || 0;
+      const stored = summary.stored || 0;
+      const valid = summary.valid || 0;
+      const invalid = summary.invalid || 0;
+
+      totalFetched += fetched;
+      totalStored += stored;
+      totalValid += valid;
+      totalInvalid += invalid;
+
+      console.log('[fetchAndIngestMarketCheckInventory] Fetch and ingest page complete:', {
+        dealerId,
+        source,
+        page: currentPage,
+        pageSize,
+        fetched,
+        stored,
+        valid,
+        invalid,
+      });
+
+      if (fetched < pageSize) {
+        break; // last page
+      }
+      currentPage += 1;
     }
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error || 'Fetch and ingest failed');
-    }
-
-    const ingestion = result.ingestion || {};
-    const summary = ingestion.summary || {};
-
-    console.log('[fetchAndIngestMarketCheckInventory] Fetch and ingest complete:', {
-      dealerId,
-      source,
-      fetched: result.fetched || 0,
-      stored: summary.stored || 0,
-      valid: summary.valid || 0,
-      invalid: summary.invalid || 0,
-    });
 
     // Note: Dealership sync status tracking would require additional fields in the dealerships table
     // For now, sync completion is tracked via the ingestion results and logs
@@ -527,11 +558,15 @@ export async function fetchAndIngestMarketCheckInventory({
 
     return {
       success: true,
-      fetched: result.fetched || 0,
-      imported: summary.stored || 0,
-      valid: summary.valid || 0,
-      invalid: summary.invalid || 0,
-      summary,
+      fetched: totalFetched,
+      imported: totalStored,
+      valid: totalValid,
+      invalid: totalInvalid,
+      summary: {
+        stored: totalStored,
+        valid: totalValid,
+        invalid: totalInvalid,
+      },
     };
   } catch (error) {
     console.error('[fetchAndIngestMarketCheckInventory] Error:', {
