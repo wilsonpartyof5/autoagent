@@ -408,7 +408,7 @@ export async function fetchAndIngestMarketCheckInventory({
   zip,
   radiusMiles = 50,
   condition = 'all',
-  pageSize = 100,
+  pageSize = 200,
   page = 1,
 }: FetchAndIngestInput) {
   if (!dealerId && !source) {
@@ -434,22 +434,44 @@ export async function fetchAndIngestMarketCheckInventory({
       condition,
     });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(ingestionToken ? { 'Authorization': `Bearer ${ingestionToken}` } : {}),
-      },
-      body: JSON.stringify({
-        dealerId,
-        source,
-        zip,
-        radiusMiles,
-        condition,
-        pageSize,
-        page,
-      }),
-    });
+    async function callIngest(requestedPageSize: number) {
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ingestionToken ? { 'Authorization': `Bearer ${ingestionToken}` } : {}),
+        },
+        body: JSON.stringify({
+          dealerId,
+          source,
+          zip,
+          radiusMiles,
+          condition,
+          pageSize: requestedPageSize,
+          page,
+        }),
+      });
+    }
+
+    let response = await callIngest(pageSize);
+
+    // If MarketCheck rejects due to pagination limits, retry with a smaller page size
+    if (!response.ok && response.status === 422) {
+      const errorText = await response.text();
+      const mentionsPaginationLimit = errorText.includes('pagination limit') || errorText.includes('500 rows');
+      if (mentionsPaginationLimit && pageSize > 100) {
+        console.warn('[fetchAndIngestMarketCheckInventory] 422 pagination limit, retrying with smaller pageSize', {
+          dealerId,
+          source,
+          attemptedPageSize: pageSize,
+          retryPageSize: 100,
+        });
+        response = await callIngest(100);
+      } else {
+        // Reconstruct the previous response object
+        response = new Response(errorText, { status: response.status, statusText: response.statusText });
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
