@@ -207,6 +207,28 @@ export function createIngestionRouter(): express.Router {
           });
           break;
         }
+        // If 422 about pagination limit, switch to offset-based with smaller rows and retry
+        if (response.status === 422 && errorText.includes('pagination limit')) {
+          const newPageSize = Math.max(10, Math.floor(pageSize / 2));
+          logger.warn({
+            event: 'marketcheck_pagination_limit_422_retry_offset',
+            dealerId,
+            source,
+            page: currentPage,
+            previousPageSize: pageSize,
+            newPageSize,
+            message: 'Pagination limit hit; switching to offset-based pagination with smaller rows',
+          });
+          useOffsetBased = true;
+          pageSize = newPageSize;
+          currentPage = 1;
+          actualStartOffset = 0;
+          seenIds.clear();
+          allVehicles.length = 0;
+          pagesFetched = 0;
+          numFound = null;
+          continue;
+        }
         // If 429 after retries, return error
         if (response.status === 429) {
           logger.error({
