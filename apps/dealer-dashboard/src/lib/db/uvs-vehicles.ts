@@ -582,16 +582,19 @@ export async function searchUVSVehiclesByBounds(
       const dealerLat = row.dealer_latitude as number;
       const dealerLng = row.dealer_longitude as number;
       
-      // Ensure location.dealer has coordinates (populate from database row if missing)
-      if (!vehicle.location) {
-        vehicle.location = { dealer: { name: 'Unknown Dealer' } };
-      }
-      if (!vehicle.location.dealer) {
-        vehicle.location.dealer = { name: 'Unknown Dealer' };
-      }
-      // Populate coordinates from database row (may be missing in uvs_data JSONB)
-      vehicle.location.dealer.latitude = dealerLat;
-      vehicle.location.dealer.longitude = dealerLng;
+      // Create new vehicle object with coordinates populated from database row
+      // (coordinates may be missing in uvs_data JSONB for older records)
+      const vehicleWithCoords: UnifiedVehicle = {
+        ...vehicle,
+        location: {
+          dealer: {
+            ...vehicle.location?.dealer,
+            name: vehicle.location?.dealer?.name || 'Unknown Dealer',
+            latitude: dealerLat,
+            longitude: dealerLng,
+          },
+        },
+      };
       
       const distance = calculateDistance(
         referenceLocation.latitude,
@@ -600,7 +603,7 @@ export async function searchUVSVehiclesByBounds(
         dealerLng
       );
       return {
-        ...vehicle,
+        ...vehicleWithCoords,
         _distance: distance,
       } as VehicleWithDistance;
     });
