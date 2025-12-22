@@ -111,6 +111,8 @@ export interface Dealer {
   readonly name: string;
   readonly city?: string;
   readonly state?: string;
+  readonly latitude?: number;
+  readonly longitude?: number;
 }
 
 /**
