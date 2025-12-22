@@ -175,6 +175,17 @@ export function normalize(raw: MarketCheckVehicleWithEnrichment): UVS {
     averageDaysOnMarket: raw.dom,
   } : undefined;
   
+  // Extract dealer coordinates from MarketCheck data
+  const dealerLatitude =
+    typeof raw.dealer?.latitude === 'string'
+      ? parseFloat(raw.dealer.latitude)
+      : raw.dealer?.latitude;
+  
+  const dealerLongitude =
+    typeof raw.dealer?.longitude === 'string'
+      ? parseFloat(raw.dealer.longitude)
+      : raw.dealer?.longitude;
+  
   return {
     id: raw.id || raw.vin || `mc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     baseIdentity: {
@@ -218,6 +229,8 @@ export function normalize(raw: MarketCheckVehicleWithEnrichment): UVS {
         name: raw.dealer?.name || 'Unknown Dealer',
         city: raw.dealer?.city,
         state: raw.dealer?.state,
+        latitude: dealerLatitude !== undefined && !isNaN(dealerLatitude) ? dealerLatitude : undefined,
+        longitude: dealerLongitude !== undefined && !isNaN(dealerLongitude) ? dealerLongitude : undefined,
       },
     },
     availability: availabilityStatus,

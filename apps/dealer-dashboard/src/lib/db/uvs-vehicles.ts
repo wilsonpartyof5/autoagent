@@ -5,6 +5,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { UnifiedVehicle } from '@autoagent/shared';
 
 /**
@@ -483,11 +484,16 @@ export interface VehicleWithDistance extends UnifiedVehicle {
 
 /**
  * Search UVS vehicles by bounds with distance-based ordering
+ * 
+ * Note: Uses admin client to bypass RLS for public API access
+ * (API key authentication is handled at the route level)
  */
 export async function searchUVSVehiclesByBounds(
   params: UVSVehicleBoundsSearchParams
 ): Promise<{ vehicles: VehicleWithDistance[]; total: number }> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS for public API
+  // API key authentication is enforced at the route level
+  const supabase = createAdminClient();
   
   // Determine reference location for distance calculation
   const referenceLocation = params.userLocation || calculateMapCenter(params.bounds);
