@@ -410,6 +410,196 @@ export async function searchUVSVehicles(
 }
 
 /**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in kilometers
+ */
+function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Calculate map center from bounds
+ */
+function calculateMapCenter(bounds: {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}): { latitude: number; longitude: number } {
+  return {
+    latitude: (bounds.north + bounds.south) / 2,
+    longitude: (bounds.east + bounds.west) / 2,
+  };
+}
+
+/**
+ * Search UVS vehicles by map bounds with distance-based ordering
+ */
+export interface UVSVehicleBoundsSearchParams {
+  bounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  };
+  userLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  filters?: {
+    make?: string;
+    model?: string;
+    year?: number;
+    minYear?: number;
+    maxYear?: number;
+    condition?: 'new' | 'used' | 'certified';
+    minPrice?: number;
+    maxPrice?: number;
+    maxMiles?: number;
+    dealerId?: string;
+  };
+  limit?: number;
+  offset?: number;
+}
+
+export interface VehicleWithDistance extends UnifiedVehicle {
+  _distance?: number; // Distance in kilometers (internal use)
+}
+
+/**
+ * Search UVS vehicles by bounds with distance-based ordering
+ */
+export async function searchUVSVehiclesByBounds(
+  params: UVSVehicleBoundsSearchParams
+): Promise<{ vehicles: VehicleWithDistance[]; total: number }> {
+  const supabase = await createClient();
+  
+  // Determine reference location for distance calculation
+  const referenceLocation = params.userLocation || calculateMapCenter(params.bounds);
+  
+  // Build query with bounds filtering
+  // Select additional fields needed for distance calculation
+  let query = supabase
+    .from('uvs_vehicles')
+    .select('uvs_data, dealer_latitude, dealer_longitude', { count: 'exact' });
+  
+  // Filter by bounds (latitude and longitude)
+  query = query
+    .gte('dealer_latitude', params.bounds.south)
+    .lte('dealer_latitude', params.bounds.north)
+    .gte('dealer_longitude', params.bounds.west)
+    .lte('dealer_longitude', params.bounds.east);
+  
+  // Exclude NULL coordinates
+  query = query
+    .not('dealer_latitude', 'is', null)
+    .not('dealer_longitude', 'is', null);
+  
+  // Default to available only
+  query = query.eq('availability_status', 'available');
+  
+  // Apply filters
+  if (params.filters) {
+    if (params.filters.make) {
+      query = query.eq('make', params.filters.make);
+    }
+    if (params.filters.model) {
+      query = query.eq('model', params.filters.model);
+    }
+    if (params.filters.year !== undefined) {
+      query = query.eq('year', params.filters.year);
+    }
+    if (params.filters.minYear !== undefined) {
+      query = query.gte('year', params.filters.minYear);
+    }
+    if (params.filters.maxYear !== undefined) {
+      query = query.lte('year', params.filters.maxYear);
+    }
+    if (params.filters.condition) {
+      query = query.eq('condition', params.filters.condition);
+    }
+    if (params.filters.minPrice !== undefined) {
+      query = query.gte('price', params.filters.minPrice);
+    }
+    if (params.filters.maxPrice !== undefined) {
+      query = query.lte('price', params.filters.maxPrice);
+    }
+    if (params.filters.maxMiles !== undefined) {
+      query = query.lte('miles', params.filters.maxMiles);
+    }
+    if (params.filters.dealerId) {
+      query = query.eq('dealer_id', params.filters.dealerId);
+    }
+  }
+  
+  // Fetch a larger set for distance sorting (up to 200 to ensure we have enough)
+  // We'll sort by distance in JS, then apply pagination
+  const fetchLimit = Math.min(200, (params.limit || 8) * 5);
+  query = query.limit(fetchLimit);
+  
+  // Order by most recently synced as secondary sort (will be overridden by distance)
+  query = query.order('last_synced_at', { ascending: false });
+  
+  const { data, error, count } = await query;
+  
+  if (error) {
+    throw new Error(`Failed to search UVS vehicles by bounds: ${error.message}`);
+  }
+  
+  // Calculate distances and attach to vehicles
+  const vehiclesWithDistance: VehicleWithDistance[] = (data || [])
+    .filter((row) => {
+      // Double-check coordinates exist
+      return (
+        row.dealer_latitude !== null &&
+        row.dealer_longitude !== null &&
+        row.uvs_data
+      );
+    })
+    .map((row) => {
+      const vehicle = row.uvs_data as UnifiedVehicle;
+      const distance = calculateDistance(
+        referenceLocation.latitude,
+        referenceLocation.longitude,
+        row.dealer_latitude as number,
+        row.dealer_longitude as number
+      );
+      return {
+        ...vehicle,
+        _distance: distance,
+      } as VehicleWithDistance;
+    });
+  
+  // Sort by distance (nearest first)
+  vehiclesWithDistance.sort((a, b) => (a._distance || Infinity) - (b._distance || Infinity));
+  
+  // Apply pagination
+  const limit = params.limit || 8;
+  const offset = params.offset || 0;
+  const paginatedVehicles = vehiclesWithDistance.slice(offset, offset + limit);
+  
+  return {
+    vehicles: paginatedVehicles,
+    total: count || 0,
+  };
+}
+
+/**
  * Convert UnifiedVehicle to InventoryVehicle format for dashboard display
  */
 export function convertUVSToInventoryVehicle(vehicle: UnifiedVehicle, row?: {
