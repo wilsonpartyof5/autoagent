@@ -1024,8 +1024,15 @@ export async function POST(request: NextRequest) {
     // This identifies what the model actually extracted (not defaults)
     const explicitlyParsedFields = extractExplicitlyParsedFields(parseResult.filters);
     
+    // Debug: Log what was detected as explicitly parsed
+    console.log('[query-parse] Explicitly parsed fields:', Array.from(explicitlyParsedFields));
+    console.log('[query-parse] Raw filters from OpenAI:', JSON.stringify(parseResult.filters));
+    
     // Validate and normalize filters - only include explicitly parsed fields in apiCompatibleFilters
     const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters, explicitlyParsedFields);
+    
+    // Debug: Log what ended up in apiCompatibleFilters
+    console.log('[query-parse] apiCompatibleFilters after normalization:', JSON.stringify(apiCompatibleFilters));
     
     // Geocode location if locationText was extracted
     let location: LocationData | undefined;
