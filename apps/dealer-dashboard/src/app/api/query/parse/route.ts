@@ -391,7 +391,70 @@ function clampNumber(value: number, min: number, max: number): number {
 /**
  * Validate and normalize parsed filters
  */
-function validateAndNormalize(filters: ParsedFilters): {
+/**
+ * Extract which fields were explicitly set in the original parsed response
+ * (before normalization). This identifies what the model actually extracted.
+ */
+function extractExplicitlyParsedFields(filters: ParsedFilters): Set<string> {
+  const explicitFields = new Set<string>();
+  
+  // Only consider fields that are non-null and non-default values
+  if (filters.minPrice !== undefined && filters.minPrice !== null && filters.minPrice !== 0) {
+    explicitFields.add('minPrice');
+  }
+  if (filters.maxPrice !== undefined && filters.maxPrice !== null && filters.maxPrice !== 0) {
+    explicitFields.add('maxPrice');
+  }
+  if (filters.make !== undefined && filters.make !== null && filters.make !== '') {
+    explicitFields.add('make');
+  }
+  if (filters.model !== undefined && filters.model !== null && filters.model !== '') {
+    explicitFields.add('model');
+  }
+  if (filters.year !== undefined && filters.year !== null && filters.year !== 1900) {
+    explicitFields.add('year');
+  }
+  if (filters.minYear !== undefined && filters.minYear !== null && filters.minYear !== 1900) {
+    explicitFields.add('minYear');
+  }
+  if (filters.maxYear !== undefined && filters.maxYear !== null && filters.maxYear !== 1900) {
+    explicitFields.add('maxYear');
+  }
+  if (filters.condition !== undefined && filters.condition !== null && filters.condition !== '') {
+    explicitFields.add('condition');
+  }
+  if (filters.maxMiles !== undefined && filters.maxMiles !== null && filters.maxMiles !== 0) {
+    explicitFields.add('maxMiles');
+  }
+  if (filters.bodyType !== undefined && filters.bodyType !== null && filters.bodyType !== '') {
+    explicitFields.add('bodyType');
+  }
+  if (filters.exteriorColor !== undefined && filters.exteriorColor !== null && filters.exteriorColor !== '') {
+    explicitFields.add('exteriorColor');
+  }
+  if (filters.interiorColor !== undefined && filters.interiorColor !== null && filters.interiorColor !== '') {
+    explicitFields.add('interiorColor');
+  }
+  if (filters.trim !== undefined && filters.trim !== null && filters.trim !== '') {
+    explicitFields.add('trim');
+  }
+  if (filters.drivetrain !== undefined && filters.drivetrain !== null && filters.drivetrain !== '') {
+    explicitFields.add('drivetrain');
+  }
+  if (filters.fuelType !== undefined && filters.fuelType !== null && filters.fuelType !== '') {
+    explicitFields.add('fuelType');
+  }
+  if (filters.locationText !== undefined && filters.locationText !== null && filters.locationText !== '') {
+    explicitFields.add('locationText');
+  }
+  
+  return explicitFields;
+}
+
+function validateAndNormalize(
+  filters: ParsedFilters,
+  explicitlyParsedFields: Set<string>
+): {
   filters: ParsedFilters;
   apiCompatibleFilters: {
     minPrice?: number;
@@ -420,21 +483,21 @@ function validateAndNormalize(filters: ParsedFilters): {
   } = {};
   const parsedFields: string[] = [];
   
-  // Price validation (filter out null values and default 0 values)
-  // Note: Treat 0 as "unset" since it's likely a default value, not an explicit user request
-  if (normalized.minPrice !== undefined && normalized.minPrice !== null && normalized.minPrice !== 0) {
+  // Price validation - only include in apiCompatibleFilters if explicitly parsed
+  // Note: Only add to apiCompatibleFilters if the field was explicitly parsed (not a default)
+  if (explicitlyParsedFields.has('minPrice') && normalized.minPrice !== undefined && normalized.minPrice !== null && normalized.minPrice !== 0) {
     normalized.minPrice = Math.max(0, normalized.minPrice);
     apiCompatible.minPrice = normalized.minPrice;
     parsedFields.push('minPrice');
-  } else if (normalized.minPrice === 0) {
-    normalized.minPrice = undefined; // Drop default value
+  } else {
+    normalized.minPrice = undefined; // Drop if not explicitly parsed or is default value
   }
-  if (normalized.maxPrice !== undefined && normalized.maxPrice !== null && normalized.maxPrice !== 0) {
+  if (explicitlyParsedFields.has('maxPrice') && normalized.maxPrice !== undefined && normalized.maxPrice !== null && normalized.maxPrice !== 0) {
     normalized.maxPrice = Math.max(0, normalized.maxPrice);
     apiCompatible.maxPrice = normalized.maxPrice;
     parsedFields.push('maxPrice');
-  } else if (normalized.maxPrice === 0) {
-    normalized.maxPrice = undefined; // Drop default value
+  } else {
+    normalized.maxPrice = undefined; // Drop if not explicitly parsed or is default value
   }
   
   // Ensure minPrice <= maxPrice (only if both are non-null)
@@ -447,40 +510,44 @@ function validateAndNormalize(filters: ParsedFilters): {
     }
   }
   
-  // Make/Model normalization (filter out null values)
-  if (normalized.make && normalized.make !== null) {
+  // Make/Model normalization - only include in apiCompatibleFilters if explicitly parsed
+  if (explicitlyParsedFields.has('make') && normalized.make && normalized.make !== null) {
     normalized.make = normalizeMake(normalized.make);
     apiCompatible.make = normalized.make;
     parsedFields.push('make');
+  } else {
+    normalized.make = undefined;
   }
-  if (normalized.model && normalized.model !== null) {
+  if (explicitlyParsedFields.has('model') && normalized.model && normalized.model !== null) {
     normalized.model = normalizeModel(normalized.model);
     apiCompatible.model = normalized.model;
     parsedFields.push('model');
+  } else {
+    normalized.model = undefined;
   }
   
-  // Year validation (filter out null values and default 1900 values)
+  // Year validation - only include in apiCompatibleFilters if explicitly parsed
   // Note: Treat 1900 as "unset" since it's likely a default value, not an explicit user request
-  if (normalized.year !== undefined && normalized.year !== null && normalized.year !== 1900) {
+  if (explicitlyParsedFields.has('year') && normalized.year !== undefined && normalized.year !== null && normalized.year !== 1900) {
     normalized.year = clampNumber(normalized.year, 1900, 2100);
     apiCompatible.year = normalized.year;
     parsedFields.push('year');
-  } else if (normalized.year === 1900) {
-    normalized.year = undefined; // Drop default value
+  } else {
+    normalized.year = undefined; // Drop if not explicitly parsed or is default value
   }
-  if (normalized.minYear !== undefined && normalized.minYear !== null && normalized.minYear !== 1900) {
+  if (explicitlyParsedFields.has('minYear') && normalized.minYear !== undefined && normalized.minYear !== null && normalized.minYear !== 1900) {
     normalized.minYear = clampNumber(normalized.minYear, 1900, 2100);
     apiCompatible.minYear = normalized.minYear;
     parsedFields.push('minYear');
-  } else if (normalized.minYear === 1900) {
-    normalized.minYear = undefined; // Drop default value
+  } else {
+    normalized.minYear = undefined; // Drop if not explicitly parsed or is default value
   }
-  if (normalized.maxYear !== undefined && normalized.maxYear !== null && normalized.maxYear !== 1900) {
+  if (explicitlyParsedFields.has('maxYear') && normalized.maxYear !== undefined && normalized.maxYear !== null && normalized.maxYear !== 1900) {
     normalized.maxYear = clampNumber(normalized.maxYear, 1900, 2100);
     apiCompatible.maxYear = normalized.maxYear;
     parsedFields.push('maxYear');
-  } else if (normalized.maxYear === 1900) {
-    normalized.maxYear = undefined; // Drop default value
+  } else {
+    normalized.maxYear = undefined; // Drop if not explicitly parsed or is default value
   }
   
   // Ensure minYear <= maxYear (only if both are non-null)
@@ -492,63 +559,73 @@ function validateAndNormalize(filters: ParsedFilters): {
     }
   }
   
-  // Condition validation (filter out null values)
-  if (normalized.condition && normalized.condition !== null) {
+  // Condition validation - only include in apiCompatibleFilters if explicitly parsed
+  // Note: Only include if explicitly parsed (not a default like "new")
+  if (explicitlyParsedFields.has('condition') && normalized.condition && normalized.condition !== null) {
     if (['new', 'used', 'certified'].includes(normalized.condition)) {
       apiCompatible.condition = normalized.condition as 'new' | 'used' | 'certified';
       parsedFields.push('condition');
     }
+  } else {
+    normalized.condition = undefined;
   }
   
-  // Miles validation (filter out null values and default 0 values)
+  // Miles validation - only include in apiCompatibleFilters if explicitly parsed
   // Note: Treat 0 as "unset" since it's likely a default value, not an explicit user request
-  if (normalized.maxMiles !== undefined && normalized.maxMiles !== null && normalized.maxMiles !== 0) {
+  if (explicitlyParsedFields.has('maxMiles') && normalized.maxMiles !== undefined && normalized.maxMiles !== null && normalized.maxMiles !== 0) {
     normalized.maxMiles = Math.max(0, normalized.maxMiles);
     apiCompatible.maxMiles = normalized.maxMiles;
     parsedFields.push('maxMiles');
-  } else if (normalized.maxMiles === 0) {
-    normalized.maxMiles = undefined; // Drop default value
+  } else {
+    normalized.maxMiles = undefined; // Drop if not explicitly parsed or is default value
   }
   
-  // Future fields (normalize but don't include in API filters, filter out null values)
-  if (normalized.bodyType && normalized.bodyType !== null) {
+  // Future fields (normalize but don't include in API filters, only track if explicitly parsed)
+  if (explicitlyParsedFields.has('bodyType') && normalized.bodyType && normalized.bodyType !== null) {
     normalized.bodyType = normalizeBodyType(normalized.bodyType);
     parsedFields.push('bodyType');
+  } else {
+    normalized.bodyType = undefined;
   }
-  if (normalized.exteriorColor && normalized.exteriorColor !== null) {
+  if (explicitlyParsedFields.has('exteriorColor') && normalized.exteriorColor && normalized.exteriorColor !== null) {
     normalized.exteriorColor = normalizeColor(normalized.exteriorColor);
     parsedFields.push('exteriorColor');
+  } else {
+    normalized.exteriorColor = undefined;
   }
-  if (normalized.interiorColor && normalized.interiorColor !== null) {
+  if (explicitlyParsedFields.has('interiorColor') && normalized.interiorColor && normalized.interiorColor !== null) {
     normalized.interiorColor = normalizeColor(normalized.interiorColor);
     parsedFields.push('interiorColor');
+  } else {
+    normalized.interiorColor = undefined;
   }
-  if (normalized.trim && normalized.trim !== null) {
+  if (explicitlyParsedFields.has('trim') && normalized.trim && normalized.trim !== null) {
     normalized.trim = normalizeModel(normalized.trim); // Use same normalization as model
     parsedFields.push('trim');
+  } else {
+    normalized.trim = undefined;
   }
-  if (normalized.drivetrain && normalized.drivetrain !== null) {
+  if (explicitlyParsedFields.has('drivetrain') && normalized.drivetrain && normalized.drivetrain !== null) {
     parsedFields.push('drivetrain');
+  } else {
+    normalized.drivetrain = undefined;
   }
-  if (normalized.fuelType && normalized.fuelType !== null) {
+  if (explicitlyParsedFields.has('fuelType') && normalized.fuelType && normalized.fuelType !== null) {
     parsedFields.push('fuelType');
+  } else {
+    normalized.fuelType = undefined;
   }
   
   // Location text (no normalization needed, just pass through)
-  // Don't add to parsedFields here - it's added after geocoding succeeds
+  // Only track if explicitly parsed - it's added to parsedFields after geocoding succeeds
   // locationText is kept in normalized.filters but not in apiCompatibleFilters
+  if (explicitlyParsedFields.has('locationText')) {
+    parsedFields.push('locationText');
+  }
   
-  // Log if we dropped any default values (for debugging)
-  const droppedDefaults: string[] = [];
-  if (filters.minPrice === 0 || filters.maxPrice === 0 || filters.year === 1900 || 
-      filters.minYear === 1900 || filters.maxYear === 1900 || filters.maxMiles === 0) {
-    if (filters.minPrice === 0) droppedDefaults.push('minPrice=0');
-    if (filters.maxPrice === 0) droppedDefaults.push('maxPrice=0');
-    if (filters.year === 1900) droppedDefaults.push('year=1900');
-    if (filters.minYear === 1900) droppedDefaults.push('minYear=1900');
-    if (filters.maxYear === 1900) droppedDefaults.push('maxYear=1900');
-    if (filters.maxMiles === 0) droppedDefaults.push('maxMiles=0');
-    console.log('[query-parse] Dropped default values (treating as unset):', droppedDefaults.join(', '));
+  // Log dropped fields for debugging
+  if (explicitlyParsedFields.size === 0) {
+    console.log('[query-parse] No explicitly parsed fields detected (all may be defaults)');
   }
   
   return { filters: normalized, apiCompatibleFilters: apiCompatible, parsedFields };
@@ -942,8 +1019,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Validate and normalize filters
-    const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters);
+    // Extract explicitly parsed fields BEFORE normalization
+    // This identifies what the model actually extracted (not defaults)
+    const explicitlyParsedFields = extractExplicitlyParsedFields(parseResult.filters);
+    
+    // Validate and normalize filters - only include explicitly parsed fields in apiCompatibleFilters
+    const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters, explicitlyParsedFields);
     
     // Geocode location if locationText was extracted
     let location: LocationData | undefined;
