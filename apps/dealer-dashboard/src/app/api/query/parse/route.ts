@@ -420,7 +420,8 @@ function extractExplicitlyParsedFields(filters: ParsedFilters): Set<string> {
   if (filters.maxYear !== undefined && filters.maxYear !== null && filters.maxYear !== 1900) {
     explicitFields.add('maxYear');
   }
-  if (filters.condition !== undefined && filters.condition !== null && filters.condition !== '') {
+  // Condition is typed as 'new' | 'used' | 'certified', so no need to check for empty string
+  if (filters.condition !== undefined && filters.condition !== null) {
     explicitFields.add('condition');
   }
   if (filters.maxMiles !== undefined && filters.maxMiles !== null && filters.maxMiles !== 0) {
