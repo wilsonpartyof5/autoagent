@@ -624,7 +624,10 @@ Rules:
         json_schema: {
           name: 'vehicle_filters',
           strict: true,
-          schema: responseSchema as any,
+          schema: {
+            ...responseSchema,
+            additionalProperties: false,
+          } as any,
         },
       },
       temperature: 0.1, // Low temperature for consistent parsing
