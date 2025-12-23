@@ -389,72 +389,13 @@ function clampNumber(value: number, min: number, max: number): number {
 }
 
 /**
- * Validate and normalize parsed filters
+ * Validate and normalize parsed filters, building apiCompatibleFilters from explicitFields
+ * Only includes fields in apiCompatibleFilters if they are in the explicitFields array
  */
-/**
- * Extract which fields were explicitly set in the original parsed response
- * (before normalization). This identifies what the model actually extracted.
- */
-function extractExplicitlyParsedFields(filters: ParsedFilters): Set<string> {
-  const explicitFields = new Set<string>();
-  
-  // Only consider fields that are non-null and non-default values
-  if (filters.minPrice !== undefined && filters.minPrice !== null && filters.minPrice !== 0) {
-    explicitFields.add('minPrice');
-  }
-  if (filters.maxPrice !== undefined && filters.maxPrice !== null && filters.maxPrice !== 0) {
-    explicitFields.add('maxPrice');
-  }
-  if (filters.make !== undefined && filters.make !== null && filters.make !== '') {
-    explicitFields.add('make');
-  }
-  if (filters.model !== undefined && filters.model !== null && filters.model !== '') {
-    explicitFields.add('model');
-  }
-  if (filters.year !== undefined && filters.year !== null && filters.year !== 1900) {
-    explicitFields.add('year');
-  }
-  if (filters.minYear !== undefined && filters.minYear !== null && filters.minYear !== 1900) {
-    explicitFields.add('minYear');
-  }
-  if (filters.maxYear !== undefined && filters.maxYear !== null && filters.maxYear !== 1900) {
-    explicitFields.add('maxYear');
-  }
-  // Condition is typed as 'new' | 'used' | 'certified', so no need to check for empty string
-  if (filters.condition !== undefined && filters.condition !== null) {
-    explicitFields.add('condition');
-  }
-  if (filters.maxMiles !== undefined && filters.maxMiles !== null && filters.maxMiles !== 0) {
-    explicitFields.add('maxMiles');
-  }
-  if (filters.bodyType !== undefined && filters.bodyType !== null && filters.bodyType !== '') {
-    explicitFields.add('bodyType');
-  }
-  if (filters.exteriorColor !== undefined && filters.exteriorColor !== null && filters.exteriorColor !== '') {
-    explicitFields.add('exteriorColor');
-  }
-  if (filters.interiorColor !== undefined && filters.interiorColor !== null && filters.interiorColor !== '') {
-    explicitFields.add('interiorColor');
-  }
-  if (filters.trim !== undefined && filters.trim !== null && filters.trim !== '') {
-    explicitFields.add('trim');
-  }
-  if (filters.drivetrain !== undefined && filters.drivetrain !== null && filters.drivetrain !== '') {
-    explicitFields.add('drivetrain');
-  }
-  if (filters.fuelType !== undefined && filters.fuelType !== null && filters.fuelType !== '') {
-    explicitFields.add('fuelType');
-  }
-  if (filters.locationText !== undefined && filters.locationText !== null && filters.locationText !== '') {
-    explicitFields.add('locationText');
-  }
-  
-  return explicitFields;
-}
 
 function validateAndNormalize(
   filters: ParsedFilters,
-  explicitlyParsedFields: Set<string>
+  explicitFields: string[]
 ): {
   filters: ParsedFilters;
   apiCompatibleFilters: {
@@ -484,21 +425,28 @@ function validateAndNormalize(
   } = {};
   const parsedFields: string[] = [];
   
-  // Price validation - only include in apiCompatibleFilters if explicitly parsed
-  // Note: Only add to apiCompatibleFilters if the field was explicitly parsed (not a default)
-  if (explicitlyParsedFields.has('minPrice') && normalized.minPrice !== undefined && normalized.minPrice !== null && normalized.minPrice !== 0) {
+  // Build explicitFields Set for quick lookup
+  const explicitSet = new Set(explicitFields);
+  
+  // Only include fields in apiCompatibleFilters if they are in explicitFields
+  // Price validation
+  if (explicitSet.has('minPrice') && normalized.minPrice !== undefined && normalized.minPrice !== null) {
     normalized.minPrice = Math.max(0, normalized.minPrice);
-    apiCompatible.minPrice = normalized.minPrice;
-    parsedFields.push('minPrice');
+    if (normalized.minPrice > 0) {
+      apiCompatible.minPrice = normalized.minPrice;
+      parsedFields.push('minPrice');
+    }
   } else {
-    normalized.minPrice = undefined; // Drop if not explicitly parsed or is default value
+    normalized.minPrice = undefined;
   }
-  if (explicitlyParsedFields.has('maxPrice') && normalized.maxPrice !== undefined && normalized.maxPrice !== null && normalized.maxPrice !== 0) {
+  if (explicitSet.has('maxPrice') && normalized.maxPrice !== undefined && normalized.maxPrice !== null) {
     normalized.maxPrice = Math.max(0, normalized.maxPrice);
-    apiCompatible.maxPrice = normalized.maxPrice;
-    parsedFields.push('maxPrice');
+    if (normalized.maxPrice > 0) {
+      apiCompatible.maxPrice = normalized.maxPrice;
+      parsedFields.push('maxPrice');
+    }
   } else {
-    normalized.maxPrice = undefined; // Drop if not explicitly parsed or is default value
+    normalized.maxPrice = undefined;
   }
   
   // Ensure minPrice <= maxPrice (only if both are non-null)
@@ -512,14 +460,14 @@ function validateAndNormalize(
   }
   
   // Make/Model normalization - only include in apiCompatibleFilters if explicitly parsed
-  if (explicitlyParsedFields.has('make') && normalized.make && normalized.make !== null) {
+  if (explicitSet.has('make') && normalized.make && normalized.make !== null) {
     normalized.make = normalizeMake(normalized.make);
     apiCompatible.make = normalized.make;
     parsedFields.push('make');
   } else {
     normalized.make = undefined;
   }
-  if (explicitlyParsedFields.has('model') && normalized.model && normalized.model !== null) {
+  if (explicitSet.has('model') && normalized.model && normalized.model !== null) {
     normalized.model = normalizeModel(normalized.model);
     apiCompatible.model = normalized.model;
     parsedFields.push('model');
@@ -528,27 +476,26 @@ function validateAndNormalize(
   }
   
   // Year validation - only include in apiCompatibleFilters if explicitly parsed
-  // Note: Treat 1900 as "unset" since it's likely a default value, not an explicit user request
-  if (explicitlyParsedFields.has('year') && normalized.year !== undefined && normalized.year !== null && normalized.year !== 1900) {
+  if (explicitSet.has('year') && normalized.year !== undefined && normalized.year !== null) {
     normalized.year = clampNumber(normalized.year, 1900, 2100);
     apiCompatible.year = normalized.year;
     parsedFields.push('year');
   } else {
-    normalized.year = undefined; // Drop if not explicitly parsed or is default value
+    normalized.year = undefined;
   }
-  if (explicitlyParsedFields.has('minYear') && normalized.minYear !== undefined && normalized.minYear !== null && normalized.minYear !== 1900) {
+  if (explicitSet.has('minYear') && normalized.minYear !== undefined && normalized.minYear !== null) {
     normalized.minYear = clampNumber(normalized.minYear, 1900, 2100);
     apiCompatible.minYear = normalized.minYear;
     parsedFields.push('minYear');
   } else {
-    normalized.minYear = undefined; // Drop if not explicitly parsed or is default value
+    normalized.minYear = undefined;
   }
-  if (explicitlyParsedFields.has('maxYear') && normalized.maxYear !== undefined && normalized.maxYear !== null && normalized.maxYear !== 1900) {
+  if (explicitSet.has('maxYear') && normalized.maxYear !== undefined && normalized.maxYear !== null) {
     normalized.maxYear = clampNumber(normalized.maxYear, 1900, 2100);
     apiCompatible.maxYear = normalized.maxYear;
     parsedFields.push('maxYear');
   } else {
-    normalized.maxYear = undefined; // Drop if not explicitly parsed or is default value
+    normalized.maxYear = undefined;
   }
   
   // Ensure minYear <= maxYear (only if both are non-null)
@@ -561,8 +508,7 @@ function validateAndNormalize(
   }
   
   // Condition validation - only include in apiCompatibleFilters if explicitly parsed
-  // Note: Only include if explicitly parsed (not a default like "new")
-  if (explicitlyParsedFields.has('condition') && normalized.condition && normalized.condition !== null) {
+  if (explicitSet.has('condition') && normalized.condition && normalized.condition !== null) {
     if (['new', 'used', 'certified'].includes(normalized.condition)) {
       apiCompatible.condition = normalized.condition as 'new' | 'used' | 'certified';
       parsedFields.push('condition');
@@ -572,61 +518,60 @@ function validateAndNormalize(
   }
   
   // Miles validation - only include in apiCompatibleFilters if explicitly parsed
-  // Note: Treat 0 as "unset" since it's likely a default value, not an explicit user request
-  if (explicitlyParsedFields.has('maxMiles') && normalized.maxMiles !== undefined && normalized.maxMiles !== null && normalized.maxMiles !== 0) {
+  if (explicitSet.has('maxMiles') && normalized.maxMiles !== undefined && normalized.maxMiles !== null) {
     normalized.maxMiles = Math.max(0, normalized.maxMiles);
-    apiCompatible.maxMiles = normalized.maxMiles;
-    parsedFields.push('maxMiles');
+    if (normalized.maxMiles > 0) {
+      apiCompatible.maxMiles = normalized.maxMiles;
+      parsedFields.push('maxMiles');
+    }
   } else {
-    normalized.maxMiles = undefined; // Drop if not explicitly parsed or is default value
+    normalized.maxMiles = undefined;
   }
   
-  // Future fields (normalize but don't include in API filters, only track if explicitly parsed)
-  if (explicitlyParsedFields.has('bodyType') && normalized.bodyType && normalized.bodyType !== null) {
+  // Future fields (normalize for logging/future use, but don't include in API filters yet)
+  if (explicitSet.has('bodyType') && normalized.bodyType && normalized.bodyType !== null) {
     normalized.bodyType = normalizeBodyType(normalized.bodyType);
     parsedFields.push('bodyType');
   } else {
     normalized.bodyType = undefined;
   }
-  if (explicitlyParsedFields.has('exteriorColor') && normalized.exteriorColor && normalized.exteriorColor !== null) {
+  if (explicitSet.has('exteriorColor') && normalized.exteriorColor && normalized.exteriorColor !== null) {
     normalized.exteriorColor = normalizeColor(normalized.exteriorColor);
     parsedFields.push('exteriorColor');
   } else {
     normalized.exteriorColor = undefined;
   }
-  if (explicitlyParsedFields.has('interiorColor') && normalized.interiorColor && normalized.interiorColor !== null) {
+  if (explicitSet.has('interiorColor') && normalized.interiorColor && normalized.interiorColor !== null) {
     normalized.interiorColor = normalizeColor(normalized.interiorColor);
     parsedFields.push('interiorColor');
   } else {
     normalized.interiorColor = undefined;
   }
-  if (explicitlyParsedFields.has('trim') && normalized.trim && normalized.trim !== null) {
+  if (explicitSet.has('trim') && normalized.trim && normalized.trim !== null) {
     normalized.trim = normalizeModel(normalized.trim); // Use same normalization as model
     parsedFields.push('trim');
   } else {
     normalized.trim = undefined;
   }
-  if (explicitlyParsedFields.has('drivetrain') && normalized.drivetrain && normalized.drivetrain !== null) {
+  if (explicitSet.has('drivetrain') && normalized.drivetrain && normalized.drivetrain !== null) {
     parsedFields.push('drivetrain');
   } else {
     normalized.drivetrain = undefined;
   }
-  if (explicitlyParsedFields.has('fuelType') && normalized.fuelType && normalized.fuelType !== null) {
+  if (explicitSet.has('fuelType') && normalized.fuelType && normalized.fuelType !== null) {
     parsedFields.push('fuelType');
   } else {
     normalized.fuelType = undefined;
   }
   
-  // Location text (no normalization needed, just pass through)
-  // Only track if explicitly parsed - it's added to parsedFields after geocoding succeeds
-  // locationText is kept in normalized.filters but not in apiCompatibleFilters
-  if (explicitlyParsedFields.has('locationText')) {
+  // Location text (track if explicitly parsed, but not in apiCompatibleFilters)
+  if (explicitSet.has('locationText')) {
     parsedFields.push('locationText');
   }
   
-  // Log dropped fields for debugging
-  if (explicitlyParsedFields.size === 0) {
-    console.log('[query-parse] No explicitly parsed fields detected (all may be defaults)');
+  // Log if no explicit fields
+  if (explicitFields.length === 0) {
+    console.log('[query-parse] No explicit fields detected - user did not mention any constraints');
   }
   
   return { filters: normalized, apiCompatibleFilters: apiCompatible, parsedFields };
@@ -725,9 +670,11 @@ function cleanupGeocodeCache() {
 
 /**
  * Parse natural language query using OpenAI
+ * Returns filters + explicitFields array indicating which fields were explicitly mentioned
  */
 async function parseQueryWithOpenAI(query: string): Promise<{
   filters: ParsedFilters;
+  explicitFields: string[];
   confidence: number;
 }> {
   const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -740,119 +687,152 @@ async function parseQueryWithOpenAI(query: string): Promise<{
     apiKey: openaiApiKey,
   });
   
-  // Define strict schema for structured output
-  // Option A: All properties in 'required' array with nullable: true
-  // This satisfies OpenAI's requirement that strict: true requires all properties to be in 'required'
-  // Fields are logically optional (can be null) but must be present in the response
+  // Two-part schema: filters (all fields, nullable) + explicitFields (array of mentioned fields)
   const responseSchema = {
     type: 'object',
     properties: {
-      minPrice: {
-        type: 'number',
-        nullable: true,
-        description: 'Minimum price in USD. Only extract if explicitly mentioned. Return null if not mentioned.',
+      filters: {
+        type: 'object',
+        properties: {
+          minPrice: {
+            type: 'number',
+            nullable: true,
+            description: 'Minimum price in USD. Return null if not mentioned.',
+          },
+          maxPrice: {
+            type: 'number',
+            nullable: true,
+            description: 'Maximum price in USD. Return null if not mentioned.',
+          },
+          make: {
+            type: 'string',
+            nullable: true,
+            description: 'Vehicle make (e.g., "Toyota", "Ford", "BMW"). Return null if not mentioned.',
+          },
+          model: {
+            type: 'string',
+            nullable: true,
+            description: 'Vehicle model (e.g., "Camry", "F-150", "3 Series"). Return null if not mentioned.',
+          },
+          year: {
+            type: 'number',
+            nullable: true,
+            description: 'Exact year. Use this if user specifies a single year (e.g., "2023"). Return null if not mentioned.',
+          },
+          minYear: {
+            type: 'number',
+            nullable: true,
+            description: 'Minimum year in a range (e.g., "2020 or newer" -> minYear: 2020). Return null if not mentioned.',
+          },
+          maxYear: {
+            type: 'number',
+            nullable: true,
+            description: 'Maximum year in a range (e.g., "older than 2020" -> maxYear: 2019). Return null if not mentioned.',
+          },
+          condition: {
+            type: 'string',
+            enum: ['new', 'used', 'certified'],
+            nullable: true,
+            description: 'Vehicle condition. Extract from words like "new", "used", "certified pre-owned", "CPO". Return null if not mentioned.',
+          },
+          maxMiles: {
+            type: 'number',
+            nullable: true,
+            description: 'Maximum mileage. Extract from phrases like "under 50k miles", "less than 30000 miles". Return null if not mentioned.',
+          },
+          bodyType: {
+            type: 'string',
+            nullable: true,
+            description: 'Body type (e.g., "SUV", "Sedan", "Truck", "Coupe"). Extract from terms like "SUV", "sedan", "truck", "pickup", "van". Return null if not mentioned.',
+          },
+          exteriorColor: {
+            type: 'string',
+            nullable: true,
+            description: 'Exterior color (e.g., "red", "black", "white", "silver"). Extract common color names. Return null if not mentioned.',
+          },
+          interiorColor: {
+            type: 'string',
+            nullable: true,
+            description: 'Interior color. Return null if not mentioned.',
+          },
+          trim: {
+            type: 'string',
+            nullable: true,
+            description: 'Trim level (e.g., "SLT", "Limited", "XLE"). Return null if not mentioned.',
+          },
+          drivetrain: {
+            type: 'string',
+            nullable: true,
+            description: 'Drivetrain (e.g., "AWD", "FWD", "RWD", "4WD"). Extract from terms like "all-wheel drive", "AWD", "4x4". Return null if not mentioned.',
+          },
+          fuelType: {
+            type: 'string',
+            nullable: true,
+            description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas". Return null if not mentioned.',
+          },
+          locationText: {
+            type: 'string',
+            nullable: true,
+            description: 'Location mentioned in query (city, state, ZIP code, or "near X"). Extract from phrases like "in Rock Hill", "near Charlotte", "90210", "Los Angeles, CA". Return null if not mentioned.',
+          },
+        },
+        required: [
+          'minPrice',
+          'maxPrice',
+          'make',
+          'model',
+          'year',
+          'minYear',
+          'maxYear',
+          'condition',
+          'maxMiles',
+          'bodyType',
+          'exteriorColor',
+          'interiorColor',
+          'trim',
+          'drivetrain',
+          'fuelType',
+          'locationText',
+        ],
+        additionalProperties: false,
       },
-      maxPrice: {
-        type: 'number',
-        nullable: true,
-        description: 'Maximum price in USD. Only extract if explicitly mentioned. Return null if not mentioned.',
-      },
-      make: {
-        type: 'string',
-        nullable: true,
-        description: 'Vehicle make (e.g., "Toyota", "Ford", "BMW"). Only extract if explicitly mentioned. Return null if not mentioned.',
-      },
-      model: {
-        type: 'string',
-        nullable: true,
-        description: 'Vehicle model (e.g., "Camry", "F-150", "3 Series"). Only extract if explicitly mentioned. Return null if not mentioned.',
-      },
-      year: {
-        type: 'number',
-        nullable: true,
-        description: 'Exact year. Use this if user specifies a single year (e.g., "2023"). Return null if not mentioned.',
-      },
-      minYear: {
-        type: 'number',
-        nullable: true,
-        description: 'Minimum year in a range (e.g., "2020 or newer" -> minYear: 2020). Return null if not mentioned.',
-      },
-      maxYear: {
-        type: 'number',
-        nullable: true,
-        description: 'Maximum year in a range (e.g., "older than 2020" -> maxYear: 2019). Return null if not mentioned.',
-      },
-      condition: {
-        type: 'string',
-        enum: ['new', 'used', 'certified'],
-        nullable: true,
-        description: 'Vehicle condition. Extract from words like "new", "used", "certified pre-owned", "CPO". Return null if not mentioned.',
-      },
-      maxMiles: {
-        type: 'number',
-        nullable: true,
-        description: 'Maximum mileage. Extract from phrases like "under 50k miles", "less than 30000 miles". Return null if not mentioned.',
-      },
-      bodyType: {
-        type: 'string',
-        nullable: true,
-        description: 'Body type (e.g., "SUV", "Sedan", "Truck", "Coupe"). Extract from terms like "SUV", "sedan", "truck", "pickup", "van". Return null if not mentioned.',
-      },
-      exteriorColor: {
-        type: 'string',
-        nullable: true,
-        description: 'Exterior color (e.g., "red", "black", "white", "silver"). Extract common color names. Return null if not mentioned.',
-      },
-      interiorColor: {
-        type: 'string',
-        nullable: true,
-        description: 'Interior color. Only extract if explicitly mentioned. Return null if not mentioned.',
-      },
-      trim: {
-        type: 'string',
-        nullable: true,
-        description: 'Trim level (e.g., "SLT", "Limited", "XLE"). Only extract if explicitly mentioned. Return null if not mentioned.',
-      },
-      drivetrain: {
-        type: 'string',
-        nullable: true,
-        description: 'Drivetrain (e.g., "AWD", "FWD", "RWD", "4WD"). Extract from terms like "all-wheel drive", "AWD", "4x4". Return null if not mentioned.',
-      },
-      fuelType: {
-        type: 'string',
-        nullable: true,
-        description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas". Return null if not mentioned.',
-      },
-      locationText: {
-        type: 'string',
-        nullable: true,
-        description: 'Location mentioned in query (city, state, ZIP code, or "near X"). Extract from phrases like "in Rock Hill", "near Charlotte", "90210", "Los Angeles, CA". Only extract if explicitly mentioned. Return null if not mentioned.',
+      explicitFields: {
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: [
+            'minPrice',
+            'maxPrice',
+            'make',
+            'model',
+            'year',
+            'minYear',
+            'maxYear',
+            'condition',
+            'maxMiles',
+            'bodyType',
+            'exteriorColor',
+            'interiorColor',
+            'trim',
+            'drivetrain',
+            'fuelType',
+            'locationText',
+          ],
+        },
+        description: 'Array of field names that were explicitly mentioned by the user. Only include fields the user actually mentioned. If no constraints mentioned, return empty array.',
       },
     },
-    required: [
-      'minPrice',
-      'maxPrice',
-      'make',
-      'model',
-      'year',
-      'minYear',
-      'maxYear',
-      'condition',
-      'maxMiles',
-      'bodyType',
-      'exteriorColor',
-      'interiorColor',
-      'trim',
-      'drivetrain',
-      'fuelType',
-      'locationText',
-    ],
+    required: ['filters', 'explicitFields'],
     additionalProperties: false,
   } as const;
   
   const systemPrompt = `You are a vehicle search query parser. Extract structured filter information from natural language queries about vehicle inventory.
 
-Rules:
+CRITICAL: Return TWO outputs:
+1. filters: All filter fields (nullable) - populate only fields explicitly mentioned, set others to null
+2. explicitFields: Array of field names that the user EXPLICITLY mentioned
+
+Rules for filters:
 - Only extract information that is EXPLICITLY mentioned in the query
 - Do NOT infer or assume values
 - For prices: Extract numbers with currency context (e.g., "$40k" -> 40000, "under $50000" -> maxPrice: 50000)
@@ -861,9 +841,22 @@ Rules:
 - For miles: "under 50k miles" -> maxMiles: 50000, "less than 30000 miles" -> maxMiles: 30000
 - For body types: Standardize to common names (SUV, Sedan, Truck, Coupe, Van, etc.)
 - For colors: Extract common color names (red, blue, black, white, silver, gray, etc.)
-- For locations: Extract location text from phrases like "in Rock Hill, SC", "near Charlotte", "90210", "Los Angeles", "near me" (but don't extract "near me"). Include city names, state abbreviations, ZIP codes, or "near [location]"
+- For locations: Extract location text from phrases like "in Rock Hill, SC", "near Charlotte", "90210", "Los Angeles". Include city names, state abbreviations, ZIP codes, or "near [location]"
 - Return null for any field not mentioned in the query
-- Be conservative - only extract what is clearly stated`;
+
+Rules for explicitFields:
+- ONLY list field names that the user EXPLICITLY mentioned
+- If the user said "cars near Rock Hill" → explicitFields = ["locationText"]
+- If the user said "under $30k" → explicitFields = ["maxPrice"]
+- If the user said "new SUVs" → explicitFields = ["condition", "bodyType"]
+- If the user said "just show me cars" → explicitFields = []
+- Do NOT include fields that are not explicitly mentioned, even if filters might have default values
+
+Examples:
+- "cars near Rock Hill, SC" → filters: { locationText: "Rock Hill, SC", ...all others null }, explicitFields: ["locationText"]
+- "under $30k" → filters: { maxPrice: 30000, ...all others null }, explicitFields: ["maxPrice"]
+- "new SUVs" → filters: { condition: "new", bodyType: "SUV", ...all others null }, explicitFields: ["condition", "bodyType"]
+- "just show me cars" → filters: { ...all null }, explicitFields: []`;
 
   try {
     const completion = await openai.beta.chat.completions.parse({
@@ -883,18 +876,27 @@ Rules:
       temperature: 0.1, // Low temperature for consistent parsing
     });
     
-    const parsed = completion.choices[0]?.message?.parsed as ParsedFilters | null | undefined;
+    interface ParsedResponse {
+      filters: ParsedFilters;
+      explicitFields: string[];
+    }
+    
+    const parsed = completion.choices[0]?.message?.parsed as ParsedResponse | null | undefined;
     
     if (!parsed) {
       // Fallback: try to parse from content if parsed is not available
       const content = completion.choices[0]?.message?.content;
       if (content) {
         try {
-          const parsedFromContent = JSON.parse(content) as ParsedFilters;
-          const extractedCount = Object.values(parsedFromContent).filter(v => v !== null && v !== undefined).length;
-          const confidence = extractedCount > 0 ? Math.min(0.9, 0.4 + extractedCount * 0.1) : 0.2;
+          const parsedFromContent = JSON.parse(content) as ParsedResponse;
+          if (!parsedFromContent.filters || !Array.isArray(parsedFromContent.explicitFields)) {
+            throw new Error('Invalid response format: missing filters or explicitFields');
+          }
+          const explicitCount = parsedFromContent.explicitFields.length;
+          const confidence = explicitCount > 0 ? Math.min(0.9, 0.4 + explicitCount * 0.1) : 0.2;
           return {
-            filters: parsedFromContent,
+            filters: parsedFromContent.filters,
+            explicitFields: parsedFromContent.explicitFields,
             confidence,
           };
         } catch (parseError) {
@@ -905,13 +907,17 @@ Rules:
       throw new Error('No parsed data received from OpenAI');
     }
     
-    // Calculate confidence based on number of extracted fields
-    // More fields = higher confidence (assuming the model is doing its job)
-    const extractedCount = Object.values(parsed).filter(v => v !== null && v !== undefined).length;
-    const confidence = extractedCount > 0 ? Math.min(0.95, 0.5 + extractedCount * 0.1) : 0.3;
+    if (!parsed.filters || !Array.isArray(parsed.explicitFields)) {
+      throw new Error('Invalid response format: missing filters or explicitFields');
+    }
+    
+    // Calculate confidence based on number of explicitly mentioned fields
+    const explicitCount = parsed.explicitFields.length;
+    const confidence = explicitCount > 0 ? Math.min(0.95, 0.5 + explicitCount * 0.1) : 0.3;
     
     return {
-      filters: parsed,
+      filters: parsed.filters,
+      explicitFields: parsed.explicitFields,
       confidence,
     };
   } catch (error) {
@@ -1003,7 +1009,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Parse query with OpenAI (cache miss)
-    let parseResult: { filters: ParsedFilters; confidence: number };
+    let parseResult: { filters: ParsedFilters; explicitFields: string[]; confidence: number };
     try {
       parseResult = await parseQueryWithOpenAI(normalizedQuery);
     } catch (error) {
@@ -1020,19 +1026,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Extract explicitly parsed fields BEFORE normalization
-    // This identifies what the model actually extracted (not defaults)
-    const explicitlyParsedFields = extractExplicitlyParsedFields(parseResult.filters);
+    // Validate and normalize filters - only include fields in explicitFields in apiCompatibleFilters
+    const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters, parseResult.explicitFields);
     
-    // Debug: Log what was detected as explicitly parsed
-    console.log('[query-parse] Explicitly parsed fields:', Array.from(explicitlyParsedFields));
-    console.log('[query-parse] Raw filters from OpenAI:', JSON.stringify(parseResult.filters));
-    
-    // Validate and normalize filters - only include explicitly parsed fields in apiCompatibleFilters
-    const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters, explicitlyParsedFields);
-    
-    // Debug: Log what ended up in apiCompatibleFilters
-    console.log('[query-parse] apiCompatibleFilters after normalization:', JSON.stringify(apiCompatibleFilters));
+    // Log explicitFields for debugging
+    console.log('[query-parse] Explicit fields from OpenAI:', parseResult.explicitFields);
+    console.log('[query-parse] apiCompatibleFilters:', JSON.stringify(apiCompatibleFilters));
     
     // Geocode location if locationText was extracted
     let location: LocationData | undefined;
