@@ -427,14 +427,14 @@ function validateAndNormalize(filters: ParsedFilters): {
     apiCompatible.minPrice = normalized.minPrice;
     parsedFields.push('minPrice');
   } else if (normalized.minPrice === 0) {
-    normalized.minPrice = null; // Drop default value
+    normalized.minPrice = undefined; // Drop default value
   }
   if (normalized.maxPrice !== undefined && normalized.maxPrice !== null && normalized.maxPrice !== 0) {
     normalized.maxPrice = Math.max(0, normalized.maxPrice);
     apiCompatible.maxPrice = normalized.maxPrice;
     parsedFields.push('maxPrice');
   } else if (normalized.maxPrice === 0) {
-    normalized.maxPrice = null; // Drop default value
+    normalized.maxPrice = undefined; // Drop default value
   }
   
   // Ensure minPrice <= maxPrice (only if both are non-null)
@@ -466,21 +466,21 @@ function validateAndNormalize(filters: ParsedFilters): {
     apiCompatible.year = normalized.year;
     parsedFields.push('year');
   } else if (normalized.year === 1900) {
-    normalized.year = null; // Drop default value
+    normalized.year = undefined; // Drop default value
   }
   if (normalized.minYear !== undefined && normalized.minYear !== null && normalized.minYear !== 1900) {
     normalized.minYear = clampNumber(normalized.minYear, 1900, 2100);
     apiCompatible.minYear = normalized.minYear;
     parsedFields.push('minYear');
   } else if (normalized.minYear === 1900) {
-    normalized.minYear = null; // Drop default value
+    normalized.minYear = undefined; // Drop default value
   }
   if (normalized.maxYear !== undefined && normalized.maxYear !== null && normalized.maxYear !== 1900) {
     normalized.maxYear = clampNumber(normalized.maxYear, 1900, 2100);
     apiCompatible.maxYear = normalized.maxYear;
     parsedFields.push('maxYear');
   } else if (normalized.maxYear === 1900) {
-    normalized.maxYear = null; // Drop default value
+    normalized.maxYear = undefined; // Drop default value
   }
   
   // Ensure minYear <= maxYear (only if both are non-null)
@@ -507,7 +507,7 @@ function validateAndNormalize(filters: ParsedFilters): {
     apiCompatible.maxMiles = normalized.maxMiles;
     parsedFields.push('maxMiles');
   } else if (normalized.maxMiles === 0) {
-    normalized.maxMiles = null; // Drop default value
+    normalized.maxMiles = undefined; // Drop default value
   }
   
   // Future fields (normalize but don't include in API filters, filter out null values)
