@@ -1056,6 +1056,7 @@ export async function POST(request: NextRequest) {
       filters,
       confidence: parseResult.confidence,
       parsedFields,
+      explicitFields: parseResult.explicitFields, // Fields explicitly mentioned by user
       apiCompatibleFilters,
       ...(location && { location }), // Only include location if geocoding succeeded
     };
