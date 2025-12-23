@@ -1035,9 +1035,9 @@ export async function POST(request: NextRequest) {
     console.log('[query-parse] apiCompatibleFilters:', JSON.stringify(apiCompatibleFilters));
     
     // Geocode location if locationText was extracted
+    // Note: We geocode regardless of explicitFields, but only track in parsedFields if explicitly mentioned
     let location: LocationData | undefined;
     if (filters.locationText && filters.locationText !== null) {
-      parsedFields.push('locationText');
       try {
         const geocoded = await geocodeLocation(filters.locationText);
         if (geocoded) {
