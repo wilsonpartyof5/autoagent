@@ -420,16 +420,21 @@ function validateAndNormalize(filters: ParsedFilters): {
   } = {};
   const parsedFields: string[] = [];
   
-  // Price validation (filter out null values)
-  if (normalized.minPrice !== undefined && normalized.minPrice !== null) {
+  // Price validation (filter out null values and default 0 values)
+  // Note: Treat 0 as "unset" since it's likely a default value, not an explicit user request
+  if (normalized.minPrice !== undefined && normalized.minPrice !== null && normalized.minPrice !== 0) {
     normalized.minPrice = Math.max(0, normalized.minPrice);
     apiCompatible.minPrice = normalized.minPrice;
     parsedFields.push('minPrice');
+  } else if (normalized.minPrice === 0) {
+    normalized.minPrice = null; // Drop default value
   }
-  if (normalized.maxPrice !== undefined && normalized.maxPrice !== null) {
+  if (normalized.maxPrice !== undefined && normalized.maxPrice !== null && normalized.maxPrice !== 0) {
     normalized.maxPrice = Math.max(0, normalized.maxPrice);
     apiCompatible.maxPrice = normalized.maxPrice;
     parsedFields.push('maxPrice');
+  } else if (normalized.maxPrice === 0) {
+    normalized.maxPrice = null; // Drop default value
   }
   
   // Ensure minPrice <= maxPrice (only if both are non-null)
@@ -454,21 +459,28 @@ function validateAndNormalize(filters: ParsedFilters): {
     parsedFields.push('model');
   }
   
-  // Year validation (filter out null values)
-  if (normalized.year !== undefined && normalized.year !== null) {
+  // Year validation (filter out null values and default 1900 values)
+  // Note: Treat 1900 as "unset" since it's likely a default value, not an explicit user request
+  if (normalized.year !== undefined && normalized.year !== null && normalized.year !== 1900) {
     normalized.year = clampNumber(normalized.year, 1900, 2100);
     apiCompatible.year = normalized.year;
     parsedFields.push('year');
+  } else if (normalized.year === 1900) {
+    normalized.year = null; // Drop default value
   }
-  if (normalized.minYear !== undefined && normalized.minYear !== null) {
+  if (normalized.minYear !== undefined && normalized.minYear !== null && normalized.minYear !== 1900) {
     normalized.minYear = clampNumber(normalized.minYear, 1900, 2100);
     apiCompatible.minYear = normalized.minYear;
     parsedFields.push('minYear');
+  } else if (normalized.minYear === 1900) {
+    normalized.minYear = null; // Drop default value
   }
-  if (normalized.maxYear !== undefined && normalized.maxYear !== null) {
+  if (normalized.maxYear !== undefined && normalized.maxYear !== null && normalized.maxYear !== 1900) {
     normalized.maxYear = clampNumber(normalized.maxYear, 1900, 2100);
     apiCompatible.maxYear = normalized.maxYear;
     parsedFields.push('maxYear');
+  } else if (normalized.maxYear === 1900) {
+    normalized.maxYear = null; // Drop default value
   }
   
   // Ensure minYear <= maxYear (only if both are non-null)
@@ -488,11 +500,14 @@ function validateAndNormalize(filters: ParsedFilters): {
     }
   }
   
-  // Miles validation (filter out null values)
-  if (normalized.maxMiles !== undefined && normalized.maxMiles !== null) {
+  // Miles validation (filter out null values and default 0 values)
+  // Note: Treat 0 as "unset" since it's likely a default value, not an explicit user request
+  if (normalized.maxMiles !== undefined && normalized.maxMiles !== null && normalized.maxMiles !== 0) {
     normalized.maxMiles = Math.max(0, normalized.maxMiles);
     apiCompatible.maxMiles = normalized.maxMiles;
     parsedFields.push('maxMiles');
+  } else if (normalized.maxMiles === 0) {
+    normalized.maxMiles = null; // Drop default value
   }
   
   // Future fields (normalize but don't include in API filters, filter out null values)
@@ -522,6 +537,19 @@ function validateAndNormalize(filters: ParsedFilters): {
   // Location text (no normalization needed, just pass through)
   // Don't add to parsedFields here - it's added after geocoding succeeds
   // locationText is kept in normalized.filters but not in apiCompatibleFilters
+  
+  // Log if we dropped any default values (for debugging)
+  const droppedDefaults: string[] = [];
+  if (filters.minPrice === 0 || filters.maxPrice === 0 || filters.year === 1900 || 
+      filters.minYear === 1900 || filters.maxYear === 1900 || filters.maxMiles === 0) {
+    if (filters.minPrice === 0) droppedDefaults.push('minPrice=0');
+    if (filters.maxPrice === 0) droppedDefaults.push('maxPrice=0');
+    if (filters.year === 1900) droppedDefaults.push('year=1900');
+    if (filters.minYear === 1900) droppedDefaults.push('minYear=1900');
+    if (filters.maxYear === 1900) droppedDefaults.push('maxYear=1900');
+    if (filters.maxMiles === 0) droppedDefaults.push('maxMiles=0');
+    console.log('[query-parse] Dropped default values (treating as unset):', droppedDefaults.join(', '));
+  }
   
   return { filters: normalized, apiCompatibleFilters: apiCompatible, parsedFields };
 }
