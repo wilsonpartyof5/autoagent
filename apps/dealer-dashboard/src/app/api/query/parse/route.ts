@@ -513,84 +513,71 @@ async function parseQueryWithOpenAI(query: string): Promise<{
   });
   
   // Define strict schema for structured output
+  // Note: OpenAI's structured outputs don't require nullable for optional fields
+  // Fields are optional by not being in the 'required' array
   const responseSchema = {
     type: 'object',
     properties: {
       minPrice: {
         type: 'number',
         description: 'Minimum price in USD. Only extract if explicitly mentioned.',
-        nullable: true,
       },
       maxPrice: {
         type: 'number',
         description: 'Maximum price in USD. Only extract if explicitly mentioned.',
-        nullable: true,
       },
       make: {
         type: 'string',
         description: 'Vehicle make (e.g., "Toyota", "Ford", "BMW"). Only extract if explicitly mentioned.',
-        nullable: true,
       },
       model: {
         type: 'string',
         description: 'Vehicle model (e.g., "Camry", "F-150", "3 Series"). Only extract if explicitly mentioned.',
-        nullable: true,
       },
       year: {
         type: 'number',
         description: 'Exact year. Use this if user specifies a single year (e.g., "2023").',
-        nullable: true,
       },
       minYear: {
         type: 'number',
         description: 'Minimum year in a range (e.g., "2020 or newer" -> minYear: 2020).',
-        nullable: true,
       },
       maxYear: {
         type: 'number',
         description: 'Maximum year in a range (e.g., "older than 2020" -> maxYear: 2019).',
-        nullable: true,
       },
       condition: {
         type: 'string',
         enum: ['new', 'used', 'certified'],
         description: 'Vehicle condition. Extract from words like "new", "used", "certified pre-owned", "CPO".',
-        nullable: true,
       },
       maxMiles: {
         type: 'number',
         description: 'Maximum mileage. Extract from phrases like "under 50k miles", "less than 30000 miles".',
-        nullable: true,
       },
       bodyType: {
         type: 'string',
         description: 'Body type (e.g., "SUV", "Sedan", "Truck", "Coupe"). Extract from terms like "SUV", "sedan", "truck", "pickup", "van".',
-        nullable: true,
       },
       exteriorColor: {
         type: 'string',
         description: 'Exterior color (e.g., "red", "black", "white", "silver"). Extract common color names.',
-        nullable: true,
       },
       interiorColor: {
         type: 'string',
         description: 'Interior color. Only extract if explicitly mentioned.',
-        nullable: true,
       },
       trim: {
         type: 'string',
         description: 'Trim level (e.g., "SLT", "Limited", "XLE"). Only extract if explicitly mentioned.',
-        nullable: true,
       },
       drivetrain: {
         type: 'string',
         description: 'Drivetrain (e.g., "AWD", "FWD", "RWD", "4WD"). Extract from terms like "all-wheel drive", "AWD", "4x4".',
-        nullable: true,
       },
       fuelType: {
         type: 'string',
         description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas".',
-        nullable: true,
       },
     },
     required: [],
