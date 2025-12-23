@@ -515,7 +515,6 @@ async function parseQueryWithOpenAI(query: string): Promise<{
   // Define strict schema for structured output
   const responseSchema = {
     type: 'object',
-    additionalProperties: false,
     properties: {
       minPrice: {
         type: 'number',
@@ -624,10 +623,7 @@ Rules:
         json_schema: {
           name: 'vehicle_filters',
           strict: true,
-          schema: {
-            ...responseSchema,
-            additionalProperties: false,
-          } as any,
+          schema: responseSchema as any,
         },
       },
       temperature: 0.1, // Low temperature for consistent parsing
