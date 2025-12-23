@@ -53,6 +53,9 @@ interface ParsedFilters {
   // Mileage
   maxMiles?: number;
   
+  // Location (extracted from query)
+  locationText?: string;  // Raw location text (e.g., "Rock Hill, SC", "90210", "near Charlotte")
+  
   // Future fields (parse but log for future use)
   bodyType?: string;      // For logging/future API support
   exteriorColor?: string; // For logging/future API support
@@ -62,12 +65,20 @@ interface ParsedFilters {
   fuelType?: string;      // For logging/future API support
 }
 
+interface LocationData {
+  raw: string;
+  lat: number;
+  lng: number;
+  source: 'geocode';
+}
+
 interface ParseResponse {
   success: boolean;
   data?: {
     filters: ParsedFilters;
     confidence: number;
     parsedFields: string[];
+    location?: LocationData;  // Only included if location was explicitly mentioned and geocoded
     apiCompatibleFilters: {
       // Only fields supported by /api/inventory/search
       minPrice?: number;
@@ -112,6 +123,19 @@ const CACHE_TTL_MS = 7 * 60 * 1000; // 7 minutes
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_REQUESTS = 30; // 30 requests
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+
+/**
+ * Geocoding cache: Store geocoded locations
+ * Key: normalized location text
+ * Value: geocoded location data with timestamp
+ * TTL: 24 hours (86,400,000 ms)
+ */
+interface GeocodeCacheEntry {
+  location: LocationData;
+  timestamp: number;
+}
+const geocodeCache = new Map<string, GeocodeCacheEntry>();
+const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Cleanup expired cache entries
@@ -159,6 +183,7 @@ function maybeCleanup() {
   if (cleanupCounter % 10 === 0) {
     cleanupCache();
     cleanupRateLimits();
+    cleanupGeocodeCache();
   }
 }
 
@@ -494,7 +519,102 @@ function validateAndNormalize(filters: ParsedFilters): {
     parsedFields.push('fuelType');
   }
   
+  // Location text (no normalization needed, just pass through)
+  // Don't add to parsedFields here - it's added after geocoding succeeds
+  // locationText is kept in normalized.filters but not in apiCompatibleFilters
+  
   return { filters: normalized, apiCompatibleFilters: apiCompatible, parsedFields };
+}
+
+/**
+ * Geocode location text to lat/lng coordinates
+ * Uses Mapbox Geocoding API with caching (24h TTL)
+ */
+async function geocodeLocation(locationText: string): Promise<LocationData | null> {
+  // Normalize location text for cache key
+  const normalizedText = locationText.trim().toLowerCase();
+  
+  // Check cache first
+  const cached = geocodeCache.get(normalizedText);
+  if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS) {
+    console.log('[query-parse] Geocode cache hit for:', locationText);
+    return cached.location;
+  }
+  
+  // Clean up location text (remove "near" prefix if present)
+  let cleanLocation = locationText.trim();
+  if (cleanLocation.toLowerCase().startsWith('near ')) {
+    cleanLocation = cleanLocation.substring(5).trim();
+  }
+  
+  if (!cleanLocation) {
+    return null;
+  }
+  
+  try {
+    // Use Mapbox Geocoding API
+    const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
+    
+    if (!mapboxToken) {
+      console.warn('[query-parse] MAPBOX_ACCESS_TOKEN not set, skipping geocoding');
+      return null;
+    }
+    
+    const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanLocation)}.json?access_token=${mapboxToken}&limit=1`;
+    
+    const response = await fetch(geocodeUrl);
+    if (!response.ok) {
+      console.error('[query-parse] Mapbox geocoding failed:', response.status, response.statusText);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (data.features && data.features.length > 0) {
+      const feature = data.features[0];
+      // Mapbox returns [lng, lat] in center array
+      const [lng, lat] = feature.center;
+      
+      const location: LocationData = {
+        raw: locationText,
+        lat,
+        lng,
+        source: 'geocode',
+      };
+      
+      // Store in cache
+      geocodeCache.set(normalizedText, {
+        location,
+        timestamp: Date.now(),
+      });
+      
+      console.log('[query-parse] Geocoded location:', locationText, '->', `${location.lat}, ${location.lng}`);
+      return location;
+    }
+    
+    console.warn('[query-parse] No geocoding results for:', cleanLocation);
+    return null;
+  } catch (error) {
+    console.error('[query-parse] Geocoding error:', error);
+    return null;
+  }
+}
+
+/**
+ * Cleanup expired geocode cache entries
+ */
+function cleanupGeocodeCache() {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of geocodeCache.entries()) {
+    if (now - entry.timestamp > GEOCODE_CACHE_TTL_MS) {
+      geocodeCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`[query-parse] Cleaned ${cleaned} expired geocode cache entries`);
+  }
 }
 
 /**
@@ -597,6 +717,11 @@ async function parseQueryWithOpenAI(query: string): Promise<{
         nullable: true,
         description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas". Return null if not mentioned.',
       },
+      locationText: {
+        type: 'string',
+        nullable: true,
+        description: 'Location mentioned in query (city, state, ZIP code, or "near X"). Extract from phrases like "in Rock Hill", "near Charlotte", "90210", "Los Angeles, CA". Only extract if explicitly mentioned. Return null if not mentioned.',
+      },
     },
     required: [
       'minPrice',
@@ -614,6 +739,7 @@ async function parseQueryWithOpenAI(query: string): Promise<{
       'trim',
       'drivetrain',
       'fuelType',
+      'locationText',
     ],
     additionalProperties: false,
   } as const;
@@ -629,6 +755,7 @@ Rules:
 - For miles: "under 50k miles" -> maxMiles: 50000, "less than 30000 miles" -> maxMiles: 30000
 - For body types: Standardize to common names (SUV, Sedan, Truck, Coupe, Van, etc.)
 - For colors: Extract common color names (red, blue, black, white, silver, gray, etc.)
+- For locations: Extract location text from phrases like "in Rock Hill, SC", "near Charlotte", "90210", "Los Angeles", "near me" (but don't extract "near me"). Include city names, state abbreviations, ZIP codes, or "near [location]"
 - Return null for any field not mentioned in the query
 - Be conservative - only extract what is clearly stated`;
 
@@ -790,12 +917,30 @@ export async function POST(request: NextRequest) {
     // Validate and normalize filters
     const { filters, apiCompatibleFilters, parsedFields } = validateAndNormalize(parseResult.filters);
     
+    // Geocode location if locationText was extracted
+    let location: LocationData | undefined;
+    if (filters.locationText && filters.locationText !== null) {
+      parsedFields.push('locationText');
+      try {
+        const geocoded = await geocodeLocation(filters.locationText);
+        if (geocoded) {
+          location = geocoded;
+        } else {
+          console.warn('[query-parse] Failed to geocode location:', filters.locationText);
+        }
+      } catch (error) {
+        console.error('[query-parse] Geocoding error:', error);
+        // Continue without location - don't fail the entire request
+      }
+    }
+    
     // Build response data
     const responseData: ParseResponse['data'] = {
       filters,
       confidence: parseResult.confidence,
       parsedFields,
       apiCompatibleFilters,
+      ...(location && { location }), // Only include location if geocoding succeeded
     };
     
     // Store in cache

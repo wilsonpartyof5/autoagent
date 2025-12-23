@@ -342,9 +342,10 @@ create index if not exists idx_uvs_vehicles_miles
 ## Appendix: Configuration
 
 ### Environment Variables
-No new environment variables required. Current implementation uses:
+Required environment variables:
 - `OPENAI_API_KEY` - For query parsing
 - `INVENTORY_SEARCH_API_KEY` - For API authentication
+- `MAPBOX_ACCESS_TOKEN` - For geocoding location mentions in queries (required for location parsing)
 
 ### Tuning Parameters
 Located in `route.ts`:
