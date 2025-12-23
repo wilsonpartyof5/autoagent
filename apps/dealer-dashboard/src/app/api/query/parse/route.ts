@@ -78,6 +78,7 @@ interface ParseResponse {
     filters: ParsedFilters;
     confidence: number;
     parsedFields: string[];
+    explicitFields: string[];  // Fields explicitly mentioned by user (from OpenAI)
     location?: LocationData;  // Only included if location was explicitly mentioned and geocoded
     apiCompatibleFilters: {
       // Only fields supported by /api/inventory/search
