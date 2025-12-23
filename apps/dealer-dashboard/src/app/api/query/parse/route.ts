@@ -515,6 +515,7 @@ async function parseQueryWithOpenAI(query: string): Promise<{
   // Define strict schema for structured output
   const responseSchema = {
     type: 'object',
+    additionalProperties: false,
     properties: {
       minPrice: {
         type: 'number',
@@ -594,6 +595,7 @@ async function parseQueryWithOpenAI(query: string): Promise<{
       },
     },
     required: [],
+    additionalProperties: false,
   } as const;
   
   const systemPrompt = `You are a vehicle search query parser. Extract structured filter information from natural language queries about vehicle inventory.
