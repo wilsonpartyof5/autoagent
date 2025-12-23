@@ -395,20 +395,21 @@ function validateAndNormalize(filters: ParsedFilters): {
   } = {};
   const parsedFields: string[] = [];
   
-  // Price validation
-  if (normalized.minPrice !== undefined) {
+  // Price validation (filter out null values)
+  if (normalized.minPrice !== undefined && normalized.minPrice !== null) {
     normalized.minPrice = Math.max(0, normalized.minPrice);
     apiCompatible.minPrice = normalized.minPrice;
     parsedFields.push('minPrice');
   }
-  if (normalized.maxPrice !== undefined) {
+  if (normalized.maxPrice !== undefined && normalized.maxPrice !== null) {
     normalized.maxPrice = Math.max(0, normalized.maxPrice);
     apiCompatible.maxPrice = normalized.maxPrice;
     parsedFields.push('maxPrice');
   }
   
-  // Ensure minPrice <= maxPrice
-  if (normalized.minPrice !== undefined && normalized.maxPrice !== undefined) {
+  // Ensure minPrice <= maxPrice (only if both are non-null)
+  if (normalized.minPrice !== undefined && normalized.minPrice !== null &&
+      normalized.maxPrice !== undefined && normalized.maxPrice !== null) {
     if (normalized.minPrice > normalized.maxPrice) {
       // Swap if invalid
       [normalized.minPrice, normalized.maxPrice] = [normalized.maxPrice, normalized.minPrice];
@@ -416,79 +417,80 @@ function validateAndNormalize(filters: ParsedFilters): {
     }
   }
   
-  // Make/Model normalization
-  if (normalized.make) {
+  // Make/Model normalization (filter out null values)
+  if (normalized.make && normalized.make !== null) {
     normalized.make = normalizeMake(normalized.make);
     apiCompatible.make = normalized.make;
     parsedFields.push('make');
   }
-  if (normalized.model) {
+  if (normalized.model && normalized.model !== null) {
     normalized.model = normalizeModel(normalized.model);
     apiCompatible.model = normalized.model;
     parsedFields.push('model');
   }
   
-  // Year validation
-  if (normalized.year !== undefined) {
+  // Year validation (filter out null values)
+  if (normalized.year !== undefined && normalized.year !== null) {
     normalized.year = clampNumber(normalized.year, 1900, 2100);
     apiCompatible.year = normalized.year;
     parsedFields.push('year');
   }
-  if (normalized.minYear !== undefined) {
+  if (normalized.minYear !== undefined && normalized.minYear !== null) {
     normalized.minYear = clampNumber(normalized.minYear, 1900, 2100);
     apiCompatible.minYear = normalized.minYear;
     parsedFields.push('minYear');
   }
-  if (normalized.maxYear !== undefined) {
+  if (normalized.maxYear !== undefined && normalized.maxYear !== null) {
     normalized.maxYear = clampNumber(normalized.maxYear, 1900, 2100);
     apiCompatible.maxYear = normalized.maxYear;
     parsedFields.push('maxYear');
   }
   
-  // Ensure minYear <= maxYear
-  if (normalized.minYear !== undefined && normalized.maxYear !== undefined) {
+  // Ensure minYear <= maxYear (only if both are non-null)
+  if (normalized.minYear !== undefined && normalized.minYear !== null &&
+      normalized.maxYear !== undefined && normalized.maxYear !== null) {
     if (normalized.minYear > normalized.maxYear) {
       [normalized.minYear, normalized.maxYear] = [normalized.maxYear, normalized.minYear];
       [apiCompatible.minYear, apiCompatible.maxYear] = [apiCompatible.maxYear, apiCompatible.minYear];
     }
   }
   
-  // Condition validation
-  if (normalized.condition) {
+  // Condition validation (filter out null values)
+  if (normalized.condition && normalized.condition !== null) {
     if (['new', 'used', 'certified'].includes(normalized.condition)) {
       apiCompatible.condition = normalized.condition as 'new' | 'used' | 'certified';
       parsedFields.push('condition');
     }
   }
   
-  // Miles validation
-  if (normalized.maxMiles !== undefined) {
+  // Miles validation (filter out null values)
+  if (normalized.maxMiles !== undefined && normalized.maxMiles !== null) {
     normalized.maxMiles = Math.max(0, normalized.maxMiles);
     apiCompatible.maxMiles = normalized.maxMiles;
     parsedFields.push('maxMiles');
   }
   
-  // Future fields (normalize but don't include in API filters)
-  if (normalized.bodyType) {
+  // Future fields (normalize but don't include in API filters, filter out null values)
+  if (normalized.bodyType && normalized.bodyType !== null) {
     normalized.bodyType = normalizeBodyType(normalized.bodyType);
     parsedFields.push('bodyType');
   }
-  if (normalized.exteriorColor) {
+  if (normalized.exteriorColor && normalized.exteriorColor !== null) {
     normalized.exteriorColor = normalizeColor(normalized.exteriorColor);
     parsedFields.push('exteriorColor');
   }
-  if (normalized.interiorColor) {
+  if (normalized.interiorColor && normalized.interiorColor !== null) {
     normalized.interiorColor = normalizeColor(normalized.interiorColor);
     parsedFields.push('interiorColor');
   }
-  if (normalized.trim) {
+  if (normalized.trim && normalized.trim !== null) {
     normalized.trim = normalizeModel(normalized.trim); // Use same normalization as model
     parsedFields.push('trim');
   }
-  if (normalized.drivetrain) {
+  if (normalized.drivetrain && normalized.drivetrain !== null) {
     parsedFields.push('drivetrain');
   }
-  if (normalized.fuelType) {
+  if (normalized.fuelType && normalized.fuelType !== null) {
     parsedFields.push('fuelType');
   }
   
@@ -513,74 +515,106 @@ async function parseQueryWithOpenAI(query: string): Promise<{
   });
   
   // Define strict schema for structured output
-  // Note: OpenAI's structured outputs don't require nullable for optional fields
-  // Fields are optional by not being in the 'required' array
+  // Option A: All properties in 'required' array with nullable: true
+  // This satisfies OpenAI's requirement that strict: true requires all properties to be in 'required'
+  // Fields are logically optional (can be null) but must be present in the response
   const responseSchema = {
     type: 'object',
     properties: {
       minPrice: {
         type: 'number',
-        description: 'Minimum price in USD. Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Minimum price in USD. Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       maxPrice: {
         type: 'number',
-        description: 'Maximum price in USD. Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Maximum price in USD. Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       make: {
         type: 'string',
-        description: 'Vehicle make (e.g., "Toyota", "Ford", "BMW"). Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Vehicle make (e.g., "Toyota", "Ford", "BMW"). Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       model: {
         type: 'string',
-        description: 'Vehicle model (e.g., "Camry", "F-150", "3 Series"). Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Vehicle model (e.g., "Camry", "F-150", "3 Series"). Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       year: {
         type: 'number',
-        description: 'Exact year. Use this if user specifies a single year (e.g., "2023").',
+        nullable: true,
+        description: 'Exact year. Use this if user specifies a single year (e.g., "2023"). Return null if not mentioned.',
       },
       minYear: {
         type: 'number',
-        description: 'Minimum year in a range (e.g., "2020 or newer" -> minYear: 2020).',
+        nullable: true,
+        description: 'Minimum year in a range (e.g., "2020 or newer" -> minYear: 2020). Return null if not mentioned.',
       },
       maxYear: {
         type: 'number',
-        description: 'Maximum year in a range (e.g., "older than 2020" -> maxYear: 2019).',
+        nullable: true,
+        description: 'Maximum year in a range (e.g., "older than 2020" -> maxYear: 2019). Return null if not mentioned.',
       },
       condition: {
         type: 'string',
         enum: ['new', 'used', 'certified'],
-        description: 'Vehicle condition. Extract from words like "new", "used", "certified pre-owned", "CPO".',
+        nullable: true,
+        description: 'Vehicle condition. Extract from words like "new", "used", "certified pre-owned", "CPO". Return null if not mentioned.',
       },
       maxMiles: {
         type: 'number',
-        description: 'Maximum mileage. Extract from phrases like "under 50k miles", "less than 30000 miles".',
+        nullable: true,
+        description: 'Maximum mileage. Extract from phrases like "under 50k miles", "less than 30000 miles". Return null if not mentioned.',
       },
       bodyType: {
         type: 'string',
-        description: 'Body type (e.g., "SUV", "Sedan", "Truck", "Coupe"). Extract from terms like "SUV", "sedan", "truck", "pickup", "van".',
+        nullable: true,
+        description: 'Body type (e.g., "SUV", "Sedan", "Truck", "Coupe"). Extract from terms like "SUV", "sedan", "truck", "pickup", "van". Return null if not mentioned.',
       },
       exteriorColor: {
         type: 'string',
-        description: 'Exterior color (e.g., "red", "black", "white", "silver"). Extract common color names.',
+        nullable: true,
+        description: 'Exterior color (e.g., "red", "black", "white", "silver"). Extract common color names. Return null if not mentioned.',
       },
       interiorColor: {
         type: 'string',
-        description: 'Interior color. Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Interior color. Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       trim: {
         type: 'string',
-        description: 'Trim level (e.g., "SLT", "Limited", "XLE"). Only extract if explicitly mentioned.',
+        nullable: true,
+        description: 'Trim level (e.g., "SLT", "Limited", "XLE"). Only extract if explicitly mentioned. Return null if not mentioned.',
       },
       drivetrain: {
         type: 'string',
-        description: 'Drivetrain (e.g., "AWD", "FWD", "RWD", "4WD"). Extract from terms like "all-wheel drive", "AWD", "4x4".',
+        nullable: true,
+        description: 'Drivetrain (e.g., "AWD", "FWD", "RWD", "4WD"). Extract from terms like "all-wheel drive", "AWD", "4x4". Return null if not mentioned.',
       },
       fuelType: {
         type: 'string',
-        description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas".',
+        nullable: true,
+        description: 'Fuel type (e.g., "electric", "hybrid", "gasoline"). Extract from terms like "electric", "EV", "hybrid", "gas". Return null if not mentioned.',
       },
     },
-    required: [],
+    required: [
+      'minPrice',
+      'maxPrice',
+      'make',
+      'model',
+      'year',
+      'minYear',
+      'maxYear',
+      'condition',
+      'maxMiles',
+      'bodyType',
+      'exteriorColor',
+      'interiorColor',
+      'trim',
+      'drivetrain',
+      'fuelType',
+    ],
     additionalProperties: false,
   } as const;
   
