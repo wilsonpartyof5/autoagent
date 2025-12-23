@@ -368,11 +368,31 @@ function clampNumber(value: number, min: number, max: number): number {
  */
 function validateAndNormalize(filters: ParsedFilters): {
   filters: ParsedFilters;
-  apiCompatibleFilters: ParseResponse['data']['apiCompatibleFilters'];
+  apiCompatibleFilters: {
+    minPrice?: number;
+    maxPrice?: number;
+    make?: string;
+    model?: string;
+    year?: number;
+    minYear?: number;
+    maxYear?: number;
+    maxMiles?: number;
+    condition?: 'new' | 'used' | 'certified';
+  };
   parsedFields: string[];
 } {
   const normalized: ParsedFilters = { ...filters };
-  const apiCompatible: ParseResponse['data']['apiCompatibleFilters'] = {};
+  const apiCompatible: {
+    minPrice?: number;
+    maxPrice?: number;
+    make?: string;
+    model?: string;
+    year?: number;
+    minYear?: number;
+    maxYear?: number;
+    maxMiles?: number;
+    condition?: 'new' | 'used' | 'certified';
+  } = {};
   const parsedFields: string[] = [];
   
   // Price validation
