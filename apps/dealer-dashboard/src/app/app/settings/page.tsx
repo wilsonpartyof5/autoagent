@@ -1,6 +1,7 @@
 import { InventoryProviderForm } from "@/components/dashboard/settings/inventory-provider-form";
 import { LeadDeliveryForm } from "@/components/dashboard/settings/lead-delivery-form";
 import { YourStoresSection } from "@/components/dashboard/settings/your-stores-section";
+import { LogoutButton } from "@/components/dashboard/settings/logout-button";
 import { getDealerProfile } from "@/lib/supabase/profile";
 import { fetchUserDealerships, getActiveDealershipId } from "@/lib/supabase/dealerships";
 import { getAllDealershipsStatus } from "@/lib/supabase/dealerships-status";
@@ -18,7 +19,10 @@ export default async function SettingsPage() {
   return (
     <section className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <LogoutButton />
+        </div>
         <p className="text-sm text-muted-foreground">
           Manage account security, integrations, and team access. Start by reviewing your inventory
           provider configuration below.
