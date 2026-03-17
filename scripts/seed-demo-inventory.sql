@@ -1,4 +1,8 @@
 -- Seed Demo Inventory for ChatGPT App Integration Testing
+-- ⚠️  PRODUCTION WRITE GUARD
+-- This script writes DEMO DATA and should NOT run against production databases.
+-- Verify you are connected to a non-production Supabase project before running.
+--
 -- Run this in Supabase SQL Editor
 -- Replace YOUR_USER_ID with your actual user_id from auth.users (check profiles table)
 

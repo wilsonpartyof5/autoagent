@@ -53,6 +53,44 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Protect /app/** routes
+  if (request.nextUrl.pathname.startsWith('/app')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/auth', request.url))
+    }
+
+    // Onboarding integrity check: Detect suspicious prelinked state for new users
+    // This prevents cross-tenant data leakage by blocking onboarding when a new user
+    // already has dealership memberships or MarketCheck IDs they shouldn't have.
+    try {
+      const { checkOnboardingIntegrity } = await import('@/lib/supabase/integrity-check');
+      const integrityResult = await checkOnboardingIntegrity(supabase, user.id);
+      
+      if (!integrityResult.isValid) {
+        // Block onboarding and redirect to auth with error state
+        const authUrl = new URL('/auth', request.url);
+        authUrl.searchParams.set('error', 'integrity_check_failed');
+        authUrl.searchParams.set('message', integrityResult.errorMessage || 'Account setup error');
+        
+        // Log structured event for ops review
+        console.error('[middleware] Integrity check failed, blocking access:', {
+          userId: user.id,
+          email: user.email,
+          path: request.nextUrl.pathname,
+          details: integrityResult.details,
+        });
+        
+        // Sign out user to prevent any potential access
+        await supabase.auth.signOut();
+        
+        return NextResponse.redirect(authUrl);
+      }
+    } catch (error) {
+      // Log but don't block on integrity check errors (fail open for UX)
+      console.error('[middleware] Integrity check error:', error);
+    }
+  }
+
   // Track dashboard login when user accesses /app/** routes
   if (request.nextUrl.pathname.startsWith('/app') && user) {
     // Track login event asynchronously (don't block request)
@@ -83,13 +121,6 @@ export async function middleware(request: NextRequest) {
         // Ignore module load errors
       }
     })();
-  }
-
-  // Protect /app/** routes
-  if (request.nextUrl.pathname.startsWith('/app')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/auth', request.url))
-    }
   }
 
   // Redirect authenticated users away from /auth

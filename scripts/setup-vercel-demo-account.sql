@@ -1,6 +1,10 @@
 -- ============================================================================
 -- AutoAgent Vercel Demo Account Setup
 -- ============================================================================
+-- ⚠️  PRODUCTION WRITE GUARD
+-- This script writes DEMO DATA and should NOT run against production databases.
+-- Verify you are connected to a non-production Supabase project before running.
+--
 -- This script sets up a complete demo account for the Vercel deployment
 -- URL: https://autoagent-dealer-dashboard.vercel.app
 --

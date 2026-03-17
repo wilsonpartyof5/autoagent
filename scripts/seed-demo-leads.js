@@ -23,6 +23,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', 'apps', 'dealer-dash
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const LEAD_ENC_KEY = process.env.LEAD_ENC_KEY;
+const ALLOW_PROD_WRITE = process.env.ALLOW_PROD_WRITE === 'true';
 
 if (!SUPABASE_URL) {
   console.error('❌ NEXT_PUBLIC_SUPABASE_URL not found');
@@ -31,6 +32,31 @@ if (!SUPABASE_URL) {
 
 if (!SUPABASE_SERVICE_KEY) {
   console.error('❌ SUPABASE_SERVICE_ROLE_KEY not found');
+  process.exit(1);
+}
+
+// Production write guard: prevent accidental writes to production database
+const PROD_INDICATORS = ['prod', 'production', 'vercel', 'live'];
+function isProdUrl(url) {
+  const lowerUrl = url.toLowerCase();
+  return PROD_INDICATORS.some(indicator => lowerUrl.includes(indicator));
+}
+
+if (isProdUrl(SUPABASE_URL) && !ALLOW_PROD_WRITE) {
+  console.error('');
+  console.error('⛔ PRODUCTION WRITE GUARD');
+  console.error('='.repeat(50));
+  console.error('This script is attempting to write to a production-like database:');
+  console.error(`  ${SUPABASE_URL}`);
+  console.error('');
+  console.error('This is a DEMO/SEED script and should NOT run against production.');
+  console.error('');
+  console.error('To proceed anyway (not recommended):');
+  console.error('  ALLOW_PROD_WRITE=true node scripts/seed-demo-leads.js');
+  console.error('');
+  console.error('For safe demo setup, use a separate Supabase project or local instance.');
+  console.error('='.repeat(50));
+  console.error('');
   process.exit(1);
 }
 

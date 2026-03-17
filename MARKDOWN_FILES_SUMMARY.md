@@ -945,7 +945,1763 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 #
 #
 #
-### `scripts/README_MARKDOWN_UPDATER.md`
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+### `scripts/README_VERCEL_DEMO_SETUP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ⚠️ IMPORTANT: Production Write Guard
+- Prerequisites
+- Option 1: Automated Setup (Recommended)
+- Step 1: Install Dependencies
+- Step 2: Configure Environment Variables
+
+## `scripts/README_MARKDOWN_UPDATER.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Installation
+- Usage
+- One-time Update
+- Watch Mode
+- How It Works
+
+## `docs/QUERY_PARSING_DEPLOYMENT_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Situation
+- ✅ Vercel (Dealer Dashboard) - **SUCCESS**
+- ⏳ Railway (MCP Server) - **BUILDING**
+- Analysis:
+- Possible Causes:
+
+## `docs/QUERY_PARSING_DEPLOYMENT_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Error Found
+- Fix Applied
+- Before (Line 371):
+- After:
+- Deployment Actions
+
+## `docs/QUERY_PARSING_DEPLOYMENT_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Actions Completed
+- ✅ Git Operations
+- ⚠️ Vercel Deployment
+- Deployment Status
+- Current State
+
+## `apps/mcp-server/test/STRICT_VALIDATION_README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Running Tests
+- Run all tests
+- Run only strict validation tests
+- Run tests in watch mode
+
+## `apps/mcp-server/src/ui/README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Data Sourcing
+- Vehicle Data
+- Globals Synchronization
+- Lead Submission
+
+## `apps/dealer-dashboard/QUICK_START_INGESTION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🚀 Quick Setup (5 minutes)
+- 1. Set Environment Variables
+- 2. Deploy
+- 3. Test
+- 📋 What Was Added
+
+## `apps/dealer-dashboard/DEPLOYMENT_CHECKLIST.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Pre-Deployment
+- 1. Environment Variables - MCP Server (Railway)
+- 2. Environment Variables - Dealer Dashboard (Vercel)
+- 3. Verify Code Changes
+- Deployment Steps
+
+## `apps/autoagent-app/README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- File Structure
+- Source of Truth
+- Schema Synchronization
+- Validation
+- Tools Defined
+
+## `WATCH_LOGS_REALTIME.md`
+**Purpose**: Documentation file
+**Key Content**:
+- I'll Monitor While You Click the Button
+- Option 1: Share Logs as You See Them
+- Option 2: Try Railway API (if token available)
+- Ready to Monitor
+
+## `VERCEL_DOMAIN_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status (2025-11-18)
+- Deployment URLs
+- Current Behavior
+- Issue
+- Marketing Landing Page Status
+
+## `VERCEL_DEPLOYMENT_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- Required Action: Configure via Vercel Dashboard
+- Step 1: Update Project Settings
+- Step 2: Verify Domain Configuration
+- Step 3: Trigger Fresh Deployment
+
+## `VERCEL_DEPLOYMENT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Status
+- Latest Successful Deployment
+- Configuration
+- Domain Verification
+- Apex Domain: `autoagentapp.com`
+
+## `VERCEL_DEPLOYMENT_INSTRUCTIONS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- Required Vercel Dashboard Configuration
+- Step 1: Update Project Settings
+- Step 2: Verify Domain Configuration
+- Step 3: Trigger Fresh Deployment
+
+## `VERCEL_DEPLOYMENT_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issue
+- Solution: Configure via Vercel Dashboard
+- Alternative: Deploy from Root Directory
+- Quick Fix Command
+- Current Deployment URLs
+
+## `VERCEL_DEPLOYMENT_FINAL_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Current Issue
+- Required Vercel Dashboard Configuration
+- Settings → General
+- Why This Configuration Works
+
+## `UVS_FK_VERIFICATION_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Code Verification Complete
+- Metrics Endpoints - Verified ✅
+- Dashboard UI - Verified ✅
+- ⚠️ Database Migration - Action Required
+- Migration File
+
+## `UVS_FK_ALIGNMENT_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Changes Made
+- 1. Database Schema
+- 2. Metrics API Endpoints
+- `/api/metrics/leads` (Updated)
+
+## `TEST_VERIFICATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Test Results Summary
+- Test Coverage Verification
+- ✅ Valid Payloads (7 tests)
+- ✅ Required Blocks Validation (6 tests)
+- ✅ Enum Validation (6 tests)
+
+## `SYNC_ERROR_FIX_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Summary
+- Root Cause Analysis
+- Required Environment Variables (Railway MCP Server):
+- Error Flow:
+- Solution Steps
+
+## `SYNC_ERROR_DEBUG_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Changes Made
+- 1. Enhanced Error Logging (`apps/dealer-dashboard/src/app/app/setup/actions.ts`)
+- Next Steps to Find the Error
+- Option 1: Reproduce Locally (Recommended)
+
+## `STRICT_VALIDATION_VERIFICATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Build Status
+- Shared Package Build
+- Exports Verification
+- ✅ Implementation Verification
+- 1. Orchestrator Integration (`apps/mcp-server/src/ingestion/orchestrator.ts`)
+
+## `STRICT_VALIDATION_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Implementation Summary
+- 1. Strict Zod Schemas ✅
+- 2. Updated Validation ✅
+- 3. Provider Mapper Integration ✅
+
+## `RAILWAY_LOG_CAPTURE_INSTRUCTIONS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Railway CLI Authentication Required
+- Option A: Railway CLI (Manual Login)
+- Option B: Railway Dashboard (Easiest)
+- Step 1: Prepare to Capture Error
+- Step 2: Run Diagnostic Script (Triggers Error)
+
+## `RAILWAY_DEPLOY_METHOD.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Primary Method: GitHub Push → Railway Auto-Deploy
+- How It Works
+- Documentation References
+- Railway Deployment (Automatic)
+
+## `QUICK_ERROR_CHECK.md`
+**Purpose**: Documentation file
+**Key Content**:
+- What Error Did You See?
+- Check Logs Now - 3 Options:
+- Option 1: Vercel Dashboard (FASTEST - 30 seconds)
+- Option 2: Tell Me the Error Message
+- Option 3: Quick Test Script
+
+## `PHASE_4_VERIFICATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Verification Summary
+- ✅ 1. Source Field - VERIFIED
+- ✅ 2. Dealer ID Constraint - FIXED
+- ✅ 3. Session Management - IMPLEMENTED
+- ✅ 4. Payload Validation - IMPLEMENTED
+
+## `PHASE_4_REMAINING_ISSUES_DOCUMENTED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ⚠️ Feature Gaps
+- 1. Vehicle Compare Feature
+- 2. Dashboard Inventory Edit Feature
+- 3. Dashboard Inventory Delete Feature
+
+## `PHASE_4_REFRESH_SCHEDULING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Operational Refresh Strategy
+- Option 1: External Cron (Recommended)
+- Option 2: Trigger-Based Refresh (Automatic)
+- Option 3: pg_cron (Supabase Pro)
+- Current Configuration
+
+## `PHASE_4_LINE_ITEM_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Fixes Applied
+- ✅ 1. Sessions & Required IDs (Critical)
+- ✅ 2. Schema Alignment
+- ⚠️ 3. Tracking Coverage (Partial)
+- ⚠️ 4. Materialized Views Refresh
+
+## `PHASE_4_LINE_ITEM_COMPLETION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ 1. Sessions & Required IDs (Critical) - COMPLETE
+- Dashboard Session Reuse
+- MCP Session Handling
+- Required ID Enforcement
+
+## `PHASE_4_FIXES_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Completed Fixes ✅
+- 1. Schema Improvements
+- 2. Tracking Utilities - Core Improvements
+- 3. Updated Tracking Calls
+
+## `PHASE_4_FINAL_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- ✅ Fixed
+- ❌ Still Needs Fixing
+- Root Cause Analysis
+- Comprehensive Solution
+
+## `PHASE_4_FINAL_FIXES_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- All Blocking Issues Addressed
+- ✅ 1. Session Persistence (FIXED)
+- ✅ 2. Required ID Enforcement (FIXED)
+- ✅ 3. PII Removal (FIXED)
+- ✅ 4. Source Field (FIXED)
+
+## `PHASE_4_FINAL_FIXES_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Fixed: MCP Tracker Compile Error
+- ✅ Fixed: Refresh Trigger Actually Refreshes
+- ✅ Fixed: Widget Client-Side Tracking
+- ✅ Fixed: Analytics Page Uses Relative URLs with Credentials
+
+## `PHASE_4_FINAL_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Identified
+- Status: Code Already Fixed ✅
+- 1. Source Field ✅
+- 2. Dealer ID Constraint ✅
+- 3. Session Management ✅
+
+## `PHASE_4_FINAL_BLOCKING_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Fixed: Real FK Constraints with Rejection
+- ✅ Fixed: Removed Unused Event Types
+- ✅ Fixed: Refresh Worker Implementation
+- ✅ Fixed: Conversions Endpoint Consistency
+
+## `PHASE_4_FINAL_AUDIT_RESPONSE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Blocking Defect 1: Schema Enforcement of Required IDs
+- Issue
+- Fix Implemented
+- ✅ Blocking Defect 2: Session Persistence
+
+## `PHASE_4_DELIVERY_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Deliverables Completed
+- 1. Database Schema (Supabase/Postgres) ✅
+- `analytics_sessions`
+- `analytics_events` (Core Events Table)
+
+## `PHASE_4_CRITICAL_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issues Identified in Audit
+- 1. Schema Issues
+- 2. Tracking Utilities
+- 3. Missing Tracking Points
+- 4. Materialized Views
+
+## `PHASE_4_CRITICAL_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Database-Level Constraints
+- ✅ Defect 2: Unified Tracking Utility
+- ✅ Defect 3: Widget Tracking Validation
+- ✅ Defect 4: Single requestId in searchVehicles
+
+## `PHASE_4_COMPREHENSIVE_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Remaining
+- Solution Architecture
+- Session Management Strategy
+- Required ID Enforcement
+- Files Status
+
+## `PHASE_4_COMPLETE_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Critical Issues - Resolution Status
+- ✅ 1. Source Field Population
+- ✅ 2. Dealer ID Constraint
+- ✅ 3. Session Management
+
+## `PHASE_4_COMPLETE_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Critical Fix 1: Database-Level Constraint Enforcement
+- ✅ Critical Fix 2: Unified Tracking Utility
+- ✅ Critical Fix 3: Widget Tracking Validation
+- ✅ Critical Fix 4: Single requestId in searchVehicles
+
+## `PHASE_4_COMPLETE_FIXES_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Fixed: Real FK Constraints with Rejection (No Auto-Create)
+- ✅ Fixed: Removed Unused Event Types
+- ✅ Fixed: Refresh Worker Implementation
+- ✅ Fixed: Conversions Endpoint Consistency
+
+## `PHASE_4_BLOCKING_FIXES_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ 1. Schema Enforcement of Required IDs
+- ✅ 2. Session Persistence (Dashboard)
+- ✅ 3. Session Persistence (MCP)
+- ✅ 4. Materialized View Refresh (Operational)
+
+## `PHASE_4_AUDIT_RESPONSE_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Detailed Response to Audit Findings
+- ✅ Deliverable 1: Event Tracking Schema - FIXED
+- ✅ Deliverable 2: Event Logging Utilities - FIXED
+- ✅ Deliverable 3: Tracking Insertion Points - FIXED
+
+## `PHASE_4_AUDIT_RESPONSE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Response to Audit Findings
+- Issue 1: "Source field not populated"
+- Issue 2: "Dealer ID constraint blocks inserts"
+- Issue 3: "Session management broken"
+- Issue 4: "Payload validation shallow"
+
+## `PHASE_4_AUDIT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. VERIFY: MCP → UVS → Dashboard Alignments
+- 1.1 MCP Server ✅ **PASS**
+- 2. VERIFY: Widget Uses UVS Structured Content Only
+- 2.1 Widget Data Loading ✅ **PASS**
+
+## `PHASE_4_AUDIT_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Fixed
+- 1. FK Violation Bug - RESOLVED ✅
+- 2. PII Policy Compliance - RESOLVED ✅
+- 3. Materialized Views - RESOLVED ✅
+- 4. Missing Tracking Points - RESOLVED ✅
+
+## `PHASE_4_ALL_DEFECTS_RESOLVED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Real FK Constraints with Rejection
+- ✅ Defect 2: Removed Unused Event Types
+- ✅ Defect 3: Refresh Worker Implementation
+- ✅ Defect 4: Conversions Endpoint Consistency
+
+## `PHASE_4_ALL_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Database-Level Constraints for Required IDs
+- Fix Implemented
+- ✅ Defect 2: Unified Tracking Utility
+- Fix Implemented
+
+## `PHASE_4_ALL_BLOCKING_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Fixed: Referential Integrity Enforcement
+- ✅ Fixed: Non-Blocking Refresh Mechanism
+- ✅ Fixed: Conversions Endpoint Accepts dealer_id
+- ⚠️ Feature Gaps Documented
+
+## `OFFICIAL_APPS_SDK_SCHEMA_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. Official Documentation URLs
+- Primary Documentation:
+- 2. Schema File Location
+- Status: ⚠️ **Not Found in Package**
+
+## `MIGRATION_READY_TO_APPLY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Preparation Complete
+- What's Ready
+- 🚀 Next Steps: Apply Migration
+- Quick Method (Recommended)
+- Interactive Method
+
+## `MIGRATION_APPLY_AND_VERIFY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Step 1: Apply Migration in Supabase
+- Step 2: Verify FK Constraints
+- Step 3: Check for Orphaned Leads
+- Step 4: Run Automated Verification Script
+
+## `MCP_INSTRUMENTATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Changes Made
+- 1. Top-Level Crash Handlers ✅
+- 2. Express Error Middleware ✅
+- 3. Path Normalization ✅
+- 4. Reduced Noisy Logging ✅
+
+## `MCP_INGESTION_INVESTIGATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- 1. Railway Logs (16:39 UTC)
+- 2. Diagnostic Script Results
+- 3. UVS Schema Verification
+- Migration File Status
+
+## `MCP_INGESTION_500_INVESTIGATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- Status
+- 1. Railway Logs (16:39 UTC)
+- 2. Diagnostic Script
+- 3. UVS Schema Verification
+
+## `MCP_INGESTION_500_FINDINGS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- 1. Railway Logs Status
+- 2. Diagnostic Script
+- 3. UVS Schema Verification
+- 4. Code Changes Made
+
+## `MCP_BUILD_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issue
+- Solution
+- ✅ Removed `.js` Extensions from Internal Imports
+- Files Modified
+- reqInfo.headers Issue
+
+## `MCP_BUILD_FIX_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Build Status: PASSING
+- Fixed Issues
+- 1. Router Type Inference (`widget-tracking.ts`)
+- 2. Context Type Mismatch (`index.ts`)
+- 3. UVS vs UnifiedVehicle Type Mismatch (`orchestrator.ts`)
+
+## `MCP_500_ERROR_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Ready to Investigate
+- Quick Start
+- 1. Railway Logs (16:39 UTC)
+- 2. Run Diagnostic Script
+- 3. Verify UVS Schema
+
+## `MCP_500_ERROR_INVESTIGATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Files Created
+- Task 1: Railway Logs (16:39 UTC)
+- How to Access Railway Logs
+- Expected Log Patterns
+
+## `MCP_500_ERROR_FINDINGS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Diagnostic Script Results
+- Results
+- 1. Health Check (`/mcp`)
+- 2. Fetch-and-Ingest Endpoint (`/api/ingest/marketcheck/fetch-and-ingest`)
+- 3. Direct Ingestion Endpoint (`/api/ingest/marketcheck`)
+
+## `MCP_500_DIAGNOSTIC_RESULTS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Diagnostic Script Results
+- Test Results
+- Test 1: Health Check
+- Test 2: Fetch-and-Ingest Endpoint
+- Test 3: Direct Ingestion Endpoint
+
+## `MARKETCHECK_PAGINATION_ISSUE_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Statement
+- What We've Done So Far
+- 1. Initial Investigation
+- 2. Root Cause Identified
+- 3. Pagination Implementation
+
+## `MARKDOWN_CONSOLIDATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 📊 Current State
+- 🎯 Proposed 10-File Structure
+- 📁 File Distribution
+- 1. README.md (4 files)
+- 2. CHANGELOG.md (~25 files)
+
+## `MARKDOWN_CONSOLIDATION_PROPOSAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Current File Distribution
+- By Location
+- By Category (Estimated)
+- Proposed 10-File Structure
+
+## `MARKDOWN_CONSOLIDATION_MAPPING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 1. README.md (Project Overview & Quick Start)
+- Files to Merge:
+- Content Priority:
+- 2. CHANGELOG.md (Release History & Roadmap)
+- Files to Merge:
+
+## `MANIFEST_SETUP_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- What Was Done
+- 1. ✅ Created Manifest Structure
+- 2. ✅ Updated Package.json
+- 3. ✅ Updated API Route
+- 4. ✅ Schema Synchronization
+
+## `INVESTIGATE_MCP_500_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Goal
+- Timeline
+- Task 1: Pull Railway Logs Around 16:39 UTC
+- Option A: Railway Dashboard (Easiest)
+- Option B: Railway CLI
+
+## `INVENTORY_SEARCH_INVESTIGATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Root Cause
+- Evidence
+- Database Query Results
+- Code Analysis
+- Fixes Applied
+
+## `INVENTORY_SEARCH_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Root Cause
+- Evidence
+- Database Queries
+- Coordinate Verification
+- Fixes Applied
+
+## `INGESTION_AUTOMATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Implementation Complete
+- Files Created/Modified
+- New Files
+- Modified Files
+- Key Features
+
+## `GET_RAILWAY_ERROR_STEPS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Ready to Capture Actual Error
+- Step 1: Open Railway Dashboard Logs
+- Step 2: Run Diagnostic Script (This Will Trigger the Error)
+- Step 3: Immediately Check Railway Logs
+- Step 4: Copy the ACTUAL Error
+
+## `FIX_SYNC_500_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Summary
+- Root Cause
+- Quick Fix Steps
+- 1. Verify Railway Environment Variables
+- 2. Add Missing Supabase Config to Railway
+
+## `DEPLOY_VERCEL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Deploy via CLI
+- Step 2: Set Environment Variables
+- Step 3: Redeploy with Environment Variables
+- Step 4: Configure Supabase Redirect URLs
+- Step 5: Test
+
+## `DEPLOYMENT_STATUS_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Situation
+- What Was Done
+- Next Steps
+- Verification
+
+## `DEPLOYMENT_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Code Changes Deployed
+- Changes Included:
+- Deployment Method
+- ✅ Git Push Complete
+- Next Steps
+
+## `DEPLOYMENT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Files Committed and Pushed
+- Git Commits
+- Current Status
+- Required Vercel Dashboard Configuration
+- Settings → General
+
+## `DEPLOYMENT_FINAL_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Summary
+- Latest Deployment
+- Configuration Applied
+- Current Status
+- Action Required: Clear Build Cache
+
+## `CHECK_RAILWAY_LOGS_NOW.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Direct Access
+- What to Look For (Around 16:39 UTC)
+- Search/Filter for:
+- Error Patterns:
+- Copy Here:
+
+## `CAPTURE_RAILWAY_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Tail Railway Logs
+- Option A: Railway CLI
+- Option B: Railway Dashboard
+- Step 2: Run Diagnostic Script
+- Step 3: Check Logs Again
+
+## `CAPTURE_ACTUAL_RAILWAY_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Prepare to Monitor Railway Logs
+- Railway Dashboard Method (Recommended)
+- Search Terms to Use:
+- Step 2: Run Diagnostic Script (This will trigger the error)
+- Step 3: Immediately Check Railway Logs
+
+## `APPS_SDK_SETUP_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. pnpm Setup
+- Status: ✅ **Success**
+- 2. Apps SDK Installation Attempts
+- Status: ❌ **Package Not Found**
+
+## `APPS_SDK_MANIFEST_VALIDATION_REPORT.md`
+**Purpose**: 'Search Rock Hill GMC inventory and submit leads.',
+**Key Content**:
+- Executive Summary
+- Overall Status: **FAIL**
+- 1. Schema Sources Location
+- 1.1 Expected Manifest File
+- 1.2 Package.json Analysis
+
+## `scripts/debug-sync-error.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Goal
+- Steps to Reproduce Locally
+- 1. Check Environment Variables
+- 2. Start Local Development Server
+- 3. Start MCP Server (if testing against local instance)
+
+## `scripts/README_VERCEL_DEMO_SETUP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ⚠️ IMPORTANT: Production Write Guard
+- Prerequisites
+- Option 1: Automated Setup (Recommended)
+- Step 1: Install Dependencies
+- Step 2: Configure Environment Variables
+
+## `docs/QUERY_PARSING_DEPLOYMENT_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Situation
+- ✅ Vercel (Dealer Dashboard) - **SUCCESS**
+- ⏳ Railway (MCP Server) - **BUILDING**
+- Analysis:
+- Possible Causes:
+
+## `docs/QUERY_PARSING_DEPLOYMENT_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Error Found
+- Fix Applied
+- Before (Line 371):
+- After:
+- Deployment Actions
+
+## `docs/QUERY_PARSING_DEPLOYMENT_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Actions Completed
+- ✅ Git Operations
+- ⚠️ Vercel Deployment
+- Deployment Status
+- Current State
+
+## `apps/mcp-server/test/STRICT_VALIDATION_README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Running Tests
+- Run all tests
+- Run only strict validation tests
+- Run tests in watch mode
+
+## `apps/mcp-server/src/ui/README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Data Sourcing
+- Vehicle Data
+- Globals Synchronization
+- Lead Submission
+
+## `apps/dealer-dashboard/QUICK_START_INGESTION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🚀 Quick Setup (5 minutes)
+- 1. Set Environment Variables
+- 2. Deploy
+- 3. Test
+- 📋 What Was Added
+
+## `apps/dealer-dashboard/DEPLOYMENT_CHECKLIST.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Pre-Deployment
+- 1. Environment Variables - MCP Server (Railway)
+- 2. Environment Variables - Dealer Dashboard (Vercel)
+- 3. Verify Code Changes
+- Deployment Steps
+
+## `apps/autoagent-app/README.md`
+**Purpose**: Documentation file
+**Key Content**:
+- File Structure
+- Source of Truth
+- Schema Synchronization
+- Validation
+- Tools Defined
+
+## `WATCH_LOGS_REALTIME.md`
+**Purpose**: Documentation file
+**Key Content**:
+- I'll Monitor While You Click the Button
+- Option 1: Share Logs as You See Them
+- Option 2: Try Railway API (if token available)
+- Ready to Monitor
+
+## `VERCEL_DOMAIN_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status (2025-11-18)
+- Deployment URLs
+- Current Behavior
+- Issue
+- Marketing Landing Page Status
+
+## `VERCEL_DEPLOYMENT_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- Required Action: Configure via Vercel Dashboard
+- Step 1: Update Project Settings
+- Step 2: Verify Domain Configuration
+- Step 3: Trigger Fresh Deployment
+
+## `VERCEL_DEPLOYMENT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Status
+- Latest Successful Deployment
+- Configuration
+- Domain Verification
+- Apex Domain: `autoagentapp.com`
+
+## `VERCEL_DEPLOYMENT_INSTRUCTIONS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- Required Vercel Dashboard Configuration
+- Step 1: Update Project Settings
+- Step 2: Verify Domain Configuration
+- Step 3: Trigger Fresh Deployment
+
+## `VERCEL_DEPLOYMENT_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issue
+- Solution: Configure via Vercel Dashboard
+- Alternative: Deploy from Root Directory
+- Quick Fix Command
+- Current Deployment URLs
+
+## `VERCEL_DEPLOYMENT_FINAL_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Current Issue
+- Required Vercel Dashboard Configuration
+- Settings → General
+- Why This Configuration Works
+
+## `UVS_FK_VERIFICATION_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Code Verification Complete
+- Metrics Endpoints - Verified ✅
+- Dashboard UI - Verified ✅
+- ⚠️ Database Migration - Action Required
+- Migration File
+
+## `UVS_FK_ALIGNMENT_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Changes Made
+- 1. Database Schema
+- 2. Metrics API Endpoints
+- `/api/metrics/leads` (Updated)
+
+## `TEST_VERIFICATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Test Results Summary
+- Test Coverage Verification
+- ✅ Valid Payloads (7 tests)
+- ✅ Required Blocks Validation (6 tests)
+- ✅ Enum Validation (6 tests)
+
+## `SYNC_ERROR_FIX_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Summary
+- Root Cause Analysis
+- Required Environment Variables (Railway MCP Server):
+- Error Flow:
+- Solution Steps
+
+## `SYNC_ERROR_DEBUG_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Changes Made
+- 1. Enhanced Error Logging (`apps/dealer-dashboard/src/app/app/setup/actions.ts`)
+- Next Steps to Find the Error
+- Option 1: Reproduce Locally (Recommended)
+
+## `STRICT_VALIDATION_VERIFICATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Build Status
+- Shared Package Build
+- Exports Verification
+- ✅ Implementation Verification
+- 1. Orchestrator Integration (`apps/mcp-server/src/ingestion/orchestrator.ts`)
+
+## `STRICT_VALIDATION_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Implementation Summary
+- 1. Strict Zod Schemas ✅
+- 2. Updated Validation ✅
+- 3. Provider Mapper Integration ✅
+
+## `RAILWAY_LOG_CAPTURE_INSTRUCTIONS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Railway CLI Authentication Required
+- Option A: Railway CLI (Manual Login)
+- Option B: Railway Dashboard (Easiest)
+- Step 1: Prepare to Capture Error
+- Step 2: Run Diagnostic Script (Triggers Error)
+
+## `RAILWAY_DEPLOY_METHOD.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Primary Method: GitHub Push → Railway Auto-Deploy
+- How It Works
+- Documentation References
+- Railway Deployment (Automatic)
+
+## `QUICK_ERROR_CHECK.md`
+**Purpose**: Documentation file
+**Key Content**:
+- What Error Did You See?
+- Check Logs Now - 3 Options:
+- Option 1: Vercel Dashboard (FASTEST - 30 seconds)
+- Option 2: Tell Me the Error Message
+- Option 3: Quick Test Script
+
+## `PHASE_4_VERIFICATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Verification Summary
+- ✅ 1. Source Field - VERIFIED
+- ✅ 2. Dealer ID Constraint - FIXED
+- ✅ 3. Session Management - IMPLEMENTED
+- ✅ 4. Payload Validation - IMPLEMENTED
+
+## `PHASE_4_REMAINING_ISSUES_DOCUMENTED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ⚠️ Feature Gaps
+- 1. Vehicle Compare Feature
+- 2. Dashboard Inventory Edit Feature
+- 3. Dashboard Inventory Delete Feature
+
+## `PHASE_4_REFRESH_SCHEDULING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Operational Refresh Strategy
+- Option 1: External Cron (Recommended)
+- Option 2: Trigger-Based Refresh (Automatic)
+- Option 3: pg_cron (Supabase Pro)
+- Current Configuration
+
+## `PHASE_4_LINE_ITEM_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Fixes Applied
+- ✅ 1. Sessions & Required IDs (Critical)
+- ✅ 2. Schema Alignment
+- ⚠️ 3. Tracking Coverage (Partial)
+- ⚠️ 4. Materialized Views Refresh
+
+## `PHASE_4_LINE_ITEM_COMPLETION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ 1. Sessions & Required IDs (Critical) - COMPLETE
+- Dashboard Session Reuse
+- MCP Session Handling
+- Required ID Enforcement
+
+## `PHASE_4_FIXES_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Completed Fixes ✅
+- 1. Schema Improvements
+- 2. Tracking Utilities - Core Improvements
+- 3. Updated Tracking Calls
+
+## `PHASE_4_FINAL_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- ✅ Fixed
+- ❌ Still Needs Fixing
+- Root Cause Analysis
+- Comprehensive Solution
+
+## `PHASE_4_FINAL_FIXES_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- All Blocking Issues Addressed
+- ✅ 1. Session Persistence (FIXED)
+- ✅ 2. Required ID Enforcement (FIXED)
+- ✅ 3. PII Removal (FIXED)
+- ✅ 4. Source Field (FIXED)
+
+## `PHASE_4_FINAL_FIXES_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Fixed: MCP Tracker Compile Error
+- ✅ Fixed: Refresh Trigger Actually Refreshes
+- ✅ Fixed: Widget Client-Side Tracking
+- ✅ Fixed: Analytics Page Uses Relative URLs with Credentials
+
+## `PHASE_4_FINAL_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Identified
+- Status: Code Already Fixed ✅
+- 1. Source Field ✅
+- 2. Dealer ID Constraint ✅
+- 3. Session Management ✅
+
+## `PHASE_4_FINAL_BLOCKING_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Fixed: Real FK Constraints with Rejection
+- ✅ Fixed: Removed Unused Event Types
+- ✅ Fixed: Refresh Worker Implementation
+- ✅ Fixed: Conversions Endpoint Consistency
+
+## `PHASE_4_FINAL_AUDIT_RESPONSE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Blocking Defect 1: Schema Enforcement of Required IDs
+- Issue
+- Fix Implemented
+- ✅ Blocking Defect 2: Session Persistence
+
+## `PHASE_4_DELIVERY_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Deliverables Completed
+- 1. Database Schema (Supabase/Postgres) ✅
+- `analytics_sessions`
+- `analytics_events` (Core Events Table)
+
+## `PHASE_4_CRITICAL_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issues Identified in Audit
+- 1. Schema Issues
+- 2. Tracking Utilities
+- 3. Missing Tracking Points
+- 4. Materialized Views
+
+## `PHASE_4_CRITICAL_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Database-Level Constraints
+- ✅ Defect 2: Unified Tracking Utility
+- ✅ Defect 3: Widget Tracking Validation
+- ✅ Defect 4: Single requestId in searchVehicles
+
+## `PHASE_4_COMPREHENSIVE_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Remaining
+- Solution Architecture
+- Session Management Strategy
+- Required ID Enforcement
+- Files Status
+
+## `PHASE_4_COMPLETE_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Critical Issues - Resolution Status
+- ✅ 1. Source Field Population
+- ✅ 2. Dealer ID Constraint
+- ✅ 3. Session Management
+
+## `PHASE_4_COMPLETE_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Critical Fix 1: Database-Level Constraint Enforcement
+- ✅ Critical Fix 2: Unified Tracking Utility
+- ✅ Critical Fix 3: Widget Tracking Validation
+- ✅ Critical Fix 4: Single requestId in searchVehicles
+
+## `PHASE_4_COMPLETE_FIXES_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Fixed: Real FK Constraints with Rejection (No Auto-Create)
+- ✅ Fixed: Removed Unused Event Types
+- ✅ Fixed: Refresh Worker Implementation
+- ✅ Fixed: Conversions Endpoint Consistency
+
+## `PHASE_4_BLOCKING_FIXES_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ 1. Schema Enforcement of Required IDs
+- ✅ 2. Session Persistence (Dashboard)
+- ✅ 3. Session Persistence (MCP)
+- ✅ 4. Materialized View Refresh (Operational)
+
+## `PHASE_4_AUDIT_RESPONSE_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Detailed Response to Audit Findings
+- ✅ Deliverable 1: Event Tracking Schema - FIXED
+- ✅ Deliverable 2: Event Logging Utilities - FIXED
+- ✅ Deliverable 3: Tracking Insertion Points - FIXED
+
+## `PHASE_4_AUDIT_RESPONSE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Response to Audit Findings
+- Issue 1: "Source field not populated"
+- Issue 2: "Dealer ID constraint blocks inserts"
+- Issue 3: "Session management broken"
+- Issue 4: "Payload validation shallow"
+
+## `PHASE_4_AUDIT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. VERIFY: MCP → UVS → Dashboard Alignments
+- 1.1 MCP Server ✅ **PASS**
+- 2. VERIFY: Widget Uses UVS Structured Content Only
+- 2.1 Widget Data Loading ✅ **PASS**
+
+## `PHASE_4_AUDIT_FIXES.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Critical Issues Fixed
+- 1. FK Violation Bug - RESOLVED ✅
+- 2. PII Policy Compliance - RESOLVED ✅
+- 3. Materialized Views - RESOLVED ✅
+- 4. Missing Tracking Points - RESOLVED ✅
+
+## `PHASE_4_ALL_DEFECTS_RESOLVED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Real FK Constraints with Rejection
+- ✅ Defect 2: Removed Unused Event Types
+- ✅ Defect 3: Refresh Worker Implementation
+- ✅ Defect 4: Conversions Endpoint Consistency
+
+## `PHASE_4_ALL_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- ✅ Defect 1: Database-Level Constraints for Required IDs
+- Fix Implemented
+- ✅ Defect 2: Unified Tracking Utility
+- Fix Implemented
+
+## `PHASE_4_ALL_BLOCKING_DEFECTS_FIXED.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- ✅ Fixed: Referential Integrity Enforcement
+- ✅ Fixed: Non-Blocking Refresh Mechanism
+- ✅ Fixed: Conversions Endpoint Accepts dealer_id
+- ⚠️ Feature Gaps Documented
+
+## `OFFICIAL_APPS_SDK_SCHEMA_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. Official Documentation URLs
+- Primary Documentation:
+- 2. Schema File Location
+- Status: ⚠️ **Not Found in Package**
+
+## `MIGRATION_READY_TO_APPLY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Preparation Complete
+- What's Ready
+- 🚀 Next Steps: Apply Migration
+- Quick Method (Recommended)
+- Interactive Method
+
+## `MIGRATION_APPLY_AND_VERIFY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Step 1: Apply Migration in Supabase
+- Step 2: Verify FK Constraints
+- Step 3: Check for Orphaned Leads
+- Step 4: Run Automated Verification Script
+
+## `MCP_INSTRUMENTATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Changes Made
+- 1. Top-Level Crash Handlers ✅
+- 2. Express Error Middleware ✅
+- 3. Path Normalization ✅
+- 4. Reduced Noisy Logging ✅
+
+## `MCP_INGESTION_INVESTIGATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- 1. Railway Logs (16:39 UTC)
+- 2. Diagnostic Script Results
+- 3. UVS Schema Verification
+- Migration File Status
+
+## `MCP_INGESTION_500_INVESTIGATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- Status
+- 1. Railway Logs (16:39 UTC)
+- 2. Diagnostic Script
+- 3. UVS Schema Verification
+
+## `MCP_INGESTION_500_FINDINGS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- 1. Railway Logs Status
+- 2. Diagnostic Script
+- 3. UVS Schema Verification
+- 4. Code Changes Made
+
+## `MCP_BUILD_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Issue
+- Solution
+- ✅ Removed `.js` Extensions from Internal Imports
+- Files Modified
+- reqInfo.headers Issue
+
+## `MCP_BUILD_FIX_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Build Status: PASSING
+- Fixed Issues
+- 1. Router Type Inference (`widget-tracking.ts`)
+- 2. Context Type Mismatch (`index.ts`)
+- 3. UVS vs UnifiedVehicle Type Mismatch (`orchestrator.ts`)
+
+## `MCP_500_ERROR_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Ready to Investigate
+- Quick Start
+- 1. Railway Logs (16:39 UTC)
+- 2. Run Diagnostic Script
+- 3. Verify UVS Schema
+
+## `MCP_500_ERROR_INVESTIGATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Files Created
+- Task 1: Railway Logs (16:39 UTC)
+- How to Access Railway Logs
+- Expected Log Patterns
+
+## `MCP_500_ERROR_FINDINGS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Diagnostic Script Results
+- Results
+- 1. Health Check (`/mcp`)
+- 2. Fetch-and-Ingest Endpoint (`/api/ingest/marketcheck/fetch-and-ingest`)
+- 3. Direct Ingestion Endpoint (`/api/ingest/marketcheck`)
+
+## `MCP_500_DIAGNOSTIC_RESULTS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Diagnostic Script Results
+- Test Results
+- Test 1: Health Check
+- Test 2: Fetch-and-Ingest Endpoint
+- Test 3: Direct Ingestion Endpoint
+
+## `MARKETCHECK_PAGINATION_ISSUE_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Statement
+- What We've Done So Far
+- 1. Initial Investigation
+- 2. Root Cause Identified
+- 3. Pagination Implementation
+
+## `MARKDOWN_CONSOLIDATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 📊 Current State
+- 🎯 Proposed 10-File Structure
+- 📁 File Distribution
+- 1. README.md (4 files)
+- 2. CHANGELOG.md (~25 files)
+
+## `MARKDOWN_CONSOLIDATION_PROPOSAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Current File Distribution
+- By Location
+- By Category (Estimated)
+- Proposed 10-File Structure
+
+## `MARKDOWN_CONSOLIDATION_MAPPING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 1. README.md (Project Overview & Quick Start)
+- Files to Merge:
+- Content Priority:
+- 2. CHANGELOG.md (Release History & Roadmap)
+- Files to Merge:
+
+## `MANIFEST_SETUP_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- What Was Done
+- 1. ✅ Created Manifest Structure
+- 2. ✅ Updated Package.json
+- 3. ✅ Updated API Route
+- 4. ✅ Schema Synchronization
+
+## `INVESTIGATE_MCP_500_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Goal
+- Timeline
+- Task 1: Pull Railway Logs Around 16:39 UTC
+- Option A: Railway Dashboard (Easiest)
+- Option B: Railway CLI
+
+## `INVENTORY_SEARCH_INVESTIGATION_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Root Cause
+- Evidence
+- Database Query Results
+- Code Analysis
+- Fixes Applied
+
+## `INVENTORY_SEARCH_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Root Cause
+- Evidence
+- Database Queries
+- Coordinate Verification
+- Fixes Applied
+
+## `INGESTION_AUTOMATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Implementation Complete
+- Files Created/Modified
+- New Files
+- Modified Files
+- Key Features
+
+## `GET_RAILWAY_ERROR_STEPS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Ready to Capture Actual Error
+- Step 1: Open Railway Dashboard Logs
+- Step 2: Run Diagnostic Script (This Will Trigger the Error)
+- Step 3: Immediately Check Railway Logs
+- Step 4: Copy the ACTUAL Error
+
+## `FIX_SYNC_500_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem Summary
+- Root Cause
+- Quick Fix Steps
+- 1. Verify Railway Environment Variables
+- 2. Add Missing Supabase Config to Railway
+
+## `DEPLOY_VERCEL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Deploy via CLI
+- Step 2: Set Environment Variables
+- Step 3: Redeploy with Environment Variables
+- Step 4: Configure Supabase Redirect URLs
+- Step 5: Test
+
+## `DEPLOYMENT_STATUS_FINAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Situation
+- What Was Done
+- Next Steps
+- Verification
+
+## `DEPLOYMENT_STATUS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- ✅ Code Changes Deployed
+- Changes Included:
+- Deployment Method
+- ✅ Git Push Complete
+- Next Steps
+
+## `DEPLOYMENT_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Files Committed and Pushed
+- Git Commits
+- Current Status
+- Required Vercel Dashboard Configuration
+- Settings → General
+
+## `DEPLOYMENT_FINAL_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Summary
+- Latest Deployment
+- Configuration Applied
+- Current Status
+- Action Required: Clear Build Cache
+
+## `CHECK_RAILWAY_LOGS_NOW.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Direct Access
+- What to Look For (Around 16:39 UTC)
+- Search/Filter for:
+- Error Patterns:
+- Copy Here:
+
+## `CAPTURE_RAILWAY_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Tail Railway Logs
+- Option A: Railway CLI
+- Option B: Railway Dashboard
+- Step 2: Run Diagnostic Script
+- Step 3: Check Logs Again
+
+## `CAPTURE_ACTUAL_RAILWAY_ERROR.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Step 1: Prepare to Monitor Railway Logs
+- Railway Dashboard Method (Recommended)
+- Search Terms to Use:
+- Step 2: Run Diagnostic Script (This will trigger the error)
+- Step 3: Immediately Check Railway Logs
+
+## `APPS_SDK_SETUP_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- 1. pnpm Setup
+- Status: ✅ **Success**
+- 2. Apps SDK Installation Attempts
+- Status: ❌ **Package Not Found**
+
+## `APPS_SDK_MANIFEST_VALIDATION_REPORT.md`
+**Purpose**: 'Search Rock Hill GMC inventory and submit leads.',
+**Key Content**:
+- Executive Summary
+- Overall Status: **FAIL**
+- 1. Schema Sources Location
+- 1.1 Expected Manifest File
+- 1.2 Package.json Analysis
+
+## `scripts/README_MARKDOWN_UPDATER.md`
 **Purpose**: Documentation file
 **Key Content**:
 - Installation
@@ -1892,6 +3648,752 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 - Development Tools
 
 
+## App-Specific Documentation
+
+#
+#
+#
+#
+#
+#
+#
+#
+### `apps/dealer-dashboard/docs/TENANT_ISOLATION_MONITORING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Daily Detection Query
+- Expected Results
+- Incident Response Workflow
+- Step 1: Verify the Incident
+- Step 2: Determine Root Cause
+
+## `apps/dealer-dashboard/docs/INGESTION_AUTOMATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Server Action
+- Onboarding Trigger
+- Nightly Refresh
+- Setting Up Vercel Cron
+
+## `apps/dealer-dashboard/docs/APPLY_UVS_FK_MIGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Step 1: Apply Migration
+- Step 2: Verify Code Alignment
+- Step 3: Test Endpoints
+- Migration Details
+
+## `apps/dealer-dashboard/docs/ANALYTICS_REFRESH_WORKER.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Refresh Mechanisms
+- Option 1: Node.js Worker (Recommended for Development)
+- Running the Worker
+- Environment Variables
+
+## `apps/dealer-dashboard/docs/UVS_FK_ALIGNMENT_VERIFICATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Database Schema Verification
+- 1. Verify FK Constraints on Leads Table
+- 2. Verify FK Constraints on Analytics Events Table
+- API Endpoint Verification
+
+## `apps/dealer-dashboard/docs/TENANT_ISOLATION_MONITORING.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Daily Detection Query
+- Expected Results
+- Incident Response Workflow
+- Step 1: Verify the Incident
+- Step 2: Determine Root Cause
+
+## `apps/dealer-dashboard/docs/INGESTION_AUTOMATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Server Action
+- Onboarding Trigger
+- Nightly Refresh
+- Setting Up Vercel Cron
+
+## `apps/dealer-dashboard/docs/APPLY_UVS_FK_MIGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Step 1: Apply Migration
+- Step 2: Verify Code Alignment
+- Step 3: Test Endpoints
+- Migration Details
+
+## `apps/dealer-dashboard/docs/ANALYTICS_REFRESH_WORKER.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Refresh Mechanisms
+- Option 1: Node.js Worker (Recommended for Development)
+- Running the Worker
+- Environment Variables
+
+
+## Core Documentation Hub
+
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+### `docs/enhancements/INVALID_INVENTORY_MANAGEMENT_PROPOSAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Problem Statement
+- Proposed Solution
+- Architecture Overview
+- 1. Database Schema Changes
+
+## `docs/architecture/uvs.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Design Principles
+- Schema Structure
+- Field Naming Conventions
+- camelCase
+
+## `docs/analysis/vehicle-detail-modal-analysis.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Goal
+- 📊 Currently Stored in Database (UVS Schema)
+- ✅ **Base Identity** (Stored)
+- ✅ **Core Specs** (Stored)
+- ⚠️ **Dimensions & Performance** (Schema exists, but NOT populated from MarketCheck)
+
+## `docs/VERCEL_LOGS_ANALYSIS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Critical Issues
+- 1. **Inventory Page 500 Errors** 🔴
+- 2. **Missing Analytics Tables** 🟡
+- 3. **Analytics Validation Errors** 🟡
+
+## `docs/VERCEL_DEMO_ACCOUNT_SETUP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Option 1: Automated Setup (Recommended)
+- Option 2: Manual SQL Setup
+- Demo Credentials
+- What Gets Set Up
+
+## `docs/RECONCILED_MARKDOWN_STATUS_2026-02-24.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- Canonical Current State
+- Reconciliation Rules
+- Disposition Summary
+- Highest-Priority Contradictions Resolved
+
+## `docs/QUERY_PARSING_TEST_RESULTS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Cache + Rate Limit Validation
+- Test Execution Summary
+- ✅ Baseline Request
+- ✅ Cache Test
+- ⚠️ Rate Limit Test
+
+## `docs/QUERY_PARSING_TEST_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Cache + Rate Limit Validation
+- Test Script Created
+- How to Run Tests
+- Prerequisites
+- Run Full Test Suite
+
+## `docs/QUERY_PARSING_STAGE_4_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Query Parsing + Inventory Search Scale Preparation
+- Files Changed
+- 1. Query Parse API
+- 2. Documentation
+- Behavior Summary
+
+## `docs/QUERY_PARSING_STAGE_1_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- OpenAI Query Parsing API for iOS Inventory Search
+- Files Changed
+- 1. New API Route
+- 2. Dependencies
+- API Endpoint
+
+## `docs/QUERY_PARSING_STAGE_0_DISCOVERY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- OpenAI Query Parsing API for iOS Inventory Search
+- Files Read
+- Core API Files
+- iOS Files
+- Documentation
+
+## `docs/QUERY_PARSING_SCALE_PREP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Caching, Rate Limiting, and Database Optimization
+- Overview
+- 1. Query Parse Caching Strategy
+- Implementation
+- Cache Behavior
+
+## `docs/QUERY_PARSING_PRODUCTION_TEST_REPORT.md`
+**Purpose**: '...' },
+**Key Content**:
+- Test Results
+- ✅ Test 1: POST Request (Valid API Key)
+- ✅ Test 2: GET Request (Method Not Allowed)
+- ✅ Test 3: Rate Limiting
+- Test Summary
+
+## `docs/QUERY_PARSING_FIX_COMPLETE.md`
+**Purpose**: '...' },
+**Key Content**:
+- Fix Applied: Option A
+- Changes Made
+- Files Changed
+- Production Test Results
+- ✅ Test 1: POST Request (Valid API Key)
+
+## `docs/QUERY_PARSING_DEPLOYMENT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Actions Taken
+- 1. Git Commit
+- 2. Git Push
+- 3. Vercel Auto-Deployment
+- Next Steps
+
+## `docs/ONBOARDING_ISOLATION_HARDENING_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Changes Implemented
+- 1. Isolate Demo vs Production Data Paths
+- 2. Tighten `user_dealerships` Insert RLS
+- 3. Keep Signup Trigger Minimal and Auditable
+
+## `docs/MAPBOX_GEOCODING_NOTE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Configuration
+- Environment Variable
+- API Endpoint
+- Implementation Details
+
+## `docs/MAPBOX_GEOCODING_IMPLEMENTATION_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Files Changed
+- Backend
+- Documentation
+- Implementation Details
+
+## `docs/LOCATION_HANDLING_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- STAGE 1 — Backend (dealer-dashboard)
+- Files Changed
+- Geocoding Service
+- Example Parse Response with Location
+
+## `docs/IOS_LIVE_APP_PLAN.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Purpose
+- Scope
+- Why This Approach
+- Environments
+- Staging
+
+## `docs/EXPLICIT_FIELDS_IMPLEMENTATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deliverable
+- Files Changed
+- Implementation Summary
+- Test Response Snippets
+- Test 1: "cars near Rock Hill, SC"
+
+## `docs/EXPLICIT_FIELDS_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Implementation
+- Step 1: Updated Schema (OpenAI Structured Output)
+- Step 2: Updated System Prompt
+- Step 3: Updated Parsing Logic
+
+## `docs/DEFAULT_FILTER_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem
+- Solution
+- Changes Made
+- Files Changed
+- Cache Issue
+
+## `docs/06-LEAD-DELIVERY-CRM.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Lead Delivery Overview
+- Objective
+- Implementation Status
+- Current Notes
+
+## `docs/05-MARKETCHECK-INTEGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Current Status
+- Active Test Dealer
+- Previous Dealer
+- Implementation Status
+
+## `docs/04-TESTING-QUALITY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- ChatGPT Smoke Test Guide
+- Purpose
+- Prerequisites
+- Environment Prep
+
+## `docs/03-API-INTEGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- AutoAgent MCP API
+- Overview
+- Authentication
+- MCP Endpoints
+
+## `docs/02-DEPLOYMENT-INFRASTRUCTURE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Project Overview
+- Technical Stack
+- What to Deploy
+- Deployment Strategy
+
+## `docs/01-CORE-DOCUMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Project Overview
+- Key Capabilities
+- Architecture Snapshot
+- Quick Start Guide
+
+## `docs/lead_tool_contract.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Tool Name
+- Input Schema
+- Required Fields
+- Vehicle Identifiers (from UVS)
+
+## `docs/enhancements/INVALID_INVENTORY_MANAGEMENT_PROPOSAL.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Executive Summary
+- Problem Statement
+- Proposed Solution
+- Architecture Overview
+- 1. Database Schema Changes
+
+## `docs/architecture/uvs.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Design Principles
+- Schema Structure
+- Field Naming Conventions
+- camelCase
+
+## `docs/analysis/vehicle-detail-modal-analysis.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Goal
+- 📊 Currently Stored in Database (UVS Schema)
+- ✅ **Base Identity** (Stored)
+- ✅ **Core Specs** (Stored)
+- ⚠️ **Dimensions & Performance** (Schema exists, but NOT populated from MarketCheck)
+
+## `docs/VERCEL_LOGS_ANALYSIS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Critical Issues
+- 1. **Inventory Page 500 Errors** 🔴
+- 2. **Missing Analytics Tables** 🟡
+- 3. **Analytics Validation Errors** 🟡
+
+## `docs/VERCEL_DEMO_ACCOUNT_SETUP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Quick Start
+- Option 1: Automated Setup (Recommended)
+- Option 2: Manual SQL Setup
+- Demo Credentials
+- What Gets Set Up
+
+## `docs/RECONCILED_MARKDOWN_STATUS_2026-02-24.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Scope
+- Canonical Current State
+- Reconciliation Rules
+- Disposition Summary
+- Highest-Priority Contradictions Resolved
+
+## `docs/QUERY_PARSING_TEST_RESULTS.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Cache + Rate Limit Validation
+- Test Execution Summary
+- ✅ Baseline Request
+- ✅ Cache Test
+- ⚠️ Rate Limit Test
+
+## `docs/QUERY_PARSING_TEST_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Cache + Rate Limit Validation
+- Test Script Created
+- How to Run Tests
+- Prerequisites
+- Run Full Test Suite
+
+## `docs/QUERY_PARSING_STAGE_4_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Query Parsing + Inventory Search Scale Preparation
+- Files Changed
+- 1. Query Parse API
+- 2. Documentation
+- Behavior Summary
+
+## `docs/QUERY_PARSING_STAGE_1_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- OpenAI Query Parsing API for iOS Inventory Search
+- Files Changed
+- 1. New API Route
+- 2. Dependencies
+- API Endpoint
+
+## `docs/QUERY_PARSING_STAGE_0_DISCOVERY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- OpenAI Query Parsing API for iOS Inventory Search
+- Files Read
+- Core API Files
+- iOS Files
+- Documentation
+
+## `docs/QUERY_PARSING_SCALE_PREP.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Caching, Rate Limiting, and Database Optimization
+- Overview
+- 1. Query Parse Caching Strategy
+- Implementation
+- Cache Behavior
+
+## `docs/QUERY_PARSING_PRODUCTION_TEST_REPORT.md`
+**Purpose**: '...' },
+**Key Content**:
+- Test Results
+- ✅ Test 1: POST Request (Valid API Key)
+- ✅ Test 2: GET Request (Method Not Allowed)
+- ✅ Test 3: Rate Limiting
+- Test Summary
+
+## `docs/QUERY_PARSING_FIX_COMPLETE.md`
+**Purpose**: '...' },
+**Key Content**:
+- Fix Applied: Option A
+- Changes Made
+- Files Changed
+- Production Test Results
+- ✅ Test 1: POST Request (Valid API Key)
+
+## `docs/QUERY_PARSING_DEPLOYMENT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deployment Actions Taken
+- 1. Git Commit
+- 2. Git Push
+- 3. Vercel Auto-Deployment
+- Next Steps
+
+## `docs/MAPBOX_GEOCODING_NOTE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Overview
+- Configuration
+- Environment Variable
+- API Endpoint
+- Implementation Details
+
+## `docs/MAPBOX_GEOCODING_IMPLEMENTATION_COMPLETE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Files Changed
+- Backend
+- Documentation
+- Implementation Details
+
+## `docs/LOCATION_HANDLING_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- STAGE 1 — Backend (dealer-dashboard)
+- Files Changed
+- Geocoding Service
+- Example Parse Response with Location
+
+## `docs/IOS_LIVE_APP_PLAN.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Purpose
+- Scope
+- Why This Approach
+- Environments
+- Staging
+
+## `docs/EXPLICIT_FIELDS_IMPLEMENTATION_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Deliverable
+- Files Changed
+- Implementation Summary
+- Test Response Snippets
+- Test 1: "cars near Rock Hill, SC"
+
+## `docs/EXPLICIT_FIELDS_IMPLEMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Summary
+- Implementation
+- Step 1: Updated Schema (OpenAI Structured Output)
+- Step 2: Updated System Prompt
+- Step 3: Updated Parsing Logic
+
+## `docs/DEFAULT_FILTER_FIX_SUMMARY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Problem
+- Solution
+- Changes Made
+- Files Changed
+- Cache Issue
+
+## `docs/06-LEAD-DELIVERY-CRM.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Lead Delivery Overview
+- Objective
+- Implementation Status
+- Current Notes
+
+## `docs/05-MARKETCHECK-INTEGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Current Status
+- Active Test Dealer
+- Previous Dealer
+- Implementation Status
+
+## `docs/04-TESTING-QUALITY.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- ChatGPT Smoke Test Guide
+- Purpose
+- Prerequisites
+- Environment Prep
+
+## `docs/03-API-INTEGRATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- AutoAgent MCP API
+- Overview
+- Authentication
+- MCP Endpoints
+
+## `docs/02-DEPLOYMENT-INFRASTRUCTURE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Project Overview
+- Technical Stack
+- What to Deploy
+- Deployment Strategy
+
+## `docs/01-CORE-DOCUMENTATION.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Table of Contents
+- Project Overview
+- Key Capabilities
+- Architecture Snapshot
+- Quick Start Guide
+
+
+## Deployment Documentation
+
+#
+#
+#
+#
+#
+#
+### `docs/deployment/VERCEL_DEPLOYMENT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Prerequisites
+- Quick Deploy (Recommended)
+- Option 1: Deploy via Vercel Dashboard
+- Option 2: Deploy via Vercel CLI
+- Monorepo Configuration
+
+## `docs/deployment/QUICK_DEPLOY_GUIDE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🚀 Railway Deployment (MCP Server)
+- How to Deploy to Railway:
+- Verify Deployment:
+- Optional: Trigger Script
+- 🌐 Vercel Deployment (Dealer Dashboard)
+
+## `docs/deployment/LOGIN_HANG_FIX_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🔍 Root Cause Identified
+- Console Error Found
+- Network Request Analysis
+- ✅ Fixes Applied
+- 1. Improved Error Handling in Auth Page
+
+## `docs/deployment/VERCEL_DOMAIN_FIX.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Current Status
+- Issue
+- Solution: Configure via Vercel Dashboard
+- Step 1: Update Project Settings
+- Step 2: Verify Domain Configuration
+
+## `docs/deployment/VERCEL_DEPLOYMENT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- Prerequisites
+- Quick Deploy (Recommended)
+- Option 1: Deploy via Vercel Dashboard
+- Option 2: Deploy via Vercel CLI
+- Monorepo Configuration
+
+## `docs/deployment/QUICK_DEPLOY_GUIDE.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🚀 Railway Deployment (MCP Server)
+- How to Deploy to Railway:
+- Verify Deployment:
+- Optional: Trigger Script
+- 🌐 Vercel Deployment (Dealer Dashboard)
+
+## `docs/deployment/LOGIN_HANG_FIX_REPORT.md`
+**Purpose**: Documentation file
+**Key Content**:
+- 🔍 Root Cause Identified
+- Console Error Found
+- Network Request Analysis
+- ✅ Fixes Applied
+- 1. Improved Error Handling in Auth Page
+
+
 ## 📊 Summary Statistics
 
 - **Total Markdown Files**: 72
@@ -1954,6 +4456,6 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 
 ---
 
-**Last Updated**: 2025-11-17  
+**Last Updated**: 2026-03-17  
 **Total Files Analyzed**: 72
 

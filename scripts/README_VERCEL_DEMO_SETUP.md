@@ -4,11 +4,25 @@ This guide walks you through setting up a live demo account for the AutoAgent de
 
 **Dashboard URL**: https://autoagent-dealer-dashboard.vercel.app
 
+## ⚠️ IMPORTANT: Production Write Guard
+
+**All demo/seed scripts in this directory contain production write guards.**
+
+These scripts create demo data and should **NEVER** run against production databases. They will automatically block writes to production-like Supabase URLs (containing "prod", "production", "vercel", "live").
+
+**Recommendation**: Use a separate Supabase project or local instance for demo/testing.
+
+To override the guard (not recommended):
+```bash
+ALLOW_PROD_WRITE=true node scripts/setup-vercel-demo.js
+```
+
 ## Prerequisites
 
 - Access to Supabase Dashboard (project: `vqoawedqmeybbndvqxta`)
 - Supabase service role key (for automated setup)
 - Rock Hill GMC vehicles already in `inventory_vehicles` table
+- **Use a non-production Supabase project for demo setup**
 
 ## Option 1: Automated Setup (Recommended)
 
