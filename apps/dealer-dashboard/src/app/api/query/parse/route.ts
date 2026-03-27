@@ -861,7 +861,7 @@ Examples:
 
   try {
     const completion = await openai.beta.chat.completions.parse({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: query },
