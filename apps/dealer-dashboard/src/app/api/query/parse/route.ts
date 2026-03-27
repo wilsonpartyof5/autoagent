@@ -874,7 +874,7 @@ Examples:
           schema: responseSchema as any,
         },
       },
-      temperature: 0.1, // Low temperature for consistent parsing
+      // Note: gpt-5-mini only supports temperature=1 (default), so we omit the temperature parameter
     });
     
     interface ParsedResponse {
