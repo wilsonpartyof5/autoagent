@@ -99,6 +99,12 @@ function formatVehicleForResponse(vehicle: UnifiedVehicle): VehicleResponse | nu
     imagesLength: vehicle.media?.images?.length,
   });
   
+  // Extract photo URLs with proper fallback chain
+  const photoUrls = vehicle.media?.photoUrls as string[] | undefined;
+  const firstPhoto = photoUrls?.[0];
+  const thumbnailUrl = vehicle.media?.thumbnailUrl ?? firstPhoto;
+  const primaryPhotoUrl = vehicle.media?.primaryPhotoUrl ?? vehicle.media?.images?.[0]?.url ?? firstPhoto;
+  
   return {
     id: vehicle.id,
     year: vehicle.baseIdentity.year,
@@ -110,8 +116,8 @@ function formatVehicleForResponse(vehicle: UnifiedVehicle): VehicleResponse | nu
     msrp: vehicle.pricing.msrp ?? undefined,
     miles: vehicle.coreSpecs?.miles ?? undefined,
     bodyType: vehicle.coreSpecs?.bodyType ?? undefined,
-    thumbnailUrl: vehicle.media?.thumbnailUrl ?? undefined,
-    primaryPhotoUrl: vehicle.media?.primaryPhotoUrl ?? vehicle.media?.images?.[0]?.url ?? undefined,
+    thumbnailUrl: thumbnailUrl ?? undefined,
+    primaryPhotoUrl: primaryPhotoUrl ?? undefined,
     location: {
       latitude,
       longitude,
