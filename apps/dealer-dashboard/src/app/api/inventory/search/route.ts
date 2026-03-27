@@ -67,6 +67,7 @@ interface VehicleResponse {
   bodyType?: string;
   thumbnailUrl?: string;
   primaryPhotoUrl?: string;
+  photoUrls?: string[];
   location: {
     latitude: number;
     longitude: number;
@@ -118,6 +119,7 @@ function formatVehicleForResponse(vehicle: UnifiedVehicle): VehicleResponse | nu
     bodyType: vehicle.coreSpecs?.bodyType ?? undefined,
     thumbnailUrl: thumbnailUrl ?? undefined,
     primaryPhotoUrl: primaryPhotoUrl ?? undefined,
+    photoUrls: photoUrls ?? undefined,
     location: {
       latitude,
       longitude,
