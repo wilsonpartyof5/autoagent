@@ -86,6 +86,19 @@ function formatVehicleForResponse(vehicle: UnifiedVehicle): VehicleResponse | nu
     return null; // Skip vehicles without coordinates
   }
   
+  // Debug logging for media field
+  console.log('[formatVehicleForResponse] Vehicle media debug:', {
+    id: vehicle.id,
+    make: vehicle.baseIdentity.make,
+    model: vehicle.baseIdentity.model,
+    hasMedia: !!vehicle.media,
+    mediaKeys: vehicle.media ? Object.keys(vehicle.media) : [],
+    thumbnailUrl: vehicle.media?.thumbnailUrl,
+    primaryPhotoUrl: vehicle.media?.primaryPhotoUrl,
+    photoUrls: vehicle.media?.photoUrls,
+    imagesLength: vehicle.media?.images?.length,
+  });
+  
   return {
     id: vehicle.id,
     year: vehicle.baseIdentity.year,
