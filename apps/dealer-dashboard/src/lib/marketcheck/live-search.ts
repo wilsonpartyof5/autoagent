@@ -55,6 +55,26 @@ export interface LiveSearchFilters {
   maxPrice?: number;
   maxMiles?: number;
   condition?: 'new' | 'used' | 'certified';
+  /** Normalized body type e.g. "Truck", "SUV", "Sedan" — mapped to MarketCheck body_style */
+  bodyType?: string;
+}
+
+/** Map our normalized body type names to MarketCheck body_style values */
+function toMarketCheckBodyStyle(bodyType: string): string {
+  const map: Record<string, string> = {
+    'Truck': 'Pickup Truck',
+    'Pickup Truck': 'Pickup Truck',
+    'SUV': 'SUV',
+    'Sedan': 'Sedan',
+    'Coupe': 'Coupe',
+    'Van': 'Van',
+    'Minivan': 'Minivan',
+    'Wagon': 'Wagon',
+    'Hatchback': 'Hatchback',
+    'Convertible': 'Convertible',
+    'Sports Car': 'Sports Car',
+  };
+  return map[bodyType] ?? bodyType;
 }
 
 export interface LiveSearchParams {
@@ -468,6 +488,7 @@ function buildSearchUrl(params: LiveSearchParams, rows: number, start: number): 
   if (f.minPrice) sp.set('price_min', f.minPrice.toString());
   if (f.maxPrice) sp.set('price_max', f.maxPrice.toString());
   if (f.maxMiles) sp.set('miles_max', f.maxMiles.toString());
+  if (f.bodyType) sp.set('body_style', toMarketCheckBodyStyle(f.bodyType));
 
   return `${base}/v2/search/car/active?${sp.toString()}`;
 }

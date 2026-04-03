@@ -61,6 +61,7 @@ interface SearchRequest {
     maxYear?: number;
     maxMiles?: number;
     condition?: 'new' | 'used' | 'certified';
+    bodyType?: string;
     dealerId?: string;
   };
   pagination?: {
@@ -326,6 +327,7 @@ export async function POST(request: NextRequest) {
     if (body.filters?.maxPrice) filters.maxPrice = body.filters.maxPrice;
     if (body.filters?.maxMiles) filters.maxMiles = body.filters.maxMiles;
     if (body.filters?.condition) filters.condition = body.filters.condition;
+    if (body.filters?.bodyType) filters.bodyType = body.filters.bodyType;
 
     // Build a short query hash for log correlation
     queryHash = Buffer.from(

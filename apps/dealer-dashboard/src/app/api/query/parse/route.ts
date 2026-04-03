@@ -91,6 +91,7 @@ interface ParseResponse {
       maxYear?: number;
       maxMiles?: number;
       condition?: 'new' | 'used' | 'certified';
+      bodyType?: string;
     };
   };
   error?: {
@@ -409,6 +410,7 @@ function validateAndNormalize(
     maxYear?: number;
     maxMiles?: number;
     condition?: 'new' | 'used' | 'certified';
+    bodyType?: string;
   };
   parsedFields: string[];
 } {
@@ -423,6 +425,7 @@ function validateAndNormalize(
     maxYear?: number;
     maxMiles?: number;
     condition?: 'new' | 'used' | 'certified';
+    bodyType?: string;
   } = {};
   const parsedFields: string[] = [];
   
@@ -529,9 +532,10 @@ function validateAndNormalize(
     normalized.maxMiles = undefined;
   }
   
-  // Future fields (normalize for logging/future use, but don't include in API filters yet)
+  // bodyType — now a first-class filter passed to /api/inventory/search
   if (explicitSet.has('bodyType') && normalized.bodyType && normalized.bodyType !== null) {
     normalized.bodyType = normalizeBodyType(normalized.bodyType);
+    apiCompatible.bodyType = normalized.bodyType;
     parsedFields.push('bodyType');
   } else {
     normalized.bodyType = undefined;
