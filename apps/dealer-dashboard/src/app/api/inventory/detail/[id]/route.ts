@@ -105,6 +105,7 @@ interface MCListing {
   mileage?: number;
   media?: {
     photo_links?: string[];
+    photo_links_cached?: string[];
     primary_photo_url?: string;
     thumbnail?: { url?: string };
     video_url?: string;
@@ -141,6 +142,7 @@ interface MCListing {
 
 interface MCMedia {
   photo_links?: string[];
+  photo_links_cached?: string[];
   primary_photo_url?: string;
   thumbnail?: { url?: string };
   video_url?: string;
@@ -397,8 +399,14 @@ export async function GET(
   // -----------------------------------------------------------------------
   // Build merged photos list
   // -----------------------------------------------------------------------
-  const searchPhotos = detail?.media?.photo_links?.filter(Boolean) ?? [];
-  const enrichedPhotos = media?.photo_links?.filter(Boolean) ?? [];
+  const searchPhotos = [
+    ...(detail?.media?.photo_links_cached?.filter(Boolean) ?? []),
+    ...(detail?.media?.photo_links?.filter(Boolean) ?? []),
+  ];
+  const enrichedPhotos = [
+    ...(media?.photo_links_cached?.filter(Boolean) ?? []),
+    ...(media?.photo_links?.filter(Boolean) ?? []),
+  ];
   const allPhotos = [...new Set([...searchPhotos, ...enrichedPhotos])];
 
   const primaryPhoto =

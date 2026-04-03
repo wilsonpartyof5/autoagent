@@ -144,6 +144,8 @@ interface MarketCheckListing {
   mileage?: number;
   media?: {
     photo_links?: string[];
+    /** CDN / MarketCheck-hosted copies — often populated when dealer `photo_links` are empty */
+    photo_links_cached?: string[];
     primary_photo_url?: string;
     thumbnail?: { url?: string };
   };
@@ -268,9 +270,13 @@ function normalizeListing(listing: MarketCheckListing): LiveVehicle | null {
   const make = listing.build?.make ?? 'Unknown';
   const model = listing.build?.model ?? 'Vehicle';
 
-  const photoLinks = listing.media?.photo_links?.filter(Boolean) ?? [];
+  const dealerPhotos = listing.media?.photo_links?.filter(Boolean) ?? [];
+  const cachedPhotos = listing.media?.photo_links_cached?.filter(Boolean) ?? [];
+  const photoLinks = [...new Set([...cachedPhotos, ...dealerPhotos])];
   const primaryPhoto =
-    listing.media?.primary_photo_url ?? listing.media?.thumbnail?.url ?? photoLinks[0];
+    listing.media?.primary_photo_url ??
+    listing.media?.thumbnail?.url ??
+    photoLinks[0];
   const miles = listing.miles ?? listing.mileage;
 
   let condition: 'new' | 'used' | 'certified' = 'used';
@@ -708,6 +714,8 @@ function buildSearchUrl(params: LiveSearchParams, rows: number, start: number): 
   sp.set('radius', params.radiusMiles.toString());
   sp.set('rows', rows.toString());
   sp.set('start', start.toString());
+  // Ensure image URLs work when dealers block hotlinking; MC default is true but set explicitly
+  sp.set('append_api_key', 'true');
 
   const f = params.filters ?? {};
 
