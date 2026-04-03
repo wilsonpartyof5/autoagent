@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   searchLiveInventory,
   boundsToRadiusMiles,
+  MarketCheckQuotaError,
+  MarketCheckRateLimitError,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/live-search';
 
@@ -412,6 +414,25 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const totalMs = Date.now() - reqStart;
+
+    if (error instanceof MarketCheckQuotaError) {
+      console.error(JSON.stringify({ event: 'inventory_search_quota_exceeded', queryHash, totalMs }));
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message } },
+        { status: 503 },
+      );
+    }
+
+    if (error instanceof MarketCheckRateLimitError) {
+      console.error(JSON.stringify({ event: 'inventory_search_rate_limited', queryHash, totalMs, retryAfter: error.retryAfter }));
+      const res = NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message } },
+        { status: 429 },
+      );
+      if (error.retryAfter) res.headers.set('Retry-After', String(error.retryAfter));
+      return res;
+    }
+
     console.error(JSON.stringify({
       event: 'inventory_search_error',
       queryHash,

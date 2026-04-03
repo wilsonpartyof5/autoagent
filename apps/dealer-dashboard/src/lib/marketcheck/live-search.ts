@@ -11,11 +11,35 @@
  * - In-memory cache (5 min TTL) to reduce API spend
  * - MarketCheck pagination via `start` / `rows`
  * - Response normalization into VehicleResponse contract
+ * - Typed errors for quota (402) and rate-limit (429) so callers can surface them clearly
  */
 
 const MARKETCHECK_BASE_URL =
   process.env.MARKETCHECK_BASE_URL ?? 'https://marketcheck-prod.apigee.net';
 const MARKETCHECK_API_KEY = process.env.MARKETCHECK_API_KEY ?? '';
+
+// --------------------------------------------------------------------------
+// Typed errors
+// --------------------------------------------------------------------------
+
+export class MarketCheckQuotaError extends Error {
+  readonly code = 'MARKETCHECK_QUOTA_EXCEEDED';
+  constructor() {
+    super('Monthly MarketCheck API quota reached. Upgrade your plan to continue searching.');
+    this.name = 'MarketCheckQuotaError';
+  }
+}
+
+export class MarketCheckRateLimitError extends Error {
+  readonly code = 'MARKETCHECK_RATE_LIMITED';
+  /** Retry-After seconds suggested by the API, if provided */
+  readonly retryAfter?: number;
+  constructor(retryAfter?: number) {
+    super('Too many requests to MarketCheck. Please wait a moment and try again.');
+    this.name = 'MarketCheckRateLimitError';
+    this.retryAfter = retryAfter;
+  }
+}
 
 // --------------------------------------------------------------------------
 // Types
@@ -298,6 +322,28 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
+
+      if (response.status === 402) {
+        console.error(JSON.stringify({
+          event: 'mc_quota_exceeded',
+          status: 402,
+          body: errorBody.substring(0, 300),
+          latencyMs,
+        }));
+        throw new MarketCheckQuotaError();
+      }
+
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '60', 10);
+        console.error(JSON.stringify({
+          event: 'mc_rate_limited',
+          status: 429,
+          retryAfter,
+          latencyMs,
+        }));
+        throw new MarketCheckRateLimitError(retryAfter);
+      }
+
       console.error(JSON.stringify({
         event: 'mc_live_search_error',
         status: response.status,
@@ -339,6 +385,8 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
     }));
 
     setCache(cacheKey, result);
+    // Fire-and-forget usage tracking (non-blocking, failures ignored)
+    void trackUsage('search').catch(() => {});
     return result;
   } catch (error) {
     clearTimeout(timeoutId);
@@ -354,6 +402,35 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
 
     return { vehicles: [], numFound: 0, returned: 0, start, rows, fromCache: false, latencyMs };
   }
+}
+
+// --------------------------------------------------------------------------
+// Usage tracking (Supabase-backed, fire-and-forget)
+// --------------------------------------------------------------------------
+
+/**
+ * Increment the monthly MarketCheck call counter in Supabase.
+ * Uses upsert so the row is created automatically on first call of the month.
+ * Silently fails — tracking must never break search.
+ */
+async function trackUsage(callType: 'search' | 'detail'): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+
+  const monthKey = new Date().toISOString().substring(0, 7); // e.g. "2026-04"
+
+  // Use Supabase REST directly to avoid importing the full client in this module
+  await fetch(`${url}/rest/v1/rpc/mc_usage_increment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({ p_month: monthKey, p_call_type: callType }),
+    cache: 'no-store',
+  });
 }
 
 // --------------------------------------------------------------------------

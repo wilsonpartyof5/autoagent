@@ -178,6 +178,14 @@ interface MCDealer {
 // Per-endpoint fetch helpers
 // -------------------------------------------------------------------------
 
+export class DetailQuotaError extends Error {
+  readonly code = 'MARKETCHECK_QUOTA_EXCEEDED';
+  constructor() {
+    super('Monthly MarketCheck API quota reached. Upgrade your plan to continue.');
+    this.name = 'DetailQuotaError';
+  }
+}
+
 async function fetchJson<T>(url: string): Promise<T | null> {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), ENDPOINT_TIMEOUT_MS);
@@ -185,12 +193,21 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(tid);
     if (res.status === 404) return null;
+    if (res.status === 402) {
+      console.error(JSON.stringify({ event: 'mc_quota_exceeded', url: url.split('?')[0] }));
+      throw new DetailQuotaError();
+    }
+    if (res.status === 429) {
+      console.error(JSON.stringify({ event: 'mc_rate_limited', url: url.split('?')[0] }));
+      return null; // detail endpoint: degrade gracefully on rate limit
+    }
     if (!res.ok) {
       console.error(JSON.stringify({ event: 'mc_detail_fetch_error', url: url.split('?')[0], status: res.status }));
       return null;
     }
     return (await res.json()) as T;
   } catch (err) {
+    if (err instanceof DetailQuotaError) throw err;
     clearTimeout(tid);
     const isTimeout = err instanceof Error && err.name === 'AbortError';
     console.error(JSON.stringify({
@@ -200,6 +217,20 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     }));
     return null;
   }
+}
+
+/** Fire-and-forget usage tracking for detail calls */
+async function trackDetailUsage(): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+  const monthKey = new Date().toISOString().substring(0, 7);
+  await fetch(`${url}/rest/v1/rpc/mc_usage_increment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ p_month: monthKey, p_call_type: 'detail' }),
+    cache: 'no-store',
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -271,6 +302,8 @@ export async function GET(
     );
   }
 
+  try {
+
   if (!validateApiKey(request)) {
     return NextResponse.json(
       {
@@ -311,6 +344,9 @@ export async function GET(
   // -----------------------------------------------------------------------
   const key = `api_key=${MARKETCHECK_API_KEY}`;
   const base = MARKETCHECK_BASE_URL;
+
+  // Fire-and-forget usage tracking (4 parallel sub-calls count as 1 detail call)
+  void trackDetailUsage().catch(() => {});
 
   const [detail, mediaWrapper, extra, dealerWrapper] = await Promise.all([
     fetchJson<MCListing>(`${base}/v2/listing/car/${listingId}?${key}`),
@@ -486,4 +522,25 @@ export async function GET(
   }));
 
   return NextResponse.json({ success: true, data: response });
+
+  } catch (error) {
+    const latencyMs = Date.now() - reqStart;
+    if (error instanceof DetailQuotaError) {
+      console.error(JSON.stringify({ event: 'mc_detail_quota_exceeded', listingId, latencyMs }));
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message } },
+        { status: 503 },
+      );
+    }
+    console.error(JSON.stringify({
+      event: 'mc_detail_error',
+      listingId,
+      latencyMs,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'An error occurred fetching vehicle details.' } },
+      { status: 500 },
+    );
+  }
 }
