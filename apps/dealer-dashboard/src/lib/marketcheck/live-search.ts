@@ -307,6 +307,92 @@ function normalizeListing(listing: MarketCheckListing): LiveVehicle | null {
 // Client-side post-filtering
 // --------------------------------------------------------------------------
 
+/** True when user asked for pickups / trucks (normalized label from OpenAI). */
+function isTruckBodyFilter(bodyType: string): boolean {
+  const b = bodyType.trim().toLowerCase();
+  return (
+    b === 'truck' ||
+    b === 'pickup' ||
+    b === 'pickup truck' ||
+    b.includes('pickup') ||
+    (b.includes('truck') && !b.includes('suv'))
+  );
+}
+
+/**
+ * Many MarketCheck listings omit `build.body_type`. When the user filters for
+ * trucks, we must not treat "missing body" as a pass-through — that lets every
+ * sedan through. Infer pickup from make/model/trim when body_type is absent.
+ */
+function vehicleLooksLikePickupTruck(v: LiveVehicle): boolean {
+  const blob = `${v.make} ${v.model} ${v.trim ?? ''}`.toLowerCase();
+
+  const truckTokens = [
+    'silverado',
+    'sierra',
+    'f-150',
+    'f-250',
+    'f-350',
+    'f-450',
+    'f150',
+    'f250',
+    'f350',
+    'super duty',
+    'ram 1500',
+    'ram 2500',
+    'ram 3500',
+    'ram pickup',
+    'ranger',
+    'tacoma',
+    'tundra',
+    'frontier',
+    'titan',
+    'ridgeline',
+    'colorado', // Chevy truck (not state — we only have make/model)
+    'canyon',
+    'maverick',
+    'gladiator',
+    'gmt400',
+    'c/k',
+    'pickup',
+  ];
+  if (truckTokens.some((t) => blob.includes(t))) return true;
+  if (/\bs10\b/.test(blob)) return true;
+
+  // Ram / Dodge full-size pickups
+  if (/\bram\b/.test(blob) && /\b(1500|2500|3500|4500|5500)\b/.test(blob)) return true;
+  if (/\bdodge\b/.test(blob) && /\bram\b/.test(blob)) return true;
+
+  return false;
+}
+
+function matchesBodyTypeFilter(v: LiveVehicle, requestedBodyType: string): boolean {
+  const requestedNorm = toMarketCheckBodyStyle(requestedBodyType).toLowerCase();
+  const actual = (v.bodyType ?? '').toLowerCase();
+
+  if (isTruckBodyFilter(requestedBodyType)) {
+    // Explicit non-pickup body types from API
+    if (
+      actual &&
+      (actual.includes('sedan') ||
+        actual.includes('coupe') ||
+        actual.includes('hatchback') ||
+        actual.includes('wagon') ||
+        (actual.includes('suv') && !actual.includes('pickup')) ||
+        actual.includes('minivan') ||
+        actual.includes('convertible'))
+    ) {
+      return false;
+    }
+    if (actual && (actual.includes('pickup') || actual.includes('truck'))) return true;
+    return vehicleLooksLikePickupTruck(v);
+  }
+
+  // Other body styles: use API field when present; if missing, do not exclude (avoid false negatives)
+  if (!actual) return true;
+  return actual.includes(requestedNorm) || requestedNorm.includes(actual);
+}
+
 /**
  * Apply search filters to already-normalized vehicles.
  *
@@ -336,12 +422,7 @@ function applyClientFilters(
 
     if (f.condition && v.condition !== f.condition) return false;
 
-    if (f.bodyType) {
-      const requested = toMarketCheckBodyStyle(f.bodyType).toLowerCase();
-      const actual = (v.bodyType ?? '').toLowerCase();
-      // Match loosely: "pickup truck" matches "pickup" or "truck" substrings
-      if (actual && !actual.includes(requested) && !requested.includes(actual)) return false;
-    }
+    if (f.bodyType && !matchesBodyTypeFilter(v, f.bodyType)) return false;
 
     return true;
   });
