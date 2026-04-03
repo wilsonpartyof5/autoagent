@@ -148,10 +148,23 @@ interface MCMedia {
 
 interface MCExtra {
   features?: string[];
-  options?: Array<{ name?: string; code?: string; description?: string }>;
+  options?: Array<{ name?: string; code?: string; description?: string } | string>;
   seller_comments?: string;
   description?: string;
   specifications?: Record<string, unknown>;
+}
+
+type DetailOption = { name?: string; code?: string; description?: string };
+
+function normalizeOptions(
+  raw: MCExtra['options'],
+): DetailOption[] | undefined {
+  if (!raw?.length) return undefined;
+  const first = raw[0];
+  if (typeof first === 'string') {
+    return raw.map((s) => (typeof s === 'string' ? { name: s } : {}));
+  }
+  return raw as DetailOption[];
 }
 
 interface MCDealer {
@@ -452,6 +465,9 @@ export async function GET(
   ].filter(Boolean);
   const dealerAddress = dealerAddressParts.length > 0 ? dealerAddressParts.join(', ') : undefined;
 
+  /** MarketCheck sometimes returns options as string[]; iOS expects { name, code }[] */
+  const normalizedOptions = normalizeOptions(extra?.options);
+
   const response: DetailResponse = {
     id: listingId,
     vin: detail?.vin,
@@ -475,7 +491,7 @@ export async function GET(
     sellerComments: extra?.seller_comments,
     description: extra?.description,
     features: allFeatures.length > 0 ? allFeatures : undefined,
-    options: extra?.options,
+    options: normalizedOptions,
     photoUrls: allPhotos.length > 0 ? allPhotos : undefined,
     videoUrl: media?.video_url ?? detail?.media?.video_url,
     daysOnMarket: detail?.dom,

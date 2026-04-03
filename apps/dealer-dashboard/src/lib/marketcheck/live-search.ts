@@ -433,19 +433,39 @@ function applyClientFilters(
 // --------------------------------------------------------------------------
 
 const SEARCH_TIMEOUT_MS = 8000;
+/** Max extra MarketCheck pages to pull when client-side filters thin out one page of results */
+const AGGREGATE_MAX_PAGES = 8;
+
+function hasActiveFilters(f?: LiveSearchFilters): boolean {
+  if (!f) return false;
+  return !!(
+    f.make ||
+    f.model ||
+    f.year != null ||
+    f.minYear != null ||
+    f.maxYear != null ||
+    f.minPrice != null ||
+    f.maxPrice != null ||
+    f.maxMiles != null ||
+    f.condition ||
+    f.bodyType
+  );
+}
+
+interface OnePageOptions {
+  /** When true, skip mc_usage_increment (caller tracks once, e.g. multi-page aggregate) */
+  suppressUsageTrack?: boolean;
+}
 
 /**
- * Perform a live MarketCheck inventory search.
- * Throws on configuration errors; returns empty result on upstream failures.
+ * Single MarketCheck page: fetch, normalize, post-filter, cache, optional usage track.
  */
-export async function searchLiveInventory(params: LiveSearchParams): Promise<LiveSearchResult> {
-  if (!MARKETCHECK_API_KEY) {
-    throw new Error('MARKETCHECK_API_KEY is not configured');
-  }
-
-  const rows = Math.min(params.rows ?? 50, 50);
-  const start = Math.max(params.start ?? 0, 0);
-
+async function searchLiveInventoryOnePage(
+  params: LiveSearchParams,
+  rows: number,
+  start: number,
+  options: OnePageOptions = {},
+): Promise<LiveSearchResult> {
   maybeEvictCache();
   const cacheKey = buildCacheKey({ ...params, rows, start });
   const cached = getCached(cacheKey);
@@ -507,9 +527,6 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
       .map(normalizeListing)
       .filter((v): v is LiveVehicle => v !== null);
 
-    // Post-filter on our side because MarketCheck's free tier ignores query params
-    // like year_min, price_max, and body_style. We enforce them here so users always
-    // get results that actually match what they asked for.
     const vehicles = applyClientFilters(normalized, params.filters);
 
     console.log(JSON.stringify({
@@ -538,13 +555,18 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
     };
 
     setCache(cacheKey, result);
-    // Fire-and-forget usage tracking (non-blocking, failures ignored)
-    void trackUsage('search').catch(() => {});
+    if (!options.suppressUsageTrack) {
+      void trackUsage('search').catch(() => {});
+    }
     return result;
   } catch (error) {
     clearTimeout(timeoutId);
     const latencyMs = Date.now() - t0;
     const isTimeout = error instanceof Error && error.name === 'AbortError';
+
+    if (error instanceof MarketCheckQuotaError || error instanceof MarketCheckRateLimitError) {
+      throw error;
+    }
 
     console.error(JSON.stringify({
       event: isTimeout ? 'mc_live_search_timeout' : 'mc_live_search_exception',
@@ -555,6 +577,92 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
 
     return { vehicles: [], numFound: 0, returned: 0, start, rows, fromCache: false, latencyMs };
   }
+}
+
+/**
+ * Perform a live MarketCheck inventory search.
+ * Throws on configuration errors; returns empty result on upstream failures.
+ *
+ * When filters are active and `start === 0`, automatically fetches additional
+ * pages (up to AGGREGATE_MAX_PAGES) until we fill `rows` post-filter matches or
+ * run out of listings — because one page of mixed inventory often yields only a
+ * handful of trucks after client-side filtering.
+ */
+export async function searchLiveInventory(params: LiveSearchParams): Promise<LiveSearchResult> {
+  if (!MARKETCHECK_API_KEY) {
+    throw new Error('MARKETCHECK_API_KEY is not configured');
+  }
+
+  const rows = Math.min(params.rows ?? 50, 50);
+  const start = Math.max(params.start ?? 0, 0);
+
+  // Pagination from client (page > 1): single upstream page only
+  if (start > 0 || !hasActiveFilters(params.filters)) {
+    return searchLiveInventoryOnePage(params, rows, start, {});
+  }
+
+  // First page + filters: aggregate multiple MC pages into one response
+  const aggKey = buildCacheKey({ ...params, rows, start: 0 });
+  const aggCached = getCached(aggKey);
+  if (aggCached) {
+    return { ...aggCached, fromCache: true, latencyMs: 0 };
+  }
+
+  const merged: LiveVehicle[] = [];
+  const seen = new Set<string>();
+  let curStart = 0;
+  let totalLatency = 0;
+  let numFound = 0;
+  let pagesFetched = 0;
+
+  for (let p = 0; p < AGGREGATE_MAX_PAGES && merged.length < rows; p++) {
+    const page = await searchLiveInventoryOnePage(params, rows, curStart, {
+      suppressUsageTrack: true,
+    });
+    pagesFetched += 1;
+    totalLatency += page.latencyMs;
+    numFound = page.numFound;
+
+    for (const v of page.vehicles) {
+      if (!seen.has(v.id)) {
+        seen.add(v.id);
+        merged.push(v);
+        if (merged.length >= rows) break;
+      }
+    }
+
+    if (merged.length >= rows) break;
+    if (page.returned === 0) break;
+    if (page.returned < rows) break;
+    curStart += page.returned;
+    if (numFound > 0 && curStart >= numFound) break;
+  }
+
+  const result: LiveSearchResult = {
+    vehicles: merged.slice(0, rows),
+    numFound,
+    returned: merged.length,
+    start: 0,
+    rows,
+    fromCache: false,
+    latencyMs: totalLatency,
+  };
+
+  console.log(JSON.stringify({
+    event: 'mc_live_search_aggregate',
+    lat: params.latitude.toFixed(4),
+    lng: params.longitude.toFixed(4),
+    radiusMiles: params.radiusMiles,
+    pagesFetched,
+    mergedCount: merged.length,
+    targetRows: rows,
+    filtersApplied: params.filters ?? null,
+    totalLatencyMs: totalLatency,
+  }));
+
+  setCache(aggKey, result);
+  void trackUsage('search').catch(() => {});
+  return result;
 }
 
 // --------------------------------------------------------------------------
