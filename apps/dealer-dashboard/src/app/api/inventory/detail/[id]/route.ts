@@ -178,7 +178,7 @@ interface MCDealer {
 // Per-endpoint fetch helpers
 // -------------------------------------------------------------------------
 
-export class DetailQuotaError extends Error {
+class DetailQuotaError extends Error {
   readonly code = 'MARKETCHECK_QUOTA_EXCEEDED';
   constructor() {
     super('Monthly MarketCheck API quota reached. Upgrade your plan to continue.');
