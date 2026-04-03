@@ -198,6 +198,7 @@ function buildCacheKey(params: LiveSearchParams): string {
     f.maxPrice ?? '',
     f.maxMiles ?? '',
     f.condition ?? '',
+    f.bodyType ?? '',   // was missing — different body-type searches were sharing a cache entry
   ].join('|');
 }
 
@@ -303,6 +304,50 @@ function normalizeListing(listing: MarketCheckListing): LiveVehicle | null {
 }
 
 // --------------------------------------------------------------------------
+// Client-side post-filtering
+// --------------------------------------------------------------------------
+
+/**
+ * Apply search filters to already-normalized vehicles.
+ *
+ * MarketCheck's free tier does not honour filter query params (year_min,
+ * price_max, body_style, etc.) — it returns all nearby listings regardless.
+ * We enforce the requested filters here so the user always sees matching results.
+ */
+function applyClientFilters(
+  vehicles: LiveVehicle[],
+  filters?: LiveSearchFilters,
+): LiveVehicle[] {
+  if (!filters) return vehicles;
+  const f = filters;
+
+  return vehicles.filter((v) => {
+    if (f.make && v.make.toLowerCase() !== f.make.toLowerCase()) return false;
+    if (f.model && !v.model.toLowerCase().includes(f.model.toLowerCase())) return false;
+
+    if (f.year && v.year !== f.year) return false;
+    if (f.minYear && v.year < f.minYear) return false;
+    if (f.maxYear && v.year > f.maxYear) return false;
+
+    if (f.minPrice && v.price < f.minPrice) return false;
+    if (f.maxPrice && v.price > f.maxPrice) return false;
+
+    if (f.maxMiles !== undefined && v.miles !== undefined && v.miles > f.maxMiles) return false;
+
+    if (f.condition && v.condition !== f.condition) return false;
+
+    if (f.bodyType) {
+      const requested = toMarketCheckBodyStyle(f.bodyType).toLowerCase();
+      const actual = (v.bodyType ?? '').toLowerCase();
+      // Match loosely: "pickup truck" matches "pickup" or "truck" substrings
+      if (actual && !actual.includes(requested) && !requested.includes(actual)) return false;
+    }
+
+    return true;
+  });
+}
+
+// --------------------------------------------------------------------------
 // Public search function
 // --------------------------------------------------------------------------
 
@@ -377,19 +422,14 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
     const listings = data.listings ?? [];
     const numFound = data.num_found ?? 0;
 
-    const vehicles = listings
+    const normalized = listings
       .map(normalizeListing)
       .filter((v): v is LiveVehicle => v !== null);
 
-    const result: LiveSearchResult = {
-      vehicles,
-      numFound,
-      returned: listings.length,
-      start,
-      rows,
-      fromCache: false,
-      latencyMs,
-    };
+    // Post-filter on our side because MarketCheck's free tier ignores query params
+    // like year_min, price_max, and body_style. We enforce them here so users always
+    // get results that actually match what they asked for.
+    const vehicles = applyClientFilters(normalized, params.filters);
 
     console.log(JSON.stringify({
       event: 'mc_live_search_complete',
@@ -400,9 +440,21 @@ export async function searchLiveInventory(params: LiveSearchParams): Promise<Liv
       start,
       numFound,
       returned: listings.length,
-      filtered: vehicles.length,
+      normalized: normalized.length,
+      afterClientFilter: vehicles.length,
+      filtersApplied: params.filters ?? null,
       latencyMs,
     }));
+
+    const result: LiveSearchResult = {
+      vehicles,
+      numFound,
+      returned: listings.length,
+      start,
+      rows,
+      fromCache: false,
+      latencyMs,
+    };
 
     setCache(cacheKey, result);
     // Fire-and-forget usage tracking (non-blocking, failures ignored)
