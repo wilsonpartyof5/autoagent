@@ -1,29 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchUVSVehiclesByBounds } from '@/lib/db/uvs-vehicles';
-import type { UnifiedVehicle } from '@autoagent/shared';
+import {
+  searchLiveInventory,
+  boundsToRadiusMiles,
+  type LiveSearchFilters,
+} from '@/lib/marketcheck/live-search';
 
 /**
  * POST /api/inventory/search
- * 
- * Inventory Search API for iOS app
- * 
+ *
+ * Live MarketCheck Inventory Search — MVP consumer discovery mode.
+ * Does NOT require any dealership to be signed up.
+ *
  * Request JSON:
  * {
  *   "bounds": { "north": 34.9855, "south": 34.9123, "east": -80.9234, "west": -81.0123 },
  *   "filters": { "minPrice": 20000, "maxPrice": 80000, "make": "GMC", "model": "Sierra", "condition": "new" },
- *   "pagination": { "page": 1, "limit": 8 },
- *   "userLocation": { "latitude": 34.95, "longitude": -80.98 }
+ *   "pagination": { "page": 1, "limit": 25 },
+ *   "userLocation": { "latitude": 34.95, "longitude": -80.98 }  // strongly recommended
  * }
- * 
+ *
  * Response JSON:
  * {
  *   "success": true,
  *   "data": {
  *     "vehicles": [...],
- *     "pagination": { "page": 1, "limit": 8, "total": 232, "totalPages": 29, "hasNextPage": true, "hasPreviousPage": false }
+ *     "pagination": { "page": 1, "limit": 25, "total": 232, "totalPages": 10, "hasNextPage": true, "hasPreviousPage": false }
  *   }
  * }
  */
+
+// -------------------------------------------------------------------------
+// Constants / Config
+// -------------------------------------------------------------------------
+
+const MAX_ROWS = 50;
+const DEFAULT_ROWS = 25;
+// Maximum page depth allowed (prevents deep & expensive pagination)
+const MAX_PAGE = 20;
+
+// -------------------------------------------------------------------------
+// Request / Response types
+// -------------------------------------------------------------------------
 
 interface SearchRequest {
   bounds: {
@@ -56,6 +73,7 @@ interface SearchRequest {
 
 interface VehicleResponse {
   id: string;
+  vin?: string;
   year: number;
   make: string;
   model: string;
@@ -75,90 +93,34 @@ interface VehicleResponse {
     dealerCity?: string;
     dealerState?: string;
   };
-  vin?: string;
 }
 
-function formatVehicleForResponse(vehicle: UnifiedVehicle): VehicleResponse | null {
-  // Ensure coordinates exist
-  const latitude = vehicle.location?.dealer?.latitude;
-  const longitude = vehicle.location?.dealer?.longitude;
-  
-  if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) {
-    return null; // Skip vehicles without coordinates
-  }
-  
-  // Debug logging for media field
-  console.log('[formatVehicleForResponse] Vehicle media debug:', {
-    id: vehicle.id,
-    make: vehicle.baseIdentity.make,
-    model: vehicle.baseIdentity.model,
-    hasMedia: !!vehicle.media,
-    mediaKeys: vehicle.media ? Object.keys(vehicle.media) : [],
-    thumbnailUrl: vehicle.media?.thumbnailUrl,
-    primaryPhotoUrl: vehicle.media?.primaryPhotoUrl,
-    photoUrls: vehicle.media?.photoUrls,
-    imagesLength: vehicle.media?.images?.length,
-  });
-  
-  // Extract photo URLs with proper fallback chain
-  const photoUrls = vehicle.media?.photoUrls as string[] | undefined;
-  const firstPhoto = photoUrls?.[0];
-  const thumbnailUrl = vehicle.media?.thumbnailUrl ?? firstPhoto;
-  const primaryPhotoUrl = vehicle.media?.primaryPhotoUrl ?? vehicle.media?.images?.[0]?.url ?? firstPhoto;
-  
-  return {
-    id: vehicle.id,
-    year: vehicle.baseIdentity.year,
-    make: vehicle.baseIdentity.make,
-    model: vehicle.baseIdentity.model,
-    trim: vehicle.baseIdentity.trim,
-    condition: vehicle.condition,
-    price: vehicle.pricing.price,
-    msrp: vehicle.pricing.msrp ?? undefined,
-    miles: vehicle.coreSpecs?.miles ?? undefined,
-    bodyType: vehicle.coreSpecs?.bodyType ?? undefined,
-    thumbnailUrl: thumbnailUrl ?? undefined,
-    primaryPhotoUrl: primaryPhotoUrl ?? undefined,
-    photoUrls: photoUrls ?? undefined,
-    location: {
-      latitude,
-      longitude,
-      dealerName: vehicle.location.dealer.name,
-      dealerCity: vehicle.location.dealer.city ?? undefined,
-      dealerState: vehicle.location.dealer.state ?? undefined,
-    },
-    vin: vehicle.baseIdentity.vin ?? undefined,
-  };
-}
+// -------------------------------------------------------------------------
+// Auth
+// -------------------------------------------------------------------------
 
 function validateApiKey(request: NextRequest): boolean {
   const apiKey = process.env.INVENTORY_SEARCH_API_KEY;
-  
-  if (!apiKey) {
-    return false; // API key not configured
-  }
-  
-  // Check x-api-key header
+  if (!apiKey) return false;
+
   const headerKey = request.headers.get('x-api-key');
-  if (headerKey === apiKey) {
-    return true;
-  }
-  
-  // Check Authorization: Bearer header
+  if (headerKey === apiKey) return true;
+
   const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    if (token === apiKey) {
-      return true;
-    }
-  }
-  
+  if (authHeader?.startsWith('Bearer ') && authHeader.substring(7) === apiKey) return true;
+
   return false;
 }
 
+// -------------------------------------------------------------------------
+// Route handler
+// -------------------------------------------------------------------------
+
 export async function POST(request: NextRequest) {
+  const reqStart = Date.now();
+  let queryHash = '';
+
   try {
-    // Validate API key
     if (!validateApiKey(request)) {
       return NextResponse.json(
         {
@@ -168,124 +130,122 @@ export async function POST(request: NextRequest) {
             message: 'Invalid or missing API key. Provide x-api-key header or Authorization: Bearer <key>',
           },
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
-    
-    // Parse request body
+
+    // -----------------------------------------------------------------------
+    // Parse body
+    // -----------------------------------------------------------------------
     let body: SearchRequest;
     try {
       body = await request.json();
-    } catch (error) {
+    } catch {
       return NextResponse.json(
         {
           success: false,
-          error: {
-            code: 'INVALID_REQUEST',
-            message: 'Invalid JSON in request body',
-          },
+          error: { code: 'INVALID_REQUEST', message: 'Invalid JSON in request body' },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    
+
+    // -----------------------------------------------------------------------
     // Validate bounds (required)
+    // -----------------------------------------------------------------------
     if (!body.bounds || typeof body.bounds !== 'object') {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'INVALID_BOUNDS',
-            message: 'Bounds are required and must include north, south, east, and west values',
+            message: 'bounds are required (north, south, east, west)',
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    
+
     const { north, south, east, west } = body.bounds;
-    
+
     if (
       typeof north !== 'number' ||
       typeof south !== 'number' ||
       typeof east !== 'number' ||
       typeof west !== 'number' ||
-      isNaN(north) ||
-      isNaN(south) ||
-      isNaN(east) ||
-      isNaN(west)
+      isNaN(north) || isNaN(south) || isNaN(east) || isNaN(west)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: 'INVALID_BOUNDS', message: 'Bounds must be valid numbers (north, south, east, west)' },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (north <= south || east <= west) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: 'INVALID_BOUNDS', message: 'Invalid bounds: north must be > south, east must be > west' },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (north > 90 || south < -90 || east > 180 || west < -180) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: 'INVALID_BOUNDS', message: 'Bounds out of valid range: latitude [-90, 90], longitude [-180, 180]' },
+        },
+        { status: 400 },
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Location gating
+    // Location is required for useful live results. Prefer explicit
+    // userLocation; fall back to bounds center. If neither resolves to a
+    // plausible area, ask the client to provide one.
+    // -----------------------------------------------------------------------
+    const boundsCenter = {
+      latitude: (north + south) / 2,
+      longitude: (east + west) / 2,
+    };
+
+    const searchCenter = body.userLocation ?? boundsCenter;
+
+    // Reject zero-island (0, 0) centers that slip through — no inventory there
+    if (
+      Math.abs(searchCenter.latitude) < 0.01 &&
+      Math.abs(searchCenter.longitude) < 0.01
     ) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'INVALID_BOUNDS',
-            message: 'Bounds must be valid numbers (north, south, east, west)',
+            code: 'LOCATION_REQUIRED',
+            message:
+              'A valid location is required to search inventory. Please enable location services or enter a ZIP code / city name.',
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    
-    // Validate bounds logic
-    if (north <= south || east <= west) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_BOUNDS',
-            message: 'Invalid bounds: north must be > south, east must be > west',
-          },
-        },
-        { status: 400 }
-      );
-    }
-    
-    // Validate latitude/longitude ranges
-    if (north > 90 || south < -90 || east > 180 || west < -180) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_BOUNDS',
-            message: 'Bounds out of valid range: latitude [-90, 90], longitude [-180, 180]',
-          },
-        },
-        { status: 400 }
-      );
-    }
-    
-    // Validate pagination
-    const page = body.pagination?.page ?? 1;
-    const limit = Math.min(Math.max(body.pagination?.limit ?? 8, 1), 50); // Default 8, min 1, max 50
-    
-    if (page < 1) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_PAGINATION',
-            message: 'Page must be >= 1',
-          },
-        },
-        { status: 400 }
-      );
-    }
-    
-    const offset = (page - 1) * limit;
-    
+
+    // -----------------------------------------------------------------------
     // Validate userLocation if provided
+    // -----------------------------------------------------------------------
     if (body.userLocation) {
       const { latitude, longitude } = body.userLocation;
       if (
         typeof latitude !== 'number' ||
         typeof longitude !== 'number' ||
-        isNaN(latitude) ||
-        isNaN(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
+        isNaN(latitude) || isNaN(longitude) ||
+        latitude < -90 || latitude > 90 ||
+        longitude < -180 || longitude > 180
       ) {
         return NextResponse.json(
           {
@@ -295,166 +255,155 @@ export async function POST(request: NextRequest) {
               message: 'userLocation must have valid latitude [-90, 90] and longitude [-180, 180]',
             },
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
-    
-    // Validate filters if provided
+
+    // -----------------------------------------------------------------------
+    // Validate pagination — cap page depth to avoid expensive deep fetches
+    // -----------------------------------------------------------------------
+    const page = Math.max(body.pagination?.page ?? 1, 1);
+    const limit = Math.min(Math.max(body.pagination?.limit ?? DEFAULT_ROWS, 1), MAX_ROWS);
+
+    if (page > MAX_PAGE) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_PAGINATION',
+            message: `Page must be <= ${MAX_PAGE} for live inventory search`,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validate filters
+    // -----------------------------------------------------------------------
     if (body.filters) {
       const { minPrice, maxPrice, year, minYear, maxYear, maxMiles } = body.filters;
-      
-      if (minPrice !== undefined && (typeof minPrice !== 'number' || minPrice < 0)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'minPrice must be a non-negative number',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (maxPrice !== undefined && (typeof maxPrice !== 'number' || maxPrice < 0)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'maxPrice must be a non-negative number',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'minPrice must be <= maxPrice',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (year !== undefined && (typeof year !== 'number' || year < 1900 || year > 2100)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'year must be a valid year between 1900 and 2100',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (minYear !== undefined && (typeof minYear !== 'number' || minYear < 1900 || minYear > 2100)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'minYear must be a valid year between 1900 and 2100',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (maxYear !== undefined && (typeof maxYear !== 'number' || maxYear < 1900 || maxYear > 2100)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'maxYear must be a valid year between 1900 and 2100',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (minYear !== undefined && maxYear !== undefined && minYear > maxYear) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'minYear must be <= maxYear',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (maxMiles !== undefined && (typeof maxMiles !== 'number' || maxMiles < 0)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'maxMiles must be a non-negative number',
-            },
-          },
-          { status: 400 }
-        );
-      }
-      
-      if (body.filters.condition && !['new', 'used', 'certified'].includes(body.filters.condition)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'INVALID_FILTERS',
-              message: 'condition must be one of: new, used, certified',
-            },
-          },
-          { status: 400 }
-        );
-      }
+
+      if (minPrice !== undefined && (typeof minPrice !== 'number' || minPrice < 0))
+        return badFilter('minPrice must be a non-negative number');
+      if (maxPrice !== undefined && (typeof maxPrice !== 'number' || maxPrice < 0))
+        return badFilter('maxPrice must be a non-negative number');
+      if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice)
+        return badFilter('minPrice must be <= maxPrice');
+
+      if (year !== undefined && (typeof year !== 'number' || year < 1900 || year > 2100))
+        return badFilter('year must be between 1900 and 2100');
+      if (minYear !== undefined && (typeof minYear !== 'number' || minYear < 1900 || minYear > 2100))
+        return badFilter('minYear must be between 1900 and 2100');
+      if (maxYear !== undefined && (typeof maxYear !== 'number' || maxYear < 1900 || maxYear > 2100))
+        return badFilter('maxYear must be between 1900 and 2100');
+      if (minYear !== undefined && maxYear !== undefined && minYear > maxYear)
+        return badFilter('minYear must be <= maxYear');
+
+      if (maxMiles !== undefined && (typeof maxMiles !== 'number' || maxMiles < 0))
+        return badFilter('maxMiles must be a non-negative number');
+
+      if (body.filters.condition && !['new', 'used', 'certified'].includes(body.filters.condition))
+        return badFilter('condition must be one of: new, used, certified');
     }
-    
-    // Perform search
-    const searchResult = await searchUVSVehiclesByBounds({
-      bounds: {
-        north,
-        south,
-        east,
-        west,
-      },
-      userLocation: body.userLocation,
-      filters: body.filters,
+
+    // -----------------------------------------------------------------------
+    // Build live-search params
+    // -----------------------------------------------------------------------
+    const radiusMiles = boundsToRadiusMiles({ north, south, east, west });
+    const start = (page - 1) * limit;
+
+    const filters: LiveSearchFilters = {};
+    if (body.filters?.make) filters.make = body.filters.make;
+    if (body.filters?.model) filters.model = body.filters.model;
+    if (body.filters?.year) filters.year = body.filters.year;
+    if (body.filters?.minYear) filters.minYear = body.filters.minYear;
+    if (body.filters?.maxYear) filters.maxYear = body.filters.maxYear;
+    if (body.filters?.minPrice) filters.minPrice = body.filters.minPrice;
+    if (body.filters?.maxPrice) filters.maxPrice = body.filters.maxPrice;
+    if (body.filters?.maxMiles) filters.maxMiles = body.filters.maxMiles;
+    if (body.filters?.condition) filters.condition = body.filters.condition;
+
+    // Build a short query hash for log correlation
+    queryHash = Buffer.from(
+      `${searchCenter.latitude.toFixed(3)},${searchCenter.longitude.toFixed(3)},${radiusMiles},${start},${limit},${JSON.stringify(filters)}`,
+    )
+      .toString('base64')
+      .substring(0, 12);
+
+    console.log(JSON.stringify({
+      event: 'inventory_search_start',
+      queryHash,
+      lat: searchCenter.latitude.toFixed(4),
+      lng: searchCenter.longitude.toFixed(4),
+      radiusMiles,
+      page,
       limit,
-      offset,
+      start,
+      hasFilters: Object.keys(filters).length > 0,
+      locationMode: body.userLocation ? 'gps' : 'bounds_center',
+    }));
+
+    // -----------------------------------------------------------------------
+    // Perform live search
+    // -----------------------------------------------------------------------
+    const searchResult = await searchLiveInventory({
+      latitude: searchCenter.latitude,
+      longitude: searchCenter.longitude,
+      radiusMiles,
+      filters,
+      rows: limit,
+      start,
     });
-    
-    // Format vehicles for response (exclude those without coordinates)
-    const formattedVehicles = searchResult.vehicles
-      .map(formatVehicleForResponse)
-      .filter((v): v is VehicleResponse => v !== null);
-    
-    // Calculate pagination metadata
-    const total = searchResult.total;
-    const totalPages = Math.ceil(total / limit);
+
+    // -----------------------------------------------------------------------
+    // Map to response contract
+    // -----------------------------------------------------------------------
+    const vehicles: VehicleResponse[] = searchResult.vehicles.map((v) => ({
+      id: v.id,
+      vin: v.vin,
+      year: v.year,
+      make: v.make,
+      model: v.model,
+      trim: v.trim,
+      condition: v.condition,
+      price: v.price,
+      msrp: v.msrp,
+      miles: v.miles,
+      bodyType: v.bodyType,
+      thumbnailUrl: v.thumbnailUrl,
+      primaryPhotoUrl: v.primaryPhotoUrl,
+      photoUrls: v.photoUrls,
+      location: v.location,
+    }));
+
+    // Use numFound from MarketCheck when available, otherwise use returned count
+    const total = searchResult.numFound > 0 ? searchResult.numFound : vehicles.length;
+    const cappedTotal = Math.min(total, MAX_PAGE * limit); // cap estimate to avoid UI confusion
+    const totalPages = Math.ceil(cappedTotal / limit);
     const hasNextPage = page < totalPages;
     const hasPreviousPage = page > 1;
-    
+
+    const totalMs = Date.now() - reqStart;
+    console.log(JSON.stringify({
+      event: 'inventory_search_complete',
+      queryHash,
+      vehicles: vehicles.length,
+      total,
+      fromCache: searchResult.fromCache,
+      upstreamLatencyMs: searchResult.latencyMs,
+      totalMs,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
-        vehicles: formattedVehicles,
+        vehicles,
         pagination: {
           page,
           limit,
-          total,
+          total: cappedTotal,
           totalPages,
           hasNextPage,
           hasPreviousPage,
@@ -462,17 +411,39 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[inventory-search] Error:', error);
+    const totalMs = Date.now() - reqStart;
+    console.error(JSON.stringify({
+      event: 'inventory_search_error',
+      queryHash,
+      totalMs,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+
     return NextResponse.json(
       {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: error instanceof Error ? error.message : 'Internal server error',
+          message:
+            process.env.NODE_ENV === 'production'
+              ? 'An error occurred while searching inventory. Please try again.'
+              : error instanceof Error
+                ? error.message
+                : 'Internal server error',
         },
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
+// -------------------------------------------------------------------------
+// Helpers
+// -------------------------------------------------------------------------
+
+function badFilter(message: string): NextResponse {
+  return NextResponse.json(
+    { success: false, error: { code: 'INVALID_FILTERS', message } },
+    { status: 400 },
+  );
+}
