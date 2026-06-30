@@ -9,6 +9,7 @@ import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
+import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -62,6 +63,106 @@ function enrichVehicleForStructuredContent(vehicle: UnifiedVehicle | Record<stri
   };
 }
 
+type SearchVehiclesData = {
+  content: { type: string; text: string; }[];
+  vehicles?: unknown[];
+  totalCount?: number;
+  searchParams?: unknown;
+  structuredContent?: unknown;
+  components: { type: string; url: string; }[];
+};
+
+function buildVehicleResultsUrl(runId: string): string {
+  const widgetHost = getWidgetHost();
+  const isDiag = CONFIG.diagnosticsEnabled;
+
+  try {
+    const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
+      ? widgetHost
+      : `https://${widgetHost}`;
+    const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
+    widgetUrl.searchParams.set('rid', runId);
+    if (isDiag) {
+      widgetUrl.searchParams.set('diag', '1');
+    }
+    return widgetUrl.toString();
+  } catch (urlError) {
+    console.error(JSON.stringify({
+      event: 'url_construction_error',
+      widgetHost,
+      error: urlError instanceof Error ? urlError.message : 'Unknown error',
+    }));
+    return `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
+  }
+}
+
+function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
+  return {
+    location: searchParams.location,
+    condition: searchParams.condition,
+    maxPrice: searchParams.maxPrice,
+    make: searchParams.make,
+    model: searchParams.model,
+    radiusMiles: searchParams.radiusMiles,
+    bodyStyle: searchParams.bodyStyle,
+    mileageMax: searchParams.mileageMax,
+  };
+}
+
+function normalizeBridgeSearchResult(
+  upstreamResult: unknown,
+  searchParams: SearchParams,
+  runId: string
+): SearchVehiclesData {
+  const bridge = upstreamResult as {
+    content?: unknown;
+    structuredContent?: unknown;
+    components?: unknown;
+    vehicles?: unknown[];
+    totalCount?: number;
+  };
+
+  const structuredContent = bridge.structuredContent as
+    | { results?: { vehicles?: unknown[]; totalCount?: number; searchParams?: unknown } }
+    | undefined;
+  const structuredResults = structuredContent?.results;
+  const vehicles = Array.isArray(structuredResults?.vehicles)
+    ? structuredResults.vehicles
+    : Array.isArray(bridge.vehicles)
+      ? bridge.vehicles
+      : [];
+  const totalCount = typeof structuredResults?.totalCount === 'number'
+    ? structuredResults.totalCount
+    : typeof bridge.totalCount === 'number'
+      ? bridge.totalCount
+      : vehicles.length;
+
+  const fallbackContent = [{ type: 'text', text: `Found ${totalCount} vehicles (run ${runId})` }];
+  const content = Array.isArray(bridge.content) && bridge.content.length > 0
+    ? bridge.content as { type: string; text: string; }[]
+    : fallbackContent;
+
+  const vehicleResultsUrl = buildVehicleResultsUrl(runId);
+  const components = Array.isArray(bridge.components) && bridge.components.length > 0
+    ? bridge.components as { type: string; url: string; }[]
+    : [{ type: 'iframe', url: vehicleResultsUrl }];
+
+  return {
+    content,
+    vehicles,
+    totalCount,
+    searchParams,
+    structuredContent: structuredContent ?? {
+      results: {
+        vehicles,
+        totalCount,
+        searchParams,
+      },
+    },
+    components,
+  };
+}
+
 
 /**
  * Search for vehicles using UVS database (replaces MarketCheck API)
@@ -101,6 +202,67 @@ export async function searchVehicles(
     const cacheKey = generateCacheKey(searchParams);
     // Use single requestId for entire request to maintain correlation
     const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
+
+    if (CONFIG.marketcheckMcpBridgeEnabled) {
+      const runId = randomUUID();
+      const bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
+      if (!bridgeArgs.location || !bridgeArgs.condition) {
+        return {
+          success: false,
+          error: 'Bridge mapping failed: location and condition are required for upstream search-vehicles',
+        };
+      }
+
+      const bridgeCall = await callMarketcheckMcpTool('search-vehicles', bridgeArgs, requestId);
+      if (!bridgeCall.success) {
+        console.error(JSON.stringify({
+          event: 'search_bridge_failed',
+          requestId,
+          correlationId: bridgeCall.correlationId,
+          upstreamRequestId: bridgeCall.upstreamRequestId,
+          status: bridgeCall.status,
+          latencyMs: bridgeCall.latencyMs,
+          error: bridgeCall.error,
+        }));
+        return {
+          success: false,
+          error: bridgeCall.error,
+        };
+      }
+
+      console.log(JSON.stringify({
+        event: 'search_bridge_success',
+        requestId,
+        correlationId: bridgeCall.correlationId,
+        upstreamRequestId: bridgeCall.upstreamRequestId,
+        status: bridgeCall.status,
+        latencyMs: bridgeCall.latencyMs,
+      }));
+
+      const normalized = normalizeBridgeSearchResult(bridgeCall.result, searchParams, runId);
+      validateToolResult(normalized);
+
+      trackEvent('inventory.search', {
+        make: searchParams.make,
+        model: searchParams.model,
+        condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
+        priceMin: undefined,
+        priceMax: searchParams.maxPrice,
+        location: searchParams.location,
+        resultsCount: normalized.totalCount ?? 0,
+        searchDuration: Date.now() - startTime,
+      }, {
+        requestId,
+        sessionId: requestId,
+      }).catch(() => {
+        // Tracking failures should not break the request
+      });
+
+      return {
+        success: true,
+        data: normalized,
+      };
+    }
     
     // Check cache first
     const cachedResult = searchCache.get(cacheKey);

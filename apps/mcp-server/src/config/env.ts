@@ -38,6 +38,17 @@ function optionalBoolEnv(name: string, defaultValue: boolean = false): boolean {
 }
 
 /**
+ * Get an optional integer environment variable with default value.
+ */
+function optionalIntEnv(name: string, defaultValue: number): number {
+  const value = process.env[name];
+  if (!value) return defaultValue;
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+/**
  * Get commit SHA from various environment sources (Railway, CI/CD, etc.)
  */
 function getCommitSha(): string {
@@ -142,6 +153,11 @@ export const CONFIG = {
     'MARKETCHECK_BASE_URL',
     'https://marketcheck-prod.apigee.net'
   ),
+  marketcheckMcpBridgeEnabled: optionalBoolEnv('MARKETCHECK_MCP_BRIDGE_ENABLED', false),
+  marketcheckMcpUrl: optionalEnv('MARKETCHECK_MCP_URL', ''),
+  marketcheckMcpAuthType: optionalEnv('MARKETCHECK_MCP_AUTH_TYPE', 'bearer') as 'none' | 'bearer' | 'x-api-key',
+  marketcheckMcpAuthToken: optionalEnv('MARKETCHECK_MCP_AUTH_TOKEN', ''),
+  marketcheckMcpTimeoutMs: optionalIntEnv('MARKETCHECK_MCP_TIMEOUT_MS', 10000),
   
   // Required: Lead encryption key (32 bytes, base64 encoded)
   leadEncKey: validateLeadEncKey(requireEnv('LEAD_ENC_KEY')),
@@ -176,6 +192,39 @@ function validateConfig(): void {
   // All required vars are validated via requireEnv() calls above
   // Additional cross-field validation can go here if needed
   
+  if (!['none', 'bearer', 'x-api-key'].includes(CONFIG.marketcheckMcpAuthType)) {
+    throw new Error(
+      `❌ MARKETCHECK_MCP_AUTH_TYPE must be one of: none, bearer, x-api-key\n` +
+        `   Received: ${CONFIG.marketcheckMcpAuthType}`
+    );
+  }
+
+  if (CONFIG.marketcheckMcpBridgeEnabled) {
+    if (!CONFIG.marketcheckMcpUrl) {
+      throw new Error(
+        '❌ MARKETCHECK_MCP_URL is required when MARKETCHECK_MCP_BRIDGE_ENABLED=true'
+      );
+    }
+
+    try {
+      const bridgeUrl = new URL(CONFIG.marketcheckMcpUrl);
+      if (!['http:', 'https:'].includes(bridgeUrl.protocol)) {
+        throw new Error('invalid protocol');
+      }
+    } catch (_error) {
+      throw new Error(
+        `❌ MARKETCHECK_MCP_URL must be a valid HTTP/HTTPS URL\n` +
+          `   Received: ${CONFIG.marketcheckMcpUrl}`
+      );
+    }
+
+    if (CONFIG.marketcheckMcpAuthType !== 'none' && !CONFIG.marketcheckMcpAuthToken) {
+      throw new Error(
+        '❌ MARKETCHECK_MCP_AUTH_TOKEN is required when bridge mode is enabled and auth type is not none'
+      );
+    }
+  }
+
   // Log configuration status (without sensitive values)
   if (!CONFIG.isProduction) {
     console.log('📋 Configuration loaded:');
@@ -183,6 +232,11 @@ function validateConfig(): void {
     console.log(`   Widget Host: ${CONFIG.widgetHost}`);
     console.log(`   MarketCheck Base URL: ${CONFIG.marketcheckBaseUrl}`);
     console.log(`   MarketCheck API Key: ${CONFIG.marketcheckApiKey ? '✅ Set' : '❌ Missing'}`);
+    console.log(
+      `   MarketCheck MCP Bridge: ${
+        CONFIG.marketcheckMcpBridgeEnabled ? `Enabled (${CONFIG.marketcheckMcpUrl || 'missing URL'})` : 'Disabled'
+      }`
+    );
     console.log(`   Dashboard Ingest URL: ${CONFIG.dashboardIngestUrl}`);
     console.log(`   Dashboard Ingest Token: ${CONFIG.dashboardIngestToken ? '✅ Set' : '❌ Missing'}`);
     console.log(`   Lead Encryption Key: ${CONFIG.leadEncKey ? '✅ Set' : '❌ Missing'}`);
