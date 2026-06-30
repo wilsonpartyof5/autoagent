@@ -17,13 +17,13 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
     // Helper function to create JSON-RPC 2.0 response
     const createResponse = (result: unknown) => ({
       jsonrpc: '2.0',
-      id: id || null,
+      id: id ?? null,
       result
     });
 
     const createError = (code: number, message: string, data?: unknown) => ({
       jsonrpc: '2.0',
-      id: id || null,
+      id: id ?? null,
       error: {
         code,
         message,
@@ -56,12 +56,6 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
           serverInfo: {
             name: 'autoagent-mcp-server',
             version: '1.0.0',
-          },
-          initialized: true,
-          notification: {
-            jsonrpc: '2.0',
-            method: 'initialized',
-            params: {}
           }
         });
 
