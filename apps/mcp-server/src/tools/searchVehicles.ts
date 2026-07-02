@@ -70,6 +70,7 @@ type SearchVehiclesData = {
   searchParams?: unknown;
   structuredContent?: unknown;
 };
+const MAX_BRIDGE_RESULTS = 24;
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
   return {
@@ -100,7 +101,7 @@ function normalizeBridgeSearchResult(
     | { results?: { vehicles?: unknown[]; totalCount?: number; searchParams?: unknown } }
     | undefined;
   const structuredResults = structuredContent?.results;
-  const vehicles = Array.isArray(structuredResults?.vehicles)
+  const rawVehicles = Array.isArray(structuredResults?.vehicles)
     ? structuredResults.vehicles
     : Array.isArray(bridge.vehicles)
       ? bridge.vehicles
@@ -109,7 +110,11 @@ function normalizeBridgeSearchResult(
     ? structuredResults.totalCount
     : typeof bridge.totalCount === 'number'
       ? bridge.totalCount
-      : vehicles.length;
+      : rawVehicles.length;
+  // Keep bridge payload bounded so ChatGPT can reliably consume and render.
+  const vehicles = rawVehicles
+    .slice(0, MAX_BRIDGE_RESULTS)
+    .map((vehicle) => enrichVehicleForStructuredContent(vehicle as UnifiedVehicle | Record<string, unknown>));
 
   const fallbackContent = [{ type: 'text', text: `Found ${totalCount} vehicles (run ${runId})` }];
   const content = Array.isArray(bridge.content) && bridge.content.length > 0
@@ -121,11 +126,11 @@ function normalizeBridgeSearchResult(
     vehicles,
     totalCount,
     searchParams,
-    structuredContent: structuredContent ?? {
+    structuredContent: {
       results: {
         vehicles,
         totalCount,
-        searchParams,
+        searchParams: structuredResults?.searchParams ?? searchParams,
       },
     },
   };
