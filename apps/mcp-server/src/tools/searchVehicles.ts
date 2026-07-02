@@ -311,7 +311,8 @@ export async function searchVehicles(
         model: searchParams.model,
         condition: searchParams.condition, // SearchParams.condition is 'new' | 'used'
         maxPrice: searchParams.maxPrice,
-        minMiles: searchParams.condition === 'used' ? 1 : undefined, // Used vehicles must have miles > 0
+        // Do not force used inventory to have miles > 0 because many feeds provide 0/NULL miles.
+        minMiles: undefined,
         maxMiles: searchParams.mileageMax,
         bodyStyle: searchParams.bodyStyle,
         // Note: SearchParams doesn't have dealerId/dealerName, but UVSSearchParams does (optional)

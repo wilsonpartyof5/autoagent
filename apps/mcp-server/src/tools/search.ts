@@ -32,17 +32,29 @@ export async function search(params: unknown): Promise<{
       };
     }
 
-    // Map query to search parameters - use default values for required fields
+    const lowerQuery = query.toLowerCase();
+    const locationMatch = lowerQuery.match(/(?:in|near)\s+([a-z\s]+,\s*[a-z]{2}|[a-z\s]+(?:south carolina|north carolina|sc|nc))/i);
+    const inferredLocation = locationMatch?.[1]
+      ? locationMatch[1]
+          .replace(/\bsc\b/i, 'SC')
+          .replace(/\bnc\b/i, 'NC')
+          .replace(/\bsouth carolina\b/i, 'South Carolina')
+          .replace(/\bnorth carolina\b/i, 'North Carolina')
+          .trim()
+      : undefined;
+
+    // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
-      location: 'Seattle, WA', // Default location
-      condition: 'used', // Default condition
+      location: inferredLocation || 'Seattle, WA',
+      condition: lowerQuery.includes('new') ? 'new' : 'used',
+      radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') ? 50 : undefined,
       // Try to extract make/model from query if possible
-      make: query.toLowerCase().includes('toyota') ? 'Toyota' : 
-            query.toLowerCase().includes('honda') ? 'Honda' : 
-            query.toLowerCase().includes('subaru') ? 'Subaru' : undefined,
-      model: query.toLowerCase().includes('camry') ? 'Camry' : 
-             query.toLowerCase().includes('cr-v') ? 'CR-V' : 
-             query.toLowerCase().includes('outback') ? 'Outback' : undefined,
+      make: lowerQuery.includes('toyota') ? 'Toyota' : 
+            lowerQuery.includes('honda') ? 'Honda' : 
+            lowerQuery.includes('subaru') ? 'Subaru' : undefined,
+      model: lowerQuery.includes('camry') ? 'Camry' : 
+             lowerQuery.includes('cr-v') ? 'CR-V' : 
+             lowerQuery.includes('outback') ? 'Outback' : undefined,
     };
     
     // Call the existing searchVehicles function
@@ -81,10 +93,12 @@ export async function search(params: unknown): Promise<{
             text: `Found ${totalCount} vehicles. Results: ${resultsJson}` 
           }
         ],
-        structuredContent: { 
-          results: results,
-          totalCount: totalCount,
-          searchParams: searchParams
+        structuredContent: (searchResult.data as { structuredContent?: unknown })?.structuredContent || {
+          results: {
+            vehicles,
+            totalCount,
+            searchParams,
+          },
         },
         components: (searchResult.data as { components?: { type: string; url: string; }[] })?.components || []
       },

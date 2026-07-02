@@ -39,7 +39,15 @@ export function getAvailableTools() {
   return [
     {
       name: 'search',
-      description: 'Search for information using a query string',
+      description: 'Search vehicle inventory from natural-language queries (e.g. "cars for sale near Rock Hill, SC")',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        'openai/outputTemplate': 'ui://vehicle-results.html',
+      },
       inputSchema: {
         type: 'object',
         properties: {
