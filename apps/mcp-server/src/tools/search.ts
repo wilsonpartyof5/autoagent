@@ -3,8 +3,8 @@ import { type SearchParams } from '@autoagent/shared';
 import type { ToolContext } from '../mcp-simple.js';
 
 /**
- * OpenAI-required search tool that wraps our existing searchVehicles logic
- * Returns results in the format: { results: [{ id, title, url }] } as JSON string
+ * Natural-language search wrapper around searchVehicles.
+ * Returns UI-first payload (structuredContent + components) for ChatGPT rendering.
  */
 export async function search(params: unknown, context?: ToolContext): Promise<{
   success: boolean;
@@ -71,22 +71,28 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       };
     }
 
-    // Extract vehicles from the search result
-    const vehicles = (searchResult.data as { vehicles?: unknown[] })?.vehicles || [];
-    const totalCount = (searchResult.data as { totalCount?: number })?.totalCount || 0;
-    
-    // Transform vehicles to the required format: [{ id, title, url }]
-    const results = vehicles.map((vehicle: unknown) => {
-      const v = vehicle as { id?: string; vin?: string; year?: number; make?: string; model?: string; price?: number };
-      return {
-        id: v.id || v.vin || `vehicle-${Math.random().toString(36).substr(2, 9)}`,
-        title: `${v.year} ${v.make} ${v.model} - $${v.price?.toLocaleString() || 'N/A'}`,
-        url: `https://example.com/vehicle/${v.id || v.vin}` // Placeholder URL
+    const resultData = searchResult.data as {
+      structuredContent?: {
+        results?: {
+          vehicles?: unknown[];
+          totalCount?: number;
+          searchParams?: SearchParams;
+        };
       };
-    });
-
-    // Create the JSON string response as required by MCP docs
-    const resultsJson = JSON.stringify({ results });
+      vehicles?: unknown[];
+      totalCount?: number;
+      components?: { type: string; url: string; }[];
+    } | undefined;
+    const totalCount = resultData?.structuredContent?.results?.totalCount
+      ?? resultData?.totalCount
+      ?? 0;
+    const structuredContent = resultData?.structuredContent ?? {
+      results: {
+        vehicles: resultData?.vehicles ?? [],
+        totalCount,
+        searchParams,
+      },
+    };
 
     return {
       success: true,
@@ -94,17 +100,11 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
         content: [
           { 
             type: 'text', 
-            text: `Found ${totalCount} vehicles. Results: ${resultsJson}` 
+            text: `Found ${totalCount} vehicles near ${searchParams.location}.` 
           }
         ],
-        structuredContent: (searchResult.data as { structuredContent?: unknown })?.structuredContent || {
-          results: {
-            vehicles,
-            totalCount,
-            searchParams,
-          },
-        },
-        components: (searchResult.data as { components?: { type: string; url: string; }[] })?.components || []
+        structuredContent,
+        components: resultData?.components || []
       },
     };
   } catch (error) {

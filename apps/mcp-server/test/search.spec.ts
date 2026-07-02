@@ -196,22 +196,13 @@ describe('search Tool', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.content[0].text).toContain('Found 2 vehicles');
-      expect(result.data?.content[0].text).toContain('"results":[');
-      
-      // Check that results are in the correct format
-      const contentText = result.data?.content[0].text || '';
-      const resultsMatch = contentText.match(/"results":\[(.*?)\]/);
-      expect(resultsMatch).toBeTruthy();
-      
-      if (resultsMatch) {
-        const resultsJson = JSON.parse(`{${resultsMatch[0]}}`);
-        expect(resultsJson.results).toHaveLength(2);
-        expect(resultsJson.results[0]).toMatchObject({
-          id: expect.any(String),
-          title: expect.stringContaining('2022 Toyota Camry'),
-          url: expect.stringContaining('https://example.com/vehicle/'),
-        });
-      }
+      expect(result.data?.structuredContent).toMatchObject({
+        results: {
+          vehicles: mockVehicles,
+          totalCount: 2,
+        },
+      });
+      expect(result.data?.components).toEqual([{ type: 'iframe', url: 'https://example.com/widget' }]);
     });
 
     it('should handle empty results', async () => {
@@ -231,7 +222,12 @@ describe('search Tool', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.content[0].text).toContain('Found 0 vehicles');
-      expect(result.data?.content[0].text).toContain('"results":[]');
+      expect(result.data?.structuredContent).toMatchObject({
+        results: {
+          vehicles: [],
+          totalCount: 0,
+        },
+      });
     });
   });
 
@@ -265,7 +261,7 @@ describe('search Tool', () => {
   });
 
   describe('Schema compliance', () => {
-    it('should return results in correct JSON format', async () => {
+    it('should return structuredContent and components for UI rendering', async () => {
       const mockVehicles = [
         {
           id: '1',
@@ -292,13 +288,13 @@ describe('search Tool', () => {
       const result = await search({ query: 'Toyota' });
 
       expect(result.success).toBe(true);
-      
-      // Verify the JSON string contains the required format
-      const contentText = result.data?.content[0].text || '';
-      expect(contentText).toContain('"results":[');
-      expect(contentText).toContain('"id":');
-      expect(contentText).toContain('"title":');
-      expect(contentText).toContain('"url":');
+      expect(result.data?.structuredContent).toMatchObject({
+        results: {
+          vehicles: mockVehicles,
+          totalCount: 1,
+        },
+      });
+      expect(result.data?.components).toEqual([]);
     });
   });
 });
