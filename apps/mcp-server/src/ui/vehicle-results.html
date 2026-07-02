@@ -1414,6 +1414,10 @@
             function initThumbnailMap(vehicles) {
                 const mapEl = document.getElementById('thumbnailMap');
                 if (!mapEl) return;
+                if (!(window.L && typeof window.L.map === 'function')) {
+                    log('Leaflet unavailable in thumbnail mode; rendering cards without map');
+                    return;
+                }
                 
                 // Filter vehicles with valid coordinates
                 const validVehicles = vehicles.filter(v => v.lat && v.lng);
@@ -1774,7 +1778,11 @@
         }
 
         function refreshVehiclesView() {
-            initMap();
+            try {
+                initMap();
+            } catch (error) {
+                console.warn('Map render skipped due to runtime error', error);
+            }
             renderCards();
             updateResultChip();
             setupIntersectionObserver();
@@ -1783,6 +1791,10 @@
 
         // Initialize map
         function initMap() {
+            if (!(window.L && typeof window.L.map === 'function')) {
+                console.warn('Leaflet unavailable; skipping map rendering');
+                return;
+            }
             if (!state.map) {
                 state.map = L.map('map').setView([47.6062, -122.3321], 10);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1836,6 +1848,7 @@
             });
             
             // Update marker selection
+            if (!(window.L && typeof window.L.divIcon === 'function')) return;
             state.markers.forEach((marker, index) => {
                 if (state.vehicles[index].id === id) {
                     marker.setIcon(L.divIcon({
