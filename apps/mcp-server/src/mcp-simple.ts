@@ -10,7 +10,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v3.html';
+const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v4.html';
 
 const WIDGET_CSP = {
   connectDomains: [
@@ -197,11 +197,15 @@ export function getAvailableTools() {
     {
       name: 'search-vehicles',
       title: 'Search Vehicles',
-      description: 'Data-only vehicle inventory search. Use render-vehicle-results when the user should see the interactive map and cards UI.',
+      description: 'Search vehicle inventory and render the interactive in-chat map and vehicle cards UI.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
       },
       inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
       outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
@@ -317,6 +321,13 @@ export function getAvailableResources() {
     },
     {
       // Legacy alias kept for compatibility while clients migrate.
+      uri: 'ui://vehicle-results-v3.html',
+      name: 'Vehicle Results Widget (v3 Legacy)',
+      description: 'Legacy URI alias for vehicle search results widget',
+      mimeType: MCP_APP_HTML_MIME,
+    },
+    {
+      // Legacy alias kept for compatibility while clients migrate.
       uri: 'ui://vehicle-results.html',
       name: 'Vehicle Results Widget (Legacy)',
       description: 'Legacy URI alias for vehicle search results widget',
@@ -341,6 +352,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v3.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://ping.html': join(process.cwd(), 'src', 'ui', 'ping.html'),
     'ui://micro.html': join(process.cwd(), 'src', 'ui', 'micro.html'),
