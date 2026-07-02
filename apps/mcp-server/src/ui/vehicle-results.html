@@ -58,16 +58,65 @@
             flex-direction: column;
         }
 
+        .full-view {
+            position: relative;
+            height: 100vh;
+            min-height: 640px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
         /* Map */
         .map-container {
             flex: 1;
             position: relative;
             z-index: 1;
+            min-height: 420px;
         }
 
         #map {
             width: 100%;
             height: 100%;
+            min-height: 420px;
+            background: #181818;
+        }
+
+        .widget-status {
+            position: absolute;
+            inset: 0;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: radial-gradient(circle at center, rgba(59, 130, 246, 0.12), rgba(17, 17, 17, 0.96));
+            color: var(--text);
+            text-align: center;
+        }
+
+        .widget-status.hidden {
+            display: none;
+        }
+
+        .widget-status-card {
+            max-width: 420px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: rgba(26, 26, 26, 0.94);
+            padding: 20px;
+            box-shadow: 0 12px 30px var(--shadow);
+        }
+
+        .widget-status-title {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .widget-status-copy {
+            color: var(--muted);
+            line-height: 1.45;
         }
 
         /* Filter pills */
@@ -1205,6 +1254,12 @@
             <!-- Map -->
             <div class="map-container">
                 <div id="map"></div>
+                <div class="widget-status" id="widgetStatus">
+                    <div class="widget-status-card">
+                        <div class="widget-status-title">Loading vehicle results...</div>
+                        <div class="widget-status-copy">AutoAgent is preparing the interactive map and vehicle cards.</div>
+                    </div>
+                </div>
                 
                 <!-- Result chip -->
                 <div class="result-chip" id="resultChip" style="display: none;">
@@ -1824,6 +1879,8 @@
         });
 
         function refreshVehiclesView() {
+            const status = el('widgetStatus');
+            if (status) status.classList.add('hidden');
             try {
                 initMap();
             } catch (error) {
