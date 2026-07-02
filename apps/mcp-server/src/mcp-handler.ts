@@ -51,7 +51,12 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             prompts: {
               listChanged: true
             },
-            logging: {}
+            logging: {},
+            experimental: {
+              'io.modelcontextprotocol/ui': {
+                mimeTypes: ['text/html;profile=mcp-app'],
+              },
+            },
           },
           serverInfo: {
             name: 'autoagent-mcp-server',

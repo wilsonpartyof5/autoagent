@@ -68,6 +68,7 @@ export function getAvailableTools() {
   return [
     {
       name: 'search',
+      title: 'Search',
       description: 'Search vehicle inventory from natural-language queries (e.g. "cars for sale near Rock Hill, SC")',
       annotations: {
         readOnlyHint: true,
@@ -77,6 +78,8 @@ export function getAvailableTools() {
       _meta: {
         ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
         'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
+        'openai/widgetAccessible': true,
+        'openai/visibility': 'visible',
       },
       inputSchema: {
         type: 'object',
@@ -138,6 +141,7 @@ export function getAvailableTools() {
     },
     {
       name: 'search-vehicles',
+      title: 'Search Vehicles',
       description: 'Search for vehicles based on location, price, make, model, and other criteria',
       annotations: {
         readOnlyHint: true,
@@ -147,6 +151,8 @@ export function getAvailableTools() {
       _meta: {
         ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
         'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
+        'openai/widgetAccessible': true,
+        'openai/visibility': 'visible',
       },
       inputSchema: {
         type: 'object',
@@ -358,9 +364,12 @@ export function readMcpResource(uri: string) {
           ui: {
             csp: WIDGET_CSP,
           },
+          'openai/widgetDescription': 'Interactive map and card-based vehicle inventory browser.',
+          'openai/widgetPrefersBorder': true,
           'openai/widgetCSP': {
             connect_domains: WIDGET_CSP.connectDomains,
             resource_domains: WIDGET_CSP.resourceDomains,
+            frame_domains: [],
           },
         },
       },
