@@ -11,6 +11,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
   data?: {
     content: { type: string; text: string; }[];
     structuredContent?: unknown;
+    _meta?: Record<string, unknown>;
   };
   error?: string;
 }> {
@@ -71,6 +72,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
     }
 
     const resultData = searchResult.data as {
+      content?: { type: string; text: string; }[];
       structuredContent?: {
         results?: {
           vehicles?: unknown[];
@@ -80,6 +82,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       };
       vehicles?: unknown[];
       totalCount?: number;
+      _meta?: Record<string, unknown>;
     } | undefined;
     const totalCount = resultData?.structuredContent?.results?.totalCount
       ?? resultData?.totalCount
@@ -92,16 +95,21 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       },
     };
 
+    const content = Array.isArray(resultData?.content) && resultData.content.length > 0
+      ? resultData.content
+      : [
+          {
+            type: 'text',
+            text: `Found ${totalCount} vehicles near ${searchParams.location}.`,
+          },
+        ];
+
     return {
       success: true,
       data: {
-        content: [
-          { 
-            type: 'text', 
-            text: `Found ${totalCount} vehicles near ${searchParams.location}.` 
-          }
-        ],
+        content,
         structuredContent,
+        _meta: resultData?._meta,
       },
     };
   } catch (error) {
