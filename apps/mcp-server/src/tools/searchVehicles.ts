@@ -71,6 +71,50 @@ type SearchVehiclesData = {
   structuredContent?: unknown;
 };
 const MAX_BRIDGE_RESULTS = 24;
+const MAX_SUMMARY_LISTINGS = 3;
+
+function summarizeVehicleLine(vehicle: unknown): string {
+  const v = vehicle as Record<string, unknown> & {
+    title?: string;
+    price?: number;
+    miles?: number;
+    dealerName?: string;
+    vin?: string;
+    baseIdentity?: { year?: number; make?: string; model?: string; vin?: string };
+    pricing?: { price?: number };
+    coreSpecs?: { miles?: number };
+    location?: { dealer?: { name?: string } };
+  };
+
+  const title = v.title
+    || [v.baseIdentity?.year, v.baseIdentity?.make, v.baseIdentity?.model].filter(Boolean).join(' ')
+    || 'Vehicle';
+  const price = typeof v.price === 'number' ? v.price : v.pricing?.price;
+  const miles = typeof v.miles === 'number' ? v.miles : v.coreSpecs?.miles;
+  const dealerName = v.dealerName || v.location?.dealer?.name;
+  const vin = v.baseIdentity?.vin || v.vin;
+
+  const parts = [
+    title,
+    typeof price === 'number' ? `$${price.toLocaleString()}` : undefined,
+    typeof miles === 'number' ? `${Math.round(miles).toLocaleString()} mi` : undefined,
+    dealerName ? `at ${dealerName}` : undefined,
+    vin ? `VIN ${String(vin).slice(-6)}` : undefined,
+  ].filter(Boolean);
+
+  return `- ${parts.join(' • ')}`;
+}
+
+function buildReadableContent(totalCount: number, vehicles: unknown[], location?: string): { type: string; text: string }[] {
+  const header = `Found ${totalCount} vehicles${location ? ` near ${location}` : ''}.`;
+  if (!vehicles.length) {
+    return [{ type: 'text', text: header }];
+  }
+
+  const topLines = vehicles.slice(0, MAX_SUMMARY_LISTINGS).map((vehicle) => summarizeVehicleLine(vehicle));
+  const text = `${header}\nTop matches:\n${topLines.join('\n')}`;
+  return [{ type: 'text', text }];
+}
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
   return {
@@ -116,10 +160,7 @@ function normalizeBridgeSearchResult(
     .slice(0, MAX_BRIDGE_RESULTS)
     .map((vehicle) => enrichVehicleForStructuredContent(vehicle as UnifiedVehicle | Record<string, unknown>));
 
-  const fallbackContent = [{ type: 'text', text: `Found ${totalCount} vehicles (run ${runId})` }];
-  const content = Array.isArray(bridge.content) && bridge.content.length > 0
-    ? bridge.content as { type: string; text: string; }[]
-    : fallbackContent;
+  const content = buildReadableContent(totalCount, vehicles, searchParams.location);
 
   return {
     content,
@@ -292,7 +333,7 @@ export async function searchVehicles(
       return {
         success: true,
         data: {
-          content: [{ type: 'text', text: `Found ${cachedResult.totalCount} vehicles (run ${runId})` }],
+          content: buildReadableContent(cachedResult.totalCount, enrichedCachedVehicles, searchParams.location),
           vehicles: cachedResult.vehicles as unknown[], // Cache may contain legacy format
           totalCount: cachedResult.totalCount,
           searchParams,
@@ -457,7 +498,7 @@ export async function searchVehicles(
     const toolResult = {
       success: true,
       data: {
-        content: [{ type: 'text', text: `Found ${totalCount} vehicles (run ${runId})` }],
+        content: buildReadableContent(totalCount, structuredContentVehicles, searchParams.location),
         vehicles,
         totalCount,
         searchParams,
