@@ -1,11 +1,12 @@
 import { searchVehicles } from './searchVehicles.js';
 import { type SearchParams } from '@autoagent/shared';
+import type { ToolContext } from '../mcp-simple.js';
 
 /**
  * OpenAI-required search tool that wraps our existing searchVehicles logic
  * Returns results in the format: { results: [{ id, title, url }] } as JSON string
  */
-export async function search(params: unknown): Promise<{
+export async function search(params: unknown, context?: ToolContext): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
@@ -15,6 +16,9 @@ export async function search(params: unknown): Promise<{
   error?: string;
 }> {
   try {
+    const contextLocation = context?.userLocation
+      ? [context.userLocation.city, context.userLocation.region].filter(Boolean).join(', ')
+      : undefined;
     // Validate input parameters - expect { query: string }
     if (!params || typeof params !== 'object') {
       return {
@@ -45,7 +49,7 @@ export async function search(params: unknown): Promise<{
 
     // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
-      location: inferredLocation || 'Seattle, WA',
+      location: inferredLocation || contextLocation || 'Seattle, WA',
       condition: lowerQuery.includes('new') ? 'new' : 'used',
       radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') ? 50 : undefined,
       // Try to extract make/model from query if possible
@@ -58,7 +62,7 @@ export async function search(params: unknown): Promise<{
     };
     
     // Call the existing searchVehicles function
-    const searchResult = await searchVehicles(searchParams);
+    const searchResult = await searchVehicles(searchParams, context);
     
     if (!searchResult.success) {
       return {

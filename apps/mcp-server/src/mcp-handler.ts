@@ -1,9 +1,9 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, type ToolContext } from './mcp-simple.js';
 
 /**
  * Handle MCP protocol requests
  */
-export async function handleMcpRequest(body: unknown, context?: { widgetState?: unknown; ipAddress?: string | undefined }) {
+export async function handleMcpRequest(body: unknown, context?: ToolContext & { widgetState?: unknown }) {
   try {
     const request = body as { 
       jsonrpc?: string; 
@@ -79,6 +79,14 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
         console.log('🔧 Tools/call request received');
         if ((params as { name?: string }).name) {
           const toolStartTime = Date.now();
+          const toolCallMeta = (params as { _meta?: Record<string, unknown> })._meta || {};
+          const toolContext: ToolContext = {
+            ...context,
+            locale: typeof toolCallMeta['openai/locale'] === 'string' ? toolCallMeta['openai/locale'] : context?.locale,
+            userLocation: typeof toolCallMeta['openai/userLocation'] === 'object' && toolCallMeta['openai/userLocation'] !== null
+              ? toolCallMeta['openai/userLocation'] as ToolContext['userLocation']
+              : context?.userLocation,
+          };
           
           // Send progress notification for long-running operations
           if ((params as { name?: string }).name === 'search-vehicles') {
@@ -89,7 +97,7 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
             }, 100);
           }
           
-          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, context);
+          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, toolContext);
           
           const toolDuration = Date.now() - toolStartTime;
           console.log(JSON.stringify({
@@ -168,7 +176,15 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
         console.log('🌊 Tools/call/stream request received');
         // For streaming tool calls, we'll return the same as regular calls for now
         if ((params as { name?: string }).name) {
-          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, context);
+          const toolCallMeta = (params as { _meta?: Record<string, unknown> })._meta || {};
+          const toolContext: ToolContext = {
+            ...context,
+            locale: typeof toolCallMeta['openai/locale'] === 'string' ? toolCallMeta['openai/locale'] : context?.locale,
+            userLocation: typeof toolCallMeta['openai/userLocation'] === 'object' && toolCallMeta['openai/userLocation'] !== null
+              ? toolCallMeta['openai/userLocation'] as ToolContext['userLocation']
+              : context?.userLocation,
+          };
+          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, toolContext);
           
           if (result.success === false) {
             return createError(-32603, 'Internal error', (result as { error?: unknown }).error);

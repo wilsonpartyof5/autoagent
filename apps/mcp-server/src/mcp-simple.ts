@@ -8,13 +8,26 @@ import { fetchContent } from './tools/fetch.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+export type ToolContext = {
+  ipAddress?: string;
+  locale?: string;
+  userLocation?: {
+    city?: string;
+    region?: string;
+    country?: string;
+    timezone?: string;
+    latitude?: string;
+    longitude?: string;
+  };
+};
+
 /**
  * Simple MCP tool handler for Express integration
  */
-export async function handleMcpToolCall(toolName: string, args: unknown, context?: { /* No PII context */ }) {
+export async function handleMcpToolCall(toolName: string, args: unknown, context?: ToolContext) {
   switch (toolName) {
     case 'search':
-      return await search(args);
+      return await search(args, context);
     case 'fetch':
       return await fetchContent(args);
     case 'search-vehicles':

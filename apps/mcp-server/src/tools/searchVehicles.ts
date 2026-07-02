@@ -9,6 +9,7 @@ import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
+import type { ToolContext } from '../mcp-simple.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -149,7 +150,7 @@ function normalizeBridgeSearchResult(
  */
 export async function searchVehicles(
   params: unknown,
-  context?: { /* No PII context */ }
+  context?: ToolContext
 ): Promise<{
   success: boolean;
   data?: {
@@ -169,8 +170,23 @@ export async function searchVehicles(
   }> = [];
   
   try {
+    const mutableParams: Record<string, unknown> | undefined = (params && typeof params === 'object')
+      ? { ...(params as Record<string, unknown>) }
+      : undefined;
+    const contextLocation = context?.userLocation
+      ? [context.userLocation.city, context.userLocation.region].filter(Boolean).join(', ')
+      : undefined;
+    if (mutableParams) {
+      if (!mutableParams.location && contextLocation) {
+        mutableParams.location = contextLocation;
+      }
+      if (!mutableParams.condition) {
+        mutableParams.condition = 'used';
+      }
+    }
+
     // Validate input parameters
-    const parseResult = safeParse(SearchParamsSchema, params);
+    const parseResult = safeParse(SearchParamsSchema, mutableParams ?? params);
     if (!parseResult.success) {
       return {
         success: false,

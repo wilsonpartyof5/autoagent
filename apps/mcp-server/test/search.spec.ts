@@ -82,7 +82,7 @@ describe('search Tool', () => {
         condition: 'used',
         make: undefined,
         model: undefined,
-      });
+      }, undefined);
     });
 
     it('should extract make from query', async () => {
@@ -105,7 +105,7 @@ describe('search Tool', () => {
         condition: 'used',
         make: 'Toyota',
         model: undefined,
-      });
+      }, undefined);
     });
 
     it('should extract model from query', async () => {
@@ -128,7 +128,34 @@ describe('search Tool', () => {
         condition: 'used',
         make: 'Honda',
         model: 'CR-V',
+      }, undefined);
+    });
+
+    it('uses ChatGPT userLocation hint when query lacks location', async () => {
+      const mockSearchVehicles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          vehicles: [],
+          totalCount: 0,
+          components: [],
+        },
       });
+
+      const { searchVehicles } = await import('../src/tools/searchVehicles.js');
+      vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
+
+      await search(
+        { query: 'find used cars for sale' },
+        { userLocation: { city: 'Rock Hill', region: 'SC' } }
+      );
+
+      expect(mockSearchVehicles).toHaveBeenCalledWith({
+        location: 'Rock Hill, SC',
+        condition: 'used',
+        radiusMiles: undefined,
+        make: undefined,
+        model: undefined,
+      }, { userLocation: { city: 'Rock Hill', region: 'SC' } });
     });
   });
 
