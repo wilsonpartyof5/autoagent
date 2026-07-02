@@ -104,6 +104,36 @@
             border-color: var(--accent);
         }
 
+        .refine-chips {
+            position: absolute;
+            top: 64px;
+            left: 16px;
+            right: 16px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .refine-chip {
+            border: 1px solid var(--border);
+            background: rgba(17, 17, 17, 0.9);
+            color: var(--text);
+            border-radius: 16px;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .refine-chip:hover,
+        .refine-chip.active {
+            border-color: var(--accent);
+            color: white;
+            background: rgba(59, 130, 246, 0.35);
+        }
+
         /* Result chip */
         .result-chip {
             position: absolute;
@@ -266,6 +296,40 @@
         .distance {
             font-size: 12px;
             color: var(--good);
+        }
+
+        .deal-score {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .deal-score.great {
+            background: rgba(34, 197, 94, 0.25);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.5);
+        }
+
+        .deal-score.fair {
+            background: rgba(245, 158, 11, 0.25);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.5);
+        }
+
+        .deal-score.high {
+            background: rgba(239, 68, 68, 0.25);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+        }
+
+        .payment-estimate {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--muted);
         }
 
         /* Details drawer */
@@ -565,6 +629,114 @@
             padding: 20px;
         }
 
+        .compare-tray {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            bottom: 80px;
+            z-index: 1800;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(26, 26, 26, 0.96);
+            box-shadow: 0 8px 25px var(--shadow);
+            padding: 10px 12px;
+            display: none;
+        }
+
+        .compare-tray.visible {
+            display: block;
+        }
+
+        .compare-tray-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .compare-tray-cards {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .compare-tray-item {
+            min-width: 160px;
+            background: var(--bg);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 8px;
+        }
+
+        .compare-tray-title {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .compare-tray-price {
+            color: var(--accent);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .compare-tray-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .compare-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+        }
+
+        .compare-modal.open {
+            display: flex;
+        }
+
+        .compare-panel {
+            width: 100%;
+            max-width: 960px;
+            max-height: 92vh;
+            overflow: auto;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        .compare-table th,
+        .compare-table td {
+            border-bottom: 1px solid var(--border);
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        .compare-table th {
+            color: var(--muted);
+            font-weight: 500;
+            width: 160px;
+        }
+
         .lead-modal.open {
             display: flex;
         }
@@ -819,6 +991,10 @@
             .filter-pills {
                 flex-wrap: wrap;
             }
+
+            .refine-chips {
+                top: 112px;
+            }
             
             .vehicle-card {
                 min-width: 250px;
@@ -834,6 +1010,10 @@
 
             .lead-form {
                 padding: 16px;
+            }
+
+            .compare-tray {
+                bottom: 88px;
             }
 
             .featured-image {
@@ -1009,6 +1189,14 @@
                     <div class="filter-pill" data-filter="make">Make/Model</div>
                     <div class="filter-pill" data-filter="filters">Filters</div>
                 </div>
+
+                <div class="refine-chips" id="refineChips">
+                    <button class="refine-chip" data-refine="under-30000">Under $30k</button>
+                    <button class="refine-chip" data-refine="low-mileage">Under 40k miles</button>
+                    <button class="refine-chip" data-refine="awd">AWD</button>
+                    <button class="refine-chip" data-refine="newest">Newest</button>
+                    <button class="refine-chip" data-refine="reset">Reset</button>
+                </div>
             </div>
 
         <!-- Bottom sheet -->
@@ -1034,6 +1222,27 @@
 
         </div>
         <!-- End full view -->
+
+        <div class="compare-tray" id="compareTray" aria-live="polite">
+            <div class="compare-tray-header">
+                <span id="compareTrayCount">Compare (0/3)</span>
+                <button class="dealer-btn" type="button" onclick="clearCompare()">Clear</button>
+            </div>
+            <div class="compare-tray-cards" id="compareTrayCards"></div>
+            <div class="compare-tray-actions">
+                <button class="btn btn-primary" type="button" id="openCompareButton" onclick="openCompareModal()" disabled>Compare Vehicles</button>
+            </div>
+        </div>
+
+        <div class="compare-modal" id="compareModal">
+            <div class="compare-panel">
+                <div class="drawer-header" style="padding: 0 0 12px 0;">
+                    <h3>Vehicle Comparison</h3>
+                    <button class="drawer-close" type="button" onclick="closeCompareModal()">&times;</button>
+                </div>
+                <div id="compareTableContainer"></div>
+            </div>
+        </div>
 
         <!-- Lead form modal -->
         <div class="lead-modal" id="leadModal">
@@ -1343,6 +1552,36 @@
             if (!text || text.length <= maxLength) return text || '';
             return text.substring(0, maxLength) + '...';
         };
+        function getResults() {
+            try {
+                if (window.openai?.toolOutput) {
+                    return window.openai.toolOutput.structuredContent?.results || null;
+                }
+                if (window.openai && typeof window.openai.getContext === 'function') {
+                    const context = window.openai.getContext();
+                    return context?.structuredContent?.results || context?.results || null;
+                }
+            } catch (error) {
+                console.error('Failed to read tool output', error);
+            }
+            return window.__AA_MOCK__ || null;
+        }
+        const fmtPayment = (price) => {
+            const numericPrice = Number(price) || 0;
+            const monthly = Math.round((numericPrice * 0.0185) + 120);
+            return `$${monthly.toLocaleString()}/mo est`;
+        };
+        function getDealScore(vehicle) {
+            const price = getUVSPrice(vehicle);
+            const msrp = getUVSMSRP(vehicle);
+            if (!price || !msrp || msrp <= 0) {
+                return { label: 'Fair Deal', tier: 'fair' };
+            }
+            const ratio = price / msrp;
+            if (ratio <= 0.92) return { label: 'Great Deal', tier: 'great' };
+            if (ratio <= 1.02) return { label: 'Fair Deal', tier: 'fair' };
+            return { label: 'High Price', tier: 'high' };
+        }
 
         // UVS helper functions - extract fields from UVS structure
         function getUVSYear(vehicle) {
@@ -1418,9 +1657,12 @@
             activeId: null,
             sheetState: 'collapsed', // collapsed, mid, expanded
             vehicles: [],
+            allVehicles: [],
             query: {},
             map: null,
-            markers: []
+            markers: [],
+            activeRefine: null,
+            compareList: []
         };
 
         // Mock data for testing
@@ -1493,8 +1735,10 @@
                     if (results) {
                         // UVS vehicles from structuredContent
                         state.vehicles = results.vehicles || results;
+                        state.allVehicles = [...state.vehicles];
                         state.query = results.searchParams || results.query || {};
                         console.log('UVS data loaded from structuredContent');
+                        refreshVehiclesView();
                     } else if (retryCount < maxRetries) {
                         retryCount++;
                         console.log(`Retrying data load (${retryCount}/${maxRetries})...`);
@@ -1504,11 +1748,13 @@
                         // Final fallback to mock data (dev only)
                         console.log('Using fallback mock data (dev mode)');
                         state.vehicles = mockVehicles;
+                        state.allVehicles = [...state.vehicles];
                         state.query = {
                             location: 'Seattle, WA',
                             condition: 'used',
                             maxPrice: 30000
                         };
+                        refreshVehiclesView();
                     }
                 } catch (error) {
                     console.error('Error loading data:', error);
@@ -1517,7 +1763,9 @@
                         setTimeout(attemptLoad, 500);
                     } else {
                         state.vehicles = mockVehicles;
+                        state.allVehicles = [...state.vehicles];
                         state.query = { location: 'Seattle, WA' };
+                        refreshVehiclesView();
                     }
                 }
             }
@@ -1525,15 +1773,27 @@
             attemptLoad();
         }
 
+        function refreshVehiclesView() {
+            initMap();
+            renderCards();
+            updateResultChip();
+            setupIntersectionObserver();
+            syncCompareTray();
+        }
+
         // Initialize map
         function initMap() {
-            state.map = L.map('map').setView([47.6062, -122.3321], 10);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(state.map);
+            if (!state.map) {
+                state.map = L.map('map').setView([47.6062, -122.3321], 10);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(state.map);
+            }
 
-            // Add markers for vehicles with coordinates
+            state.markers.forEach((marker) => marker.remove());
+            state.markers = [];
+
+            // Add markers for visible vehicles with coordinates
             state.vehicles.forEach(vehicle => {
                 const dealer = getUVSDealer(vehicle);
                 if (dealer?.latitude && dealer?.longitude) {
@@ -1620,6 +1880,7 @@
             const optionPackages = vehicle.optionPackages 
                 || vehicle.featuresPackages?.packages 
                 || [];
+            const dealScore = getDealScore(vehicle);
             
             return `
                 <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
@@ -1632,9 +1893,11 @@
                             <div>
                                 <div class="vehicle-title">${year} ${make} ${model}</div>
                                 <div class="vehicle-subtitle">${miles ? miles.toLocaleString() + ' miles' : 'New'}</div>
+                                <div class="deal-score ${dealScore.tier}">${dealScore.label}</div>
                             </div>
                             <div class="price-badge">${fmtPrice(price)}</div>
                         </div>
+                        <div class="payment-estimate">${fmtPayment(price)}</div>
                         ${sellerComments ? `
                             <div class="seller-comments" title="${safeText(sellerComments)}">
                                 <div class="seller-comments-text">${truncateText(safeText(sellerComments), 80)}</div>
@@ -1674,11 +1937,6 @@
             
             carousel.innerHTML = cardsHTML;
             list.innerHTML = cardsHTML;
-            
-            // Emit ui:ready event after first paint
-            setTimeout(() => {
-                onReady();
-            }, 100);
         }
 
         // Open details drawer
@@ -1842,38 +2100,127 @@
             console.log('dealer_directions', { id });
         }
 
-        // Compare vehicle - minimal implementation that tracks compare event
-        let compareList = [];
+        // Compare vehicle workflow (tray + modal)
         function compareVehicle(id) {
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
 
             // Add to compare list (max 3 vehicles)
-            if (!compareList.find(v => v.id === id)) {
-                if (compareList.length < 3) {
-                    compareList.push(vehicle);
+            if (!state.compareList.find(v => v.id === id)) {
+                if (state.compareList.length < 3) {
+                    state.compareList.push(vehicle);
                 } else {
-                    compareList = [vehicle]; // Replace with new selection
+                    state.compareList.shift();
+                    state.compareList.push(vehicle);
                 }
             }
+            syncCompareTray();
 
             // If we have at least 2 vehicles, track compare event
-            if (compareList.length >= 2) {
-                const vehicleIds = compareList.map(v => v.id);
-                const dealer = getUVSDealer(compareList[0]);
+            if (state.compareList.length >= 2) {
+                const vehicleIds = state.compareList.map(v => v.id);
+                const dealer = getUVSDealer(state.compareList[0]);
                 // Extract dealerId from UVS structure: location.dealer.dealerId
-                const dealerId = dealer?.dealerId || compareList[0]?.location?.dealer?.dealerId;
+                const dealerId = dealer?.dealerId || state.compareList[0]?.location?.dealer?.dealerId;
 
                 // Track compare event (no PII - no VINs)
                 logEvent('vehicle.compare', {
                     vehicleIds: vehicleIds,
                     compareCount: vehicleIds.length,
+                    dealerId,
                 });
-
-                alert(`Comparing ${vehicleIds.length} vehicle(s)`);
-            } else {
-                alert(`Added to compare list (${compareList.length}/3). Select another vehicle to compare.`);
             }
+        }
+
+        function removeCompareVehicle(id) {
+            state.compareList = state.compareList.filter(v => v.id !== id);
+            syncCompareTray();
+        }
+
+        function clearCompare() {
+            state.compareList = [];
+            syncCompareTray();
+            closeCompareModal();
+        }
+
+        function syncCompareTray() {
+            const tray = el('compareTray');
+            const cards = el('compareTrayCards');
+            const count = el('compareTrayCount');
+            const compareButton = el('openCompareButton');
+            if (!tray || !cards || !count || !compareButton) return;
+
+            const selected = state.compareList;
+            count.textContent = `Compare (${selected.length}/3)`;
+            compareButton.disabled = selected.length < 2;
+            tray.classList.toggle('visible', selected.length > 0);
+
+            cards.innerHTML = selected.map((vehicle) => {
+                const year = getUVSYear(vehicle);
+                const make = getUVSMake(vehicle);
+                const model = getUVSModel(vehicle);
+                return `
+                    <div class="compare-tray-item">
+                        <div class="compare-tray-title">${safeText(`${year} ${make} ${model}`)}</div>
+                        <div class="compare-tray-price">${fmtPrice(getUVSPrice(vehicle))}</div>
+                        <button class="dealer-btn" type="button" style="margin-top:8px;padding:6px 8px;font-size:12px;" onclick="removeCompareVehicle('${vehicle.id}')">Remove</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function buildCompareTable() {
+            const selected = state.compareList;
+            if (selected.length < 2) {
+                return '<div class="empty-state"><div class="empty-icon">Compare at least 2 vehicles.</div></div>';
+            }
+
+            const rows = [
+                { label: 'Vehicle', value: (v) => `${getUVSYear(v)} ${getUVSMake(v)} ${getUVSModel(v)}` },
+                { label: 'Price', value: (v) => fmtPrice(getUVSPrice(v)) },
+                { label: 'Payment Est.', value: (v) => fmtPayment(getUVSPrice(v)) },
+                { label: 'Mileage', value: (v) => getUVSMiles(v) ? `${Math.round(getUVSMiles(v)).toLocaleString()} mi` : 'New' },
+                { label: 'Condition', value: (v) => getUVSCondition(v) || 'n/a' },
+                { label: 'Dealer', value: (v) => getUVSDealerName(v) || 'n/a' },
+                { label: 'Deal Score', value: (v) => getDealScore(v).label },
+            ];
+
+            return `
+                <table class="compare-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            ${selected.map((_, idx) => `<th>Vehicle ${idx + 1}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((row) => `
+                            <tr>
+                                <th>${row.label}</th>
+                                ${selected.map((vehicle) => `<td>${safeText(String(row.value(vehicle)))}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function openCompareModal() {
+            const modal = el('compareModal');
+            const container = el('compareTableContainer');
+            if (!modal || !container) return;
+            container.innerHTML = buildCompareTable();
+            modal.classList.add('open');
+            logEvent('compare.view_table', {
+                compareCount: state.compareList.length,
+                vehicleIds: state.compareList.map(v => v.id),
+            });
+        }
+
+        function closeCompareModal() {
+            const modal = el('compareModal');
+            if (!modal) return;
+            modal.classList.remove('open');
         }
 
         // Lead modal functions
@@ -2001,6 +2348,73 @@
             } else {
                 chip.style.display = 'none';
             }
+        }
+
+        function setActiveRefineChip(refineKey) {
+            document.querySelectorAll('.refine-chip').forEach((chip) => {
+                chip.classList.toggle('active', chip.dataset.refine === refineKey);
+            });
+        }
+
+        function applyRefine(refineKey) {
+            state.activeRefine = refineKey === 'reset' ? null : refineKey;
+            let nextVehicles = [...state.allVehicles];
+            switch (refineKey) {
+                case 'under-30000':
+                    nextVehicles = nextVehicles.filter(v => (getUVSPrice(v) || 0) <= 30000);
+                    break;
+                case 'low-mileage':
+                    nextVehicles = nextVehicles.filter(v => {
+                        const miles = getUVSMiles(v);
+                        return typeof miles === 'number' ? miles <= 40000 : true;
+                    });
+                    break;
+                case 'awd':
+                    nextVehicles = nextVehicles.filter(v => {
+                        const features = getUVSFeatures(v).map(f => String(f).toLowerCase());
+                        return features.some(f => f.includes('awd') || f.includes('all-wheel'));
+                    });
+                    break;
+                case 'newest':
+                    nextVehicles = nextVehicles.sort((a, b) => (getUVSYear(b) || 0) - (getUVSYear(a) || 0));
+                    break;
+                default:
+                    break;
+            }
+            state.vehicles = nextVehicles;
+            setActiveRefineChip(state.activeRefine);
+            refreshVehiclesView();
+            logEvent('filter.apply', { filter: refineKey, results: state.vehicles.length });
+        }
+
+        function applyFilterPill(filterKey) {
+            switch (filterKey) {
+                case 'price':
+                    applyRefine('under-30000');
+                    break;
+                case 'condition':
+                    state.vehicles = [...state.allVehicles].filter(v => getUVSCondition(v) === (state.query.condition || 'used'));
+                    refreshVehiclesView();
+                    break;
+                case 'radius':
+                    state.vehicles = [...state.vehicles].sort((a, b) => {
+                        const da = getUVSDealer(a)?.distanceMiles || 999;
+                        const db = getUVSDealer(b)?.distanceMiles || 999;
+                        return da - db;
+                    });
+                    refreshVehiclesView();
+                    break;
+                case 'make': {
+                    const make = state.query.make || getUVSMake(state.allVehicles[0]);
+                    state.vehicles = [...state.allVehicles].filter(v => getUVSMake(v) === make);
+                    refreshVehiclesView();
+                    break;
+                }
+                default:
+                    applyRefine('reset');
+                    break;
+            }
+            logEvent('filter_click', { filter: filterKey, results: state.vehicles.length });
         }
 
         // Sheet state management
@@ -2136,8 +2550,14 @@
             document.querySelectorAll('.filter-pill').forEach(pill => {
                 pill.addEventListener('click', () => {
                     const filter = pill.dataset.filter;
-                    logEvent('filter_click', { filter });
-                    console.log('Filter clicked:', filter);
+                    applyFilterPill(filter);
+                });
+            });
+
+            // Refine chips
+            document.querySelectorAll('.refine-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    applyRefine(chip.dataset.refine);
                 });
             });
 
@@ -2155,6 +2575,13 @@
             el('leadModal').addEventListener('click', (e) => {
                 if (e.target === el('leadModal')) {
                     closeLeadModal();
+                }
+            });
+
+            // Click backdrop to close compare modal
+            el('compareModal').addEventListener('click', (e) => {
+                if (e.target === el('compareModal')) {
+                    closeCompareModal();
                 }
             });
         }
@@ -2177,11 +2604,7 @@
             
             // Otherwise initialize full view
             loadData();
-            initMap();
-            renderCards();
-            updateResultChip();
             setupEventListeners();
-            setupIntersectionObserver();
         }
 
         // Start the app
@@ -2194,16 +2617,16 @@
         window.callDealer = callDealer;
         window.getDirections = getDirections;
         window.compareVehicle = compareVehicle;
+        window.removeCompareVehicle = removeCompareVehicle;
+        window.clearCompare = clearCompare;
+        window.openCompareModal = openCompareModal;
+        window.closeCompareModal = closeCompareModal;
         window.closeLeadModal = closeLeadModal;
         
         // Expose full view initialization functions for expand button
         window.initFullView = function() {
             if (!state.map) {
                 loadData();
-                initMap();
-                renderCards();
-                updateResultChip();
-                setupIntersectionObserver();
             }
         };
     </script>
