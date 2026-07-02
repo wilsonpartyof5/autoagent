@@ -63,6 +63,82 @@ function enrichVehicleForStructuredContent(vehicle: UnifiedVehicle | Record<stri
   };
 }
 
+function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknown>): Record<string, unknown> {
+  const enriched = enrichVehicleForStructuredContent(vehicle);
+  const source = vehicle as Record<string, unknown>;
+
+  const baseIdentity = (source.baseIdentity as Record<string, unknown> | undefined) ?? {};
+  const pricing = (source.pricing as Record<string, unknown> | undefined) ?? {};
+  const location = (source.location as Record<string, unknown> | undefined) ?? {};
+  const dealer = (location.dealer as Record<string, unknown> | undefined) ?? {};
+  const coreSpecs = (source.coreSpecs as Record<string, unknown> | undefined) ?? {};
+  const media = (source.media as Record<string, unknown> | undefined) ?? {};
+
+  const year = (baseIdentity.year as number | undefined) ?? (source.year as number | undefined);
+  const make = (baseIdentity.make as string | undefined) ?? (source.make as string | undefined);
+  const model = (baseIdentity.model as string | undefined) ?? (source.model as string | undefined);
+  const trim = (baseIdentity.trim as string | undefined) ?? (source.trim as string | undefined);
+  const vin = (baseIdentity.vin as string | undefined) ?? (source.vin as string | undefined);
+  const price = (pricing.price as number | undefined) ?? (enriched.price as number | undefined);
+  const msrp = pricing.msrp as number | undefined;
+  const currency = (pricing.currency as string | undefined) ?? 'USD';
+  const miles = (coreSpecs.miles as number | undefined) ?? (source.miles as number | undefined);
+  const title = (enriched.title as string | undefined) ?? [year, make, model].filter(Boolean).join(' ');
+  const photoUrl = (enriched.photoUrl as string | undefined)
+    ?? (media.primaryPhotoUrl as string | undefined)
+    ?? (source.imageUrl as string | undefined);
+
+  const latitude = (dealer.latitude as number | undefined) ?? (enriched.lat as number | undefined);
+  const longitude = (dealer.longitude as number | undefined) ?? (enriched.lng as number | undefined);
+  const dealerName = (dealer.name as string | undefined) ?? (enriched.dealerName as string | undefined);
+  const condition = typeof source.condition === 'string' ? source.condition : undefined;
+  const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : undefined;
+  const dealerCity = typeof dealer.city === 'string' ? dealer.city : undefined;
+  const dealerState = typeof dealer.state === 'string' ? dealer.state : undefined;
+  const dealerDistanceMiles = typeof dealer.distanceMiles === 'number' ? dealer.distanceMiles : undefined;
+
+  return {
+    id: source.id,
+    title,
+    ...(price !== undefined && { price }),
+    ...(miles !== undefined && { miles }),
+    ...(photoUrl && { photoUrl, image: photoUrl }),
+    ...(latitude !== undefined && { lat: latitude }),
+    ...(longitude !== undefined && { lng: longitude }),
+    ...(dealerName && { dealerName }),
+    ...(condition && { condition }),
+    baseIdentity: {
+      ...(year !== undefined && { year }),
+      ...(make && { make }),
+      ...(model && { model }),
+      ...(trim && { trim }),
+      ...(vin && { vin }),
+    },
+    pricing: {
+      ...(price !== undefined && { price }),
+      ...(msrp !== undefined && { msrp }),
+      currency,
+    },
+    coreSpecs: {
+      ...(miles !== undefined && { miles }),
+    },
+    media: {
+      ...(photoUrl && { primaryPhotoUrl: photoUrl, photoUrls: [photoUrl] }),
+    },
+    location: {
+      dealer: {
+        ...(dealerName && { name: dealerName }),
+        ...(dealerId && { dealerId }),
+        ...(dealerCity && { city: dealerCity }),
+        ...(dealerState && { state: dealerState }),
+        ...(dealerDistanceMiles !== undefined && { distanceMiles: dealerDistanceMiles }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
+      },
+    },
+  };
+}
+
 type SearchVehiclesData = {
   content: { type: string; text: string; }[];
   vehicles?: unknown[];
@@ -70,7 +146,8 @@ type SearchVehiclesData = {
   searchParams?: unknown;
   structuredContent?: unknown;
 };
-const MAX_BRIDGE_RESULTS = 24;
+const MAX_BRIDGE_RESULTS = 8;
+const MAX_WIDGET_RESULTS = 12;
 const MAX_SUMMARY_LISTINGS = 3;
 
 function summarizeVehicleLine(vehicle: unknown): string {
@@ -158,7 +235,7 @@ function normalizeBridgeSearchResult(
   // Keep bridge payload bounded so ChatGPT can reliably consume and render.
   const vehicles = rawVehicles
     .slice(0, MAX_BRIDGE_RESULTS)
-    .map((vehicle) => enrichVehicleForStructuredContent(vehicle as UnifiedVehicle | Record<string, unknown>));
+    .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
 
   const content = buildReadableContent(totalCount, vehicles, searchParams.location);
 
@@ -327,14 +404,14 @@ export async function searchVehicles(
 
       // Enrich cached vehicles with map pin and featured card data
       const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
-        enrichVehicleForStructuredContent(vehicle)
-      );
+        compactVehicleForWidget(vehicle)
+      ).slice(0, MAX_WIDGET_RESULTS);
       
       return {
         success: true,
         data: {
           content: buildReadableContent(cachedResult.totalCount, enrichedCachedVehicles, searchParams.location),
-          vehicles: cachedResult.vehicles as unknown[], // Cache may contain legacy format
+          vehicles: enrichedCachedVehicles,
           totalCount: cachedResult.totalCount,
           searchParams,
           structuredContent: {
@@ -492,14 +569,14 @@ export async function searchVehicles(
         }
         
         // Enrich with map pin and featured card data
-        return enrichVehicleForStructuredContent(base);
-      });
+        return compactVehicleForWidget(base);
+      }).slice(0, MAX_WIDGET_RESULTS);
 
     const toolResult = {
       success: true,
       data: {
         content: buildReadableContent(totalCount, structuredContentVehicles, searchParams.location),
-        vehicles,
+        vehicles: structuredContentVehicles,
         totalCount,
         searchParams,
         structuredContent: { 
