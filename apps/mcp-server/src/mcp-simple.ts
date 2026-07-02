@@ -5,6 +5,7 @@ import { pingUi } from './tools/pingUi.js';
 import { pingMicroUi } from './tools/pingMicroUi.js';
 import { search } from './tools/search.js';
 import { fetchContent } from './tools/fetch.js';
+import { renderVehicleResults } from './tools/renderVehicleResults.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -22,6 +23,62 @@ const WIDGET_CSP = {
     'https://pictures.dealer.com',
     'https://www.myrockhillgmc.com',
   ],
+};
+
+const VEHICLE_RESULTS_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    results: {
+      type: 'object',
+      properties: {
+        vehicles: { type: 'array', items: { type: 'object' } },
+        totalCount: { type: 'number' },
+        searchParams: { type: 'object' },
+      },
+      required: ['vehicles', 'totalCount'],
+    },
+  },
+  required: ['results'],
+};
+
+const VEHICLE_SEARCH_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    location: {
+      type: 'string',
+      description: 'Location to search for vehicles (e.g., "Seattle, WA", "Rock Hill, SC")',
+    },
+    condition: {
+      type: 'string',
+      enum: ['new', 'used'],
+      description: 'Vehicle condition (new or used)',
+    },
+    maxPrice: {
+      type: 'number',
+      description: 'Maximum price in USD',
+    },
+    make: {
+      type: 'string',
+      description: 'Vehicle make (e.g., "Toyota", "Honda")',
+    },
+    model: {
+      type: 'string',
+      description: 'Vehicle model (e.g., "Camry", "CR-V")',
+    },
+    radiusMiles: {
+      type: 'number',
+      description: 'Search radius in miles (default: 50)',
+    },
+    bodyStyle: {
+      type: 'string',
+      description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
+    },
+    mileageMax: {
+      type: 'number',
+      description: 'Maximum mileage',
+    },
+  },
+  required: [],
 };
 
 export type ToolContext = {
@@ -48,6 +105,8 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
       return await fetchContent(args);
     case 'search-vehicles':
       return await searchVehicles(args, context);
+    case 'render-vehicle-results':
+      return await renderVehicleResults(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
     case 'compare-vehicles':
@@ -75,12 +134,6 @@ export function getAvailableTools() {
         destructiveHint: false,
         openWorldHint: true,
       },
-      _meta: {
-        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-        'openai/widgetAccessible': true,
-        'openai/visibility': 'visible',
-      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -91,21 +144,7 @@ export function getAvailableTools() {
         },
         required: ['query'],
       },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          results: {
-            type: 'object',
-            properties: {
-              vehicles: { type: 'array', items: { type: 'object' } },
-              totalCount: { type: 'number' },
-              searchParams: { type: 'object' },
-            },
-            required: ['vehicles', 'totalCount'],
-          },
-        },
-        required: ['results'],
-      },
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
       name: 'fetch',
@@ -140,9 +179,9 @@ export function getAvailableTools() {
       },
     },
     {
-      name: 'search-vehicles',
-      title: 'Search Vehicles',
-      description: 'Search for vehicles based on location, price, make, model, and other criteria',
+      name: 'render-vehicle-results',
+      title: 'Render Vehicle Results',
+      description: 'Render an interactive in-chat vehicle inventory UI with map pins, vehicle cards, bottom sheet, detail drawer, compare tray, and refinement controls. Use this when the user wants to see vehicle search results inside ChatGPT.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -151,63 +190,21 @@ export function getAvailableTools() {
       _meta: {
         ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
         'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-        'openai/widgetAccessible': true,
-        'openai/visibility': 'visible',
       },
-      inputSchema: {
-        type: 'object',
-        properties: {
-          location: {
-            type: 'string',
-            description: 'Location to search for vehicles (e.g., "Seattle, WA", "New York, NY")',
-          },
-          condition: {
-            type: 'string',
-            enum: ['new', 'used'],
-            description: 'Vehicle condition (new or used)',
-          },
-          maxPrice: {
-            type: 'number',
-            description: 'Maximum price in USD',
-          },
-          make: {
-            type: 'string',
-            description: 'Vehicle make (e.g., "Toyota", "Honda")',
-          },
-          model: {
-            type: 'string',
-            description: 'Vehicle model (e.g., "Camry", "CR-V")',
-          },
-          radiusMiles: {
-            type: 'number',
-            description: 'Search radius in miles (default: 50)',
-          },
-          bodyStyle: {
-            type: 'string',
-            description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
-          },
-          mileageMax: {
-            type: 'number',
-            description: 'Maximum mileage',
-          },
-        },
-        required: ['location', 'condition'],
+      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
+    },
+    {
+      name: 'search-vehicles',
+      title: 'Search Vehicles',
+      description: 'Data-only vehicle inventory search. Use render-vehicle-results when the user should see the interactive map and cards UI.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
       },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          results: {
-            type: 'object',
-            properties: {
-              vehicles: { type: 'array', items: { type: 'object' } },
-              totalCount: { type: 'number' },
-              searchParams: { type: 'object' },
-            },
-            required: ['vehicles', 'totalCount'],
-          },
-        },
-        required: ['results'],
-      },
+      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
       name: 'submit-lead',
