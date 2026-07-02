@@ -59,6 +59,7 @@ export function getAvailableTools() {
         openWorldHint: true,
       },
       _meta: {
+        ui: { resourceUri: 'ui://vehicle-results.html' },
         'openai/outputTemplate': 'ui://vehicle-results.html',
       },
       inputSchema: {
@@ -113,6 +114,7 @@ export function getAvailableTools() {
         openWorldHint: true,
       },
       _meta: {
+        ui: { resourceUri: 'ui://vehicle-results.html' },
         'openai/outputTemplate': 'ui://vehicle-results.html',
       },
       inputSchema: {

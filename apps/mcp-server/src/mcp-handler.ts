@@ -111,19 +111,18 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             return createError(-32603, 'Internal error', (result as { error?: unknown }).error);
           }
           
-          // Return the result directly with components pattern
+          // Return tool result payload in MCP-compatible shape.
           const resultData = (result as { data?: unknown }).data;
-          if (resultData && (resultData as { components?: unknown }).components) {
-            // New components pattern
-            const data = resultData as { content?: unknown; structuredContent?: unknown; components?: unknown };
+          if (resultData) {
+            const data = resultData as { content?: unknown; structuredContent?: unknown; components?: unknown; _meta?: unknown };
             return createResponse({
               content: data.content,
               structuredContent: data.structuredContent,
-              components: data.components
+              ...(data.components ? { components: data.components } : {}),
+              ...(data._meta ? { _meta: data._meta } : {}),
             });
           } else {
-            // If no components, return error - all tools must use components pattern
-            return createError(-32603, 'Internal error', 'Tool must return components pattern');
+            return createError(-32603, 'Internal error', 'Tool returned no result data');
           }
         }
         

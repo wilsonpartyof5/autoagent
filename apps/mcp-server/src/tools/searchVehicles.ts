@@ -74,7 +74,7 @@ type SearchVehiclesData = {
 
 function buildVehicleResultsUrl(runId: string): string {
   const isDiag = CONFIG.diagnosticsEnabled;
-  return `ui://vehicle-results.html?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
+  return `ui://vehicle-results.html${isDiag ? '?diag=1' : ''}`;
 }
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
