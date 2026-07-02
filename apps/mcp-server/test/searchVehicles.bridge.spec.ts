@@ -35,7 +35,7 @@ describe('searchVehicles bridge mode', () => {
           },
         },
         content: [{ type: 'text', text: 'Found 1 vehicle' }],
-        components: [{ type: 'iframe', url: 'https://example.com/widget/vehicle-results?rid=test' }],
+        components: [],
       },
       correlationId: 'corr-1',
       upstreamRequestId: 'up-1',
@@ -52,7 +52,7 @@ describe('searchVehicles bridge mode', () => {
     expect(result.success).toBe(true);
     expect(result.data?.totalCount).toBe(1);
     expect(result.data?.vehicles).toHaveLength(1);
-    expect(result.data?.components[0]?.type).toBe('iframe');
+    expect(result.data?.components).toEqual([]);
   });
 
   it('returns explicit error when upstream bridge call fails', async () => {

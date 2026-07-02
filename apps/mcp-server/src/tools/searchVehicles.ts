@@ -72,30 +72,6 @@ type SearchVehiclesData = {
   components: { type: string; url: string; }[];
 };
 
-function buildVehicleResultsUrl(runId: string): string {
-  const widgetHost = getWidgetHost();
-  const isDiag = CONFIG.diagnosticsEnabled;
-
-  try {
-    const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
-      ? widgetHost
-      : `https://${widgetHost}`;
-    const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-    widgetUrl.searchParams.set('rid', runId);
-    if (isDiag) {
-      widgetUrl.searchParams.set('diag', '1');
-    }
-    return widgetUrl.toString();
-  } catch (urlError) {
-    console.error(JSON.stringify({
-      event: 'url_construction_error',
-      widgetHost,
-      error: urlError instanceof Error ? urlError.message : 'Unknown error',
-    }));
-    return `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-  }
-}
-
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
   return {
     location: searchParams.location,
@@ -142,10 +118,8 @@ function normalizeBridgeSearchResult(
     ? bridge.content as { type: string; text: string; }[]
     : fallbackContent;
 
-  const vehicleResultsUrl = buildVehicleResultsUrl(runId);
-  const components = Array.isArray(bridge.components) && bridge.components.length > 0
-    ? bridge.components as { type: string; url: string; }[]
-    : [{ type: 'iframe', url: vehicleResultsUrl }];
+  // Keep experience in-thread: do not force external widget links.
+  const components: { type: string; url: string; }[] = [];
 
   return {
     content,
@@ -338,9 +312,7 @@ export async function searchVehicles(
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
           },
-          components: [
-            { type: 'iframe', url: vehicleResultsUrl }
-          ]
+          components: []
         },
       };
     }
@@ -547,9 +519,7 @@ export async function searchVehicles(
             searchParams 
           } as unknown
         },
-        components: [
-          { type: 'iframe', url: vehicleResultsUrl }
-        ]
+        components: []
       },
       error: undefined
     };
