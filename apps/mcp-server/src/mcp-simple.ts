@@ -8,6 +8,21 @@ import { fetchContent } from './tools/fetch.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
+
+const WIDGET_CSP = {
+  connectDomains: [
+    'https://autoagentmcp-server-production.up.railway.app',
+  ],
+  resourceDomains: [
+    'https://unpkg.com',
+    'https://tile.openstreetmap.org',
+    'https://vehicle-images.dealerinspire.com',
+    'https://pictures.dealer.com',
+    'https://www.myrockhillgmc.com',
+  ],
+};
+
 export type ToolContext = {
   ipAddress?: string;
   locale?: string;
@@ -264,19 +279,19 @@ export function getAvailableResources() {
       uri: 'ui://vehicle-results.html',
       name: 'Vehicle Results Widget',
       description: 'Interactive widget displaying vehicle search results',
-      mimeType: 'text/html',
+      mimeType: MCP_APP_HTML_MIME,
     },
     {
       uri: 'ui://ping.html',
       name: 'Ping Widget',
       description: 'Minimal diagnostic UI for bridge readiness',
-      mimeType: 'text/html',
+      mimeType: MCP_APP_HTML_MIME,
     },
     {
       uri: 'ui://micro.html',
       name: 'Micro Widget',
       description: 'Ultra-minimal diagnostic UI',
-      mimeType: 'text/html',
+      mimeType: MCP_APP_HTML_MIME,
     },
   ];
 }
@@ -298,8 +313,17 @@ export function readMcpResource(uri: string) {
     contents: [
       {
         uri,
-        mimeType: 'text/html',
+        mimeType: MCP_APP_HTML_MIME,
         text: readFileSync(path, 'utf8'),
+        _meta: {
+          ui: {
+            csp: WIDGET_CSP,
+          },
+          'openai/widgetCSP': {
+            connect_domains: WIDGET_CSP.connectDomains,
+            resource_domains: WIDGET_CSP.resourceDomains,
+          },
+        },
       },
     ],
   };
