@@ -69,13 +69,7 @@ type SearchVehiclesData = {
   totalCount?: number;
   searchParams?: unknown;
   structuredContent?: unknown;
-  components: { type: string; url: string; }[];
 };
-
-function buildVehicleResultsUrl(runId: string): string {
-  const isDiag = CONFIG.diagnosticsEnabled;
-  return `ui://vehicle-results.html${isDiag ? '?diag=1' : ''}`;
-}
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
   return {
@@ -98,7 +92,6 @@ function normalizeBridgeSearchResult(
   const bridge = upstreamResult as {
     content?: unknown;
     structuredContent?: unknown;
-    components?: unknown;
     vehicles?: unknown[];
     totalCount?: number;
   };
@@ -123,11 +116,6 @@ function normalizeBridgeSearchResult(
     ? bridge.content as { type: string; text: string; }[]
     : fallbackContent;
 
-  // Render the interactive experience inside ChatGPT via embedded iframe component.
-  const components = Array.isArray(bridge.components) && bridge.components.length > 0
-    ? bridge.components as { type: string; url: string; }[]
-    : [{ type: 'iframe', url: buildVehicleResultsUrl(runId) }];
-
   return {
     content,
     vehicles,
@@ -140,7 +128,6 @@ function normalizeBridgeSearchResult(
         searchParams,
       },
     },
-    components,
   };
 }
 
@@ -159,7 +146,6 @@ export async function searchVehicles(
     totalCount?: number;
     searchParams?: unknown;
     structuredContent?: unknown;
-    components: { type: string; url: string; }[];
   };
   error?: string;
 }> {
@@ -291,9 +277,7 @@ export async function searchVehicles(
       });
 
       const runId = randomUUID();
-      const vehicleResultsUrl = buildVehicleResultsUrl(runId);
-
-      console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
+      console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
 
       // Enrich cached vehicles with map pin and featured card data
       const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
@@ -310,7 +294,6 @@ export async function searchVehicles(
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
           },
-          components: [{ type: 'iframe', url: vehicleResultsUrl }]
         },
       };
     }
@@ -445,21 +428,7 @@ export async function searchVehicles(
     });
 
     const runId = randomUUID();
-    const vehicleResultsUrl = buildVehicleResultsUrl(runId);
-    
-    console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, urlLength: vehicleResultsUrl.length, ts:Date.now()}));
-    
-    // Validate URL format before using it
-    try {
-      new URL(vehicleResultsUrl);
-      console.log(JSON.stringify({event: 'url_validation', url: vehicleResultsUrl, valid: true}));
-    } catch (urlError) {
-      console.error(JSON.stringify({
-        event: 'url_validation_failed',
-        url: vehicleResultsUrl,
-        error: urlError instanceof Error ? urlError.message : 'Unknown error',
-      }));
-    }
+    console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
     
       // Build structuredContent with enriched fields for map pins and featured cards
       const structuredContentVehicles = vehicles.map((vehicle, index) => {
@@ -494,7 +463,6 @@ export async function searchVehicles(
             searchParams 
           } as unknown
         },
-        components: [{ type: 'iframe', url: vehicleResultsUrl }]
       },
       error: undefined
     };

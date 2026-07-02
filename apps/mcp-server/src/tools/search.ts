@@ -4,14 +4,13 @@ import type { ToolContext } from '../mcp-simple.js';
 
 /**
  * Natural-language search wrapper around searchVehicles.
- * Returns UI-first payload (structuredContent + components) for ChatGPT rendering.
+ * Returns UI-first payload (structuredContent + content) for ChatGPT rendering.
  */
 export async function search(params: unknown, context?: ToolContext): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
     structuredContent?: unknown;
-    components: { type: string; url: string; }[];
   };
   error?: string;
 }> {
@@ -81,7 +80,6 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       };
       vehicles?: unknown[];
       totalCount?: number;
-      components?: { type: string; url: string; }[];
     } | undefined;
     const totalCount = resultData?.structuredContent?.results?.totalCount
       ?? resultData?.totalCount
@@ -104,7 +102,6 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
           }
         ],
         structuredContent,
-        components: resultData?.components || []
       },
     };
   } catch (error) {

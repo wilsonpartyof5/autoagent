@@ -47,7 +47,6 @@ describe('search Tool', () => {
             },
           ],
           totalCount: 1,
-          components: [],
         },
       });
 
@@ -68,7 +67,6 @@ describe('search Tool', () => {
         data: {
           vehicles: [],
           totalCount: 0,
-          components: [],
         },
       });
 
@@ -91,7 +89,6 @@ describe('search Tool', () => {
         data: {
           vehicles: [],
           totalCount: 0,
-          components: [],
         },
       });
 
@@ -114,7 +111,6 @@ describe('search Tool', () => {
         data: {
           vehicles: [],
           totalCount: 0,
-          components: [],
         },
       });
 
@@ -137,7 +133,6 @@ describe('search Tool', () => {
         data: {
           vehicles: [],
           totalCount: 0,
-          components: [],
         },
       });
 
@@ -185,7 +180,6 @@ describe('search Tool', () => {
         data: {
           vehicles: mockVehicles,
           totalCount: 2,
-          components: [{ type: 'iframe', url: 'https://example.com/widget' }],
         },
       });
 
@@ -202,7 +196,6 @@ describe('search Tool', () => {
           totalCount: 2,
         },
       });
-      expect(result.data?.components).toEqual([{ type: 'iframe', url: 'https://example.com/widget' }]);
     });
 
     it('should handle empty results', async () => {
@@ -211,7 +204,6 @@ describe('search Tool', () => {
         data: {
           vehicles: [],
           totalCount: 0,
-          components: [],
         },
       });
 
@@ -261,7 +253,7 @@ describe('search Tool', () => {
   });
 
   describe('Schema compliance', () => {
-    it('should return structuredContent and components for UI rendering', async () => {
+    it('should return structuredContent for UI rendering', async () => {
       const mockVehicles = [
         {
           id: '1',
@@ -278,7 +270,6 @@ describe('search Tool', () => {
         data: {
           vehicles: mockVehicles,
           totalCount: 1,
-          components: [],
         },
       });
 
@@ -294,7 +285,6 @@ describe('search Tool', () => {
           totalCount: 1,
         },
       });
-      expect(result.data?.components).toEqual([]);
     });
   });
 });

@@ -114,11 +114,10 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
           // Return tool result payload in MCP-compatible shape.
           const resultData = (result as { data?: unknown }).data;
           if (resultData) {
-            const data = resultData as { content?: unknown; structuredContent?: unknown; components?: unknown; _meta?: unknown };
+            const data = resultData as { content?: unknown; structuredContent?: unknown; _meta?: unknown };
             return createResponse({
               content: data.content,
               structuredContent: data.structuredContent,
-              ...(data.components ? { components: data.components } : {}),
               ...(data._meta ? { _meta: data._meta } : {}),
             });
           } else {
