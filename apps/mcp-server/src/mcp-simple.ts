@@ -5,6 +5,8 @@ import { pingUi } from './tools/pingUi.js';
 import { pingMicroUi } from './tools/pingMicroUi.js';
 import { search } from './tools/search.js';
 import { fetchContent } from './tools/fetch.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Simple MCP tool handler for Express integration
@@ -84,6 +86,14 @@ export function getAvailableTools() {
     {
       name: 'search-vehicles',
       description: 'Search for vehicles based on location, price, make, model, and other criteria',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        'openai/outputTemplate': 'ui://vehicle-results.html',
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -226,5 +236,47 @@ export function getAvailableTools() {
  * Get available resources
  */
 export function getAvailableResources() {
-  return [];
+  return [
+    {
+      uri: 'ui://vehicle-results.html',
+      name: 'Vehicle Results Widget',
+      description: 'Interactive widget displaying vehicle search results',
+      mimeType: 'text/html',
+    },
+    {
+      uri: 'ui://ping.html',
+      name: 'Ping Widget',
+      description: 'Minimal diagnostic UI for bridge readiness',
+      mimeType: 'text/html',
+    },
+    {
+      uri: 'ui://micro.html',
+      name: 'Micro Widget',
+      description: 'Ultra-minimal diagnostic UI',
+      mimeType: 'text/html',
+    },
+  ];
+}
+
+export function readMcpResource(uri: string) {
+  const resources: Record<string, string> = {
+    'ui://vehicle-results.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://ping.html': join(process.cwd(), 'src', 'ui', 'ping.html'),
+    'ui://micro.html': join(process.cwd(), 'src', 'ui', 'micro.html'),
+  };
+
+  const path = resources[uri];
+  if (!path) {
+    throw new Error(`Resource not found: ${uri}`);
+  }
+
+  return {
+    contents: [
+      {
+        uri,
+        mimeType: 'text/html',
+        text: readFileSync(path, 'utf8'),
+      },
+    ],
+  };
 }

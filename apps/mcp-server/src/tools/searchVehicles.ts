@@ -3,7 +3,6 @@ import { safeParse } from '../lib/z.js';
 import { searchCache } from '../lib/cache.js';
 import { randomUUID } from 'crypto';
 import { validateToolResult } from '../lib/responseShape.js';
-import { getWidgetHost } from '../utils/getWidgetHost.js';
 import { CONFIG } from '../config/env.js';
 import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
@@ -73,27 +72,8 @@ type SearchVehiclesData = {
 };
 
 function buildVehicleResultsUrl(runId: string): string {
-  const widgetHost = getWidgetHost();
   const isDiag = CONFIG.diagnosticsEnabled;
-
-  try {
-    const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
-      ? widgetHost
-      : `https://${widgetHost}`;
-    const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-    widgetUrl.searchParams.set('rid', runId);
-    if (isDiag) {
-      widgetUrl.searchParams.set('diag', '1');
-    }
-    return widgetUrl.toString();
-  } catch (urlError) {
-    console.error(JSON.stringify({
-      event: 'url_construction_error',
-      widgetHost,
-      error: urlError instanceof Error ? urlError.message : 'Unknown error',
-    }));
-    return `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-  }
+  return `ui://vehicle-results.html?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
 }
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {

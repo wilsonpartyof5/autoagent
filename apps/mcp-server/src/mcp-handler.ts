@@ -1,4 +1,4 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource } from './mcp-simple.js';
 
 /**
  * Handle MCP protocol requests
@@ -122,8 +122,20 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
         return createError(-32602, 'Invalid params', 'Missing tool name');
 
       case 'resources/read':
-        // Legacy resource-based UI path removed - all UI now uses components pattern
-        return createError(-32602, 'Invalid params', 'Resource not found');
+        console.log('🔧 Resources read request received');
+        try {
+          const uri = (params as { uri?: string }).uri;
+          if (!uri) {
+            return createError(-32602, 'Invalid params', 'Missing resource uri');
+          }
+          return createResponse(readMcpResource(uri));
+        } catch (error) {
+          return createError(
+            -32602,
+            'Invalid params',
+            error instanceof Error ? error.message : 'Resource not found'
+          );
+        }
 
       case 'notifications/initialized':
         console.log('✅ Notifications/initialized received');
