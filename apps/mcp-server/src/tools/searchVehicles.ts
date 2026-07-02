@@ -72,6 +72,30 @@ type SearchVehiclesData = {
   components: { type: string; url: string; }[];
 };
 
+function buildVehicleResultsUrl(runId: string): string {
+  const widgetHost = getWidgetHost();
+  const isDiag = CONFIG.diagnosticsEnabled;
+
+  try {
+    const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
+      ? widgetHost
+      : `https://${widgetHost}`;
+    const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
+    widgetUrl.searchParams.set('rid', runId);
+    if (isDiag) {
+      widgetUrl.searchParams.set('diag', '1');
+    }
+    return widgetUrl.toString();
+  } catch (urlError) {
+    console.error(JSON.stringify({
+      event: 'url_construction_error',
+      widgetHost,
+      error: urlError instanceof Error ? urlError.message : 'Unknown error',
+    }));
+    return `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
+  }
+}
+
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
   return {
     location: searchParams.location,
@@ -118,8 +142,10 @@ function normalizeBridgeSearchResult(
     ? bridge.content as { type: string; text: string; }[]
     : fallbackContent;
 
-  // Keep experience in-thread: do not force external widget links.
-  const components: { type: string; url: string; }[] = [];
+  // Render the interactive experience inside ChatGPT via embedded iframe component.
+  const components = Array.isArray(bridge.components) && bridge.components.length > 0
+    ? bridge.components as { type: string; url: string; }[]
+    : [{ type: 'iframe', url: buildVehicleResultsUrl(runId) }];
 
   return {
     content,
@@ -269,31 +295,7 @@ export async function searchVehicles(
       });
 
       const runId = randomUUID();
-      const widgetHost = getWidgetHost();
-      const isDiag = CONFIG.diagnosticsEnabled;
-
-      // Build URL using URL API to ensure proper encoding
-      let vehicleResultsUrl: string;
-      try {
-        // Ensure widgetHost has protocol
-        const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
-          ? widgetHost
-          : `https://${widgetHost}`;
-        const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-        widgetUrl.searchParams.set('rid', runId);
-        if (isDiag) {
-          widgetUrl.searchParams.set('diag', '1');
-        }
-        vehicleResultsUrl = widgetUrl.toString();
-      } catch (urlError) {
-        // Fallback to template literal if URL constructor fails
-        console.error(JSON.stringify({
-          event: 'url_construction_error',
-          widgetHost,
-          error: urlError instanceof Error ? urlError.message : 'Unknown error',
-        }));
-        vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-      }
+      const vehicleResultsUrl = buildVehicleResultsUrl(runId);
 
       console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
 
@@ -312,7 +314,7 @@ export async function searchVehicles(
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
           },
-          components: []
+          components: [{ type: 'iframe', url: vehicleResultsUrl }]
         },
       };
     }
@@ -446,31 +448,7 @@ export async function searchVehicles(
     });
 
     const runId = randomUUID();
-    const widgetHost = getWidgetHost();
-    const isDiag = CONFIG.diagnosticsEnabled;
-    
-    // Build URL using URL API to ensure proper encoding
-    let vehicleResultsUrl: string;
-    try {
-      // Ensure widgetHost has protocol
-      const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://') 
-        ? widgetHost 
-        : `https://${widgetHost}`;
-      const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-      widgetUrl.searchParams.set('rid', runId);
-      if (isDiag) {
-        widgetUrl.searchParams.set('diag', '1');
-      }
-      vehicleResultsUrl = widgetUrl.toString();
-    } catch (urlError) {
-      // Fallback to template literal if URL constructor fails
-      console.error(JSON.stringify({
-        event: 'url_construction_error',
-        widgetHost,
-        error: urlError instanceof Error ? urlError.message : 'Unknown error',
-      }));
-      vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-    }
+    const vehicleResultsUrl = buildVehicleResultsUrl(runId);
     
     console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, urlLength: vehicleResultsUrl.length, ts:Date.now()}));
     
@@ -519,7 +497,7 @@ export async function searchVehicles(
             searchParams 
           } as unknown
         },
-        components: []
+        components: [{ type: 'iframe', url: vehicleResultsUrl }]
       },
       error: undefined
     };
