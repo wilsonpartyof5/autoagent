@@ -931,6 +931,8 @@
             flex: 1;
             position: relative;
             min-height: 300px;
+            background: #101820;
+            overflow: hidden;
         }
 
         .thumbnail-map #thumbnailMap {
@@ -938,11 +940,92 @@
             height: 100%;
         }
 
+        .map-fallback {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 25% 30%, rgba(59, 130, 246, 0.22), transparent 24%),
+                radial-gradient(circle at 74% 48%, rgba(34, 197, 94, 0.12), transparent 22%),
+                linear-gradient(135deg, #111827 0%, #0f172a 45%, #111827 100%);
+        }
+
+        .map-fallback.hidden {
+            display: none;
+        }
+
+        .map-fallback::before,
+        .map-fallback::after {
+            content: "";
+            position: absolute;
+            inset: -20%;
+            opacity: 0.36;
+            background-image:
+                linear-gradient(25deg, transparent 48%, rgba(148, 163, 184, 0.35) 49%, rgba(148, 163, 184, 0.35) 51%, transparent 52%),
+                linear-gradient(115deg, transparent 48%, rgba(148, 163, 184, 0.22) 49%, rgba(148, 163, 184, 0.22) 51%, transparent 52%);
+            background-size: 180px 130px, 210px 150px;
+            transform: rotate(-7deg);
+        }
+
+        .map-fallback::after {
+            opacity: 0.22;
+            background-size: 96px 80px, 140px 100px;
+            transform: rotate(9deg);
+        }
+
+        .map-label {
+            position: absolute;
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 13px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+            z-index: 2;
+        }
+
+        .map-label.primary {
+            font-size: 22px;
+            font-weight: 800;
+            color: rgba(255,255,255,0.92);
+        }
+
+        .pin-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+        }
+
+        .fallback-pin {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: #b91c1c;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.34);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+            border-radius: 999px;
+            padding: 5px 9px;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .fallback-pin.loading {
+            min-width: 48px;
+            height: 24px;
+            color: transparent;
+            animation: pulse-pin 1.15s infinite ease-in-out;
+        }
+
+        @keyframes pulse-pin {
+            0%, 100% { opacity: 0.62; transform: translate(-50%, -50%) scale(0.96); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+        }
+
         .thumbnail-featured {
             background: var(--panel);
             border-top: 1px solid var(--border);
             padding: 16px;
-            max-height: 200px;
+            min-height: 154px;
+            max-height: 220px;
+            z-index: 5;
         }
 
         .featured-card {
@@ -954,6 +1037,10 @@
             overflow: hidden;
             cursor: pointer;
             transition: all 0.2s;
+        }
+
+        .featured-card.loading {
+            cursor: default;
         }
 
         .featured-card:hover {
@@ -1241,16 +1328,42 @@
 
     <div class="container">
         <!-- Thumbnail mode (initial view from structuredContent) -->
-        <div class="thumbnail-mode hidden" id="thumbnailMode">
+        <div class="thumbnail-mode" id="thumbnailMode">
             <div class="thumbnail-map">
-                <div id="thumbnailMap"></div>
+                <div id="thumbnailMap">
+                    <div class="map-fallback" id="mapFallback" aria-label="Vehicle results map loading">
+                        <div class="map-label primary" style="left: 42%; top: 42%;">Rock Hill</div>
+                        <div class="map-label" style="left: 13%; top: 25%;">Fort Mill</div>
+                        <div class="map-label" style="left: 64%; top: 22%;">Charlotte</div>
+                        <div class="map-label" style="left: 72%; top: 68%;">Indian Trail</div>
+                        <div class="pin-layer" id="fallbackPinLayer">
+                            <span class="fallback-pin loading" style="left: 20%; top: 34%;">0</span>
+                            <span class="fallback-pin loading" style="left: 35%; top: 48%;">0</span>
+                            <span class="fallback-pin loading" style="left: 50%; top: 30%;">0</span>
+                            <span class="fallback-pin loading" style="left: 62%; top: 55%;">0</span>
+                            <span class="fallback-pin loading" style="left: 78%; top: 40%;">0</span>
+                            <span class="fallback-pin loading" style="left: 46%; top: 70%;">0</span>
+                        </div>
+                    </div>
+                </div>
                 <button class="expand-button" id="expandButton" onclick="expandToFullView()">Expand</button>
             </div>
-            <div class="thumbnail-featured" id="thumbnailFeatured"></div>
+            <div class="thumbnail-featured" id="thumbnailFeatured">
+                <div class="featured-card loading">
+                    <div class="featured-image skeleton"></div>
+                    <div class="featured-content">
+                        <div>
+                            <div class="featured-title">Loading nearby vehicles...</div>
+                            <div class="featured-price">Finding live inventory</div>
+                            <div class="featured-dealer">AutoAgent vehicle search</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Full view (existing functionality) -->
-        <div class="full-view" id="fullView">
+        <div class="full-view hidden" id="fullView">
             <!-- Map -->
             <div class="map-container">
                 <div id="map"></div>
@@ -1500,9 +1613,36 @@
                 
                 // Initialize thumbnail map
                 initThumbnailMap(vehicles);
+                renderFallbackPins(vehicles);
                 
                 // Render featured card (first vehicle)
                 renderFeaturedCard(vehicles[0]);
+            }
+
+            function renderFallbackPins(vehicles) {
+                const fallback = document.getElementById('mapFallback');
+                const pinLayer = document.getElementById('fallbackPinLayer');
+                if (!fallback || !pinLayer) return;
+
+                const positions = [
+                    [22, 32], [34, 48], [49, 30], [62, 55],
+                    [77, 41], [45, 70], [57, 22], [28, 64],
+                    [70, 72], [16, 52], [84, 58], [39, 18]
+                ];
+
+                const pins = (vehicles || []).slice(0, positions.length).map((vehicle, index) => {
+                    const price = Number(vehicle.price || vehicle.pricing?.price || 0);
+                    const priceText = price >= 1000000
+                        ? `$${(price / 1000000).toFixed(1)}M`
+                        : price >= 1000
+                            ? `$${Math.round(price / 1000)}K`
+                            : 'View';
+                    const [left, top] = positions[index];
+                    return `<span class="fallback-pin" style="left:${left}%; top:${top}%;">${priceText}</span>`;
+                }).join('');
+
+                pinLayer.innerHTML = pins || pinLayer.innerHTML;
+                fallback.classList.remove('hidden');
             }
 
             // Initialize thumbnail map with price pins
@@ -1511,6 +1651,7 @@
                 if (!mapEl) return;
                 if (!(window.L && typeof window.L.map === 'function')) {
                     log('Leaflet unavailable in thumbnail mode; rendering cards without map');
+                    renderFallbackPins(vehicles);
                     return;
                 }
                 
@@ -1520,6 +1661,8 @@
                 
                 // Initialize Leaflet map
                 const map = L.map('thumbnailMap').setView([validVehicles[0].lat, validVehicles[0].lng], 10);
+                const fallback = document.getElementById('mapFallback');
+                if (fallback) fallback.classList.add('hidden');
                 
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
