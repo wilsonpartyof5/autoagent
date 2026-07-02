@@ -259,13 +259,14 @@ export function getAvailableResources() {
 }
 
 export function readMcpResource(uri: string) {
+  const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     'ui://vehicle-results.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://ping.html': join(process.cwd(), 'src', 'ui', 'ping.html'),
     'ui://micro.html': join(process.cwd(), 'src', 'ui', 'micro.html'),
   };
 
-  const path = resources[uri];
+  const path = resources[baseUri];
   if (!path) {
     throw new Error(`Resource not found: ${uri}`);
   }
