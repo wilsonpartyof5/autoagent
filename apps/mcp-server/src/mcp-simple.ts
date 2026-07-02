@@ -88,6 +88,21 @@ export function getAvailableTools() {
         },
         required: ['query'],
       },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          results: {
+            type: 'object',
+            properties: {
+              vehicles: { type: 'array', items: { type: 'object' } },
+              totalCount: { type: 'number' },
+              searchParams: { type: 'object' },
+            },
+            required: ['vehicles', 'totalCount'],
+          },
+        },
+        required: ['results'],
+      },
     },
     {
       name: 'fetch',
@@ -171,6 +186,21 @@ export function getAvailableTools() {
           },
         },
         required: ['location', 'condition'],
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          results: {
+            type: 'object',
+            properties: {
+              vehicles: { type: 'array', items: { type: 'object' } },
+              totalCount: { type: 'number' },
+              searchParams: { type: 'object' },
+            },
+            required: ['vehicles', 'totalCount'],
+          },
+        },
+        required: ['results'],
       },
     },
     {

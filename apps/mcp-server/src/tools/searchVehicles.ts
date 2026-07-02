@@ -69,18 +69,9 @@ type SearchVehiclesData = {
   totalCount?: number;
   searchParams?: unknown;
   structuredContent?: unknown;
-  _meta?: Record<string, unknown>;
 };
 const MAX_BRIDGE_RESULTS = 24;
 const MAX_SUMMARY_LISTINGS = 3;
-const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v3.html';
-
-function buildToolUiMeta(): Record<string, unknown> {
-  return {
-    ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-    'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-  };
-}
 
 function summarizeVehicleLine(vehicle: unknown): string {
   const v = vehicle as Record<string, unknown> & {
@@ -183,7 +174,6 @@ function normalizeBridgeSearchResult(
         searchParams: structuredResults?.searchParams ?? searchParams,
       },
     },
-    _meta: buildToolUiMeta(),
   };
 }
 
@@ -202,7 +192,6 @@ export async function searchVehicles(
     totalCount?: number;
     searchParams?: unknown;
     structuredContent?: unknown;
-    _meta?: Record<string, unknown>;
   };
   error?: string;
 }> {
@@ -351,7 +340,6 @@ export async function searchVehicles(
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
           },
-          _meta: buildToolUiMeta(),
         },
       };
     }
@@ -521,7 +509,6 @@ export async function searchVehicles(
             searchParams 
           } as unknown
         },
-        _meta: buildToolUiMeta(),
       },
       error: undefined
     };

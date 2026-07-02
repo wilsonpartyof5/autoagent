@@ -11,7 +11,6 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
   data?: {
     content: { type: string; text: string; }[];
     structuredContent?: unknown;
-    _meta?: Record<string, unknown>;
   };
   error?: string;
 }> {
@@ -82,7 +81,6 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       };
       vehicles?: unknown[];
       totalCount?: number;
-      _meta?: Record<string, unknown>;
     } | undefined;
     const totalCount = resultData?.structuredContent?.results?.totalCount
       ?? resultData?.totalCount
@@ -109,7 +107,6 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       data: {
         content,
         structuredContent,
-        _meta: resultData?._meta,
       },
     };
   } catch (error) {
