@@ -1180,10 +1180,15 @@
 
       function extractResults(payload) {
         return payload?.structuredContent?.results
+          || payload?._meta?.results
           || payload?.result?.structuredContent?.results
+          || payload?.result?._meta?.results
           || payload?.toolOutput?.structuredContent?.results
+          || payload?.toolOutput?._meta?.results
           || payload?.output?.structuredContent?.results
+          || payload?.output?._meta?.results
           || payload?.data?.structuredContent?.results
+          || payload?.data?._meta?.results
           || payload?.results
           || null;
       }
@@ -1257,14 +1262,14 @@
         try{
           if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
           if (window.openai && window.openai.toolOutput) {
-            return window.openai.toolOutput.structuredContent?.results || null;
+            return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
           }
           if (window.openai && typeof window.openai.getContext === 'function') {
             const context = window.openai.getContext();
             return context?.structuredContent?.results || context?.results || null;
           }
         }catch(e){ log('ERR getResults', e?.message||e); }
-        return window.__AA_MOCK__||null;
+        return null;
       }
       function maybeEmitReady(tag){
         if (emitted) return;
@@ -1542,7 +1547,7 @@
                 try {
                     if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
                     if (window.openai && window.openai.toolOutput) {
-                        return window.openai.toolOutput.structuredContent?.results || null;
+                        return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
                     }
                     if (window.openai && typeof window.openai.getContext === 'function') {
                         const context = window.openai.getContext();
@@ -1550,7 +1555,7 @@
                     }
                 } catch (e) { errorLog(e); }
                 // local dev fallback only
-                return window.__AA_MOCK__ || null;
+                return null;
             }
 
             // ---- emit readiness to ChatGPT ----
@@ -1799,7 +1804,7 @@
             try {
                 if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
                 if (window.openai?.toolOutput) {
-                    return window.openai.toolOutput.structuredContent?.results || null;
+                    return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
                 }
                 if (window.openai && typeof window.openai.getContext === 'function') {
                     const context = window.openai.getContext();
@@ -1808,7 +1813,7 @@
             } catch (error) {
                 console.error('Failed to read tool output', error);
             }
-            return window.__AA_MOCK__ || null;
+            return null;
         }
         const fmtPayment = (price) => {
             const numericPrice = Number(price) || 0;
@@ -1909,63 +1914,15 @@
             compareList: []
         };
 
-        // Mock data for testing
-        const mockVehicles = [
-            {
-                id: '1',
-                year: 2022,
-                make: 'Toyota',
-                model: 'Camry',
-                price: 28500,
-                miles: 15000,
-                imageUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
-                features: ['Bluetooth', 'Backup Camera', 'Lane Assist'],
-                vin: '1HGCM82633A004352',
-                dealer: {
-                    name: 'Seattle Auto Center',
-                    address: '123 Main St, Seattle, WA 98101',
-                    latitude: 47.6062,
-                    longitude: -122.3321,
-                    distanceMiles: 2.3
-                }
-            },
-            {
-                id: '2',
-                year: 2021,
-                make: 'Honda',
-                model: 'CR-V',
-                price: 32000,
-                miles: 22000,
-                imageUrl: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
-                features: ['AWD', 'Sunroof', 'Heated Seats'],
-                vin: '2HGFC2F59MH543210',
-                dealer: {
-                    name: 'Bellevue Motors',
-                    address: '456 Auto Way, Bellevue, WA 98004',
-                    latitude: 47.6101,
-                    longitude: -122.2015,
-                    distanceMiles: 5.7
-                }
-            },
-            {
-                id: '3',
-                year: 2023,
-                make: 'Subaru',
-                model: 'Outback',
-                price: 35000,
-                miles: 5000,
-                imageUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
-                features: ['AWD', 'Eyesight Safety', 'Apple CarPlay'],
-                vin: '4S4BSANC9P3245678',
-                dealer: {
-                    name: 'Tacoma Auto Group',
-                    address: '789 Car Blvd, Tacoma, WA 98402',
-                    latitude: 47.2529,
-                    longitude: -122.4443,
-                    distanceMiles: 12.1
-                }
-            }
-        ];
+        function setWidgetStatus(title, copy) {
+            const status = el('widgetStatus');
+            if (!status) return;
+            status.classList.remove('hidden');
+            const titleEl = status.querySelector('.widget-status-title');
+            const copyEl = status.querySelector('.widget-status-copy');
+            if (titleEl) titleEl.textContent = title;
+            if (copyEl) copyEl.textContent = copy;
+        }
 
         // Load UVS vehicle data from structuredContent (returned by MCP tools)
         // Hydrates exclusively from structuredContent/set_globals - no URL params or raw provider data
@@ -1989,16 +1946,10 @@
                         setTimeout(attemptLoad, 500);
                         return;
                     } else {
-                        // Final fallback to mock data (dev only)
-                        console.log('Using fallback mock data (dev mode)');
-                        state.vehicles = mockVehicles;
-                        state.allVehicles = [...state.vehicles];
-                        state.query = {
-                            location: 'Seattle, WA',
-                            condition: 'used',
-                            maxPrice: 30000
-                        };
-                        refreshVehiclesView();
+                        setWidgetStatus(
+                            'Waiting for live vehicle data',
+                            'The widget loaded successfully, but ChatGPT has not delivered vehicle results to the iframe yet.'
+                        );
                     }
                 } catch (error) {
                     console.error('Error loading data:', error);
@@ -2006,10 +1957,10 @@
                         retryCount++;
                         setTimeout(attemptLoad, 500);
                     } else {
-                        state.vehicles = mockVehicles;
-                        state.allVehicles = [...state.vehicles];
-                        state.query = { location: 'Seattle, WA' };
-                        refreshVehiclesView();
+                        setWidgetStatus(
+                            'Unable to hydrate vehicle results',
+                            'Try running the vehicle search again so ChatGPT can resend the live inventory payload.'
+                        );
                     }
                 }
             }

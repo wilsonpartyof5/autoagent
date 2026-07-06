@@ -145,6 +145,7 @@ type SearchVehiclesData = {
   totalCount?: number;
   searchParams?: unknown;
   structuredContent?: unknown;
+  _meta?: Record<string, unknown>;
 };
 const MAX_BRIDGE_RESULTS = 8;
 const MAX_WIDGET_RESULTS = 12;
@@ -251,6 +252,13 @@ function normalizeBridgeSearchResult(
         searchParams: structuredResults?.searchParams ?? searchParams,
       },
     },
+    _meta: {
+      results: {
+        vehicles,
+        totalCount,
+        searchParams: structuredResults?.searchParams ?? searchParams,
+      },
+    },
   };
 }
 
@@ -269,6 +277,7 @@ export async function searchVehicles(
     totalCount?: number;
     searchParams?: unknown;
     structuredContent?: unknown;
+    _meta?: Record<string, unknown>;
   };
   error?: string;
 }> {
@@ -416,6 +425,9 @@ export async function searchVehicles(
           searchParams,
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
+          },
+          _meta: {
+            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams },
           },
         },
       };
@@ -585,6 +597,13 @@ export async function searchVehicles(
             totalCount, 
             searchParams 
           } as unknown
+        },
+        _meta: {
+          results: {
+            vehicles: structuredContentVehicles,
+            totalCount,
+            searchParams,
+          },
         },
       },
       error: undefined
