@@ -1178,6 +1178,37 @@
       window.__AA_RESULTS__ = window.__AA_RESULTS__ || null;
       const GLOBALS = window.GLOBALS;
 
+      function summarizePayloadShape(payload) {
+        if (!payload || typeof payload !== 'object') return typeof payload;
+        const keys = Object.keys(payload).slice(0, 12);
+        const hasStructured = !!payload.structuredContent?.results || !!payload.result?.structuredContent?.results;
+        const hasMeta = !!payload._meta?.results || !!payload.result?._meta?.results;
+        const hasResults = !!payload.results;
+        return JSON.stringify({ keys, hasStructured, hasMeta, hasResults });
+      }
+
+      function logHydration(tag, extra) {
+        log(`hydrate:${tag}`, extra || '');
+        beacon(`hydrate:${tag}`, extra ? { detail: extra } : undefined);
+      }
+
+      function logOpenAiSurface() {
+        const openai = window.openai;
+        if (!openai || typeof openai !== 'object') {
+          logHydration('surface:no-openai');
+          return;
+        }
+        const keys = Object.keys(openai).slice(0, 20);
+        logHydration('surface:openai', JSON.stringify({
+          keys,
+          hasToolOutput: !!openai.toolOutput,
+          hasGetContext: typeof openai.getContext === 'function',
+          hasOn: typeof openai.on === 'function',
+          hasEmitToolEvent: typeof openai.emitToolEvent === 'function',
+          hasCallTool: typeof openai.callTool === 'function',
+        }));
+      }
+
       function extractResults(payload) {
         return payload?.structuredContent?.results
           || payload?._meta?.results
@@ -1194,10 +1225,11 @@
       }
 
       function updateResults(payload, source) {
+        logHydration(`event:${source}`, summarizePayloadShape(payload));
         const results = extractResults(payload);
         if (!results) return false;
         window.__AA_RESULTS__ = results;
-        log('results updated', source, `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+        logHydration(`source:${source}`, `vehicles=${results.vehicles?.length ?? 'n/a'}`);
         window.dispatchEvent(new CustomEvent('aa:results', { detail: results }));
         heartbeat();
         return true;
@@ -1235,8 +1267,13 @@
         ['tool-result', 'toolResult', 'ui/notifications/tool-result', 'openai/tool-result'].forEach((eventName) => {
           try {
             window.openai.on(eventName, evt => updateResults(evt, eventName));
-          } catch (_) {}
+            logHydration(`subscribe:${eventName}`, 'ok');
+          } catch (e) {
+            logHydration(`subscribe:${eventName}`, e?.message || 'failed');
+          }
         });
+      } else {
+        logHydration('subscribe:none', 'window.openai.on unavailable');
       }
 
       // Fallback: listen for postMessage (legacy openai:set_globals)
@@ -1262,11 +1299,16 @@
         try{
           if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
           if (window.openai && window.openai.toolOutput) {
-            return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
+            const results = window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
+            if (results) logHydration('source:toolOutput', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
           }
           if (window.openai && typeof window.openai.getContext === 'function') {
             const context = window.openai.getContext();
-            return context?.structuredContent?.results || context?.results || null;
+            logHydration('inspect:getContext', summarizePayloadShape(context));
+            const results = context?.structuredContent?.results || context?._meta?.results || context?.results || null;
+            if (results) logHydration('source:getContext', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
           }
         }catch(e){ log('ERR getResults', e?.message||e); }
         return null;
@@ -1307,9 +1349,10 @@
           render();
           return;
         }
+        const elapsed = performance.now()-T0;
         if (!emitted){
-          if (performance.now()-T0 < MAX_WAIT_MS){ setTimeout(heartbeat, INTERVAL_MS); }
-          else if (haveBridge) { beacon('timeout-fallback'); maybeEmitReady('timeout-fallback'); }
+          if (elapsed < MAX_WAIT_MS){ setTimeout(heartbeat, INTERVAL_MS); }
+          else if (haveBridge) { logHydration('timeout:no-data'); maybeEmitReady('timeout-fallback'); }
         }
       }
 
@@ -1319,6 +1362,7 @@
       document.addEventListener('DOMContentLoaded', ()=>{ 
         const rid = GLOBALS.rid || 'none';
         log('DOMContentLoaded', `rid=${rid}`, `diag=${DIAG}`); 
+        logOpenAiSurface();
         beacon('domcontentloaded'); 
         heartbeat(); 
       });
