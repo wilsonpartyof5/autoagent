@@ -146,6 +146,14 @@ type SearchVehiclesData = {
   searchParams?: unknown;
   structuredContent?: unknown;
   _meta?: Record<string, unknown>;
+  dataSource?: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+  inventoryProvider?: 'marketcheck' | 'uvs';
+  normalizedAs?: 'uvs';
+};
+type SourceInfo = {
+  dataSource: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+  inventoryProvider: 'marketcheck' | 'uvs';
+  normalizedAs: 'uvs';
 };
 const MAX_BRIDGE_RESULTS = 8;
 const MAX_WIDGET_RESULTS = 12;
@@ -210,7 +218,8 @@ function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string,
 function normalizeBridgeSearchResult(
   upstreamResult: unknown,
   searchParams: SearchParams,
-  runId: string
+  runId: string,
+  sourceInfo: SourceInfo
 ): SearchVehiclesData {
   const bridge = upstreamResult as {
     content?: unknown;
@@ -250,6 +259,9 @@ function normalizeBridgeSearchResult(
         vehicles,
         totalCount,
         searchParams: structuredResults?.searchParams ?? searchParams,
+        dataSource: sourceInfo.dataSource,
+        inventoryProvider: sourceInfo.inventoryProvider,
+        normalizedAs: sourceInfo.normalizedAs,
       },
     },
     _meta: {
@@ -257,8 +269,12 @@ function normalizeBridgeSearchResult(
         vehicles,
         totalCount,
         searchParams: structuredResults?.searchParams ?? searchParams,
+        dataSource: sourceInfo.dataSource,
+        inventoryProvider: sourceInfo.inventoryProvider,
+        normalizedAs: sourceInfo.normalizedAs,
       },
     },
+    ...sourceInfo,
   };
 }
 
@@ -278,6 +294,9 @@ export async function searchVehicles(
     searchParams?: unknown;
     structuredContent?: unknown;
     _meta?: Record<string, unknown>;
+    dataSource?: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+    inventoryProvider?: 'marketcheck' | 'uvs';
+    normalizedAs?: 'uvs';
   };
   error?: string;
 }> {
@@ -353,7 +372,17 @@ export async function searchVehicles(
         latencyMs: bridgeCall.latencyMs,
       }));
 
-      const normalized = normalizeBridgeSearchResult(bridgeCall.result, searchParams, runId);
+      const sourceInfo: SourceInfo = {
+        dataSource: 'marketcheck_mcp',
+        inventoryProvider: 'marketcheck',
+        normalizedAs: 'uvs',
+      };
+      const normalized = normalizeBridgeSearchResult(bridgeCall.result, searchParams, runId, sourceInfo);
+      console.log(JSON.stringify({
+        event: 'vehicle_search_source',
+        requestId,
+        ...sourceInfo,
+      }));
       validateToolResult(normalized);
 
       trackEvent('inventory.search', {
@@ -415,6 +444,11 @@ export async function searchVehicles(
       const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
         compactVehicleForWidget(vehicle)
       ).slice(0, MAX_WIDGET_RESULTS);
+      const sourceInfo: SourceInfo = {
+        dataSource: 'uvs_cache',
+        inventoryProvider: 'uvs',
+        normalizedAs: 'uvs',
+      };
       
       return {
         success: true,
@@ -424,11 +458,12 @@ export async function searchVehicles(
           totalCount: cachedResult.totalCount,
           searchParams,
           structuredContent: {
-            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
+            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo }
           },
           _meta: {
-            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams },
+            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo },
           },
+          ...sourceInfo,
         },
       };
     }
@@ -564,6 +599,11 @@ export async function searchVehicles(
 
     const runId = randomUUID();
     console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
+    const sourceInfo: SourceInfo = {
+      dataSource: 'uvs_db',
+      inventoryProvider: 'uvs',
+      normalizedAs: 'uvs',
+    };
     
       // Build structuredContent with enriched fields for map pins and featured cards
       const structuredContentVehicles = vehicles.map((vehicle, index) => {
@@ -595,7 +635,8 @@ export async function searchVehicles(
           results: { 
             vehicles: structuredContentVehicles, 
             totalCount, 
-            searchParams 
+            searchParams,
+            ...sourceInfo,
           } as unknown
         },
         _meta: {
@@ -603,8 +644,10 @@ export async function searchVehicles(
             vehicles: structuredContentVehicles,
             totalCount,
             searchParams,
+            ...sourceInfo,
           },
         },
+        ...sourceInfo,
       },
       error: undefined
     };
