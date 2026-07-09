@@ -1183,9 +1183,11 @@
         if (!payload || typeof payload !== 'object') return typeof payload;
         const keys = Object.keys(payload).slice(0, 12);
         const hasStructured = !!payload.structuredContent?.results || !!payload.result?.structuredContent?.results;
-        const hasMeta = !!payload._meta?.results || !!payload.result?._meta?.results;
+        const hasParamsStructured = !!payload.params?.structuredContent?.results;
+        const hasMeta = !!payload._meta?.results || !!payload.result?._meta?.results || !!payload.params?._meta?.results;
+        const method = typeof payload.method === 'string' ? payload.method : undefined;
         const hasResults = !!payload.results;
-        return JSON.stringify({ keys, hasStructured, hasMeta, hasResults });
+        return JSON.stringify({ keys, method, hasStructured, hasParamsStructured, hasMeta, hasResults });
       }
 
       function logHydration(tag, extra) {
@@ -1203,6 +1205,7 @@
         logHydration('surface:openai', JSON.stringify({
           keys,
           hasToolOutput: !!openai.toolOutput,
+          hasToolResponseMetadata: !!openai.toolResponseMetadata,
           hasGetContext: typeof openai.getContext === 'function',
           hasOn: typeof openai.on === 'function',
           hasEmitToolEvent: typeof openai.emitToolEvent === 'function',
@@ -1213,10 +1216,16 @@
       function extractResults(payload) {
         return payload?.structuredContent?.results
           || payload?._meta?.results
+          || payload?.params?.structuredContent?.results
+          || payload?.params?._meta?.results
           || payload?.result?.structuredContent?.results
           || payload?.result?._meta?.results
           || payload?.toolOutput?.structuredContent?.results
           || payload?.toolOutput?._meta?.results
+          || payload?.toolResponseMetadata?.mcp_tool_result?._meta?.results
+          || payload?.toolResponseMetadata?.call_tool_result?._meta?.results
+          || payload?.mcp_tool_result?._meta?.results
+          || payload?.call_tool_result?._meta?.results
           || payload?.output?.structuredContent?.results
           || payload?.output?._meta?.results
           || payload?.data?.structuredContent?.results
@@ -1264,6 +1273,8 @@
         window.openai.on('set_globals', evt => {
           const globals = evt?.globals ?? evt;
           updateGlobals(globals);
+          updateResults(globals?.toolOutput, 'set_globals.toolOutput');
+          updateResults(globals?.toolResponseMetadata, 'set_globals.toolResponseMetadata');
         });
         ['tool-result', 'toolResult', 'ui/notifications/tool-result', 'openai/tool-result'].forEach((eventName) => {
           try {
@@ -1284,6 +1295,13 @@
         }
         updateResults(evt.data, 'postMessage');
       });
+
+      window.addEventListener('openai:set_globals', evt => {
+        const globals = evt.detail?.globals ?? evt.detail ?? {};
+        updateGlobals(globals);
+        updateResults(globals.toolOutput, 'openai:set_globals.toolOutput');
+        updateResults(globals.toolResponseMetadata, 'openai:set_globals.toolResponseMetadata');
+      }, { passive: true });
 
       function post(path, body){
         const rid = GLOBALS.rid || 'none';
@@ -1306,6 +1324,12 @@
           if (window.openai && window.openai.toolOutput) {
             const results = window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
             if (results) logHydration('source:toolOutput', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
+          }
+          if (window.openai?.toolResponseMetadata) {
+            logHydration('inspect:toolResponseMetadata', summarizePayloadShape(window.openai.toolResponseMetadata));
+            const results = extractResults({ toolResponseMetadata: window.openai.toolResponseMetadata });
+            if (results) logHydration('source:toolResponseMetadata', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
             return results;
           }
           if (window.openai && typeof window.openai.getContext === 'function') {
@@ -1599,9 +1623,14 @@
                     if (window.openai && window.openai.toolOutput) {
                         return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
                     }
+                    if (window.openai?.toolResponseMetadata) {
+                        return window.openai.toolResponseMetadata?.mcp_tool_result?._meta?.results
+                            || window.openai.toolResponseMetadata?.call_tool_result?._meta?.results
+                            || null;
+                    }
                     if (window.openai && typeof window.openai.getContext === 'function') {
                         const context = window.openai.getContext();
-                        return context?.structuredContent?.results || context?.results || null;
+                        return context?.structuredContent?.results || context?._meta?.results || context?.results || null;
                     }
                 } catch (e) { errorLog(e); }
                 // local dev fallback only
@@ -1856,9 +1885,14 @@
                 if (window.openai?.toolOutput) {
                     return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
                 }
+                if (window.openai?.toolResponseMetadata) {
+                    return window.openai.toolResponseMetadata?.mcp_tool_result?._meta?.results
+                        || window.openai.toolResponseMetadata?.call_tool_result?._meta?.results
+                        || null;
+                }
                 if (window.openai && typeof window.openai.getContext === 'function') {
                     const context = window.openai.getContext();
-                    return context?.structuredContent?.results || context?.results || null;
+                    return context?.structuredContent?.results || context?._meta?.results || context?.results || null;
                 }
             } catch (error) {
                 console.error('Failed to read tool output', error);
