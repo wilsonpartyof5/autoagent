@@ -73,6 +73,7 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
   const dealer = (location.dealer as Record<string, unknown> | undefined) ?? {};
   const coreSpecs = (source.coreSpecs as Record<string, unknown> | undefined) ?? {};
   const media = (source.media as Record<string, unknown> | undefined) ?? {};
+  const detail = (source.detail as Record<string, unknown> | undefined) ?? {};
 
   const year = (baseIdentity.year as number | undefined) ?? (source.year as number | undefined);
   const make = (baseIdentity.make as string | undefined) ?? (source.make as string | undefined);
@@ -82,7 +83,20 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
   const price = (pricing.price as number | undefined) ?? (enriched.price as number | undefined);
   const msrp = pricing.msrp as number | undefined;
   const currency = (pricing.currency as string | undefined) ?? 'USD';
-  const miles = (coreSpecs.miles as number | undefined) ?? (source.miles as number | undefined);
+  const rawMiles = coreSpecs.miles
+    ?? coreSpecs.odometer
+    ?? coreSpecs.mileage
+    ?? source.miles
+    ?? source.mileage
+    ?? source.odometer
+    ?? detail.miles
+    ?? detail.mileage
+    ?? detail.odometer;
+  const miles = typeof rawMiles === 'number'
+    ? rawMiles
+    : typeof rawMiles === 'string' && rawMiles.trim() !== ''
+      ? Number(rawMiles.replace(/,/g, ''))
+      : undefined;
   const title = (enriched.title as string | undefined) ?? [year, make, model].filter(Boolean).join(' ');
   const photoUrl = (enriched.photoUrl as string | undefined)
     ?? (media.primaryPhotoUrl as string | undefined)

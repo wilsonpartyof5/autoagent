@@ -1074,9 +1074,9 @@
         .thumbnail-featured {
             background: var(--panel);
             border-top: 1px solid var(--border);
-            padding: 14px 16px 16px;
-            min-height: 142px;
-            max-height: 172px;
+            padding: 12px 14px 14px;
+            min-height: 244px;
+            max-height: 270px;
             z-index: 5;
         }
 
@@ -1090,6 +1090,70 @@
             cursor: pointer;
             transition: all 0.2s;
             height: 116px;
+        }
+
+        .thumbnail-card-rail {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-top: 12px;
+            scroll-snap-type: x mandatory;
+        }
+
+        .thumbnail-card-rail::-webkit-scrollbar {
+            display: none;
+        }
+
+        .mini-vehicle-card {
+            min-width: 176px;
+            width: 176px;
+            height: 88px;
+            display: grid;
+            grid-template-columns: 68px 1fr;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            scroll-snap-align: start;
+        }
+
+        .mini-vehicle-image {
+            width: 68px;
+            height: 88px;
+            object-fit: cover;
+            background: var(--border);
+        }
+
+        .mini-vehicle-content {
+            padding: 8px;
+            min-width: 0;
+        }
+
+        .mini-vehicle-title {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .mini-vehicle-price {
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+
+        .mini-vehicle-meta {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .featured-card.loading {
@@ -1749,6 +1813,31 @@
                 return !!(vehicle.lat && vehicle.lng && vehicle.price && (vehicle.photoUrl || vehicle.image) && vehicle.title && vehicle.dealerName);
             }
 
+            function getDisplayCoordinate(vehicle, index, vehicles) {
+                const lat = Number(vehicle.lat || vehicle.location?.dealer?.latitude);
+                const lng = Number(vehicle.lng || vehicle.location?.dealer?.longitude);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+                const sameLocation = (vehicles || []).filter(v => {
+                    const otherLat = Number(v.lat || v.location?.dealer?.latitude);
+                    const otherLng = Number(v.lng || v.location?.dealer?.longitude);
+                    return Number.isFinite(otherLat)
+                        && Number.isFinite(otherLng)
+                        && Math.abs(otherLat - lat) < 0.00001
+                        && Math.abs(otherLng - lng) < 0.00001;
+                });
+
+                if (sameLocation.length <= 1) return [lat, lng];
+
+                const sameIndex = sameLocation.findIndex(v => v.id === vehicle.id);
+                const angle = (Math.PI * 2 * Math.max(sameIndex, 0)) / sameLocation.length;
+                const radius = 0.006 + (Math.floor(Math.max(sameIndex, 0) / 8) * 0.003);
+                return [
+                    lat + Math.sin(angle) * radius,
+                    lng + Math.cos(angle) * radius,
+                ];
+            }
+
             // Render thumbnail mode from structuredContent
             function renderThumbnailMode(vehicles) {
                 const thumbnailMode = document.getElementById('thumbnailMode');
@@ -1764,8 +1853,8 @@
                 initThumbnailMap(vehicles);
                 renderFallbackPins(vehicles);
                 
-                // Render featured card (first vehicle)
-                renderFeaturedCard(vehicles[0]);
+                // Render featured card and visible result rail.
+                renderFeaturedCard(vehicles[0], vehicles);
             }
 
             function renderFallbackPins(vehicles) {
@@ -1805,11 +1894,12 @@
                 }
                 
                 // Filter vehicles with valid coordinates
-                const validVehicles = vehicles.filter(v => v.lat && v.lng);
+                const validVehicles = vehicles.filter(v => getDisplayCoordinate(v, 0, vehicles));
                 if (validVehicles.length === 0) return;
                 
                 // Initialize Leaflet map
-                const map = L.map('thumbnailMap').setView([validVehicles[0].lat, validVehicles[0].lng], 10);
+                const firstCoord = getDisplayCoordinate(validVehicles[0], 0, vehicles);
+                const map = L.map('thumbnailMap').setView(firstCoord, 11);
                 const fallback = document.getElementById('mapFallback');
                 if (fallback) fallback.classList.add('hidden');
                 
@@ -1819,7 +1909,9 @@
 
                 // Add price pins
                 const markers = [];
-                validVehicles.forEach(vehicle => {
+                validVehicles.forEach((vehicle, index) => {
+                    const coord = getDisplayCoordinate(vehicle, index, vehicles);
+                    if (!coord) return;
                     const price = vehicle.price || 0;
                     const title = vehicle.title || 'Vehicle';
                     const dealerName = vehicle.dealerName || '';
@@ -1827,7 +1919,7 @@
                     // Create custom marker with price label
                     const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
                     
-                    const marker = L.marker([vehicle.lat, vehicle.lng], {
+                    const marker = L.marker(coord, {
                         icon: L.divIcon({
                             className: 'price-pin-marker',
                             html: `<div class="price-pin">${priceText}</div>`,
@@ -1854,7 +1946,7 @@
             }
 
             // Render featured card
-            function renderFeaturedCard(vehicle) {
+            function renderFeaturedCard(vehicle, vehicles) {
                 const featuredEl = document.getElementById('thumbnailFeatured');
                 if (!featuredEl || !vehicle) return;
                 
@@ -1864,6 +1956,26 @@
                 const dealerName = vehicle.dealerName || '';
                 const miles = vehicle.miles || vehicle.coreSpecs?.miles;
                 const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
+                const mileageText = Number(miles) > 0 ? `${Math.round(Number(miles)).toLocaleString()} miles` : 'Mileage unavailable';
+                const railHTML = (vehicles || []).slice(0, 8).map((item) => {
+                    const itemPhoto = item.photoUrl || item.image || '';
+                    const itemTitle = item.title || 'Vehicle';
+                    const itemPrice = Number(item.price || item.pricing?.price || 0);
+                    const itemMiles = Number(item.miles || item.coreSpecs?.miles || 0);
+                    const itemDealer = item.dealerName || item.location?.dealer?.name || 'Dealer unavailable';
+                    const itemPriceText = itemPrice >= 1000 ? `$${(itemPrice / 1000).toFixed(1)}k` : `$${itemPrice.toLocaleString()}`;
+                    const itemMileageText = itemMiles > 0 ? `${Math.round(itemMiles).toLocaleString()} mi` : 'Mileage n/a';
+                    return `
+                        <article class="mini-vehicle-card" onclick="expandToFullView()">
+                            <img class="mini-vehicle-image" src="${itemPhoto}" alt="${itemTitle}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZTwvdGV4dD48L3N2Zz4='">
+                            <div class="mini-vehicle-content">
+                                <div class="mini-vehicle-title">${itemTitle}</div>
+                                <div class="mini-vehicle-price">${itemPriceText}</div>
+                                <div class="mini-vehicle-meta">${itemMileageText} • ${itemDealer}</div>
+                            </div>
+                        </article>
+                    `;
+                }).join('');
                 
                 featuredEl.innerHTML = `
                     <div class="featured-card" onclick="expandToFullView()">
@@ -1875,11 +1987,12 @@
                             <div>
                                 <div class="featured-title">${title}</div>
                                 <div class="featured-price">${priceText}</div>
-                                <div class="featured-meta">${fmtMileage(miles)}</div>
+                                <div class="featured-meta">${mileageText}</div>
                                 <div class="featured-dealer">${dealerName || 'Dealer unavailable'}</div>
                             </div>
                         </div>
                     </div>
+                    <div class="thumbnail-card-rail">${railHTML}</div>
                 `;
             }
 
@@ -2071,6 +2184,33 @@
             compareList: []
         };
 
+        function getDisplayCoordinate(vehicle, index, vehicles) {
+            const dealer = getUVSDealer(vehicle) || {};
+            const lat = Number(vehicle.lat || dealer.latitude);
+            const lng = Number(vehicle.lng || dealer.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+            const sameLocation = (vehicles || []).filter(v => {
+                const otherDealer = getUVSDealer(v) || {};
+                const otherLat = Number(v.lat || otherDealer.latitude);
+                const otherLng = Number(v.lng || otherDealer.longitude);
+                return Number.isFinite(otherLat)
+                    && Number.isFinite(otherLng)
+                    && Math.abs(otherLat - lat) < 0.00001
+                    && Math.abs(otherLng - lng) < 0.00001;
+            });
+
+            if (sameLocation.length <= 1) return [lat, lng];
+
+            const sameIndex = sameLocation.findIndex(v => v.id === vehicle.id);
+            const angle = (Math.PI * 2 * Math.max(sameIndex, 0)) / sameLocation.length;
+            const radius = 0.006 + (Math.floor(Math.max(sameIndex, 0) / 8) * 0.003);
+            return [
+                lat + Math.sin(angle) * radius,
+                lng + Math.cos(angle) * radius,
+            ];
+        }
+
         function setWidgetStatus(title, copy) {
             const status = el('widgetStatus');
             if (!status) return;
@@ -2150,10 +2290,8 @@
                 return;
             }
             if (!state.map) {
-                const firstDealer = state.vehicles.map(getUVSDealer).find(dealer => dealer?.latitude && dealer?.longitude);
-                const initialLat = firstDealer?.latitude || 34.92487;
-                const initialLng = firstDealer?.longitude || -81.02508;
-                state.map = L.map('map').setView([initialLat, initialLng], 11);
+                const firstCoord = getDisplayCoordinate(state.vehicles[0] || {}, 0, state.vehicles) || [34.92487, -81.02508];
+                state.map = L.map('map').setView(firstCoord, 11);
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(state.map);
@@ -2163,14 +2301,15 @@
             state.markers = [];
 
             // Add markers for visible vehicles with coordinates
-            state.vehicles.forEach(vehicle => {
+            state.vehicles.forEach((vehicle, index) => {
                 const dealer = getUVSDealer(vehicle);
-                if (dealer?.latitude && dealer?.longitude) {
+                const coord = getDisplayCoordinate(vehicle, index, state.vehicles);
+                if (coord) {
                     const year = getUVSYear(vehicle);
                     const make = getUVSMake(vehicle);
                     const model = getUVSModel(vehicle);
                     const price = getUVSPrice(vehicle);
-                    const marker = L.marker([dealer.latitude, dealer.longitude])
+                    const marker = L.marker(coord)
                         .bindPopup(`
                             <div style="text-align: center;">
                                 <strong>${year} ${make} ${model}</strong><br>

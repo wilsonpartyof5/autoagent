@@ -458,6 +458,13 @@ app.get('/widget/vehicle-results', (req, res) => {
 });
 
 // Widget beacon endpoint for readiness tracking
+app.options('/widget/beacon', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
 app.get('/widget/beacon', (req, res) => {
   res.json({ 
     ok: true, 
@@ -467,13 +474,22 @@ app.get('/widget/beacon', (req, res) => {
 });
 
 app.post('/widget/beacon', express.json(), (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   const b = req.body || {};
   console.log(JSON.stringify({evt:'diag.beacon', runId:b.rid, tag:b.tag, payload:b, ts:Date.now()}));
   res.json({ ok: true });
 });
 
 // Widget console logging endpoint
+app.options('/widget/console', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
 app.post('/widget/console', express.json(), (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   const rid = req.query.rid || null;
   console.log(JSON.stringify({evt:'diag.console', runId:rid, lines:req.body, ts:Date.now()}));
   res.json({ ok: true });
