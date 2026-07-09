@@ -10,7 +10,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v15.html';
+const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v16.html';
 
 const WIDGET_CSP = {
   connectDomains: [
@@ -108,6 +108,8 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
       return await searchVehicles(args, context);
     case 'render-vehicle-results':
       return await renderVehicleResults(args, context);
+    case 'render-vehicle-results-v2':
+      return await renderVehicleResults(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
     case 'compare-vehicles':
@@ -178,6 +180,22 @@ export function getAvailableTools() {
         properties: {},
         required: [],
       },
+    },
+    {
+      name: 'render-vehicle-results-v2',
+      title: 'Render Vehicle Results V2',
+      description: 'Fresh versioned UI tool for rendering the latest interactive in-chat vehicle inventory map, dealer clusters, vehicle cards, VDP details, and back-to-results navigation. Prefer this tool for visual vehicle browsing.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
+      },
+      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
       name: 'render-vehicle-results',
@@ -322,6 +340,13 @@ export function getAvailableResources() {
     },
     {
       // Legacy alias kept for compatibility while clients migrate.
+      uri: 'ui://vehicle-results-v15.html',
+      name: 'Vehicle Results Widget (v15 Legacy)',
+      description: 'Legacy URI alias for vehicle search results widget',
+      mimeType: MCP_APP_HTML_MIME,
+    },
+    {
+      // Legacy alias kept for compatibility while clients migrate.
       uri: 'ui://vehicle-results-v14.html',
       name: 'Vehicle Results Widget (v14 Legacy)',
       description: 'Legacy URI alias for vehicle search results widget',
@@ -430,6 +455,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v15.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v13.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v12.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

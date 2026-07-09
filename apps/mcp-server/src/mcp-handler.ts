@@ -62,7 +62,7 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             name: 'autoagent-mcp-server',
             version: '1.0.0',
           },
-          instructions: 'For interactive vehicle inventory UI, use render-vehicle-results. Use search-vehicles only for data-only vehicle searches.'
+          instructions: 'For interactive vehicle inventory UI, use render-vehicle-results-v2. Use search-vehicles only for data-only vehicle searches.'
         });
 
       case 'initialized':
