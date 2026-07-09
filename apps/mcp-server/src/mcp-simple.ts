@@ -198,33 +198,13 @@ export function getAvailableTools() {
       outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
-      name: 'render-vehicle-results',
-      title: 'Render Vehicle Results',
-      description: 'Render an interactive in-chat vehicle inventory UI with map pins, vehicle cards, bottom sheet, detail drawer, compare tray, and refinement controls. Use this when the user wants to see vehicle search results inside ChatGPT.',
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: true,
-      },
-      _meta: {
-        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-      },
-      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
-      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
-    },
-    {
       name: 'search-vehicles',
       title: 'Search Vehicles',
-      description: 'Search vehicle inventory and render the interactive in-chat map and vehicle cards UI.',
+      description: 'Data-only vehicle inventory search. Use render-vehicle-results-v2 when the user wants the interactive map and card UI.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: true,
-      },
-      _meta: {
-        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
       },
       inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
       outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
