@@ -246,12 +246,12 @@
         /* Carousel (collapsed state) */
         .carousel {
             display: flex;
-            gap: 16px;
-            padding: 0 16px;
+            gap: 12px;
+            padding: 10px 14px 14px;
             overflow-x: auto;
             scroll-snap-type: x mandatory;
-            height: 120px;
-            align-items: center;
+            height: 142px;
+            align-items: stretch;
         }
 
         .carousel::-webkit-scrollbar {
@@ -282,6 +282,15 @@
             margin-bottom: 16px;
         }
 
+        .carousel .vehicle-card {
+            min-width: 250px;
+            width: 250px;
+            height: 118px;
+            display: grid;
+            grid-template-columns: 92px 1fr;
+            margin-bottom: 0;
+        }
+
         .vehicle-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px var(--shadow);
@@ -304,8 +313,23 @@
             background: var(--border);
         }
 
+        .carousel .card-image {
+            width: 92px;
+            height: 118px;
+            object-fit: cover;
+        }
+
         .card-content {
             padding: 12px;
+            min-width: 0;
+        }
+
+        .carousel .card-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
         }
 
         .card-header {
@@ -313,6 +337,7 @@
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 8px;
+            gap: 8px;
         }
 
         .price-badge {
@@ -322,6 +347,7 @@
             border-radius: 6px;
             font-size: 12px;
             font-weight: 600;
+            white-space: nowrap;
         }
 
         .vehicle-title {
@@ -329,12 +355,36 @@
             font-weight: 600;
             color: var(--text);
             margin-bottom: 4px;
+            line-height: 1.2;
+        }
+
+        .carousel .vehicle-title {
+            font-size: 13px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .vehicle-subtitle {
             font-size: 14px;
             color: var(--muted);
             margin-bottom: 8px;
+        }
+
+        .carousel .vehicle-subtitle,
+        .carousel .dealer-info,
+        .carousel .payment-estimate,
+        .carousel .deal-score {
+            font-size: 11px;
+            margin-top: 2px;
+            margin-bottom: 0;
+        }
+
+        .carousel .seller-comments,
+        .carousel .option-packages,
+        .carousel .payment-estimate {
+            display: none;
         }
 
         .dealer-info {
@@ -920,7 +970,9 @@
         .thumbnail-mode {
             display: flex;
             flex-direction: column;
+            min-height: 455px;
             height: 100vh;
+            max-height: 620px;
         }
 
         .thumbnail-mode.hidden {
@@ -930,7 +982,7 @@
         .thumbnail-map {
             flex: 1;
             position: relative;
-            min-height: 300px;
+            min-height: 280px;
             background: #101820;
             overflow: hidden;
         }
@@ -998,10 +1050,10 @@
             transform: translate(-50%, -50%);
             background: #b91c1c;
             color: white;
-            border: 1px solid rgba(255,255,255,0.34);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.42);
+            box-shadow: 0 5px 14px rgba(0,0,0,0.42);
             border-radius: 999px;
-            padding: 5px 9px;
+            padding: 6px 10px;
             font-size: 12px;
             font-weight: 800;
             white-space: nowrap;
@@ -1022,9 +1074,9 @@
         .thumbnail-featured {
             background: var(--panel);
             border-top: 1px solid var(--border);
-            padding: 16px;
-            min-height: 154px;
-            max-height: 220px;
+            padding: 14px 16px 16px;
+            min-height: 142px;
+            max-height: 172px;
             z-index: 5;
         }
 
@@ -1037,6 +1089,7 @@
             overflow: hidden;
             cursor: pointer;
             transition: all 0.2s;
+            height: 116px;
         }
 
         .featured-card.loading {
@@ -1049,8 +1102,8 @@
         }
 
         .featured-image {
-            width: 120px;
-            height: 120px;
+            width: 132px;
+            height: 116px;
             object-fit: cover;
             background: var(--border);
             flex-shrink: 0;
@@ -1058,10 +1111,11 @@
 
         .featured-content {
             flex: 1;
-            padding: 12px;
+            padding: 12px 14px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            min-width: 0;
         }
 
         .featured-title {
@@ -1069,10 +1123,15 @@
             font-weight: 600;
             color: var(--text);
             margin-bottom: 4px;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .featured-price {
-            font-size: 18px;
+            font-size: 19px;
             font-weight: 700;
             color: var(--accent);
             margin-bottom: 4px;
@@ -1081,6 +1140,12 @@
         .featured-dealer {
             font-size: 12px;
             color: var(--muted);
+        }
+
+        .featured-meta {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
         }
 
         .expand-button {
@@ -1107,15 +1172,15 @@
         }
 
         .price-pin {
-            background: var(--accent);
+            background: #b91c1c;
             color: white;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 800;
             white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-            border: 2px solid white;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+            border: 1px solid rgba(255,255,255,0.44);
         }
 
         .full-view.hidden {
@@ -1797,6 +1862,7 @@
                 const title = vehicle.title || 'Vehicle';
                 const price = vehicle.price || 0;
                 const dealerName = vehicle.dealerName || '';
+                const miles = vehicle.miles || vehicle.coreSpecs?.miles;
                 const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
                 
                 featuredEl.innerHTML = `
@@ -1809,7 +1875,8 @@
                             <div>
                                 <div class="featured-title">${title}</div>
                                 <div class="featured-price">${priceText}</div>
-                                <div class="featured-dealer">${dealerName}</div>
+                                <div class="featured-meta">${fmtMileage(miles)}</div>
+                                <div class="featured-dealer">${dealerName || 'Dealer unavailable'}</div>
                             </div>
                         </div>
                     </div>
@@ -1984,6 +2051,12 @@
         function getUVSInteriorColor(vehicle) {
             return vehicle.featuresPackages?.interiorColor || vehicle.interiorColor;
         }
+        function fmtMileage(miles) {
+            const numericMiles = Number(miles);
+            return Number.isFinite(numericMiles) && numericMiles > 0
+                ? `${Math.round(numericMiles).toLocaleString()} miles`
+                : 'Mileage unavailable';
+        }
 
         // State management
         const state = {
@@ -2077,7 +2150,10 @@
                 return;
             }
             if (!state.map) {
-                state.map = L.map('map').setView([47.6062, -122.3321], 10);
+                const firstDealer = state.vehicles.map(getUVSDealer).find(dealer => dealer?.latitude && dealer?.longitude);
+                const initialLat = firstDealer?.latitude || 34.92487;
+                const initialLng = firstDealer?.longitude || -81.02508;
+                state.map = L.map('map').setView([initialLat, initialLng], 11);
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(state.map);
@@ -2186,7 +2262,7 @@
                         <div class="card-header">
                             <div>
                                 <div class="vehicle-title">${year} ${make} ${model}</div>
-                                <div class="vehicle-subtitle">${miles ? miles.toLocaleString() + ' miles' : 'New'}</div>
+                                <div class="vehicle-subtitle">${fmtMileage(miles)}</div>
                                 <div class="deal-score ${dealScore.tier}">${dealScore.label}</div>
                             </div>
                             <div class="price-badge">${fmtPrice(price)}</div>
@@ -2208,9 +2284,39 @@
                             </div>
                         ` : ''}
                         <div class="dealer-info">
-                            <div>${safeText(dealer?.name)}</div>
+                            <div>${safeText(dealer?.name || vehicle.dealerName || 'Dealer unavailable')}</div>
                             ${dealer?.distanceMiles ? `<div class="distance">${dealer.distanceMiles} mi away</div>` : ''}
                         </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function createCarouselCardHTML(vehicle) {
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const miles = getUVSMiles(vehicle);
+            const dealer = getUVSDealer(vehicle);
+            const photoUrls = getUVSPhotoUrls(vehicle);
+            const primaryPhoto = getUVSPrimaryPhoto(vehicle) || photoUrls[0] || '';
+
+            return `
+                <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
+                    <img src="${primaryPhoto}"
+                         alt="${year} ${make} ${model}"
+                         class="card-image"
+                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTIiIGhlaWdodD0iMTE4IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMzMzMiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjExIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2U8L3RleHQ+PC9zdmc+'">
+                    <div class="card-content">
+                        <div>
+                            <div class="card-header">
+                                <div class="vehicle-title">${year} ${make} ${model}</div>
+                                <div class="price-badge">${fmtPrice(price)}</div>
+                            </div>
+                            <div class="vehicle-subtitle">${fmtMileage(miles)}</div>
+                        </div>
+                        <div class="dealer-info">${safeText(dealer?.name || vehicle.dealerName || 'Dealer unavailable')}</div>
                     </div>
                 </article>
             `;
@@ -2227,9 +2333,10 @@
                 return;
             }
 
+            const carouselHTML = state.vehicles.map(vehicle => createCarouselCardHTML(vehicle)).join('');
             const cardsHTML = state.vehicles.map(vehicle => createCardHTML(vehicle)).join('');
             
-            carousel.innerHTML = cardsHTML;
+            carousel.innerHTML = carouselHTML;
             list.innerHTML = cardsHTML;
         }
 
