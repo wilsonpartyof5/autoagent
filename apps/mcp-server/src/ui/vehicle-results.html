@@ -1177,6 +1177,7 @@
       };
       window.__AA_RESULTS__ = window.__AA_RESULTS__ || null;
       const GLOBALS = window.GLOBALS;
+      const WIDGET_HOST = 'https://autoagentmcp-server-production.up.railway.app';
 
       function summarizePayloadShape(payload) {
         if (!payload || typeof payload !== 'object') return typeof payload;
@@ -1286,7 +1287,11 @@
 
       function post(path, body){
         const rid = GLOBALS.rid || 'none';
-        try{ fetch(`${path}?rid=${encodeURIComponent(rid)}`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});}catch(_){}
+        try{
+          const url = new URL(path, WIDGET_HOST);
+          url.searchParams.set('rid', rid);
+          fetch(url.toString(), {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
+        }catch(_){}
       }
       function log(...a){
         try{ (window.__log ||= []).push({t:performance.now(),m:a.join(' ')}); post('/widget/console', window.__log); }catch(_){}
@@ -1566,8 +1571,9 @@
             function post(path, body){
                 try {
                     const rid = GLOBALS.rid || 'none';
-                    const url = path.includes('?') ? `${path}&rid=${encodeURIComponent(rid)}` : `${path}?rid=${encodeURIComponent(rid)}`;
-                    fetch(url, {
+                    const url = new URL(path, 'https://autoagentmcp-server-production.up.railway.app');
+                    url.searchParams.set('rid', rid);
+                    fetch(url.toString(), {
                         method:'POST',
                         headers:{'content-type':'application/json'},
                         body: JSON.stringify(body)
