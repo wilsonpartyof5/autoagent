@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoAgent Vehicle Search</title>
+    <meta name="autoagent-widget-version" content="v17">
     <!--
         UVS-Only Widget - Tool-Driven Lead Submission
         
@@ -1331,6 +1332,7 @@
     (function(){
       const params = new URLSearchParams(location.search);
       const DIAG = params.get('diag') === '1';
+      const WIDGET_VERSION = 'v17';
       const T0 = performance.now();
       let emitted = false;
       const MAX_WAIT_MS = 10000, INTERVAL_MS = 150;
@@ -1358,7 +1360,7 @@
       }
 
       function logHydration(tag, extra) {
-        log(`hydrate:${tag}`, extra || '');
+        log(`hydrate:${tag}`, extra || '', `widget=${WIDGET_VERSION}`);
         beacon(`hydrate:${tag}`, extra ? { detail: extra } : undefined);
       }
 

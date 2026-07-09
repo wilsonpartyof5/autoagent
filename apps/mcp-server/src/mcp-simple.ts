@@ -10,7 +10,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v16.html';
+export const VEHICLE_WIDGET_VERSION = 'v17';
+export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const WIDGET_CSP = {
   connectDomains: [
@@ -183,8 +184,8 @@ export function getAvailableTools() {
     },
     {
       name: 'render-vehicle-results-v2',
-      title: 'Render Vehicle Results V2',
-      description: 'Fresh versioned UI tool for rendering the latest interactive in-chat vehicle inventory map, dealer clusters, vehicle cards, VDP details, and back-to-results navigation. Prefer this tool for visual vehicle browsing.',
+      title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
+      description: `Current (${VEHICLE_WIDGET_VERSION}) UI tool for rendering the latest interactive in-chat vehicle inventory map, dealer clusters, vehicle cards, VDP details, and back-to-results navigation. Prefer this tool for visual vehicle browsing.`,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -314,106 +315,8 @@ export function getAvailableResources() {
   return [
     {
       uri: VEHICLE_RESULTS_RESOURCE_URI,
-      name: 'Vehicle Results Widget',
-      description: 'Interactive widget displaying vehicle search results',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v15.html',
-      name: 'Vehicle Results Widget (v15 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v14.html',
-      name: 'Vehicle Results Widget (v14 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v13.html',
-      name: 'Vehicle Results Widget (v13 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v12.html',
-      name: 'Vehicle Results Widget (v12 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v11.html',
-      name: 'Vehicle Results Widget (v11 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v10.html',
-      name: 'Vehicle Results Widget (v10 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v9.html',
-      name: 'Vehicle Results Widget (v9 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v8.html',
-      name: 'Vehicle Results Widget (v8 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v7.html',
-      name: 'Vehicle Results Widget (v7 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v6.html',
-      name: 'Vehicle Results Widget (v6 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v5.html',
-      name: 'Vehicle Results Widget (v5 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v4.html',
-      name: 'Vehicle Results Widget (v4 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results-v3.html',
-      name: 'Vehicle Results Widget (v3 Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      // Legacy alias kept for compatibility while clients migrate.
-      uri: 'ui://vehicle-results.html',
-      name: 'Vehicle Results Widget (Legacy)',
-      description: 'Legacy URI alias for vehicle search results widget',
+      name: `Vehicle Results Widget ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
+      description: `Current ${VEHICLE_WIDGET_VERSION} interactive widget displaying vehicle search results`,
       mimeType: MCP_APP_HTML_MIME,
     },
     {
@@ -435,6 +338,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v16.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v15.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v13.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

@@ -1,4 +1,5 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, type ToolContext } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, VEHICLE_RESULTS_RESOURCE_URI, VEHICLE_WIDGET_VERSION, type ToolContext } from './mcp-simple.js';
+import { CONFIG } from './config/env.js';
 
 /**
  * Handle MCP protocol requests
@@ -60,9 +61,9 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
           },
           serverInfo: {
             name: 'autoagent-mcp-server',
-            version: '1.0.0',
+            version: `1.0.0-${VEHICLE_WIDGET_VERSION}-${CONFIG.commitSha.substring(0, 7)}`,
           },
-          instructions: 'For interactive vehicle inventory UI, use render-vehicle-results-v2. Use search-vehicles only for data-only vehicle searches.'
+          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For interactive vehicle inventory UI, use render-vehicle-results-v2. Use search-vehicles only for data-only vehicle searches.`
         });
 
       case 'initialized':
