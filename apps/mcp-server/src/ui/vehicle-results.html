@@ -126,7 +126,7 @@
             left: 16px;
             right: 16px;
             z-index: 1000;
-            display: flex;
+            display: none;
             gap: 8px;
             flex-wrap: wrap;
         }
@@ -159,7 +159,7 @@
             left: 16px;
             right: 16px;
             z-index: 1000;
-            display: flex;
+            display: none;
             gap: 8px;
             overflow-x: auto;
             padding-bottom: 4px;
@@ -1247,6 +1247,27 @@
             border: 1px solid rgba(255,255,255,0.44);
         }
 
+        .dealer-cluster-pin {
+            background: rgba(17, 17, 17, 0.92);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.7);
+            border-radius: 12px;
+            padding: 7px 10px;
+            min-width: 92px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.42);
+            text-align: center;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .dealer-cluster-pin span {
+            display: block;
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 3px;
+            font-weight: 600;
+        }
+
         .full-view.hidden {
             display: none;
         }
@@ -1907,6 +1928,21 @@
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(map);
 
+                const dealerSummary = getResults()?.dealerSummary || [];
+                dealerSummary.forEach((dealer) => {
+                    if (!dealer.lat || !dealer.lng) return;
+                    const minPrice = Number(dealer.minPrice || 0);
+                    const priceText = minPrice > 0 ? `From $${(minPrice / 1000).toFixed(1)}k` : 'View inventory';
+                    L.marker([dealer.lat, dealer.lng], {
+                        icon: L.divIcon({
+                            className: 'dealer-cluster-marker',
+                            html: `<div class="dealer-cluster-pin">${dealer.count} cars<span>${priceText}</span></div>`,
+                            iconSize: [104, 42],
+                            iconAnchor: [52, 21]
+                        })
+                    }).addTo(map);
+                });
+
                 // Add price pins
                 const markers = [];
                 validVehicles.forEach((vehicle, index) => {
@@ -2177,9 +2213,12 @@
             sheetState: 'collapsed', // collapsed, mid, expanded
             vehicles: [],
             allVehicles: [],
+            dealerSummary: [],
             query: {},
             map: null,
             markers: [],
+            dealerMarkers: [],
+            suppressMapMove: false,
             activeRefine: null,
             compareList: []
         };
@@ -2234,6 +2273,7 @@
                         // UVS vehicles from structuredContent
                         state.vehicles = results.vehicles || results;
                         state.allVehicles = [...state.vehicles];
+                        state.dealerSummary = results.dealerSummary || [];
                         state.query = results.searchParams || results.query || {};
                         console.log('UVS data loaded from structuredContent');
                         refreshVehiclesView();
@@ -2295,43 +2335,112 @@
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(state.map);
+                state.map.on('moveend zoomend', () => {
+                    if (state.suppressMapMove || state.sheetState === 'collapsed') return;
+                    applyMapBounds();
+                });
             }
 
+            renderMapMarkers(true);
+        }
+
+        function createVehicleMarker(vehicle, coord) {
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const marker = L.marker(coord, {
+                icon: L.divIcon({
+                    className: 'price-pin-marker',
+                    html: `<div class="price-pin">${fmtPrice(price)}</div>`,
+                    iconSize: [null, null],
+                    iconAnchor: [0, 0]
+                })
+            })
+                .bindPopup(`
+                    <div style="text-align: center;">
+                        <strong>${year} ${make} ${model}</strong><br>
+                        <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(price)}</span>
+                    </div>
+                `)
+                .on('click', () => {
+                    logEvent('pin_click', { id: vehicle.id });
+                    setActiveVehicle(vehicle.id);
+                    scrollToCard(vehicle.id);
+                });
+            marker.vehicleId = vehicle.id;
+            return marker;
+        }
+
+        function renderDealerMarkers() {
+            state.dealerMarkers.forEach((marker) => marker.remove());
+            state.dealerMarkers = [];
+            if (!state.map || !(window.L && typeof window.L.marker === 'function')) return;
+
+            state.dealerSummary.forEach((dealer) => {
+                if (!dealer.lat || !dealer.lng) return;
+                const minPrice = Number(dealer.minPrice || 0);
+                const priceText = minPrice > 0 ? `From ${fmtPrice(minPrice)}` : 'View inventory';
+                const marker = L.marker([dealer.lat, dealer.lng], {
+                    icon: L.divIcon({
+                        className: 'dealer-cluster-marker',
+                        html: `<div class="dealer-cluster-pin">${dealer.count} cars<span>${priceText}</span></div>`,
+                        iconSize: [104, 42],
+                        iconAnchor: [52, 21]
+                    })
+                }).on('click', () => {
+                    const dealerVehicles = state.allVehicles.filter(vehicle => {
+                        const vehicleDealer = getUVSDealer(vehicle);
+                        return vehicleDealer?.dealerId === dealer.dealerId || vehicle.dealerName === dealer.dealerName;
+                    });
+                    if (dealerVehicles.length > 0) {
+                        state.vehicles = dealerVehicles;
+                        renderMapMarkers(false);
+                        renderCards();
+                        updateResultChip();
+                    }
+                });
+                state.dealerMarkers.push(marker);
+                marker.addTo(state.map);
+            });
+        }
+
+        function renderMapMarkers(shouldFit = false) {
             state.markers.forEach((marker) => marker.remove());
             state.markers = [];
+            renderDealerMarkers();
 
             // Add markers for visible vehicles with coordinates
             state.vehicles.forEach((vehicle, index) => {
-                const dealer = getUVSDealer(vehicle);
                 const coord = getDisplayCoordinate(vehicle, index, state.vehicles);
                 if (coord) {
-                    const year = getUVSYear(vehicle);
-                    const make = getUVSMake(vehicle);
-                    const model = getUVSModel(vehicle);
-                    const price = getUVSPrice(vehicle);
-                    const marker = L.marker(coord)
-                        .bindPopup(`
-                            <div style="text-align: center;">
-                                <strong>${year} ${make} ${model}</strong><br>
-                                <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(price)}</span>
-                            </div>
-                        `)
-                        .on('click', () => {
-                            logEvent('pin_click', { id: vehicle.id });
-                            setActiveVehicle(vehicle.id);
-                            scrollToCard(vehicle.id);
-                        });
-                    
+                    const marker = createVehicleMarker(vehicle, coord);
                     state.markers.push(marker);
                     marker.addTo(state.map);
                 }
             });
 
             // Fit map to show all markers
-            if (state.markers.length > 0) {
-                const group = new L.featureGroup(state.markers);
+            if (shouldFit && (state.markers.length > 0 || state.dealerMarkers.length > 0)) {
+                const group = new L.featureGroup([...state.dealerMarkers, ...state.markers]);
+                state.suppressMapMove = true;
                 state.map.fitBounds(group.getBounds().pad(0.1));
+                setTimeout(() => { state.suppressMapMove = false; }, 250);
             }
+        }
+
+        function applyMapBounds() {
+            if (!state.map || !state.allVehicles.length) return;
+            const bounds = state.map.getBounds();
+            const visibleVehicles = state.allVehicles.filter((vehicle, index) => {
+                const coord = getDisplayCoordinate(vehicle, index, state.allVehicles);
+                return coord ? bounds.contains(coord) : false;
+            });
+            state.vehicles = visibleVehicles;
+            renderMapMarkers(false);
+            renderCards();
+            updateResultChip();
+            logEvent('map.bounds_update', { results: visibleVehicles.length });
         }
 
         // Set active vehicle
@@ -2882,8 +2991,11 @@
             const location = el('resultLocation');
 
             if (state.vehicles.length > 0) {
-                count.textContent = state.vehicles.length;
-                location.textContent = state.query.location || 'Search Results';
+                const total = state.allVehicles.length;
+                count.textContent = `${state.vehicles.length} shown`;
+                location.textContent = total && total !== state.vehicles.length
+                    ? `of ${total} loaded • ${state.query.location || 'Search Results'}`
+                    : state.query.location || 'Search Results';
                 chip.style.display = 'block';
             } else {
                 chip.style.display = 'none';
@@ -3156,6 +3268,10 @@
             if (!state.map) {
                 loadData();
             }
+            setSheetState('mid');
+            setTimeout(() => {
+                if (state.map) applyMapBounds();
+            }, 150);
         };
     </script>
 </body>

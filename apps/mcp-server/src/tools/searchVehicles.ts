@@ -4,7 +4,7 @@ import { searchCache } from '../lib/cache.js';
 import { randomUUID } from 'crypto';
 import { validateToolResult } from '../lib/responseShape.js';
 import { CONFIG } from '../config/env.js';
-import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles.js';
+import { searchUVSVehicles, type UVSDealerSummary, type UVSSearchParams } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
@@ -156,6 +156,7 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
 type SearchVehiclesData = {
   content: { type: string; text: string; }[];
   vehicles?: unknown[];
+  dealerSummary?: UVSDealerSummary[];
   totalCount?: number;
   searchParams?: unknown;
   structuredContent?: unknown;
@@ -172,6 +173,75 @@ type SourceInfo = {
 const MAX_BRIDGE_RESULTS = 8;
 const MAX_WIDGET_RESULTS = 12;
 const MAX_SUMMARY_LISTINGS = 3;
+
+function buildDealerSummary(vehicles: Array<Record<string, unknown>>): UVSDealerSummary[] {
+  const dealers = new Map<string, UVSDealerSummary>();
+  for (const vehicle of vehicles) {
+    const location = vehicle.location as { dealer?: Record<string, unknown> } | undefined;
+    const pricing = vehicle.pricing as { price?: unknown } | undefined;
+    const dealer = location?.dealer || {};
+    const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : undefined;
+    const dealerName = typeof dealer.name === 'string'
+      ? dealer.name
+      : typeof vehicle.dealerName === 'string'
+        ? vehicle.dealerName
+        : 'Unknown Dealer';
+    const key = `${dealerId || ''}|${dealerName}`;
+    const price = typeof vehicle.price === 'number'
+      ? vehicle.price
+      : typeof pricing?.price === 'number'
+        ? pricing.price
+        : undefined;
+    const existing = dealers.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (price !== undefined) {
+        existing.minPrice = existing.minPrice === undefined ? price : Math.min(existing.minPrice, price);
+      }
+      continue;
+    }
+    dealers.set(key, {
+      dealerId,
+      dealerName,
+      city: typeof dealer.city === 'string' ? dealer.city : undefined,
+      state: typeof dealer.state === 'string' ? dealer.state : undefined,
+      count: 1,
+      minPrice: price,
+      lat: typeof dealer.latitude === 'number' ? dealer.latitude : typeof vehicle.lat === 'number' ? vehicle.lat : undefined,
+      lng: typeof dealer.longitude === 'number' ? dealer.longitude : typeof vehicle.lng === 'number' ? vehicle.lng : undefined,
+      dataSources: [],
+    });
+  }
+  return Array.from(dealers.values()).sort((a, b) => b.count - a.count);
+}
+
+function balanceVehiclesByDealer<T extends Record<string, unknown>>(vehicles: T[], maxVehicles = MAX_WIDGET_RESULTS): T[] {
+  const buckets = new Map<string, T[]>();
+  for (const vehicle of vehicles) {
+    const location = vehicle.location as { dealer?: Record<string, unknown> } | undefined;
+    const dealer = location?.dealer || {};
+    const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : '';
+    const dealerName = typeof dealer.name === 'string'
+      ? dealer.name
+      : typeof vehicle.dealerName === 'string'
+        ? vehicle.dealerName
+        : 'Unknown Dealer';
+    const key = `${dealerId}|${dealerName}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(vehicle);
+  }
+  const bucketList = Array.from(buckets.values()).sort((a, b) => b.length - a.length);
+  const balanced: T[] = [];
+  let index = 0;
+  while (balanced.length < maxVehicles && bucketList.some(bucket => bucket[index])) {
+    for (const bucket of bucketList) {
+      if (balanced.length >= maxVehicles) break;
+      if (bucket[index]) balanced.push(bucket[index]);
+    }
+    index += 1;
+  }
+  return balanced;
+}
 
 function summarizeVehicleLine(vehicle: unknown): string {
   const v = vehicle as Record<string, unknown> & {
@@ -239,6 +309,7 @@ function normalizeBridgeSearchResult(
     content?: unknown;
     structuredContent?: unknown;
     vehicles?: unknown[];
+    dealerSummary?: UVSDealerSummary[];
     totalCount?: number;
   };
 
@@ -257,20 +328,24 @@ function normalizeBridgeSearchResult(
       ? bridge.totalCount
       : rawVehicles.length;
   // Keep bridge payload bounded so ChatGPT can reliably consume and render.
-  const vehicles = rawVehicles
-    .slice(0, MAX_BRIDGE_RESULTS)
+  const compactVehicles = rawVehicles
+    .slice(0, Math.max(MAX_BRIDGE_RESULTS, MAX_WIDGET_RESULTS * 4))
     .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
+  const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_BRIDGE_RESULTS);
+  const dealerSummary = buildDealerSummary(compactVehicles);
 
   const content = buildReadableContent(totalCount, vehicles, searchParams.location);
 
   return {
     content,
     vehicles,
+    dealerSummary,
     totalCount,
     searchParams,
     structuredContent: {
       results: {
         vehicles,
+        dealerSummary,
         totalCount,
         searchParams: structuredResults?.searchParams ?? searchParams,
         dataSource: sourceInfo.dataSource,
@@ -281,6 +356,7 @@ function normalizeBridgeSearchResult(
     _meta: {
       results: {
         vehicles,
+        dealerSummary,
         totalCount,
         searchParams: structuredResults?.searchParams ?? searchParams,
         dataSource: sourceInfo.dataSource,
@@ -304,6 +380,7 @@ export async function searchVehicles(
   data?: {
     content: { type: string; text: string; }[];
     vehicles?: unknown[];
+    dealerSummary?: UVSDealerSummary[];
     totalCount?: number;
     searchParams?: unknown;
     structuredContent?: unknown;
@@ -455,9 +532,11 @@ export async function searchVehicles(
       console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
 
       // Enrich cached vehicles with map pin and featured card data
-      const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
+      const compactCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
         compactVehicleForWidget(vehicle)
-      ).slice(0, MAX_WIDGET_RESULTS);
+      );
+      const enrichedCachedVehicles = balanceVehiclesByDealer(compactCachedVehicles, MAX_WIDGET_RESULTS);
+      const dealerSummary = buildDealerSummary(compactCachedVehicles);
       const sourceInfo: SourceInfo = {
         dataSource: 'uvs_cache',
         inventoryProvider: 'uvs',
@@ -469,13 +548,14 @@ export async function searchVehicles(
         data: {
           content: buildReadableContent(cachedResult.totalCount, enrichedCachedVehicles, searchParams.location),
           vehicles: enrichedCachedVehicles,
+          dealerSummary,
           totalCount: cachedResult.totalCount,
           searchParams,
           structuredContent: {
-            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo }
+            results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo }
           },
           _meta: {
-            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo },
+            results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo },
           },
           ...sourceInfo,
         },
@@ -485,6 +565,7 @@ export async function searchVehicles(
     // Query UVS vehicles from database instead of MarketCheck API
     let vehicles: UnifiedVehicle[] = [];
     let totalCount = 0;
+    let dealerSummary: UVSDealerSummary[] = [];
     const fromCache = false;
 
     try {
@@ -499,7 +580,7 @@ export async function searchVehicles(
         maxMiles: searchParams.mileageMax,
         bodyStyle: searchParams.bodyStyle,
         // Note: SearchParams doesn't have dealerId/dealerName, but UVSSearchParams does (optional)
-        limit: 20,
+        limit: 500,
         offset: 0,
       };
 
@@ -519,6 +600,7 @@ export async function searchVehicles(
 
       vehicles = dbResult.vehicles;
       totalCount = dbResult.total;
+      dealerSummary = dbResult.dealerSummary;
       
       // Track vehicle.view for each vehicle returned in search results
       vehicles.forEach((vehicle) => {
@@ -620,7 +702,7 @@ export async function searchVehicles(
     };
     
       // Build structuredContent with enriched fields for map pins and featured cards
-      const structuredContentVehicles = vehicles.map((vehicle, index) => {
+      const compactVehicles = vehicles.map((vehicle, index) => {
         // Add enriched metadata if available
         const enriched = enrichedMetadata[index];
         let base: UnifiedVehicle | Record<string, unknown> = vehicle;
@@ -636,18 +718,21 @@ export async function searchVehicles(
         
         // Enrich with map pin and featured card data
         return compactVehicleForWidget(base);
-      }).slice(0, MAX_WIDGET_RESULTS);
+      });
+      const structuredContentVehicles = balanceVehiclesByDealer(compactVehicles, MAX_WIDGET_RESULTS);
 
     const toolResult = {
       success: true,
       data: {
         content: buildReadableContent(totalCount, structuredContentVehicles, searchParams.location),
         vehicles: structuredContentVehicles,
+        dealerSummary,
         totalCount,
         searchParams,
         structuredContent: { 
           results: { 
             vehicles: structuredContentVehicles, 
+            dealerSummary,
             totalCount, 
             searchParams,
             ...sourceInfo,
@@ -656,6 +741,7 @@ export async function searchVehicles(
         _meta: {
           results: {
             vehicles: structuredContentVehicles,
+            dealerSummary,
             totalCount,
             searchParams,
             ...sourceInfo,
