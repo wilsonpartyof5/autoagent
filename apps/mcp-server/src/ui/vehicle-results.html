@@ -456,6 +456,23 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
+        }
+
+        .drawer-header-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .drawer-back {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
         .drawer-close {
@@ -1644,7 +1661,8 @@
         <!-- Details drawer -->
         <div class="details-drawer" id="detailsDrawer" aria-expanded="false">
             <div class="drawer-header">
-                <h3 id="drawerTitle">Vehicle Details</h3>
+                <button class="drawer-back" id="drawerBack" type="button">Back to results</button>
+                <h3 class="drawer-header-title" id="drawerTitle">Vehicle Details</h3>
                 <button class="drawer-close" id="drawerClose">&times;</button>
             </div>
             <div class="drawer-content" id="drawerContent"></div>
@@ -2592,6 +2610,7 @@
         function openDetails(id) {
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
+            setActiveVehicle(id);
             
             // Track vehicle.click event (no PII)
             logEvent('vehicle.click', { 
@@ -2707,11 +2726,26 @@
             drawer.setAttribute('aria-expanded', 'true');
         }
 
-        // Close details drawer
-        function closeDetails() {
+        function returnToResults() {
             const drawer = el('detailsDrawer');
             drawer.classList.remove('open');
             drawer.setAttribute('aria-expanded', 'false');
+            const thumbnailMode = document.getElementById('thumbnailMode');
+            const fullView = document.getElementById('fullView');
+            if (thumbnailMode) thumbnailMode.classList.add('hidden');
+            if (fullView) fullView.classList.remove('hidden');
+            setSheetState('collapsed');
+            if (state.activeId) {
+                setTimeout(() => {
+                    setActiveVehicle(state.activeId);
+                    scrollToCard(state.activeId);
+                }, 80);
+            }
+        }
+
+        // Close details drawer
+        function closeDetails() {
+            returnToResults();
         }
 
         // Book test drive
@@ -3197,6 +3231,7 @@
 
             // Drawer close
             el('drawerClose').addEventListener('click', closeDetails);
+            el('drawerBack').addEventListener('click', returnToResults);
 
             // Filter pills
             document.querySelectorAll('.filter-pill').forEach(pill => {
@@ -3262,13 +3297,14 @@
         window.openCompareModal = openCompareModal;
         window.closeCompareModal = closeCompareModal;
         window.closeLeadModal = closeLeadModal;
+        window.returnToResults = returnToResults;
         
         // Expose full view initialization functions for expand button
         window.initFullView = function() {
             if (!state.map) {
                 loadData();
             }
-            setSheetState('mid');
+            setSheetState('collapsed');
             setTimeout(() => {
                 if (state.map) applyMapBounds();
             }, 150);

@@ -10,7 +10,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v14.html';
+const VEHICLE_RESULTS_RESOURCE_URI = 'ui://vehicle-results-v15.html';
 
 const WIDGET_CSP = {
   connectDomains: [
@@ -322,6 +322,13 @@ export function getAvailableResources() {
     },
     {
       // Legacy alias kept for compatibility while clients migrate.
+      uri: 'ui://vehicle-results-v14.html',
+      name: 'Vehicle Results Widget (v14 Legacy)',
+      description: 'Legacy URI alias for vehicle search results widget',
+      mimeType: MCP_APP_HTML_MIME,
+    },
+    {
+      // Legacy alias kept for compatibility while clients migrate.
       uri: 'ui://vehicle-results-v13.html',
       name: 'Vehicle Results Widget (v13 Legacy)',
       description: 'Legacy URI alias for vehicle search results widget',
@@ -423,6 +430,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v13.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v12.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v11.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
