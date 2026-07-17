@@ -19,6 +19,28 @@ export type UserDealership = {
   dealership: Dealership;
 };
 
+async function isCurrentUserPlatformAdmin(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('platform_role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[dealerships] Failed to check platform role:', error);
+    return false;
+  }
+
+  return data?.platform_role === 'platform_admin';
+}
+
 /**
  * Fetch all dealerships for the current user
  */
@@ -32,10 +54,15 @@ export async function fetchUserDealerships(): Promise<Dealership[]> {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from('user_dealerships')
-    .select('dealership_id, dealerships(*)')
-    .eq('user_id', user.id);
+  const isPlatformAdmin = await isCurrentUserPlatformAdmin();
+  const query = isPlatformAdmin
+    ? createAdminClient().from('dealerships').select('*').order('name')
+    : supabase
+        .from('user_dealerships')
+        .select('dealership_id, dealerships(*)')
+        .eq('user_id', user.id);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('[dealerships] Failed to fetch user dealerships:', error);
@@ -46,8 +73,11 @@ export async function fetchUserDealerships(): Promise<Dealership[]> {
     return [];
   }
 
-  return data
-    .map((row: any) => row.dealerships)
+  const dealershipRows = isPlatformAdmin
+    ? data
+    : data.map((row: any) => row.dealerships);
+
+  return dealershipRows
     .filter((d: Dealership | null): d is Dealership => d !== null)
     .map((d: any) => ({
       id: d.id,
@@ -126,13 +156,17 @@ export async function getActiveDealership(): Promise<Dealership | null> {
     return null;
   }
 
-  // Verify user has access
-  const { data: membership } = await supabase
-    .from('user_dealerships')
-    .select('dealership_id')
-    .eq('user_id', user.id)
-    .eq('dealership_id', activeDealershipId)
-    .maybeSingle();
+  const isPlatformAdmin = await isCurrentUserPlatformAdmin();
+
+  // Verify dealer users have access. Platform admins can select any rooftop.
+  const { data: membership } = isPlatformAdmin
+    ? { data: { dealership_id: activeDealershipId } }
+    : await supabase
+        .from('user_dealerships')
+        .select('dealership_id')
+        .eq('user_id', user.id)
+        .eq('dealership_id', activeDealershipId)
+        .maybeSingle();
 
   if (!membership) {
     // User doesn't have access, get first available
@@ -169,13 +203,21 @@ export async function setActiveDealership(dealershipId: string): Promise<void> {
     throw new Error('Not authenticated');
   }
 
-  // Verify user has access to this dealership
-  const { data: membership, error: membershipError } = await supabase
-    .from('user_dealerships')
-    .select('dealership_id')
-    .eq('user_id', user.id)
-    .eq('dealership_id', dealershipId)
-    .maybeSingle();
+  const isPlatformAdmin = await isCurrentUserPlatformAdmin();
+
+  // Verify user access. Platform admins can inspect any known rooftop.
+  const { data: membership, error: membershipError } = isPlatformAdmin
+    ? await createAdminClient()
+        .from('dealerships')
+        .select('id')
+        .eq('id', dealershipId)
+        .maybeSingle()
+    : await supabase
+        .from('user_dealerships')
+        .select('dealership_id')
+        .eq('user_id', user.id)
+        .eq('dealership_id', dealershipId)
+        .maybeSingle();
 
   if (membershipError || !membership) {
     throw new Error('You do not have access to this dealership');

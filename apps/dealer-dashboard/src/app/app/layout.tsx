@@ -75,7 +75,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppShell navItems={navItems} dealerships={dealerships} activeDealership={activeDealership}>
+    <AppShell
+      navItems={navItems}
+      dealerships={dealerships}
+      activeDealership={activeDealership}
+      platformAdmin={profile?.platformRole === 'platform_admin'}
+    >
       <SetupBanner profile={profile} hasInventory={hasInventory} />
       {children}
     </AppShell>

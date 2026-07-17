@@ -21,6 +21,7 @@ type AppShellProps = {
   children: ReactNode;
   dealerships: Dealership[];
   activeDealership: Dealership | null;
+  platformAdmin?: boolean;
 };
 
 const iconMap: Record<IconKey, LucideIcon> = {
@@ -31,7 +32,7 @@ const iconMap: Record<IconKey, LucideIcon> = {
   settings: Settings,
 };
 
-export function AppShell({ navItems, children, dealerships, activeDealership }: AppShellProps) {
+export function AppShell({ navItems, children, dealerships, activeDealership, platformAdmin = false }: AppShellProps) {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const resolvedNavItems = navItems.map(({ icon, ...rest }) => ({
@@ -52,6 +53,7 @@ export function AppShell({ navItems, children, dealerships, activeDealership }: 
         <AppHeader
           dealerships={dealerships}
           activeDealership={activeDealership}
+          platformAdmin={platformAdmin}
           onToggleMobileSidebar={() => setIsMobileNavOpen((prev) => !prev)}
           isMobileNavOpen={isMobileNavOpen}
         />

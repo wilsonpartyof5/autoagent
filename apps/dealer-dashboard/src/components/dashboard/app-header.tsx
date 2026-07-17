@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ShieldCheck, Menu, X, ChevronDown, Plus } from "lucide-react";
+import { Bell, ShieldCheck, Menu, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -16,6 +16,7 @@ import type { Dealership } from "@/lib/supabase/dealerships";
 type AppHeaderProps = {
   dealerships: Dealership[];
   activeDealership: Dealership | null;
+  platformAdmin?: boolean;
   onToggleMobileSidebar?: () => void;
   isMobileNavOpen?: boolean;
 };
@@ -23,6 +24,7 @@ type AppHeaderProps = {
 export function AppHeader({
   dealerships,
   activeDealership,
+  platformAdmin = false,
   onToggleMobileSidebar,
   isMobileNavOpen = false,
 }: AppHeaderProps) {
@@ -98,6 +100,14 @@ export function AppHeader({
             <h1 className="text-lg font-semibold text-foreground">{dealershipName}</h1>
           )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {platformAdmin && (
+              <>
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                  Platform Admin
+                </span>
+                <span>•</span>
+              </>
+            )}
             <div className="flex items-center gap-1 text-primary">
               <span className="inline-flex h-2 w-2 rounded-full bg-primary" aria-hidden />
               Secure
