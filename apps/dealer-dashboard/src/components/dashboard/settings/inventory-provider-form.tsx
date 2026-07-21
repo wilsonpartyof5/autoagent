@@ -9,9 +9,10 @@ import { type InventoryProvider } from "@/lib/supabase/profile";
 type Props = {
   currentProvider?: InventoryProvider | null;
   websiteUrl?: string | null;
+  dealershipId?: string;
 };
 
-export function InventoryProviderForm({ currentProvider, websiteUrl }: Props) {
+export function InventoryProviderForm({ currentProvider, websiteUrl, dealershipId }: Props) {
   const [provider, setProvider] = useState<InventoryProvider>(currentProvider ?? "marketcheck");
   const [marketcheckWebsiteUrl, setMarketcheckWebsiteUrl] = useState(websiteUrl ?? "");
   const [feedback, setFeedback] = useState<{ variant: "success" | "error"; message: string } | null>(
@@ -48,6 +49,7 @@ export function InventoryProviderForm({ currentProvider, websiteUrl }: Props) {
       try {
         const result = await updateMarketCheckSettings({
           websiteUrl: normalizedWebsite,
+          dealershipId,
         });
 
         if (result?.syncResult?.status === "no_match") {

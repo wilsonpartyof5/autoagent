@@ -45,12 +45,13 @@ export default async function SetupPage({ searchParams }: Props) {
         <InventoryProviderForm
           currentProvider={profile?.dmsProvider}
           websiteUrl={selectedDealership?.marketcheckWebsiteUrl ?? profile?.marketcheckWebsiteUrl}
+          dealershipId={selectedDealership?.id}
         />
         <div className="flex items-end justify-between">
           <div className="text-sm text-muted-foreground">
             Save your dealership website, then run a sync to pull inventory. Dealer IDs are auto-detected.
           </div>
-          <ResyncButton />
+          <ResyncButton dealershipId={selectedDealership?.id} />
         </div>
       </div>
 
