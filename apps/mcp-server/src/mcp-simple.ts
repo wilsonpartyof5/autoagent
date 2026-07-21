@@ -5,18 +5,112 @@ import { pingUi } from './tools/pingUi.js';
 import { pingMicroUi } from './tools/pingMicroUi.js';
 import { search } from './tools/search.js';
 import { fetchContent } from './tools/fetch.js';
+import { renderVehicleResults } from './tools/renderVehicleResults.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
+export const VEHICLE_WIDGET_VERSION = 'v17';
+export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
+
+const WIDGET_CSP = {
+  connectDomains: [
+    'https://autoagentmcp-server-production.up.railway.app',
+  ],
+  resourceDomains: [
+    'https://unpkg.com',
+    'https://tile.openstreetmap.org',
+    'https://vehicle-images.dealerinspire.com',
+    'https://pictures.dealer.com',
+    'https://www.myrockhillgmc.com',
+  ],
+};
+
+const VEHICLE_RESULTS_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    results: {
+      type: 'object',
+      properties: {
+        vehicles: { type: 'array', items: { type: 'object' } },
+        dealerSummary: { type: 'array', items: { type: 'object' } },
+        totalCount: { type: 'number' },
+        searchParams: { type: 'object' },
+      },
+      required: ['vehicles', 'totalCount'],
+    },
+  },
+  required: ['results'],
+};
+
+const VEHICLE_SEARCH_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    location: {
+      type: 'string',
+      description: 'Location to search for vehicles (e.g., "Seattle, WA", "Rock Hill, SC")',
+    },
+    condition: {
+      type: 'string',
+      enum: ['new', 'used'],
+      description: 'Vehicle condition (new or used)',
+    },
+    maxPrice: {
+      type: 'number',
+      description: 'Maximum price in USD',
+    },
+    make: {
+      type: 'string',
+      description: 'Vehicle make (e.g., "Toyota", "Honda")',
+    },
+    model: {
+      type: 'string',
+      description: 'Vehicle model (e.g., "Camry", "CR-V")',
+    },
+    radiusMiles: {
+      type: 'number',
+      description: 'Search radius in miles (default: 50)',
+    },
+    bodyStyle: {
+      type: 'string',
+      description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
+    },
+    mileageMax: {
+      type: 'number',
+      description: 'Maximum mileage',
+    },
+  },
+  required: [],
+};
+
+export type ToolContext = {
+  ipAddress?: string;
+  locale?: string;
+  userLocation?: {
+    city?: string;
+    region?: string;
+    country?: string;
+    timezone?: string;
+    latitude?: string;
+    longitude?: string;
+  };
+};
 
 /**
  * Simple MCP tool handler for Express integration
  */
-export async function handleMcpToolCall(toolName: string, args: unknown, context?: { /* No PII context */ }) {
+export async function handleMcpToolCall(toolName: string, args: unknown, context?: ToolContext) {
   switch (toolName) {
     case 'search':
-      return await search(args);
+      return await search(args, context);
     case 'fetch':
       return await fetchContent(args);
     case 'search-vehicles':
       return await searchVehicles(args, context);
+    case 'render-vehicle-results':
+      return await renderVehicleResults(args, context);
+    case 'render-vehicle-results-v2':
+      return await renderVehicleResults(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
     case 'compare-vehicles':
@@ -37,7 +131,13 @@ export function getAvailableTools() {
   return [
     {
       name: 'search',
-      description: 'Search for information using a query string',
+      title: 'Search',
+      description: 'Search vehicle inventory from natural-language queries (e.g. "cars for sale near Rock Hill, SC")',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -48,6 +148,7 @@ export function getAvailableTools() {
         },
         required: ['query'],
       },
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
       name: 'fetch',
@@ -82,47 +183,32 @@ export function getAvailableTools() {
       },
     },
     {
-      name: 'search-vehicles',
-      description: 'Search for vehicles based on location, price, make, model, and other criteria',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          location: {
-            type: 'string',
-            description: 'Location to search for vehicles (e.g., "Seattle, WA", "New York, NY")',
-          },
-          condition: {
-            type: 'string',
-            enum: ['new', 'used'],
-            description: 'Vehicle condition (new or used)',
-          },
-          maxPrice: {
-            type: 'number',
-            description: 'Maximum price in USD',
-          },
-          make: {
-            type: 'string',
-            description: 'Vehicle make (e.g., "Toyota", "Honda")',
-          },
-          model: {
-            type: 'string',
-            description: 'Vehicle model (e.g., "Camry", "CR-V")',
-          },
-          radiusMiles: {
-            type: 'number',
-            description: 'Search radius in miles (default: 50)',
-          },
-          bodyStyle: {
-            type: 'string',
-            description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
-          },
-          mileageMax: {
-            type: 'number',
-            description: 'Maximum mileage',
-          },
-        },
-        required: ['location', 'condition'],
+      name: 'render-vehicle-results-v2',
+      title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
+      description: `Current (${VEHICLE_WIDGET_VERSION}) UI tool for rendering the latest interactive in-chat vehicle inventory map, dealer clusters, vehicle cards, VDP details, and back-to-results navigation. Prefer this tool for visual vehicle browsing.`,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
       },
+      _meta: {
+        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
+      },
+      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
+    },
+    {
+      name: 'search-vehicles',
+      title: 'Search Vehicles',
+      description: 'Data-only vehicle inventory search. Use render-vehicle-results-v2 when the user wants the interactive map and card UI.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
+      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
       name: 'submit-lead',
@@ -226,5 +312,75 @@ export function getAvailableTools() {
  * Get available resources
  */
 export function getAvailableResources() {
-  return [];
+  return [
+    {
+      uri: VEHICLE_RESULTS_RESOURCE_URI,
+      name: `Vehicle Results Widget ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
+      description: `Current ${VEHICLE_WIDGET_VERSION} interactive widget displaying vehicle search results`,
+      mimeType: MCP_APP_HTML_MIME,
+    },
+    {
+      uri: 'ui://ping.html',
+      name: 'Ping Widget',
+      description: 'Minimal diagnostic UI for bridge readiness',
+      mimeType: MCP_APP_HTML_MIME,
+    },
+    {
+      uri: 'ui://micro.html',
+      name: 'Micro Widget',
+      description: 'Ultra-minimal diagnostic UI',
+      mimeType: MCP_APP_HTML_MIME,
+    },
+  ];
+}
+
+export function readMcpResource(uri: string) {
+  const [baseUri] = uri.split('?');
+  const resources: Record<string, string> = {
+    [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v16.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v15.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v13.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v12.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v11.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v10.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v9.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v8.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v7.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v6.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v5.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v4.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v3.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://ping.html': join(process.cwd(), 'src', 'ui', 'ping.html'),
+    'ui://micro.html': join(process.cwd(), 'src', 'ui', 'micro.html'),
+  };
+
+  const path = resources[baseUri];
+  if (!path) {
+    throw new Error(`Resource not found: ${uri}`);
+  }
+
+  return {
+    contents: [
+      {
+        uri,
+        mimeType: MCP_APP_HTML_MIME,
+        text: readFileSync(path, 'utf8'),
+        _meta: {
+          ui: {
+            csp: WIDGET_CSP,
+          },
+          'openai/widgetDescription': 'Interactive map and card-based vehicle inventory browser.',
+          'openai/widgetPrefersBorder': true,
+          'openai/widgetCSP': {
+            connect_domains: WIDGET_CSP.connectDomains,
+            resource_domains: WIDGET_CSP.resourceDomains,
+            frame_domains: [],
+          },
+        },
+      },
+    ],
+  };
 }

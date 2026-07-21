@@ -59,17 +59,27 @@ export interface UVSSearchParams {
   offset?: number;
 }
 
-/**
- * Search UVS vehicles with filters
- */
-export async function searchUVSVehicles(
+export interface UVSDealerSummary {
+  dealerId?: string;
+  dealerName: string;
+  city?: string;
+  state?: string;
+  count: number;
+  minPrice?: number;
+  lat?: number;
+  lng?: number;
+  dataSources: string[];
+}
+
+function applyUVSFilters<T extends {
+  eq: (column: string, value: unknown) => T;
+  gte: (column: string, value: unknown) => T;
+  lte: (column: string, value: unknown) => T;
+  ilike: (column: string, value: string) => T;
+}>(
+  query: T,
   params: UVSSearchParams
-): Promise<{ vehicles: UnifiedVehicle[]; total: number }> {
-  const supabase = getSupabaseClient();
-  
-  let query = supabase.from('uvs_vehicles').select('uvs_data', { count: 'exact' });
-  
-  // Apply filters
+): T {
   if (params.make) {
     query = query.eq('make', params.make);
   }
@@ -100,9 +110,19 @@ export async function searchUVSVehicles(
   if (params.dealerName) {
     query = query.ilike('dealer_name', `%${params.dealerName}%`);
   }
+  return query.eq('availability_status', 'available');
+}
+
+/**
+ * Search UVS vehicles with filters
+ */
+export async function searchUVSVehicles(
+  params: UVSSearchParams
+): Promise<{ vehicles: UnifiedVehicle[]; total: number; dealerSummary: UVSDealerSummary[] }> {
+  const supabase = getSupabaseClient();
   
-  // Always filter by availability_status = 'available' by default
-  query = query.eq('availability_status', 'available');
+  let query = supabase.from('uvs_vehicles').select('uvs_data', { count: 'exact' });
+  query = applyUVSFilters(query, params);
   
   // Apply pagination
   const limit = params.limit || 20;
@@ -137,17 +157,62 @@ export async function searchUVSVehicles(
   }
   
   const vehicles = (data || []).map((row) => row.uvs_data as UnifiedVehicle);
+
+  let dealerQuery = supabase
+    .from('uvs_vehicles')
+    .select('dealer_id, dealer_name, dealer_city, dealer_state, dealer_latitude, dealer_longitude, price, data_source');
+  dealerQuery = applyUVSFilters(dealerQuery, params);
+  const { data: dealerRows, error: dealerError } = await dealerQuery.range(0, 9999);
+
+  if (dealerError) {
+    logger.warn({
+      event: 'uvs_dealer_summary_error',
+      error: dealerError.message,
+      params,
+    });
+  }
+
+  const dealerMap = new Map<string, UVSDealerSummary>();
+  for (const row of dealerRows || []) {
+    const key = `${row.dealer_id || ''}|${row.dealer_name || 'Unknown Dealer'}`;
+    const existing = dealerMap.get(key);
+    const price = typeof row.price === 'number' ? row.price : Number(row.price);
+    if (existing) {
+      existing.count += 1;
+      if (Number.isFinite(price)) {
+        existing.minPrice = existing.minPrice === undefined ? price : Math.min(existing.minPrice, price);
+      }
+      if (row.data_source && !existing.dataSources.includes(row.data_source)) {
+        existing.dataSources.push(row.data_source);
+      }
+      continue;
+    }
+    dealerMap.set(key, {
+      dealerId: row.dealer_id || undefined,
+      dealerName: row.dealer_name || 'Unknown Dealer',
+      city: row.dealer_city || undefined,
+      state: row.dealer_state || undefined,
+      count: 1,
+      minPrice: Number.isFinite(price) ? price : undefined,
+      lat: typeof row.dealer_latitude === 'number' ? row.dealer_latitude : Number(row.dealer_latitude) || undefined,
+      lng: typeof row.dealer_longitude === 'number' ? row.dealer_longitude : Number(row.dealer_longitude) || undefined,
+      dataSources: row.data_source ? [row.data_source] : [],
+    });
+  }
+  const dealerSummary = Array.from(dealerMap.values()).sort((a, b) => b.count - a.count);
   
   logger.info({
     event: 'uvs_search_complete',
     params,
     results: vehicles.length,
     total: count || 0,
+    dealers: dealerSummary.length,
   });
   
   return {
     vehicles,
     total: count || 0,
+    dealerSummary,
   };
 }
 

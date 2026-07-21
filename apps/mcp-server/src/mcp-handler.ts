@@ -1,9 +1,10 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, VEHICLE_RESULTS_RESOURCE_URI, VEHICLE_WIDGET_VERSION, type ToolContext } from './mcp-simple.js';
+import { CONFIG } from './config/env.js';
 
 /**
  * Handle MCP protocol requests
  */
-export async function handleMcpRequest(body: unknown, context?: { widgetState?: unknown; ipAddress?: string | undefined }) {
+export async function handleMcpRequest(body: unknown, context?: ToolContext & { widgetState?: unknown }) {
   try {
     const request = body as { 
       jsonrpc?: string; 
@@ -17,13 +18,13 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
     // Helper function to create JSON-RPC 2.0 response
     const createResponse = (result: unknown) => ({
       jsonrpc: '2.0',
-      id: id || null,
+      id: id ?? null,
       result
     });
 
     const createError = (code: number, message: string, data?: unknown) => ({
       jsonrpc: '2.0',
-      id: id || null,
+      id: id ?? null,
       error: {
         code,
         message,
@@ -51,18 +52,18 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
             prompts: {
               listChanged: true
             },
-            logging: {}
+            logging: {},
+            experimental: {
+              'io.modelcontextprotocol/ui': {
+                mimeTypes: ['text/html;profile=mcp-app'],
+              },
+            },
           },
           serverInfo: {
             name: 'autoagent-mcp-server',
-            version: '1.0.0',
+            version: `1.0.0-${VEHICLE_WIDGET_VERSION}-${CONFIG.commitSha.substring(0, 7)}`,
           },
-          initialized: true,
-          notification: {
-            jsonrpc: '2.0',
-            method: 'initialized',
-            params: {}
-          }
+          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For interactive vehicle inventory UI, use render-vehicle-results-v2. Use search-vehicles only for data-only vehicle searches.`
         });
 
       case 'initialized':
@@ -85,6 +86,14 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
         console.log('🔧 Tools/call request received');
         if ((params as { name?: string }).name) {
           const toolStartTime = Date.now();
+          const toolCallMeta = (params as { _meta?: Record<string, unknown> })._meta || {};
+          const toolContext: ToolContext = {
+            ...context,
+            locale: typeof toolCallMeta['openai/locale'] === 'string' ? toolCallMeta['openai/locale'] : context?.locale,
+            userLocation: typeof toolCallMeta['openai/userLocation'] === 'object' && toolCallMeta['openai/userLocation'] !== null
+              ? toolCallMeta['openai/userLocation'] as ToolContext['userLocation']
+              : context?.userLocation,
+          };
           
           // Send progress notification for long-running operations
           if ((params as { name?: string }).name === 'search-vehicles') {
@@ -95,7 +104,7 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
             }, 100);
           }
           
-          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, context);
+          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, toolContext);
           
           const toolDuration = Date.now() - toolStartTime;
           console.log(JSON.stringify({
@@ -109,27 +118,37 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
             return createError(-32603, 'Internal error', (result as { error?: unknown }).error);
           }
           
-          // Return the result directly with components pattern
+          // Return tool result payload in MCP-compatible shape.
           const resultData = (result as { data?: unknown }).data;
-          if (resultData && (resultData as { components?: unknown }).components) {
-            // New components pattern
-            const data = resultData as { content?: unknown; structuredContent?: unknown; components?: unknown };
+          if (resultData) {
+            const data = resultData as { content?: unknown; structuredContent?: unknown; _meta?: unknown };
             return createResponse({
               content: data.content,
               structuredContent: data.structuredContent,
-              components: data.components
+              ...(data._meta ? { _meta: data._meta } : {}),
             });
           } else {
-            // If no components, return error - all tools must use components pattern
-            return createError(-32603, 'Internal error', 'Tool must return components pattern');
+            return createError(-32603, 'Internal error', 'Tool returned no result data');
           }
         }
         
         return createError(-32602, 'Invalid params', 'Missing tool name');
 
       case 'resources/read':
-        // Legacy resource-based UI path removed - all UI now uses components pattern
-        return createError(-32602, 'Invalid params', 'Resource not found');
+        console.log('🔧 Resources read request received');
+        try {
+          const uri = (params as { uri?: string }).uri;
+          if (!uri) {
+            return createError(-32602, 'Invalid params', 'Missing resource uri');
+          }
+          return createResponse(readMcpResource(uri));
+        } catch (error) {
+          return createError(
+            -32602,
+            'Invalid params',
+            error instanceof Error ? error.message : 'Resource not found'
+          );
+        }
 
       case 'notifications/initialized':
         console.log('✅ Notifications/initialized received');
@@ -162,7 +181,15 @@ export async function handleMcpRequest(body: unknown, context?: { widgetState?: 
         console.log('🌊 Tools/call/stream request received');
         // For streaming tool calls, we'll return the same as regular calls for now
         if ((params as { name?: string }).name) {
-          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, context);
+          const toolCallMeta = (params as { _meta?: Record<string, unknown> })._meta || {};
+          const toolContext: ToolContext = {
+            ...context,
+            locale: typeof toolCallMeta['openai/locale'] === 'string' ? toolCallMeta['openai/locale'] : context?.locale,
+            userLocation: typeof toolCallMeta['openai/userLocation'] === 'object' && toolCallMeta['openai/userLocation'] !== null
+              ? toolCallMeta['openai/userLocation'] as ToolContext['userLocation']
+              : context?.userLocation,
+          };
+          const result = await handleMcpToolCall((params as { name: string }).name, (params as { arguments?: unknown }).arguments, toolContext);
           
           if (result.success === false) {
             return createError(-32603, 'Internal error', (result as { error?: unknown }).error);

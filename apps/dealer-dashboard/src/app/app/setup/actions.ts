@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { getDealerProfile, updateDealerProfile, type InventoryProvider } from '@/lib/supabase/profile';
 import {
+  fetchUserDealerships,
   getActiveDealership,
   getActiveDealershipId,
   createDealership,
@@ -266,7 +267,7 @@ async function resolveDealerIdForUser({
  * Re-sync inventory for the active dealership
  * Uses the dealership's stored MarketCheck dealer ID and settings
  */
-export async function resyncInventory() {
+export async function resyncInventory(selectedDealershipId?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   
@@ -274,11 +275,21 @@ export async function resyncInventory() {
     throw new Error('Not authenticated');
   }
 
-  // Get active dealership (this handles RLS and auto-fixes mismatches)
-  const activeDealership = await getActiveDealership();
+  // A setup page can target a rooftop other than the user's current global
+  // selection. Resolve the explicit rooftop through the authorized list so a
+  // sync can never silently run against a different dealer.
+  const activeDealership = selectedDealershipId
+    ? (await fetchUserDealerships()).find(
+        (dealership) => dealership.id === selectedDealershipId,
+      ) ?? null
+    : await getActiveDealership();
   
   if (!activeDealership) {
-    throw new Error('No active dealership found. Please set up a dealership first.');
+    throw new Error(
+      selectedDealershipId
+        ? 'You do not have access to the selected dealership.'
+        : 'No active dealership found. Please set up a dealership first.',
+    );
   }
 
   const dealerResolution = await resolveDealerIdForUser({
@@ -422,7 +433,7 @@ export async function fetchAndIngestMarketCheckInventory({
 
   const ingestionToken = process.env.INGESTION_API_TOKEN || process.env.MCP_SERVER_TOKEN;
   
-  const url = `${mcpServerUrl}/api/ingest/marketcheck/fetch-and-ingest`;
+  const url = `${mcpServerUrl.replace(/\/+$/, '')}/api/ingest/marketcheck/fetch-and-ingest`;
   
   try {
     console.log('[fetchAndIngestMarketCheckInventory] Calling MCP fetch-and-ingest endpoint:', {
@@ -434,8 +445,9 @@ export async function fetchAndIngestMarketCheckInventory({
       condition,
     });
 
-    // paginate to avoid 500-row cap
-    const maxPages = 20;
+    // The ingestion service owns MarketCheck pagination and returns the full
+    // inventory in one response. Do not paginate this endpoint again here.
+    const maxPages = 1;
     let currentPage = page;
     let totalFetched = 0;
     let totalStored = 0;
@@ -544,10 +556,7 @@ export async function fetchAndIngestMarketCheckInventory({
         invalid,
       });
 
-      if (fetched < pageSize) {
-        break; // last page
-      }
-      currentPage += 1;
+      break;
     }
 
     // Note: Dealership sync status tracking would require additional fields in the dealerships table

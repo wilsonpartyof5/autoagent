@@ -3,12 +3,13 @@ import { safeParse } from '../lib/z.js';
 import { searchCache } from '../lib/cache.js';
 import { randomUUID } from 'crypto';
 import { validateToolResult } from '../lib/responseShape.js';
-import { getWidgetHost } from '../utils/getWidgetHost.js';
 import { CONFIG } from '../config/env.js';
-import { searchUVSVehicles, type UVSSearchParams } from '../db/uvs-vehicles.js';
+import { searchUVSVehicles, type UVSDealerSummary, type UVSSearchParams } from '../db/uvs-vehicles.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
+import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
+import type { ToolContext } from '../mcp-simple.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -62,22 +63,331 @@ function enrichVehicleForStructuredContent(vehicle: UnifiedVehicle | Record<stri
   };
 }
 
+function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknown>): Record<string, unknown> {
+  const enriched = enrichVehicleForStructuredContent(vehicle);
+  const source = vehicle as Record<string, unknown>;
+
+  const baseIdentity = (source.baseIdentity as Record<string, unknown> | undefined) ?? {};
+  const pricing = (source.pricing as Record<string, unknown> | undefined) ?? {};
+  const location = (source.location as Record<string, unknown> | undefined) ?? {};
+  const dealer = (location.dealer as Record<string, unknown> | undefined) ?? {};
+  const coreSpecs = (source.coreSpecs as Record<string, unknown> | undefined) ?? {};
+  const media = (source.media as Record<string, unknown> | undefined) ?? {};
+  const detail = (source.detail as Record<string, unknown> | undefined) ?? {};
+
+  const year = (baseIdentity.year as number | undefined) ?? (source.year as number | undefined);
+  const make = (baseIdentity.make as string | undefined) ?? (source.make as string | undefined);
+  const model = (baseIdentity.model as string | undefined) ?? (source.model as string | undefined);
+  const trim = (baseIdentity.trim as string | undefined) ?? (source.trim as string | undefined);
+  const vin = (baseIdentity.vin as string | undefined) ?? (source.vin as string | undefined);
+  const price = (pricing.price as number | undefined) ?? (enriched.price as number | undefined);
+  const msrp = pricing.msrp as number | undefined;
+  const currency = (pricing.currency as string | undefined) ?? 'USD';
+  const rawMiles = coreSpecs.miles
+    ?? coreSpecs.odometer
+    ?? coreSpecs.mileage
+    ?? source.miles
+    ?? source.mileage
+    ?? source.odometer
+    ?? detail.miles
+    ?? detail.mileage
+    ?? detail.odometer;
+  const miles = typeof rawMiles === 'number'
+    ? rawMiles
+    : typeof rawMiles === 'string' && rawMiles.trim() !== ''
+      ? Number(rawMiles.replace(/,/g, ''))
+      : undefined;
+  const title = (enriched.title as string | undefined) ?? [year, make, model].filter(Boolean).join(' ');
+  const photoUrl = (enriched.photoUrl as string | undefined)
+    ?? (media.primaryPhotoUrl as string | undefined)
+    ?? (source.imageUrl as string | undefined);
+
+  const latitude = (dealer.latitude as number | undefined) ?? (enriched.lat as number | undefined);
+  const longitude = (dealer.longitude as number | undefined) ?? (enriched.lng as number | undefined);
+  const dealerName = (dealer.name as string | undefined) ?? (enriched.dealerName as string | undefined);
+  const condition = typeof source.condition === 'string' ? source.condition : undefined;
+  const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : undefined;
+  const dealerCity = typeof dealer.city === 'string' ? dealer.city : undefined;
+  const dealerState = typeof dealer.state === 'string' ? dealer.state : undefined;
+  const dealerDistanceMiles = typeof dealer.distanceMiles === 'number' ? dealer.distanceMiles : undefined;
+
+  return {
+    id: source.id,
+    title,
+    ...(price !== undefined && { price }),
+    ...(miles !== undefined && { miles }),
+    ...(photoUrl && { photoUrl, image: photoUrl }),
+    ...(latitude !== undefined && { lat: latitude }),
+    ...(longitude !== undefined && { lng: longitude }),
+    ...(dealerName && { dealerName }),
+    ...(condition && { condition }),
+    baseIdentity: {
+      ...(year !== undefined && { year }),
+      ...(make && { make }),
+      ...(model && { model }),
+      ...(trim && { trim }),
+      ...(vin && { vin }),
+    },
+    pricing: {
+      ...(price !== undefined && { price }),
+      ...(msrp !== undefined && { msrp }),
+      currency,
+    },
+    coreSpecs: {
+      ...(miles !== undefined && { miles }),
+    },
+    media: {
+      ...(photoUrl && { primaryPhotoUrl: photoUrl, photoUrls: [photoUrl] }),
+    },
+    location: {
+      dealer: {
+        ...(dealerName && { name: dealerName }),
+        ...(dealerId && { dealerId }),
+        ...(dealerCity && { city: dealerCity }),
+        ...(dealerState && { state: dealerState }),
+        ...(dealerDistanceMiles !== undefined && { distanceMiles: dealerDistanceMiles }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
+      },
+    },
+  };
+}
+
+type SearchVehiclesData = {
+  content: { type: string; text: string; }[];
+  vehicles?: unknown[];
+  dealerSummary?: UVSDealerSummary[];
+  totalCount?: number;
+  searchParams?: unknown;
+  structuredContent?: unknown;
+  _meta?: Record<string, unknown>;
+  dataSource?: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+  inventoryProvider?: 'marketcheck' | 'uvs';
+  normalizedAs?: 'uvs';
+};
+type SourceInfo = {
+  dataSource: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+  inventoryProvider: 'marketcheck' | 'uvs';
+  normalizedAs: 'uvs';
+};
+const MAX_BRIDGE_RESULTS = 8;
+const MAX_WIDGET_RESULTS = 12;
+const MAX_SUMMARY_LISTINGS = 3;
+
+function buildDealerSummary(vehicles: Array<Record<string, unknown>>): UVSDealerSummary[] {
+  const dealers = new Map<string, UVSDealerSummary>();
+  for (const vehicle of vehicles) {
+    const location = vehicle.location as { dealer?: Record<string, unknown> } | undefined;
+    const pricing = vehicle.pricing as { price?: unknown } | undefined;
+    const dealer = location?.dealer || {};
+    const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : undefined;
+    const dealerName = typeof dealer.name === 'string'
+      ? dealer.name
+      : typeof vehicle.dealerName === 'string'
+        ? vehicle.dealerName
+        : 'Unknown Dealer';
+    const key = `${dealerId || ''}|${dealerName}`;
+    const price = typeof vehicle.price === 'number'
+      ? vehicle.price
+      : typeof pricing?.price === 'number'
+        ? pricing.price
+        : undefined;
+    const existing = dealers.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (price !== undefined) {
+        existing.minPrice = existing.minPrice === undefined ? price : Math.min(existing.minPrice, price);
+      }
+      continue;
+    }
+    dealers.set(key, {
+      dealerId,
+      dealerName,
+      city: typeof dealer.city === 'string' ? dealer.city : undefined,
+      state: typeof dealer.state === 'string' ? dealer.state : undefined,
+      count: 1,
+      minPrice: price,
+      lat: typeof dealer.latitude === 'number' ? dealer.latitude : typeof vehicle.lat === 'number' ? vehicle.lat : undefined,
+      lng: typeof dealer.longitude === 'number' ? dealer.longitude : typeof vehicle.lng === 'number' ? vehicle.lng : undefined,
+      dataSources: [],
+    });
+  }
+  return Array.from(dealers.values()).sort((a, b) => b.count - a.count);
+}
+
+function balanceVehiclesByDealer<T extends Record<string, unknown>>(vehicles: T[], maxVehicles = MAX_WIDGET_RESULTS): T[] {
+  const buckets = new Map<string, T[]>();
+  for (const vehicle of vehicles) {
+    const location = vehicle.location as { dealer?: Record<string, unknown> } | undefined;
+    const dealer = location?.dealer || {};
+    const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : '';
+    const dealerName = typeof dealer.name === 'string'
+      ? dealer.name
+      : typeof vehicle.dealerName === 'string'
+        ? vehicle.dealerName
+        : 'Unknown Dealer';
+    const key = `${dealerId}|${dealerName}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(vehicle);
+  }
+  const bucketList = Array.from(buckets.values()).sort((a, b) => b.length - a.length);
+  const balanced: T[] = [];
+  let index = 0;
+  while (balanced.length < maxVehicles && bucketList.some(bucket => bucket[index])) {
+    for (const bucket of bucketList) {
+      if (balanced.length >= maxVehicles) break;
+      if (bucket[index]) balanced.push(bucket[index]);
+    }
+    index += 1;
+  }
+  return balanced;
+}
+
+function summarizeVehicleLine(vehicle: unknown): string {
+  const v = vehicle as Record<string, unknown> & {
+    title?: string;
+    price?: number;
+    miles?: number;
+    dealerName?: string;
+    vin?: string;
+    baseIdentity?: { year?: number; make?: string; model?: string; vin?: string };
+    pricing?: { price?: number };
+    coreSpecs?: { miles?: number };
+    location?: { dealer?: { name?: string } };
+  };
+
+  const title = v.title
+    || [v.baseIdentity?.year, v.baseIdentity?.make, v.baseIdentity?.model].filter(Boolean).join(' ')
+    || 'Vehicle';
+  const price = typeof v.price === 'number' ? v.price : v.pricing?.price;
+  const miles = typeof v.miles === 'number' ? v.miles : v.coreSpecs?.miles;
+  const dealerName = v.dealerName || v.location?.dealer?.name;
+  const vin = v.baseIdentity?.vin || v.vin;
+
+  const parts = [
+    title,
+    typeof price === 'number' ? `$${price.toLocaleString()}` : undefined,
+    typeof miles === 'number' ? `${Math.round(miles).toLocaleString()} mi` : undefined,
+    dealerName ? `at ${dealerName}` : undefined,
+    vin ? `VIN ${String(vin).slice(-6)}` : undefined,
+  ].filter(Boolean);
+
+  return `- ${parts.join(' • ')}`;
+}
+
+function buildReadableContent(totalCount: number, vehicles: unknown[], location?: string): { type: string; text: string }[] {
+  const header = `Found ${totalCount} vehicles${location ? ` near ${location}` : ''}.`;
+  if (!vehicles.length) {
+    return [{ type: 'text', text: header }];
+  }
+
+  const topLines = vehicles.slice(0, MAX_SUMMARY_LISTINGS).map((vehicle) => summarizeVehicleLine(vehicle));
+  const text = `${header}\nTop matches:\n${topLines.join('\n')}`;
+  return [{ type: 'text', text }];
+}
+
+function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
+  return {
+    location: searchParams.location,
+    condition: searchParams.condition,
+    maxPrice: searchParams.maxPrice,
+    make: searchParams.make,
+    model: searchParams.model,
+    radiusMiles: searchParams.radiusMiles,
+    bodyStyle: searchParams.bodyStyle,
+    mileageMax: searchParams.mileageMax,
+  };
+}
+
+function normalizeBridgeSearchResult(
+  upstreamResult: unknown,
+  searchParams: SearchParams,
+  runId: string,
+  sourceInfo: SourceInfo
+): SearchVehiclesData {
+  const bridge = upstreamResult as {
+    content?: unknown;
+    structuredContent?: unknown;
+    vehicles?: unknown[];
+    dealerSummary?: UVSDealerSummary[];
+    totalCount?: number;
+  };
+
+  const structuredContent = bridge.structuredContent as
+    | { results?: { vehicles?: unknown[]; totalCount?: number; searchParams?: unknown } }
+    | undefined;
+  const structuredResults = structuredContent?.results;
+  const rawVehicles = Array.isArray(structuredResults?.vehicles)
+    ? structuredResults.vehicles
+    : Array.isArray(bridge.vehicles)
+      ? bridge.vehicles
+      : [];
+  const totalCount = typeof structuredResults?.totalCount === 'number'
+    ? structuredResults.totalCount
+    : typeof bridge.totalCount === 'number'
+      ? bridge.totalCount
+      : rawVehicles.length;
+  // Keep bridge payload bounded so ChatGPT can reliably consume and render.
+  const compactVehicles = rawVehicles
+    .slice(0, Math.max(MAX_BRIDGE_RESULTS, MAX_WIDGET_RESULTS * 4))
+    .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
+  const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_BRIDGE_RESULTS);
+  const dealerSummary = buildDealerSummary(compactVehicles);
+
+  const content = buildReadableContent(totalCount, vehicles, searchParams.location);
+
+  return {
+    content,
+    vehicles,
+    dealerSummary,
+    totalCount,
+    searchParams,
+    structuredContent: {
+      results: {
+        vehicles,
+        dealerSummary,
+        totalCount,
+        searchParams: structuredResults?.searchParams ?? searchParams,
+        dataSource: sourceInfo.dataSource,
+        inventoryProvider: sourceInfo.inventoryProvider,
+        normalizedAs: sourceInfo.normalizedAs,
+      },
+    },
+    _meta: {
+      results: {
+        vehicles,
+        dealerSummary,
+        totalCount,
+        searchParams: structuredResults?.searchParams ?? searchParams,
+        dataSource: sourceInfo.dataSource,
+        inventoryProvider: sourceInfo.inventoryProvider,
+        normalizedAs: sourceInfo.normalizedAs,
+      },
+    },
+    ...sourceInfo,
+  };
+}
+
 
 /**
  * Search for vehicles using UVS database (replaces MarketCheck API)
  */
 export async function searchVehicles(
   params: unknown,
-  context?: { /* No PII context */ }
+  context?: ToolContext
 ): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
     vehicles?: unknown[];
+    dealerSummary?: UVSDealerSummary[];
     totalCount?: number;
     searchParams?: unknown;
     structuredContent?: unknown;
-    components: { type: string; url: string; }[];
+    _meta?: Record<string, unknown>;
+    dataSource?: 'marketcheck_mcp' | 'uvs_cache' | 'uvs_db';
+    inventoryProvider?: 'marketcheck' | 'uvs';
+    normalizedAs?: 'uvs';
   };
   error?: string;
 }> {
@@ -88,8 +398,23 @@ export async function searchVehicles(
   }> = [];
   
   try {
+    const mutableParams: Record<string, unknown> | undefined = (params && typeof params === 'object')
+      ? { ...(params as Record<string, unknown>) }
+      : undefined;
+    const contextLocation = context?.userLocation
+      ? [context.userLocation.city, context.userLocation.region].filter(Boolean).join(', ')
+      : undefined;
+    if (mutableParams) {
+      if (!mutableParams.location && contextLocation) {
+        mutableParams.location = contextLocation;
+      }
+      if (!mutableParams.condition) {
+        mutableParams.condition = 'used';
+      }
+    }
+
     // Validate input parameters
-    const parseResult = safeParse(SearchParamsSchema, params);
+    const parseResult = safeParse(SearchParamsSchema, mutableParams ?? params);
     if (!parseResult.success) {
       return {
         success: false,
@@ -101,6 +426,77 @@ export async function searchVehicles(
     const cacheKey = generateCacheKey(searchParams);
     // Use single requestId for entire request to maintain correlation
     const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
+
+    if (CONFIG.marketcheckMcpBridgeEnabled) {
+      const runId = randomUUID();
+      const bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
+      if (!bridgeArgs.location || !bridgeArgs.condition) {
+        return {
+          success: false,
+          error: 'Bridge mapping failed: location and condition are required for upstream search-vehicles',
+        };
+      }
+
+      const bridgeCall = await callMarketcheckMcpTool('search-vehicles', bridgeArgs, requestId);
+      if (!bridgeCall.success) {
+        console.error(JSON.stringify({
+          event: 'search_bridge_failed',
+          requestId,
+          correlationId: bridgeCall.correlationId,
+          upstreamRequestId: bridgeCall.upstreamRequestId,
+          status: bridgeCall.status,
+          latencyMs: bridgeCall.latencyMs,
+          error: bridgeCall.error,
+        }));
+        return {
+          success: false,
+          error: bridgeCall.error,
+        };
+      }
+
+      console.log(JSON.stringify({
+        event: 'search_bridge_success',
+        requestId,
+        correlationId: bridgeCall.correlationId,
+        upstreamRequestId: bridgeCall.upstreamRequestId,
+        status: bridgeCall.status,
+        latencyMs: bridgeCall.latencyMs,
+      }));
+
+      const sourceInfo: SourceInfo = {
+        dataSource: 'marketcheck_mcp',
+        inventoryProvider: 'marketcheck',
+        normalizedAs: 'uvs',
+      };
+      const normalized = normalizeBridgeSearchResult(bridgeCall.result, searchParams, runId, sourceInfo);
+      console.log(JSON.stringify({
+        event: 'vehicle_search_source',
+        requestId,
+        ...sourceInfo,
+      }));
+      validateToolResult(normalized);
+
+      trackEvent('inventory.search', {
+        make: searchParams.make,
+        model: searchParams.model,
+        condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
+        priceMin: undefined,
+        priceMax: searchParams.maxPrice,
+        location: searchParams.location,
+        resultsCount: normalized.totalCount ?? 0,
+        searchDuration: Date.now() - startTime,
+      }, {
+        requestId,
+        sessionId: requestId,
+      }).catch(() => {
+        // Tracking failures should not break the request
+      });
+
+      return {
+        success: true,
+        data: normalized,
+      };
+    }
     
     // Check cache first
     const cachedResult = searchCache.get(cacheKey);
@@ -133,52 +529,35 @@ export async function searchVehicles(
       });
 
       const runId = randomUUID();
-      const widgetHost = getWidgetHost();
-      const isDiag = CONFIG.diagnosticsEnabled;
-
-      // Build URL using URL API to ensure proper encoding
-      let vehicleResultsUrl: string;
-      try {
-        // Ensure widgetHost has protocol
-        const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://')
-          ? widgetHost
-          : `https://${widgetHost}`;
-        const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-        widgetUrl.searchParams.set('rid', runId);
-        if (isDiag) {
-          widgetUrl.searchParams.set('diag', '1');
-        }
-        vehicleResultsUrl = widgetUrl.toString();
-      } catch (urlError) {
-        // Fallback to template literal if URL constructor fails
-        console.error(JSON.stringify({
-          event: 'url_construction_error',
-          widgetHost,
-          error: urlError instanceof Error ? urlError.message : 'Unknown error',
-        }));
-        vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-      }
-
-      console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, ts:Date.now()}));
+      console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
 
       // Enrich cached vehicles with map pin and featured card data
-      const enrichedCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
-        enrichVehicleForStructuredContent(vehicle)
+      const compactCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
+        compactVehicleForWidget(vehicle)
       );
+      const enrichedCachedVehicles = balanceVehiclesByDealer(compactCachedVehicles, MAX_WIDGET_RESULTS);
+      const dealerSummary = buildDealerSummary(compactCachedVehicles);
+      const sourceInfo: SourceInfo = {
+        dataSource: 'uvs_cache',
+        inventoryProvider: 'uvs',
+        normalizedAs: 'uvs',
+      };
       
       return {
         success: true,
         data: {
-          content: [{ type: 'text', text: `Found ${cachedResult.totalCount} vehicles (run ${runId})` }],
-          vehicles: cachedResult.vehicles as unknown[], // Cache may contain legacy format
+          content: buildReadableContent(cachedResult.totalCount, enrichedCachedVehicles, searchParams.location),
+          vehicles: enrichedCachedVehicles,
+          dealerSummary,
           totalCount: cachedResult.totalCount,
           searchParams,
           structuredContent: {
-            results: { vehicles: enrichedCachedVehicles, totalCount: cachedResult.totalCount, searchParams }
+            results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo }
           },
-          components: [
-            { type: 'iframe', url: vehicleResultsUrl }
-          ]
+          _meta: {
+            results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo },
+          },
+          ...sourceInfo,
         },
       };
     }
@@ -186,6 +565,7 @@ export async function searchVehicles(
     // Query UVS vehicles from database instead of MarketCheck API
     let vehicles: UnifiedVehicle[] = [];
     let totalCount = 0;
+    let dealerSummary: UVSDealerSummary[] = [];
     const fromCache = false;
 
     try {
@@ -195,11 +575,12 @@ export async function searchVehicles(
         model: searchParams.model,
         condition: searchParams.condition, // SearchParams.condition is 'new' | 'used'
         maxPrice: searchParams.maxPrice,
-        minMiles: searchParams.condition === 'used' ? 1 : undefined, // Used vehicles must have miles > 0
+        // Do not force used inventory to have miles > 0 because many feeds provide 0/NULL miles.
+        minMiles: undefined,
         maxMiles: searchParams.mileageMax,
         bodyStyle: searchParams.bodyStyle,
         // Note: SearchParams doesn't have dealerId/dealerName, but UVSSearchParams does (optional)
-        limit: 20,
+        limit: 500,
         offset: 0,
       };
 
@@ -219,6 +600,7 @@ export async function searchVehicles(
 
       vehicles = dbResult.vehicles;
       totalCount = dbResult.total;
+      dealerSummary = dbResult.dealerSummary;
       
       // Track vehicle.view for each vehicle returned in search results
       vehicles.forEach((vehicle) => {
@@ -312,48 +694,15 @@ export async function searchVehicles(
     });
 
     const runId = randomUUID();
-    const widgetHost = getWidgetHost();
-    const isDiag = CONFIG.diagnosticsEnabled;
-    
-    // Build URL using URL API to ensure proper encoding
-    let vehicleResultsUrl: string;
-    try {
-      // Ensure widgetHost has protocol
-      const baseUrl = widgetHost.startsWith('http://') || widgetHost.startsWith('https://') 
-        ? widgetHost 
-        : `https://${widgetHost}`;
-      const widgetUrl = new URL('/widget/vehicle-results', baseUrl);
-      widgetUrl.searchParams.set('rid', runId);
-      if (isDiag) {
-        widgetUrl.searchParams.set('diag', '1');
-      }
-      vehicleResultsUrl = widgetUrl.toString();
-    } catch (urlError) {
-      // Fallback to template literal if URL constructor fails
-      console.error(JSON.stringify({
-        event: 'url_construction_error',
-        widgetHost,
-        error: urlError instanceof Error ? urlError.message : 'Unknown error',
-      }));
-      vehicleResultsUrl = `${widgetHost}/widget/vehicle-results?rid=${encodeURIComponent(runId)}${isDiag ? '&diag=1' : ''}`;
-    }
-    
-    console.log(JSON.stringify({evt:'diag.tool', runId, url: vehicleResultsUrl, urlLength: vehicleResultsUrl.length, ts:Date.now()}));
-    
-    // Validate URL format before using it
-    try {
-      new URL(vehicleResultsUrl);
-      console.log(JSON.stringify({event: 'url_validation', url: vehicleResultsUrl, valid: true}));
-    } catch (urlError) {
-      console.error(JSON.stringify({
-        event: 'url_validation_failed',
-        url: vehicleResultsUrl,
-        error: urlError instanceof Error ? urlError.message : 'Unknown error',
-      }));
-    }
+    console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
+    const sourceInfo: SourceInfo = {
+      dataSource: 'uvs_db',
+      inventoryProvider: 'uvs',
+      normalizedAs: 'uvs',
+    };
     
       // Build structuredContent with enriched fields for map pins and featured cards
-      const structuredContentVehicles = vehicles.map((vehicle, index) => {
+      const compactVehicles = vehicles.map((vehicle, index) => {
         // Add enriched metadata if available
         const enriched = enrichedMetadata[index];
         let base: UnifiedVehicle | Record<string, unknown> = vehicle;
@@ -368,26 +717,37 @@ export async function searchVehicles(
         }
         
         // Enrich with map pin and featured card data
-        return enrichVehicleForStructuredContent(base);
+        return compactVehicleForWidget(base);
       });
+      const structuredContentVehicles = balanceVehiclesByDealer(compactVehicles, MAX_WIDGET_RESULTS);
 
     const toolResult = {
       success: true,
       data: {
-        content: [{ type: 'text', text: `Found ${totalCount} vehicles (run ${runId})` }],
-        vehicles,
+        content: buildReadableContent(totalCount, structuredContentVehicles, searchParams.location),
+        vehicles: structuredContentVehicles,
+        dealerSummary,
         totalCount,
         searchParams,
         structuredContent: { 
           results: { 
             vehicles: structuredContentVehicles, 
+            dealerSummary,
             totalCount, 
-            searchParams 
+            searchParams,
+            ...sourceInfo,
           } as unknown
         },
-        components: [
-          { type: 'iframe', url: vehicleResultsUrl }
-        ]
+        _meta: {
+          results: {
+            vehicles: structuredContentVehicles,
+            dealerSummary,
+            totalCount,
+            searchParams,
+            ...sourceInfo,
+          },
+        },
+        ...sourceInfo,
       },
       error: undefined
     };

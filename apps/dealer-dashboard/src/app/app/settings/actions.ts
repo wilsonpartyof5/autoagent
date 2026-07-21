@@ -3,16 +3,29 @@
 import { revalidatePath } from 'next/cache';
 import { updateDealerProfile } from '@/lib/supabase/profile';
 import { trackEvent } from '@/lib/analytics/tracking';
-import { getActiveDealership, updateDealership, createDealership } from '@/lib/supabase/dealerships';
+import {
+  createDealership,
+  fetchUserDealerships,
+  getActiveDealership,
+  updateDealership,
+} from '@/lib/supabase/dealerships';
 import { resyncInventory } from '@/app/app/setup/actions';
 
 export async function updateMarketCheckSettings({
   websiteUrl,
+  dealershipId,
 }: {
   websiteUrl: string;
+  dealershipId?: string;
 }) {
   const normalizedWebsite = normalizeWebsiteUrl(websiteUrl);
-  let activeDealership = await getActiveDealership();
+  let activeDealership = dealershipId
+    ? (await fetchUserDealerships()).find((dealership) => dealership.id === dealershipId) ?? null
+    : await getActiveDealership();
+
+  if (dealershipId && !activeDealership) {
+    throw new Error('You do not have access to the selected dealership.');
+  }
   const websiteChanged =
     normalizedWebsite !== (activeDealership?.marketcheckWebsiteUrl ?? null);
 
@@ -67,7 +80,7 @@ export async function updateMarketCheckSettings({
       | null = null;
 
     try {
-      const result = await resyncInventory();
+      const result = await resyncInventory(activeDealership?.id);
       if (result?.status === 'no_match') {
         syncResult = {
           status: 'no_match',

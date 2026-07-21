@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 const MARKETCHECK_NO_MATCH_MESSAGE =
   "We requested MarketCheck to map your website. Please try again in 24-48 hours.";
 
-export function ResyncButton() {
+export function ResyncButton({ dealershipId }: { dealershipId?: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{
@@ -30,7 +30,7 @@ export function ResyncButton() {
     setFeedback(null);
     startTransition(async () => {
       try {
-        const result = await resyncInventory();
+        const result = await resyncInventory(dealershipId);
 
         if (result?.status === "no_match") {
           setFeedback({

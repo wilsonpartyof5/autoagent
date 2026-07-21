@@ -1,11 +1,13 @@
 import { createClient } from "./server";
 
 export type InventoryProvider = 'marketcheck' | 'cdk' | 'vauto';
+export type PlatformRole = 'dealer_user' | 'platform_admin';
 
 export type DealerProfile = {
   onboardingCompleted: boolean;
   inventoryConnected: boolean;
   billingActive: boolean;
+  platformRole: PlatformRole;
   dmsProvider?: InventoryProvider | null;
   marketcheckDealerId?: string | null;
   marketcheckZip?: string | null;
@@ -28,7 +30,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "onboarding_completed, inventory_connected, billing_active, dms_provider, marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
+      "onboarding_completed, inventory_connected, billing_active, platform_role, dms_provider, marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -39,6 +41,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
       onboardingCompleted: false,
       inventoryConnected: false,
       billingActive: false,
+      platformRole: 'dealer_user',
     };
   }
 
@@ -46,6 +49,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
     onboardingCompleted: Boolean(data?.onboarding_completed),
     inventoryConnected: Boolean(data?.inventory_connected),
     billingActive: Boolean(data?.billing_active),
+    platformRole: data?.platform_role === 'platform_admin' ? 'platform_admin' : 'dealer_user',
     dmsProvider: data?.dms_provider ?? null,
     marketcheckDealerId: data?.marketcheck_dealer_id ?? null,
     marketcheckZip: data?.marketcheck_zip ?? null,

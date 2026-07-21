@@ -11,7 +11,7 @@ export const ToolResultSchema = z.object({
   totalCount: z.number().optional(),
   searchParams: z.unknown().optional(),
   structuredContent: z.unknown().optional(),
-  components: z.array(ComponentSchema).nonempty()
+  components: z.array(ComponentSchema).optional()
 });
 
 export function validateToolResult(result: unknown) {

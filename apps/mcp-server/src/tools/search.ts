@@ -1,20 +1,23 @@
 import { searchVehicles } from './searchVehicles.js';
 import { type SearchParams } from '@autoagent/shared';
+import type { ToolContext } from '../mcp-simple.js';
 
 /**
- * OpenAI-required search tool that wraps our existing searchVehicles logic
- * Returns results in the format: { results: [{ id, title, url }] } as JSON string
+ * Natural-language search wrapper around searchVehicles.
+ * Returns UI-first payload (structuredContent + content) for ChatGPT rendering.
  */
-export async function search(params: unknown): Promise<{
+export async function search(params: unknown, context?: ToolContext): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
     structuredContent?: unknown;
-    components: { type: string; url: string; }[];
   };
   error?: string;
 }> {
   try {
+    const contextLocation = context?.userLocation
+      ? [context.userLocation.city, context.userLocation.region].filter(Boolean).join(', ')
+      : undefined;
     // Validate input parameters - expect { query: string }
     if (!params || typeof params !== 'object') {
       return {
@@ -32,21 +35,33 @@ export async function search(params: unknown): Promise<{
       };
     }
 
-    // Map query to search parameters - use default values for required fields
+    const lowerQuery = query.toLowerCase();
+    const locationMatch = lowerQuery.match(/(?:in|near)\s+([a-z\s]+,\s*[a-z]{2}|[a-z\s]+(?:south carolina|north carolina|sc|nc))/i);
+    const inferredLocation = locationMatch?.[1]
+      ? locationMatch[1]
+          .replace(/\bsc\b/i, 'SC')
+          .replace(/\bnc\b/i, 'NC')
+          .replace(/\bsouth carolina\b/i, 'South Carolina')
+          .replace(/\bnorth carolina\b/i, 'North Carolina')
+          .trim()
+      : undefined;
+
+    // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
-      location: 'Seattle, WA', // Default location
-      condition: 'used', // Default condition
+      location: inferredLocation || contextLocation || 'Seattle, WA',
+      condition: lowerQuery.includes('new') ? 'new' : 'used',
+      radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') ? 50 : undefined,
       // Try to extract make/model from query if possible
-      make: query.toLowerCase().includes('toyota') ? 'Toyota' : 
-            query.toLowerCase().includes('honda') ? 'Honda' : 
-            query.toLowerCase().includes('subaru') ? 'Subaru' : undefined,
-      model: query.toLowerCase().includes('camry') ? 'Camry' : 
-             query.toLowerCase().includes('cr-v') ? 'CR-V' : 
-             query.toLowerCase().includes('outback') ? 'Outback' : undefined,
+      make: lowerQuery.includes('toyota') ? 'Toyota' : 
+            lowerQuery.includes('honda') ? 'Honda' : 
+            lowerQuery.includes('subaru') ? 'Subaru' : undefined,
+      model: lowerQuery.includes('camry') ? 'Camry' : 
+             lowerQuery.includes('cr-v') ? 'CR-V' : 
+             lowerQuery.includes('outback') ? 'Outback' : undefined,
     };
     
     // Call the existing searchVehicles function
-    const searchResult = await searchVehicles(searchParams);
+    const searchResult = await searchVehicles(searchParams, context);
     
     if (!searchResult.success) {
       return {
@@ -55,38 +70,43 @@ export async function search(params: unknown): Promise<{
       };
     }
 
-    // Extract vehicles from the search result
-    const vehicles = (searchResult.data as { vehicles?: unknown[] })?.vehicles || [];
-    const totalCount = (searchResult.data as { totalCount?: number })?.totalCount || 0;
-    
-    // Transform vehicles to the required format: [{ id, title, url }]
-    const results = vehicles.map((vehicle: unknown) => {
-      const v = vehicle as { id?: string; vin?: string; year?: number; make?: string; model?: string; price?: number };
-      return {
-        id: v.id || v.vin || `vehicle-${Math.random().toString(36).substr(2, 9)}`,
-        title: `${v.year} ${v.make} ${v.model} - $${v.price?.toLocaleString() || 'N/A'}`,
-        url: `https://example.com/vehicle/${v.id || v.vin}` // Placeholder URL
+    const resultData = searchResult.data as {
+      content?: { type: string; text: string; }[];
+      structuredContent?: {
+        results?: {
+          vehicles?: unknown[];
+          totalCount?: number;
+          searchParams?: SearchParams;
+        };
       };
-    });
+      vehicles?: unknown[];
+      totalCount?: number;
+    } | undefined;
+    const totalCount = resultData?.structuredContent?.results?.totalCount
+      ?? resultData?.totalCount
+      ?? 0;
+    const structuredContent = resultData?.structuredContent ?? {
+      results: {
+        vehicles: resultData?.vehicles ?? [],
+        totalCount,
+        searchParams,
+      },
+    };
 
-    // Create the JSON string response as required by MCP docs
-    const resultsJson = JSON.stringify({ results });
+    const content = Array.isArray(resultData?.content) && resultData.content.length > 0
+      ? resultData.content
+      : [
+          {
+            type: 'text',
+            text: `Found ${totalCount} vehicles near ${searchParams.location}.`,
+          },
+        ];
 
     return {
       success: true,
       data: {
-        content: [
-          { 
-            type: 'text', 
-            text: `Found ${totalCount} vehicles. Results: ${resultsJson}` 
-          }
-        ],
-        structuredContent: { 
-          results: results,
-          totalCount: totalCount,
-          searchParams: searchParams
-        },
-        components: (searchResult.data as { components?: { type: string; url: string; }[] })?.components || []
+        content,
+        structuredContent,
       },
     };
   } catch (error) {

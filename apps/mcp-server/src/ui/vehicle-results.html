@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoAgent Vehicle Search</title>
+    <meta name="autoagent-widget-version" content="v17">
     <!--
         UVS-Only Widget - Tool-Driven Lead Submission
         
@@ -58,16 +59,65 @@
             flex-direction: column;
         }
 
+        .full-view {
+            position: relative;
+            height: 100vh;
+            min-height: 640px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
         /* Map */
         .map-container {
             flex: 1;
             position: relative;
             z-index: 1;
+            min-height: 420px;
         }
 
         #map {
             width: 100%;
             height: 100%;
+            min-height: 420px;
+            background: #181818;
+        }
+
+        .widget-status {
+            position: absolute;
+            inset: 0;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: radial-gradient(circle at center, rgba(59, 130, 246, 0.12), rgba(17, 17, 17, 0.96));
+            color: var(--text);
+            text-align: center;
+        }
+
+        .widget-status.hidden {
+            display: none;
+        }
+
+        .widget-status-card {
+            max-width: 420px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: rgba(26, 26, 26, 0.94);
+            padding: 20px;
+            box-shadow: 0 12px 30px var(--shadow);
+        }
+
+        .widget-status-title {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .widget-status-copy {
+            color: var(--muted);
+            line-height: 1.45;
         }
 
         /* Filter pills */
@@ -77,7 +127,7 @@
             left: 16px;
             right: 16px;
             z-index: 1000;
-            display: flex;
+            display: none;
             gap: 8px;
             flex-wrap: wrap;
         }
@@ -102,6 +152,36 @@
         .filter-pill.active {
             background: var(--accent);
             border-color: var(--accent);
+        }
+
+        .refine-chips {
+            position: absolute;
+            top: 64px;
+            left: 16px;
+            right: 16px;
+            z-index: 1000;
+            display: none;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .refine-chip {
+            border: 1px solid var(--border);
+            background: rgba(17, 17, 17, 0.9);
+            color: var(--text);
+            border-radius: 16px;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .refine-chip:hover,
+        .refine-chip.active {
+            border-color: var(--accent);
+            color: white;
+            background: rgba(59, 130, 246, 0.35);
         }
 
         /* Result chip */
@@ -167,12 +247,12 @@
         /* Carousel (collapsed state) */
         .carousel {
             display: flex;
-            gap: 16px;
-            padding: 0 16px;
+            gap: 12px;
+            padding: 10px 14px 14px;
             overflow-x: auto;
             scroll-snap-type: x mandatory;
-            height: 120px;
-            align-items: center;
+            height: 142px;
+            align-items: stretch;
         }
 
         .carousel::-webkit-scrollbar {
@@ -203,6 +283,15 @@
             margin-bottom: 16px;
         }
 
+        .carousel .vehicle-card {
+            min-width: 250px;
+            width: 250px;
+            height: 118px;
+            display: grid;
+            grid-template-columns: 92px 1fr;
+            margin-bottom: 0;
+        }
+
         .vehicle-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px var(--shadow);
@@ -225,8 +314,23 @@
             background: var(--border);
         }
 
+        .carousel .card-image {
+            width: 92px;
+            height: 118px;
+            object-fit: cover;
+        }
+
         .card-content {
             padding: 12px;
+            min-width: 0;
+        }
+
+        .carousel .card-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
         }
 
         .card-header {
@@ -234,6 +338,7 @@
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 8px;
+            gap: 8px;
         }
 
         .price-badge {
@@ -243,6 +348,7 @@
             border-radius: 6px;
             font-size: 12px;
             font-weight: 600;
+            white-space: nowrap;
         }
 
         .vehicle-title {
@@ -250,12 +356,36 @@
             font-weight: 600;
             color: var(--text);
             margin-bottom: 4px;
+            line-height: 1.2;
+        }
+
+        .carousel .vehicle-title {
+            font-size: 13px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .vehicle-subtitle {
             font-size: 14px;
             color: var(--muted);
             margin-bottom: 8px;
+        }
+
+        .carousel .vehicle-subtitle,
+        .carousel .dealer-info,
+        .carousel .payment-estimate,
+        .carousel .deal-score {
+            font-size: 11px;
+            margin-top: 2px;
+            margin-bottom: 0;
+        }
+
+        .carousel .seller-comments,
+        .carousel .option-packages,
+        .carousel .payment-estimate {
+            display: none;
         }
 
         .dealer-info {
@@ -266,6 +396,40 @@
         .distance {
             font-size: 12px;
             color: var(--good);
+        }
+
+        .deal-score {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .deal-score.great {
+            background: rgba(34, 197, 94, 0.25);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.5);
+        }
+
+        .deal-score.fair {
+            background: rgba(245, 158, 11, 0.25);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.5);
+        }
+
+        .deal-score.high {
+            background: rgba(239, 68, 68, 0.25);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+        }
+
+        .payment-estimate {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--muted);
         }
 
         /* Details drawer */
@@ -293,6 +457,23 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
+        }
+
+        .drawer-header-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .drawer-back {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
         .drawer-close {
@@ -565,6 +746,114 @@
             padding: 20px;
         }
 
+        .compare-tray {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            bottom: 80px;
+            z-index: 1800;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(26, 26, 26, 0.96);
+            box-shadow: 0 8px 25px var(--shadow);
+            padding: 10px 12px;
+            display: none;
+        }
+
+        .compare-tray.visible {
+            display: block;
+        }
+
+        .compare-tray-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .compare-tray-cards {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .compare-tray-item {
+            min-width: 160px;
+            background: var(--bg);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 8px;
+        }
+
+        .compare-tray-title {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .compare-tray-price {
+            color: var(--accent);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .compare-tray-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .compare-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+        }
+
+        .compare-modal.open {
+            display: flex;
+        }
+
+        .compare-panel {
+            width: 100%;
+            max-width: 960px;
+            max-height: 92vh;
+            overflow: auto;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        .compare-table th,
+        .compare-table td {
+            border-bottom: 1px solid var(--border);
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        .compare-table th {
+            color: var(--muted);
+            font-weight: 500;
+            width: 160px;
+        }
+
         .lead-modal.open {
             display: flex;
         }
@@ -699,7 +988,9 @@
         .thumbnail-mode {
             display: flex;
             flex-direction: column;
+            min-height: 455px;
             height: 100vh;
+            max-height: 620px;
         }
 
         .thumbnail-mode.hidden {
@@ -709,7 +1000,9 @@
         .thumbnail-map {
             flex: 1;
             position: relative;
-            min-height: 300px;
+            min-height: 280px;
+            background: #101820;
+            overflow: hidden;
         }
 
         .thumbnail-map #thumbnailMap {
@@ -717,11 +1010,92 @@
             height: 100%;
         }
 
+        .map-fallback {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 25% 30%, rgba(59, 130, 246, 0.22), transparent 24%),
+                radial-gradient(circle at 74% 48%, rgba(34, 197, 94, 0.12), transparent 22%),
+                linear-gradient(135deg, #111827 0%, #0f172a 45%, #111827 100%);
+        }
+
+        .map-fallback.hidden {
+            display: none;
+        }
+
+        .map-fallback::before,
+        .map-fallback::after {
+            content: "";
+            position: absolute;
+            inset: -20%;
+            opacity: 0.36;
+            background-image:
+                linear-gradient(25deg, transparent 48%, rgba(148, 163, 184, 0.35) 49%, rgba(148, 163, 184, 0.35) 51%, transparent 52%),
+                linear-gradient(115deg, transparent 48%, rgba(148, 163, 184, 0.22) 49%, rgba(148, 163, 184, 0.22) 51%, transparent 52%);
+            background-size: 180px 130px, 210px 150px;
+            transform: rotate(-7deg);
+        }
+
+        .map-fallback::after {
+            opacity: 0.22;
+            background-size: 96px 80px, 140px 100px;
+            transform: rotate(9deg);
+        }
+
+        .map-label {
+            position: absolute;
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 13px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+            z-index: 2;
+        }
+
+        .map-label.primary {
+            font-size: 22px;
+            font-weight: 800;
+            color: rgba(255,255,255,0.92);
+        }
+
+        .pin-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+        }
+
+        .fallback-pin {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: #b91c1c;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.42);
+            box-shadow: 0 5px 14px rgba(0,0,0,0.42);
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .fallback-pin.loading {
+            min-width: 48px;
+            height: 24px;
+            color: transparent;
+            animation: pulse-pin 1.15s infinite ease-in-out;
+        }
+
+        @keyframes pulse-pin {
+            0%, 100% { opacity: 0.62; transform: translate(-50%, -50%) scale(0.96); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+        }
+
         .thumbnail-featured {
             background: var(--panel);
             border-top: 1px solid var(--border);
-            padding: 16px;
-            max-height: 200px;
+            padding: 12px 14px 14px;
+            min-height: 244px;
+            max-height: 270px;
+            z-index: 5;
         }
 
         .featured-card {
@@ -733,6 +1107,75 @@
             overflow: hidden;
             cursor: pointer;
             transition: all 0.2s;
+            height: 116px;
+        }
+
+        .thumbnail-card-rail {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-top: 12px;
+            scroll-snap-type: x mandatory;
+        }
+
+        .thumbnail-card-rail::-webkit-scrollbar {
+            display: none;
+        }
+
+        .mini-vehicle-card {
+            min-width: 176px;
+            width: 176px;
+            height: 88px;
+            display: grid;
+            grid-template-columns: 68px 1fr;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            scroll-snap-align: start;
+        }
+
+        .mini-vehicle-image {
+            width: 68px;
+            height: 88px;
+            object-fit: cover;
+            background: var(--border);
+        }
+
+        .mini-vehicle-content {
+            padding: 8px;
+            min-width: 0;
+        }
+
+        .mini-vehicle-title {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .mini-vehicle-price {
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+
+        .mini-vehicle-meta {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .featured-card.loading {
+            cursor: default;
         }
 
         .featured-card:hover {
@@ -741,8 +1184,8 @@
         }
 
         .featured-image {
-            width: 120px;
-            height: 120px;
+            width: 132px;
+            height: 116px;
             object-fit: cover;
             background: var(--border);
             flex-shrink: 0;
@@ -750,10 +1193,11 @@
 
         .featured-content {
             flex: 1;
-            padding: 12px;
+            padding: 12px 14px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            min-width: 0;
         }
 
         .featured-title {
@@ -761,10 +1205,15 @@
             font-weight: 600;
             color: var(--text);
             margin-bottom: 4px;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .featured-price {
-            font-size: 18px;
+            font-size: 19px;
             font-weight: 700;
             color: var(--accent);
             margin-bottom: 4px;
@@ -773,6 +1222,12 @@
         .featured-dealer {
             font-size: 12px;
             color: var(--muted);
+        }
+
+        .featured-meta {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
         }
 
         .expand-button {
@@ -799,15 +1254,36 @@
         }
 
         .price-pin {
-            background: var(--accent);
+            background: #b91c1c;
             color: white;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 800;
             white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-            border: 2px solid white;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+            border: 1px solid rgba(255,255,255,0.44);
+        }
+
+        .dealer-cluster-pin {
+            background: rgba(17, 17, 17, 0.92);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.7);
+            border-radius: 12px;
+            padding: 7px 10px;
+            min-width: 92px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.42);
+            text-align: center;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .dealer-cluster-pin span {
+            display: block;
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 3px;
+            font-weight: 600;
         }
 
         .full-view.hidden {
@@ -818,6 +1294,10 @@
         @media (max-width: 768px) {
             .filter-pills {
                 flex-wrap: wrap;
+            }
+
+            .refine-chips {
+                top: 112px;
             }
             
             .vehicle-card {
@@ -836,6 +1316,10 @@
                 padding: 16px;
             }
 
+            .compare-tray {
+                bottom: 88px;
+            }
+
             .featured-image {
                 width: 100px;
                 height: 100px;
@@ -848,9 +1332,10 @@
     (function(){
       const params = new URLSearchParams(location.search);
       const DIAG = params.get('diag') === '1';
+      const WIDGET_VERSION = 'v17';
       const T0 = performance.now();
       let emitted = false;
-      const MAX_WAIT_MS = 5000, INTERVAL_MS = 150;
+      const MAX_WAIT_MS = 10000, INTERVAL_MS = 150;
 
       // GLOBALS store for OpenAI Apps SDK (make it globally accessible)
       window.GLOBALS = {
@@ -859,7 +1344,75 @@
         user: {},
         session: {}
       };
+      window.__AA_RESULTS__ = window.__AA_RESULTS__ || null;
       const GLOBALS = window.GLOBALS;
+      const WIDGET_HOST = 'https://autoagentmcp-server-production.up.railway.app';
+
+      function summarizePayloadShape(payload) {
+        if (!payload || typeof payload !== 'object') return typeof payload;
+        const keys = Object.keys(payload).slice(0, 12);
+        const hasStructured = !!payload.structuredContent?.results || !!payload.result?.structuredContent?.results;
+        const hasParamsStructured = !!payload.params?.structuredContent?.results;
+        const hasMeta = !!payload._meta?.results || !!payload.result?._meta?.results || !!payload.params?._meta?.results;
+        const method = typeof payload.method === 'string' ? payload.method : undefined;
+        const hasResults = !!payload.results;
+        return JSON.stringify({ keys, method, hasStructured, hasParamsStructured, hasMeta, hasResults });
+      }
+
+      function logHydration(tag, extra) {
+        log(`hydrate:${tag}`, extra || '', `widget=${WIDGET_VERSION}`);
+        beacon(`hydrate:${tag}`, extra ? { detail: extra } : undefined);
+      }
+
+      function logOpenAiSurface() {
+        const openai = window.openai;
+        if (!openai || typeof openai !== 'object') {
+          logHydration('surface:no-openai');
+          return;
+        }
+        const keys = Object.keys(openai).slice(0, 20);
+        logHydration('surface:openai', JSON.stringify({
+          keys,
+          hasToolOutput: !!openai.toolOutput,
+          hasToolResponseMetadata: !!openai.toolResponseMetadata,
+          hasGetContext: typeof openai.getContext === 'function',
+          hasOn: typeof openai.on === 'function',
+          hasEmitToolEvent: typeof openai.emitToolEvent === 'function',
+          hasCallTool: typeof openai.callTool === 'function',
+        }));
+      }
+
+      function extractResults(payload) {
+        return payload?.structuredContent?.results
+          || payload?._meta?.results
+          || payload?.params?.structuredContent?.results
+          || payload?.params?._meta?.results
+          || payload?.result?.structuredContent?.results
+          || payload?.result?._meta?.results
+          || payload?.toolOutput?.structuredContent?.results
+          || payload?.toolOutput?._meta?.results
+          || payload?.toolResponseMetadata?.mcp_tool_result?._meta?.results
+          || payload?.toolResponseMetadata?.call_tool_result?._meta?.results
+          || payload?.mcp_tool_result?._meta?.results
+          || payload?.call_tool_result?._meta?.results
+          || payload?.output?.structuredContent?.results
+          || payload?.output?._meta?.results
+          || payload?.data?.structuredContent?.results
+          || payload?.data?._meta?.results
+          || payload?.results
+          || null;
+      }
+
+      function updateResults(payload, source) {
+        logHydration(`event:${source}`, summarizePayloadShape(payload));
+        const results = extractResults(payload);
+        if (!results) return false;
+        window.__AA_RESULTS__ = results;
+        logHydration(`source:${source}`, `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+        window.dispatchEvent(new CustomEvent('aa:results', { detail: results }));
+        heartbeat();
+        return true;
+      }
 
       // Update globals and acknowledge
       function updateGlobals(payload) {
@@ -889,7 +1442,19 @@
         window.openai.on('set_globals', evt => {
           const globals = evt?.globals ?? evt;
           updateGlobals(globals);
+          updateResults(globals?.toolOutput, 'set_globals.toolOutput');
+          updateResults(globals?.toolResponseMetadata, 'set_globals.toolResponseMetadata');
         });
+        ['tool-result', 'toolResult', 'ui/notifications/tool-result', 'openai/tool-result'].forEach((eventName) => {
+          try {
+            window.openai.on(eventName, evt => updateResults(evt, eventName));
+            logHydration(`subscribe:${eventName}`, 'ok');
+          } catch (e) {
+            logHydration(`subscribe:${eventName}`, e?.message || 'failed');
+          }
+        });
+      } else {
+        logHydration('subscribe:none', 'window.openai.on unavailable');
       }
 
       // Fallback: listen for postMessage (legacy openai:set_globals)
@@ -897,11 +1462,23 @@
         if (evt.data?.type === 'openai:set_globals') {
           updateGlobals(evt.data?.globals);
         }
+        updateResults(evt.data, 'postMessage');
       });
+
+      window.addEventListener('openai:set_globals', evt => {
+        const globals = evt.detail?.globals ?? evt.detail ?? {};
+        updateGlobals(globals);
+        updateResults(globals.toolOutput, 'openai:set_globals.toolOutput');
+        updateResults(globals.toolResponseMetadata, 'openai:set_globals.toolResponseMetadata');
+      }, { passive: true });
 
       function post(path, body){
         const rid = GLOBALS.rid || 'none';
-        try{ fetch(`${path}?rid=${encodeURIComponent(rid)}`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});}catch(_){}
+        try{
+          const url = new URL(path, WIDGET_HOST);
+          url.searchParams.set('rid', rid);
+          fetch(url.toString(), {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
+        }catch(_){}
       }
       function log(...a){
         try{ (window.__log ||= []).push({t:performance.now(),m:a.join(' ')}); post('/widget/console', window.__log); }catch(_){}
@@ -912,15 +1489,27 @@
       }
       function getResults(){
         try{
+          if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
           if (window.openai && window.openai.toolOutput) {
-            return window.openai.toolOutput.structuredContent?.results || null;
+            const results = window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
+            if (results) logHydration('source:toolOutput', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
+          }
+          if (window.openai?.toolResponseMetadata) {
+            logHydration('inspect:toolResponseMetadata', summarizePayloadShape(window.openai.toolResponseMetadata));
+            const results = extractResults({ toolResponseMetadata: window.openai.toolResponseMetadata });
+            if (results) logHydration('source:toolResponseMetadata', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
           }
           if (window.openai && typeof window.openai.getContext === 'function') {
             const context = window.openai.getContext();
-            return context?.structuredContent?.results || context?.results || null;
+            logHydration('inspect:getContext', summarizePayloadShape(context));
+            const results = context?.structuredContent?.results || context?._meta?.results || context?.results || null;
+            if (results) logHydration('source:getContext', `vehicles=${results.vehicles?.length ?? 'n/a'}`);
+            return results;
           }
         }catch(e){ log('ERR getResults', e?.message||e); }
-        return window.__AA_MOCK__||null;
+        return null;
       }
       function maybeEmitReady(tag){
         if (emitted) return;
@@ -954,11 +1543,14 @@
       function heartbeat(){
         const haveBridge = !!(window.openai && window.openai.emitToolEvent);
         const haveData = !!getResults();
-        if (haveBridge) maybeEmitReady('bridge');
-        if (haveData) render();
+        if (haveData) {
+          render();
+          return;
+        }
+        const elapsed = performance.now()-T0;
         if (!emitted){
-          if (performance.now()-T0 < MAX_WAIT_MS){ setTimeout(heartbeat, INTERVAL_MS); }
-          else { beacon('timeout-fallback'); maybeEmitReady('timeout-fallback'); }
+          if (elapsed < MAX_WAIT_MS){ setTimeout(heartbeat, INTERVAL_MS); }
+          else if (haveBridge) { logHydration('timeout:no-data'); maybeEmitReady('timeout-fallback'); }
         }
       }
 
@@ -968,6 +1560,7 @@
       document.addEventListener('DOMContentLoaded', ()=>{ 
         const rid = GLOBALS.rid || 'none';
         log('DOMContentLoaded', `rid=${rid}`, `diag=${DIAG}`); 
+        logOpenAiSurface();
         beacon('domcontentloaded'); 
         heartbeat(); 
       });
@@ -984,17 +1577,49 @@
         <!-- Thumbnail mode (initial view from structuredContent) -->
         <div class="thumbnail-mode" id="thumbnailMode">
             <div class="thumbnail-map">
-                <div id="thumbnailMap"></div>
+                <div id="thumbnailMap">
+                    <div class="map-fallback" id="mapFallback" aria-label="Vehicle results map loading">
+                        <div class="map-label primary" style="left: 42%; top: 42%;">Rock Hill</div>
+                        <div class="map-label" style="left: 13%; top: 25%;">Fort Mill</div>
+                        <div class="map-label" style="left: 64%; top: 22%;">Charlotte</div>
+                        <div class="map-label" style="left: 72%; top: 68%;">Indian Trail</div>
+                        <div class="pin-layer" id="fallbackPinLayer">
+                            <span class="fallback-pin loading" style="left: 20%; top: 34%;">0</span>
+                            <span class="fallback-pin loading" style="left: 35%; top: 48%;">0</span>
+                            <span class="fallback-pin loading" style="left: 50%; top: 30%;">0</span>
+                            <span class="fallback-pin loading" style="left: 62%; top: 55%;">0</span>
+                            <span class="fallback-pin loading" style="left: 78%; top: 40%;">0</span>
+                            <span class="fallback-pin loading" style="left: 46%; top: 70%;">0</span>
+                        </div>
+                    </div>
+                </div>
                 <button class="expand-button" id="expandButton" onclick="expandToFullView()">Expand</button>
             </div>
-            <div class="thumbnail-featured" id="thumbnailFeatured"></div>
+            <div class="thumbnail-featured" id="thumbnailFeatured">
+                <div class="featured-card loading">
+                    <div class="featured-image skeleton"></div>
+                    <div class="featured-content">
+                        <div>
+                            <div class="featured-title">Loading nearby vehicles...</div>
+                            <div class="featured-price">Finding live inventory</div>
+                            <div class="featured-dealer">AutoAgent vehicle search</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Full view (existing functionality) -->
-        <div class="full-view" id="fullView">
+        <div class="full-view hidden" id="fullView">
             <!-- Map -->
             <div class="map-container">
                 <div id="map"></div>
+                <div class="widget-status" id="widgetStatus">
+                    <div class="widget-status-card">
+                        <div class="widget-status-title">Loading vehicle results...</div>
+                        <div class="widget-status-copy">AutoAgent is preparing the interactive map and vehicle cards.</div>
+                    </div>
+                </div>
                 
                 <!-- Result chip -->
                 <div class="result-chip" id="resultChip" style="display: none;">
@@ -1009,6 +1634,14 @@
                     <div class="filter-pill" data-filter="make">Make/Model</div>
                     <div class="filter-pill" data-filter="filters">Filters</div>
                 </div>
+
+                <div class="refine-chips" id="refineChips">
+                    <button class="refine-chip" data-refine="under-30000">Under $30k</button>
+                    <button class="refine-chip" data-refine="low-mileage">Under 40k miles</button>
+                    <button class="refine-chip" data-refine="awd">AWD</button>
+                    <button class="refine-chip" data-refine="newest">Newest</button>
+                    <button class="refine-chip" data-refine="reset">Reset</button>
+                </div>
             </div>
 
         <!-- Bottom sheet -->
@@ -1016,17 +1649,22 @@
             <div class="sheet-handle" id="sheetHandle"></div>
             <div class="sheet-content">
                 <!-- Carousel (collapsed) -->
-                <div class="carousel" id="carousel"></div>
+                <div class="carousel" id="carousel">
+                    <div class="empty-state"><div class="empty-icon">Loading vehicle results...</div></div>
+                </div>
                 
                 <!-- List (mid/expanded) -->
-                <div class="list" id="list"></div>
+                <div class="list" id="list">
+                    <div class="empty-state"><div class="empty-icon">Loading vehicle results...</div></div>
+                </div>
             </div>
         </div>
 
         <!-- Details drawer -->
         <div class="details-drawer" id="detailsDrawer" aria-expanded="false">
             <div class="drawer-header">
-                <h3 id="drawerTitle">Vehicle Details</h3>
+                <button class="drawer-back" id="drawerBack" type="button">Back to results</button>
+                <h3 class="drawer-header-title" id="drawerTitle">Vehicle Details</h3>
                 <button class="drawer-close" id="drawerClose">&times;</button>
             </div>
             <div class="drawer-content" id="drawerContent"></div>
@@ -1034,6 +1672,27 @@
 
         </div>
         <!-- End full view -->
+
+        <div class="compare-tray" id="compareTray" aria-live="polite">
+            <div class="compare-tray-header">
+                <span id="compareTrayCount">Compare (0/3)</span>
+                <button class="dealer-btn" type="button" onclick="clearCompare()">Clear</button>
+            </div>
+            <div class="compare-tray-cards" id="compareTrayCards"></div>
+            <div class="compare-tray-actions">
+                <button class="btn btn-primary" type="button" id="openCompareButton" onclick="openCompareModal()" disabled>Compare Vehicles</button>
+            </div>
+        </div>
+
+        <div class="compare-modal" id="compareModal">
+            <div class="compare-panel">
+                <div class="drawer-header" style="padding: 0 0 12px 0;">
+                    <h3>Vehicle Comparison</h3>
+                    <button class="drawer-close" type="button" onclick="closeCompareModal()">&times;</button>
+                </div>
+                <div id="compareTableContainer"></div>
+            </div>
+        </div>
 
         <!-- Lead form modal -->
         <div class="lead-modal" id="leadModal">
@@ -1089,7 +1748,7 @@
 
     <script>
         (function () {
-            const MAX_WAIT_MS = 5000;     // total time to try emitting ui:ready
+            const MAX_WAIT_MS = 10000;     // total time to try emitting ui:ready
             const INTERVAL_MS = 200;      // poll interval for bridge/data
             let emitted = false;
             const startedAt = Date.now();
@@ -1106,8 +1765,9 @@
             function post(path, body){
                 try {
                     const rid = GLOBALS.rid || 'none';
-                    const url = path.includes('?') ? `${path}&rid=${encodeURIComponent(rid)}` : `${path}?rid=${encodeURIComponent(rid)}`;
-                    fetch(url, {
+                    const url = new URL(path, 'https://autoagentmcp-server-production.up.railway.app');
+                    url.searchParams.set('rid', rid);
+                    fetch(url.toString(), {
                         method:'POST',
                         headers:{'content-type':'application/json'},
                         body: JSON.stringify(body)
@@ -1129,12 +1789,22 @@
             // No query-string JSON blobs, no MarketCheck/raw provider data
             function getResults() {
                 try {
+                    if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
                     if (window.openai && window.openai.toolOutput) {
-                        return window.openai.toolOutput.structuredContent?.results || null;
+                        return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
+                    }
+                    if (window.openai?.toolResponseMetadata) {
+                        return window.openai.toolResponseMetadata?.mcp_tool_result?._meta?.results
+                            || window.openai.toolResponseMetadata?.call_tool_result?._meta?.results
+                            || null;
+                    }
+                    if (window.openai && typeof window.openai.getContext === 'function') {
+                        const context = window.openai.getContext();
+                        return context?.structuredContent?.results || context?._meta?.results || context?.results || null;
                     }
                 } catch (e) { errorLog(e); }
                 // local dev fallback only
-                return window.__AA_MOCK__ || null;
+                return null;
             }
 
             // ---- emit readiness to ChatGPT ----
@@ -1169,9 +1839,10 @@
                 }
                 
                 // Otherwise render full view (existing functionality)
-                // TODO: your existing map/list render using `results`
-                // mark the container so MutationObserver can latch onto it if you want
-                // document.querySelector('#results')?.setAttribute('data-aa-results','1');
+                const thumbnailMode = document.getElementById('thumbnailMode');
+                const fullView = document.getElementById('fullView');
+                if (thumbnailMode) thumbnailMode.classList.add('hidden');
+                if (fullView) fullView.classList.remove('hidden');
 
                 // after first paint, confirm ready again
                 requestAnimationFrame(() => maybeEmitReady('rendered'));
@@ -1181,6 +1852,31 @@
             // Check if vehicle has structuredContent fields (lat, lng, price, photoUrl, title, dealerName)
             function hasStructuredContentData(vehicle) {
                 return !!(vehicle.lat && vehicle.lng && vehicle.price && (vehicle.photoUrl || vehicle.image) && vehicle.title && vehicle.dealerName);
+            }
+
+            function getDisplayCoordinate(vehicle, index, vehicles) {
+                const lat = Number(vehicle.lat || vehicle.location?.dealer?.latitude);
+                const lng = Number(vehicle.lng || vehicle.location?.dealer?.longitude);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+                const sameLocation = (vehicles || []).filter(v => {
+                    const otherLat = Number(v.lat || v.location?.dealer?.latitude);
+                    const otherLng = Number(v.lng || v.location?.dealer?.longitude);
+                    return Number.isFinite(otherLat)
+                        && Number.isFinite(otherLng)
+                        && Math.abs(otherLat - lat) < 0.00001
+                        && Math.abs(otherLng - lng) < 0.00001;
+                });
+
+                if (sameLocation.length <= 1) return [lat, lng];
+
+                const sameIndex = sameLocation.findIndex(v => v.id === vehicle.id);
+                const angle = (Math.PI * 2 * Math.max(sameIndex, 0)) / sameLocation.length;
+                const radius = 0.006 + (Math.floor(Math.max(sameIndex, 0) / 8) * 0.003);
+                return [
+                    lat + Math.sin(angle) * radius,
+                    lng + Math.cos(angle) * radius,
+                ];
             }
 
             // Render thumbnail mode from structuredContent
@@ -1196,30 +1892,82 @@
                 
                 // Initialize thumbnail map
                 initThumbnailMap(vehicles);
+                renderFallbackPins(vehicles);
                 
-                // Render featured card (first vehicle)
-                renderFeaturedCard(vehicles[0]);
+                // Render featured card and visible result rail.
+                renderFeaturedCard(vehicles[0], vehicles);
+            }
+
+            function renderFallbackPins(vehicles) {
+                const fallback = document.getElementById('mapFallback');
+                const pinLayer = document.getElementById('fallbackPinLayer');
+                if (!fallback || !pinLayer) return;
+
+                const positions = [
+                    [22, 32], [34, 48], [49, 30], [62, 55],
+                    [77, 41], [45, 70], [57, 22], [28, 64],
+                    [70, 72], [16, 52], [84, 58], [39, 18]
+                ];
+
+                const pins = (vehicles || []).slice(0, positions.length).map((vehicle, index) => {
+                    const price = Number(vehicle.price || vehicle.pricing?.price || 0);
+                    const priceText = price >= 1000000
+                        ? `$${(price / 1000000).toFixed(1)}M`
+                        : price >= 1000
+                            ? `$${Math.round(price / 1000)}K`
+                            : 'View';
+                    const [left, top] = positions[index];
+                    return `<span class="fallback-pin" style="left:${left}%; top:${top}%;">${priceText}</span>`;
+                }).join('');
+
+                pinLayer.innerHTML = pins || pinLayer.innerHTML;
+                fallback.classList.remove('hidden');
             }
 
             // Initialize thumbnail map with price pins
             function initThumbnailMap(vehicles) {
                 const mapEl = document.getElementById('thumbnailMap');
                 if (!mapEl) return;
+                if (!(window.L && typeof window.L.map === 'function')) {
+                    log('Leaflet unavailable in thumbnail mode; rendering cards without map');
+                    renderFallbackPins(vehicles);
+                    return;
+                }
                 
                 // Filter vehicles with valid coordinates
-                const validVehicles = vehicles.filter(v => v.lat && v.lng);
+                const validVehicles = vehicles.filter(v => getDisplayCoordinate(v, 0, vehicles));
                 if (validVehicles.length === 0) return;
                 
                 // Initialize Leaflet map
-                const map = L.map('thumbnailMap').setView([validVehicles[0].lat, validVehicles[0].lng], 10);
+                const firstCoord = getDisplayCoordinate(validVehicles[0], 0, vehicles);
+                const map = L.map('thumbnailMap').setView(firstCoord, 11);
+                const fallback = document.getElementById('mapFallback');
+                if (fallback) fallback.classList.add('hidden');
                 
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(map);
 
+                const dealerSummary = getResults()?.dealerSummary || [];
+                dealerSummary.forEach((dealer) => {
+                    if (!dealer.lat || !dealer.lng) return;
+                    const minPrice = Number(dealer.minPrice || 0);
+                    const priceText = minPrice > 0 ? `From $${(minPrice / 1000).toFixed(1)}k` : 'View inventory';
+                    L.marker([dealer.lat, dealer.lng], {
+                        icon: L.divIcon({
+                            className: 'dealer-cluster-marker',
+                            html: `<div class="dealer-cluster-pin">${dealer.count} cars<span>${priceText}</span></div>`,
+                            iconSize: [104, 42],
+                            iconAnchor: [52, 21]
+                        })
+                    }).addTo(map);
+                });
+
                 // Add price pins
                 const markers = [];
-                validVehicles.forEach(vehicle => {
+                validVehicles.forEach((vehicle, index) => {
+                    const coord = getDisplayCoordinate(vehicle, index, vehicles);
+                    if (!coord) return;
                     const price = vehicle.price || 0;
                     const title = vehicle.title || 'Vehicle';
                     const dealerName = vehicle.dealerName || '';
@@ -1227,7 +1975,7 @@
                     // Create custom marker with price label
                     const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
                     
-                    const marker = L.marker([vehicle.lat, vehicle.lng], {
+                    const marker = L.marker(coord, {
                         icon: L.divIcon({
                             className: 'price-pin-marker',
                             html: `<div class="price-pin">${priceText}</div>`,
@@ -1254,7 +2002,7 @@
             }
 
             // Render featured card
-            function renderFeaturedCard(vehicle) {
+            function renderFeaturedCard(vehicle, vehicles) {
                 const featuredEl = document.getElementById('thumbnailFeatured');
                 if (!featuredEl || !vehicle) return;
                 
@@ -1262,7 +2010,28 @@
                 const title = vehicle.title || 'Vehicle';
                 const price = vehicle.price || 0;
                 const dealerName = vehicle.dealerName || '';
+                const miles = vehicle.miles || vehicle.coreSpecs?.miles;
                 const priceText = price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toLocaleString()}`;
+                const mileageText = Number(miles) > 0 ? `${Math.round(Number(miles)).toLocaleString()} miles` : 'Mileage unavailable';
+                const railHTML = (vehicles || []).slice(0, 8).map((item) => {
+                    const itemPhoto = item.photoUrl || item.image || '';
+                    const itemTitle = item.title || 'Vehicle';
+                    const itemPrice = Number(item.price || item.pricing?.price || 0);
+                    const itemMiles = Number(item.miles || item.coreSpecs?.miles || 0);
+                    const itemDealer = item.dealerName || item.location?.dealer?.name || 'Dealer unavailable';
+                    const itemPriceText = itemPrice >= 1000 ? `$${(itemPrice / 1000).toFixed(1)}k` : `$${itemPrice.toLocaleString()}`;
+                    const itemMileageText = itemMiles > 0 ? `${Math.round(itemMiles).toLocaleString()} mi` : 'Mileage n/a';
+                    return `
+                        <article class="mini-vehicle-card" onclick="expandToFullView()">
+                            <img class="mini-vehicle-image" src="${itemPhoto}" alt="${itemTitle}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZTwvdGV4dD48L3N2Zz4='">
+                            <div class="mini-vehicle-content">
+                                <div class="mini-vehicle-title">${itemTitle}</div>
+                                <div class="mini-vehicle-price">${itemPriceText}</div>
+                                <div class="mini-vehicle-meta">${itemMileageText} • ${itemDealer}</div>
+                            </div>
+                        </article>
+                    `;
+                }).join('');
                 
                 featuredEl.innerHTML = `
                     <div class="featured-card" onclick="expandToFullView()">
@@ -1274,10 +2043,12 @@
                             <div>
                                 <div class="featured-title">${title}</div>
                                 <div class="featured-price">${priceText}</div>
-                                <div class="featured-dealer">${dealerName}</div>
+                                <div class="featured-meta">${mileageText}</div>
+                                <div class="featured-dealer">${dealerName || 'Dealer unavailable'}</div>
                             </div>
                         </div>
                     </div>
+                    <div class="thumbnail-card-rail">${railHTML}</div>
                 `;
             }
 
@@ -1305,15 +2076,16 @@
                 const haveBridge = !!(window.openai && window.openai.emitToolEvent);
                 const haveData   = !!getResults();
 
-                // emit as soon as bridge is present (don't wait for data)
-                if (haveBridge) { maybeEmitReady('bridge'); }
                 // render when data shows up
-                if (haveData) { render(); }
+                if (haveData) {
+                    render();
+                    return;
+                }
 
                 const elapsed = Date.now() - startedAt;
                 if (!emitted && elapsed < MAX_WAIT_MS) {
                     setTimeout(heartbeat, INTERVAL_MS);
-                } else if (!emitted) {
+                } else if (!emitted && haveBridge) {
                     // last-ditch: emit so validator doesn't time out
                     warn('ui:ready timeout fallback');
                     maybeEmitReady('timeout-fallback');
@@ -1343,6 +2115,42 @@
             if (!text || text.length <= maxLength) return text || '';
             return text.substring(0, maxLength) + '...';
         };
+        function getResults() {
+            try {
+                if (window.__AA_RESULTS__) return window.__AA_RESULTS__;
+                if (window.openai?.toolOutput) {
+                    return window.openai.toolOutput.structuredContent?.results || window.openai.toolOutput._meta?.results || null;
+                }
+                if (window.openai?.toolResponseMetadata) {
+                    return window.openai.toolResponseMetadata?.mcp_tool_result?._meta?.results
+                        || window.openai.toolResponseMetadata?.call_tool_result?._meta?.results
+                        || null;
+                }
+                if (window.openai && typeof window.openai.getContext === 'function') {
+                    const context = window.openai.getContext();
+                    return context?.structuredContent?.results || context?._meta?.results || context?.results || null;
+                }
+            } catch (error) {
+                console.error('Failed to read tool output', error);
+            }
+            return null;
+        }
+        const fmtPayment = (price) => {
+            const numericPrice = Number(price) || 0;
+            const monthly = Math.round((numericPrice * 0.0185) + 120);
+            return `$${monthly.toLocaleString()}/mo est`;
+        };
+        function getDealScore(vehicle) {
+            const price = getUVSPrice(vehicle);
+            const msrp = getUVSMSRP(vehicle);
+            if (!price || !msrp || msrp <= 0) {
+                return { label: 'Fair Deal', tier: 'fair' };
+            }
+            const ratio = price / msrp;
+            if (ratio <= 0.92) return { label: 'Great Deal', tier: 'great' };
+            if (ratio <= 1.02) return { label: 'Fair Deal', tier: 'fair' };
+            return { label: 'High Price', tier: 'high' };
+        }
 
         // UVS helper functions - extract fields from UVS structure
         function getUVSYear(vehicle) {
@@ -1412,74 +2220,65 @@
         function getUVSInteriorColor(vehicle) {
             return vehicle.featuresPackages?.interiorColor || vehicle.interiorColor;
         }
+        function fmtMileage(miles) {
+            const numericMiles = Number(miles);
+            return Number.isFinite(numericMiles) && numericMiles > 0
+                ? `${Math.round(numericMiles).toLocaleString()} miles`
+                : 'Mileage unavailable';
+        }
 
         // State management
         const state = {
             activeId: null,
             sheetState: 'collapsed', // collapsed, mid, expanded
             vehicles: [],
+            allVehicles: [],
+            dealerSummary: [],
             query: {},
             map: null,
-            markers: []
+            markers: [],
+            dealerMarkers: [],
+            suppressMapMove: false,
+            activeRefine: null,
+            compareList: []
         };
 
-        // Mock data for testing
-        const mockVehicles = [
-            {
-                id: '1',
-                year: 2022,
-                make: 'Toyota',
-                model: 'Camry',
-                price: 28500,
-                miles: 15000,
-                imageUrl: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400',
-                features: ['Bluetooth', 'Backup Camera', 'Lane Assist'],
-                vin: '1HGCM82633A004352',
-                dealer: {
-                    name: 'Seattle Auto Center',
-                    address: '123 Main St, Seattle, WA 98101',
-                    latitude: 47.6062,
-                    longitude: -122.3321,
-                    distanceMiles: 2.3
-                }
-            },
-            {
-                id: '2',
-                year: 2021,
-                make: 'Honda',
-                model: 'CR-V',
-                price: 32000,
-                miles: 22000,
-                imageUrl: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400',
-                features: ['AWD', 'Sunroof', 'Heated Seats'],
-                vin: '2HGFC2F59MH543210',
-                dealer: {
-                    name: 'Bellevue Motors',
-                    address: '456 Auto Way, Bellevue, WA 98004',
-                    latitude: 47.6101,
-                    longitude: -122.2015,
-                    distanceMiles: 5.7
-                }
-            },
-            {
-                id: '3',
-                year: 2023,
-                make: 'Subaru',
-                model: 'Outback',
-                price: 35000,
-                miles: 5000,
-                imageUrl: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
-                features: ['AWD', 'Eyesight Safety', 'Apple CarPlay'],
-                vin: '4S4BSANC9P3245678',
-                dealer: {
-                    name: 'Tacoma Auto Group',
-                    address: '789 Car Blvd, Tacoma, WA 98402',
-                    latitude: 47.2529,
-                    longitude: -122.4443,
-                    distanceMiles: 12.1
-                }
-            }
-        ];
+        function getDisplayCoordinate(vehicle, index, vehicles) {
+            const dealer = getUVSDealer(vehicle) || {};
+            const lat = Number(vehicle.lat || dealer.latitude);
+            const lng = Number(vehicle.lng || dealer.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+            const sameLocation = (vehicles || []).filter(v => {
+                const otherDealer = getUVSDealer(v) || {};
+                const otherLat = Number(v.lat || otherDealer.latitude);
+                const otherLng = Number(v.lng || otherDealer.longitude);
+                return Number.isFinite(otherLat)
+                    && Number.isFinite(otherLng)
+                    && Math.abs(otherLat - lat) < 0.00001
+                    && Math.abs(otherLng - lng) < 0.00001;
+            });
+
+            if (sameLocation.length <= 1) return [lat, lng];
+
+            const sameIndex = sameLocation.findIndex(v => v.id === vehicle.id);
+            const angle = (Math.PI * 2 * Math.max(sameIndex, 0)) / sameLocation.length;
+            const radius = 0.006 + (Math.floor(Math.max(sameIndex, 0) / 8) * 0.003);
+            return [
+                lat + Math.sin(angle) * radius,
+                lng + Math.cos(angle) * radius,
+            ];
+        }
+
+        function setWidgetStatus(title, copy) {
+            const status = el('widgetStatus');
+            if (!status) return;
+            status.classList.remove('hidden');
+            const titleEl = status.querySelector('.widget-status-title');
+            const copyEl = status.querySelector('.widget-status-copy');
+            if (titleEl) titleEl.textContent = title;
+            if (copyEl) copyEl.textContent = copy;
+        }
 
         // Load UVS vehicle data from structuredContent (returned by MCP tools)
         // Hydrates exclusively from structuredContent/set_globals - no URL params or raw provider data
@@ -1493,22 +2292,21 @@
                     if (results) {
                         // UVS vehicles from structuredContent
                         state.vehicles = results.vehicles || results;
+                        state.allVehicles = [...state.vehicles];
+                        state.dealerSummary = results.dealerSummary || [];
                         state.query = results.searchParams || results.query || {};
                         console.log('UVS data loaded from structuredContent');
+                        refreshVehiclesView();
                     } else if (retryCount < maxRetries) {
                         retryCount++;
                         console.log(`Retrying data load (${retryCount}/${maxRetries})...`);
                         setTimeout(attemptLoad, 500);
                         return;
                     } else {
-                        // Final fallback to mock data (dev only)
-                        console.log('Using fallback mock data (dev mode)');
-                        state.vehicles = mockVehicles;
-                        state.query = {
-                            location: 'Seattle, WA',
-                            condition: 'used',
-                            maxPrice: 30000
-                        };
+                        setWidgetStatus(
+                            'Waiting for live vehicle data',
+                            'The widget loaded successfully, but ChatGPT has not delivered vehicle results to the iframe yet.'
+                        );
                     }
                 } catch (error) {
                     console.error('Error loading data:', error);
@@ -1516,8 +2314,10 @@
                         retryCount++;
                         setTimeout(attemptLoad, 500);
                     } else {
-                        state.vehicles = mockVehicles;
-                        state.query = { location: 'Seattle, WA' };
+                        setWidgetStatus(
+                            'Unable to hydrate vehicle results',
+                            'Try running the vehicle search again so ChatGPT can resend the live inventory payload.'
+                        );
                     }
                 }
             }
@@ -1525,45 +2325,142 @@
             attemptLoad();
         }
 
+        window.addEventListener('aa:results', () => {
+            loadData();
+        });
+
+        function refreshVehiclesView() {
+            const status = el('widgetStatus');
+            if (status) status.classList.add('hidden');
+            try {
+                initMap();
+            } catch (error) {
+                console.warn('Map render skipped due to runtime error', error);
+            }
+            renderCards();
+            updateResultChip();
+            setupIntersectionObserver();
+            syncCompareTray();
+        }
+
         // Initialize map
         function initMap() {
-            state.map = L.map('map').setView([47.6062, -122.3321], 10);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(state.map);
+            if (!(window.L && typeof window.L.map === 'function')) {
+                console.warn('Leaflet unavailable; skipping map rendering');
+                return;
+            }
+            if (!state.map) {
+                const firstCoord = getDisplayCoordinate(state.vehicles[0] || {}, 0, state.vehicles) || [34.92487, -81.02508];
+                state.map = L.map('map').setView(firstCoord, 11);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(state.map);
+                state.map.on('moveend zoomend', () => {
+                    if (state.suppressMapMove || state.sheetState === 'collapsed') return;
+                    applyMapBounds();
+                });
+            }
 
-            // Add markers for vehicles with coordinates
-            state.vehicles.forEach(vehicle => {
-                const dealer = getUVSDealer(vehicle);
-                if (dealer?.latitude && dealer?.longitude) {
-                    const year = getUVSYear(vehicle);
-                    const make = getUVSMake(vehicle);
-                    const model = getUVSModel(vehicle);
-                    const price = getUVSPrice(vehicle);
-                    const marker = L.marker([dealer.latitude, dealer.longitude])
-                        .bindPopup(`
-                            <div style="text-align: center;">
-                                <strong>${year} ${make} ${model}</strong><br>
-                                <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(price)}</span>
-                            </div>
-                        `)
-                        .on('click', () => {
-                            logEvent('pin_click', { id: vehicle.id });
-                            setActiveVehicle(vehicle.id);
-                            scrollToCard(vehicle.id);
-                        });
-                    
+            renderMapMarkers(true);
+        }
+
+        function createVehicleMarker(vehicle, coord) {
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const marker = L.marker(coord, {
+                icon: L.divIcon({
+                    className: 'price-pin-marker',
+                    html: `<div class="price-pin">${fmtPrice(price)}</div>`,
+                    iconSize: [null, null],
+                    iconAnchor: [0, 0]
+                })
+            })
+                .bindPopup(`
+                    <div style="text-align: center;">
+                        <strong>${year} ${make} ${model}</strong><br>
+                        <span style="color: #3b82f6; font-weight: bold;">${fmtPrice(price)}</span>
+                    </div>
+                `)
+                .on('click', () => {
+                    logEvent('pin_click', { id: vehicle.id });
+                    setActiveVehicle(vehicle.id);
+                    scrollToCard(vehicle.id);
+                });
+            marker.vehicleId = vehicle.id;
+            return marker;
+        }
+
+        function renderDealerMarkers() {
+            state.dealerMarkers.forEach((marker) => marker.remove());
+            state.dealerMarkers = [];
+            if (!state.map || !(window.L && typeof window.L.marker === 'function')) return;
+
+            state.dealerSummary.forEach((dealer) => {
+                if (!dealer.lat || !dealer.lng) return;
+                const minPrice = Number(dealer.minPrice || 0);
+                const priceText = minPrice > 0 ? `From ${fmtPrice(minPrice)}` : 'View inventory';
+                const marker = L.marker([dealer.lat, dealer.lng], {
+                    icon: L.divIcon({
+                        className: 'dealer-cluster-marker',
+                        html: `<div class="dealer-cluster-pin">${dealer.count} cars<span>${priceText}</span></div>`,
+                        iconSize: [104, 42],
+                        iconAnchor: [52, 21]
+                    })
+                }).on('click', () => {
+                    const dealerVehicles = state.allVehicles.filter(vehicle => {
+                        const vehicleDealer = getUVSDealer(vehicle);
+                        return vehicleDealer?.dealerId === dealer.dealerId || vehicle.dealerName === dealer.dealerName;
+                    });
+                    if (dealerVehicles.length > 0) {
+                        state.vehicles = dealerVehicles;
+                        renderMapMarkers(false);
+                        renderCards();
+                        updateResultChip();
+                    }
+                });
+                state.dealerMarkers.push(marker);
+                marker.addTo(state.map);
+            });
+        }
+
+        function renderMapMarkers(shouldFit = false) {
+            state.markers.forEach((marker) => marker.remove());
+            state.markers = [];
+            renderDealerMarkers();
+
+            // Add markers for visible vehicles with coordinates
+            state.vehicles.forEach((vehicle, index) => {
+                const coord = getDisplayCoordinate(vehicle, index, state.vehicles);
+                if (coord) {
+                    const marker = createVehicleMarker(vehicle, coord);
                     state.markers.push(marker);
                     marker.addTo(state.map);
                 }
             });
 
             // Fit map to show all markers
-            if (state.markers.length > 0) {
-                const group = new L.featureGroup(state.markers);
+            if (shouldFit && (state.markers.length > 0 || state.dealerMarkers.length > 0)) {
+                const group = new L.featureGroup([...state.dealerMarkers, ...state.markers]);
+                state.suppressMapMove = true;
                 state.map.fitBounds(group.getBounds().pad(0.1));
+                setTimeout(() => { state.suppressMapMove = false; }, 250);
             }
+        }
+
+        function applyMapBounds() {
+            if (!state.map || !state.allVehicles.length) return;
+            const bounds = state.map.getBounds();
+            const visibleVehicles = state.allVehicles.filter((vehicle, index) => {
+                const coord = getDisplayCoordinate(vehicle, index, state.allVehicles);
+                return coord ? bounds.contains(coord) : false;
+            });
+            state.vehicles = visibleVehicles;
+            renderMapMarkers(false);
+            renderCards();
+            updateResultChip();
+            logEvent('map.bounds_update', { results: visibleVehicles.length });
         }
 
         // Set active vehicle
@@ -1576,6 +2473,7 @@
             });
             
             // Update marker selection
+            if (!(window.L && typeof window.L.divIcon === 'function')) return;
             state.markers.forEach((marker, index) => {
                 if (state.vehicles[index].id === id) {
                     marker.setIcon(L.divIcon({
@@ -1620,6 +2518,7 @@
             const optionPackages = vehicle.optionPackages 
                 || vehicle.featuresPackages?.packages 
                 || [];
+            const dealScore = getDealScore(vehicle);
             
             return `
                 <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
@@ -1631,10 +2530,12 @@
                         <div class="card-header">
                             <div>
                                 <div class="vehicle-title">${year} ${make} ${model}</div>
-                                <div class="vehicle-subtitle">${miles ? miles.toLocaleString() + ' miles' : 'New'}</div>
+                                <div class="vehicle-subtitle">${fmtMileage(miles)}</div>
+                                <div class="deal-score ${dealScore.tier}">${dealScore.label}</div>
                             </div>
                             <div class="price-badge">${fmtPrice(price)}</div>
                         </div>
+                        <div class="payment-estimate">${fmtPayment(price)}</div>
                         ${sellerComments ? `
                             <div class="seller-comments" title="${safeText(sellerComments)}">
                                 <div class="seller-comments-text">${truncateText(safeText(sellerComments), 80)}</div>
@@ -1651,9 +2552,39 @@
                             </div>
                         ` : ''}
                         <div class="dealer-info">
-                            <div>${safeText(dealer?.name)}</div>
+                            <div>${safeText(dealer?.name || vehicle.dealerName || 'Dealer unavailable')}</div>
                             ${dealer?.distanceMiles ? `<div class="distance">${dealer.distanceMiles} mi away</div>` : ''}
                         </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function createCarouselCardHTML(vehicle) {
+            const year = getUVSYear(vehicle);
+            const make = getUVSMake(vehicle);
+            const model = getUVSModel(vehicle);
+            const price = getUVSPrice(vehicle);
+            const miles = getUVSMiles(vehicle);
+            const dealer = getUVSDealer(vehicle);
+            const photoUrls = getUVSPhotoUrls(vehicle);
+            const primaryPhoto = getUVSPrimaryPhoto(vehicle) || photoUrls[0] || '';
+
+            return `
+                <article class="vehicle-card" data-id="${vehicle.id}" onclick="openDetails('${vehicle.id}')">
+                    <img src="${primaryPhoto}"
+                         alt="${year} ${make} ${model}"
+                         class="card-image"
+                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTIiIGhlaWdodD0iMTE4IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMzMzMiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjExIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2U8L3RleHQ+PC9zdmc+'">
+                    <div class="card-content">
+                        <div>
+                            <div class="card-header">
+                                <div class="vehicle-title">${year} ${make} ${model}</div>
+                                <div class="price-badge">${fmtPrice(price)}</div>
+                            </div>
+                            <div class="vehicle-subtitle">${fmtMileage(miles)}</div>
+                        </div>
+                        <div class="dealer-info">${safeText(dealer?.name || vehicle.dealerName || 'Dealer unavailable')}</div>
                     </div>
                 </article>
             `;
@@ -1670,21 +2601,18 @@
                 return;
             }
 
+            const carouselHTML = state.vehicles.map(vehicle => createCarouselCardHTML(vehicle)).join('');
             const cardsHTML = state.vehicles.map(vehicle => createCardHTML(vehicle)).join('');
             
-            carousel.innerHTML = cardsHTML;
+            carousel.innerHTML = carouselHTML;
             list.innerHTML = cardsHTML;
-            
-            // Emit ui:ready event after first paint
-            setTimeout(() => {
-                onReady();
-            }, 100);
         }
 
         // Open details drawer
         function openDetails(id) {
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
+            setActiveVehicle(id);
             
             // Track vehicle.click event (no PII)
             logEvent('vehicle.click', { 
@@ -1800,11 +2728,26 @@
             drawer.setAttribute('aria-expanded', 'true');
         }
 
-        // Close details drawer
-        function closeDetails() {
+        function returnToResults() {
             const drawer = el('detailsDrawer');
             drawer.classList.remove('open');
             drawer.setAttribute('aria-expanded', 'false');
+            const thumbnailMode = document.getElementById('thumbnailMode');
+            const fullView = document.getElementById('fullView');
+            if (thumbnailMode) thumbnailMode.classList.add('hidden');
+            if (fullView) fullView.classList.remove('hidden');
+            setSheetState('collapsed');
+            if (state.activeId) {
+                setTimeout(() => {
+                    setActiveVehicle(state.activeId);
+                    scrollToCard(state.activeId);
+                }, 80);
+            }
+        }
+
+        // Close details drawer
+        function closeDetails() {
+            returnToResults();
         }
 
         // Book test drive
@@ -1842,38 +2785,127 @@
             console.log('dealer_directions', { id });
         }
 
-        // Compare vehicle - minimal implementation that tracks compare event
-        let compareList = [];
+        // Compare vehicle workflow (tray + modal)
         function compareVehicle(id) {
             const vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
 
             // Add to compare list (max 3 vehicles)
-            if (!compareList.find(v => v.id === id)) {
-                if (compareList.length < 3) {
-                    compareList.push(vehicle);
+            if (!state.compareList.find(v => v.id === id)) {
+                if (state.compareList.length < 3) {
+                    state.compareList.push(vehicle);
                 } else {
-                    compareList = [vehicle]; // Replace with new selection
+                    state.compareList.shift();
+                    state.compareList.push(vehicle);
                 }
             }
+            syncCompareTray();
 
             // If we have at least 2 vehicles, track compare event
-            if (compareList.length >= 2) {
-                const vehicleIds = compareList.map(v => v.id);
-                const dealer = getUVSDealer(compareList[0]);
+            if (state.compareList.length >= 2) {
+                const vehicleIds = state.compareList.map(v => v.id);
+                const dealer = getUVSDealer(state.compareList[0]);
                 // Extract dealerId from UVS structure: location.dealer.dealerId
-                const dealerId = dealer?.dealerId || compareList[0]?.location?.dealer?.dealerId;
+                const dealerId = dealer?.dealerId || state.compareList[0]?.location?.dealer?.dealerId;
 
                 // Track compare event (no PII - no VINs)
                 logEvent('vehicle.compare', {
                     vehicleIds: vehicleIds,
                     compareCount: vehicleIds.length,
+                    dealerId,
                 });
-
-                alert(`Comparing ${vehicleIds.length} vehicle(s)`);
-            } else {
-                alert(`Added to compare list (${compareList.length}/3). Select another vehicle to compare.`);
             }
+        }
+
+        function removeCompareVehicle(id) {
+            state.compareList = state.compareList.filter(v => v.id !== id);
+            syncCompareTray();
+        }
+
+        function clearCompare() {
+            state.compareList = [];
+            syncCompareTray();
+            closeCompareModal();
+        }
+
+        function syncCompareTray() {
+            const tray = el('compareTray');
+            const cards = el('compareTrayCards');
+            const count = el('compareTrayCount');
+            const compareButton = el('openCompareButton');
+            if (!tray || !cards || !count || !compareButton) return;
+
+            const selected = state.compareList;
+            count.textContent = `Compare (${selected.length}/3)`;
+            compareButton.disabled = selected.length < 2;
+            tray.classList.toggle('visible', selected.length > 0);
+
+            cards.innerHTML = selected.map((vehicle) => {
+                const year = getUVSYear(vehicle);
+                const make = getUVSMake(vehicle);
+                const model = getUVSModel(vehicle);
+                return `
+                    <div class="compare-tray-item">
+                        <div class="compare-tray-title">${safeText(`${year} ${make} ${model}`)}</div>
+                        <div class="compare-tray-price">${fmtPrice(getUVSPrice(vehicle))}</div>
+                        <button class="dealer-btn" type="button" style="margin-top:8px;padding:6px 8px;font-size:12px;" onclick="removeCompareVehicle('${vehicle.id}')">Remove</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function buildCompareTable() {
+            const selected = state.compareList;
+            if (selected.length < 2) {
+                return '<div class="empty-state"><div class="empty-icon">Compare at least 2 vehicles.</div></div>';
+            }
+
+            const rows = [
+                { label: 'Vehicle', value: (v) => `${getUVSYear(v)} ${getUVSMake(v)} ${getUVSModel(v)}` },
+                { label: 'Price', value: (v) => fmtPrice(getUVSPrice(v)) },
+                { label: 'Payment Est.', value: (v) => fmtPayment(getUVSPrice(v)) },
+                { label: 'Mileage', value: (v) => getUVSMiles(v) ? `${Math.round(getUVSMiles(v)).toLocaleString()} mi` : 'New' },
+                { label: 'Condition', value: (v) => getUVSCondition(v) || 'n/a' },
+                { label: 'Dealer', value: (v) => getUVSDealerName(v) || 'n/a' },
+                { label: 'Deal Score', value: (v) => getDealScore(v).label },
+            ];
+
+            return `
+                <table class="compare-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            ${selected.map((_, idx) => `<th>Vehicle ${idx + 1}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((row) => `
+                            <tr>
+                                <th>${row.label}</th>
+                                ${selected.map((vehicle) => `<td>${safeText(String(row.value(vehicle)))}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function openCompareModal() {
+            const modal = el('compareModal');
+            const container = el('compareTableContainer');
+            if (!modal || !container) return;
+            container.innerHTML = buildCompareTable();
+            modal.classList.add('open');
+            logEvent('compare.view_table', {
+                compareCount: state.compareList.length,
+                vehicleIds: state.compareList.map(v => v.id),
+            });
+        }
+
+        function closeCompareModal() {
+            const modal = el('compareModal');
+            if (!modal) return;
+            modal.classList.remove('open');
         }
 
         // Lead modal functions
@@ -1995,12 +3027,82 @@
             const location = el('resultLocation');
 
             if (state.vehicles.length > 0) {
-                count.textContent = state.vehicles.length;
-                location.textContent = state.query.location || 'Search Results';
+                const total = state.allVehicles.length;
+                count.textContent = `${state.vehicles.length} shown`;
+                location.textContent = total && total !== state.vehicles.length
+                    ? `of ${total} loaded • ${state.query.location || 'Search Results'}`
+                    : state.query.location || 'Search Results';
                 chip.style.display = 'block';
             } else {
                 chip.style.display = 'none';
             }
+        }
+
+        function setActiveRefineChip(refineKey) {
+            document.querySelectorAll('.refine-chip').forEach((chip) => {
+                chip.classList.toggle('active', chip.dataset.refine === refineKey);
+            });
+        }
+
+        function applyRefine(refineKey) {
+            state.activeRefine = refineKey === 'reset' ? null : refineKey;
+            let nextVehicles = [...state.allVehicles];
+            switch (refineKey) {
+                case 'under-30000':
+                    nextVehicles = nextVehicles.filter(v => (getUVSPrice(v) || 0) <= 30000);
+                    break;
+                case 'low-mileage':
+                    nextVehicles = nextVehicles.filter(v => {
+                        const miles = getUVSMiles(v);
+                        return typeof miles === 'number' ? miles <= 40000 : true;
+                    });
+                    break;
+                case 'awd':
+                    nextVehicles = nextVehicles.filter(v => {
+                        const features = getUVSFeatures(v).map(f => String(f).toLowerCase());
+                        return features.some(f => f.includes('awd') || f.includes('all-wheel'));
+                    });
+                    break;
+                case 'newest':
+                    nextVehicles = nextVehicles.sort((a, b) => (getUVSYear(b) || 0) - (getUVSYear(a) || 0));
+                    break;
+                default:
+                    break;
+            }
+            state.vehicles = nextVehicles;
+            setActiveRefineChip(state.activeRefine);
+            refreshVehiclesView();
+            logEvent('filter.apply', { filter: refineKey, results: state.vehicles.length });
+        }
+
+        function applyFilterPill(filterKey) {
+            switch (filterKey) {
+                case 'price':
+                    applyRefine('under-30000');
+                    break;
+                case 'condition':
+                    state.vehicles = [...state.allVehicles].filter(v => getUVSCondition(v) === (state.query.condition || 'used'));
+                    refreshVehiclesView();
+                    break;
+                case 'radius':
+                    state.vehicles = [...state.vehicles].sort((a, b) => {
+                        const da = getUVSDealer(a)?.distanceMiles || 999;
+                        const db = getUVSDealer(b)?.distanceMiles || 999;
+                        return da - db;
+                    });
+                    refreshVehiclesView();
+                    break;
+                case 'make': {
+                    const make = state.query.make || getUVSMake(state.allVehicles[0]);
+                    state.vehicles = [...state.allVehicles].filter(v => getUVSMake(v) === make);
+                    refreshVehiclesView();
+                    break;
+                }
+                default:
+                    applyRefine('reset');
+                    break;
+            }
+            logEvent('filter_click', { filter: filterKey, results: state.vehicles.length });
         }
 
         // Sheet state management
@@ -2131,13 +3233,20 @@
 
             // Drawer close
             el('drawerClose').addEventListener('click', closeDetails);
+            el('drawerBack').addEventListener('click', returnToResults);
 
             // Filter pills
             document.querySelectorAll('.filter-pill').forEach(pill => {
                 pill.addEventListener('click', () => {
                     const filter = pill.dataset.filter;
-                    logEvent('filter_click', { filter });
-                    console.log('Filter clicked:', filter);
+                    applyFilterPill(filter);
+                });
+            });
+
+            // Refine chips
+            document.querySelectorAll('.refine-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    applyRefine(chip.dataset.refine);
                 });
             });
 
@@ -2157,31 +3266,22 @@
                     closeLeadModal();
                 }
             });
+
+            // Click backdrop to close compare modal
+            el('compareModal').addEventListener('click', (e) => {
+                if (e.target === el('compareModal')) {
+                    closeCompareModal();
+                }
+            });
         }
 
         // Initialize app
         function init() {
-            // Check if thumbnail mode should be shown first
-            const results = getResults();
-            const vehicles = results?.vehicles || [];
-            const shouldShowThumbnail = vehicles.length > 0 && vehicles[0] && 
-                vehicles[0].lat && vehicles[0].lng && vehicles[0].price && 
-                (vehicles[0].photoUrl || vehicles[0].image) && vehicles[0].title && vehicles[0].dealerName;
-            
-            if (shouldShowThumbnail) {
-                // Thumbnail mode will be rendered by the render() function in the first script block
-                // Just set up event listeners
-                setupEventListeners();
-                return;
-            }
-            
-            // Otherwise initialize full view
+            // Always initialize data + listeners in module scope.
+            // Thumbnail rendering (if applicable) is still handled by the first script block,
+            // but this guarantees full-view hydration when host data is exposed via getContext().
             loadData();
-            initMap();
-            renderCards();
-            updateResultChip();
             setupEventListeners();
-            setupIntersectionObserver();
         }
 
         // Start the app
@@ -2194,17 +3294,22 @@
         window.callDealer = callDealer;
         window.getDirections = getDirections;
         window.compareVehicle = compareVehicle;
+        window.removeCompareVehicle = removeCompareVehicle;
+        window.clearCompare = clearCompare;
+        window.openCompareModal = openCompareModal;
+        window.closeCompareModal = closeCompareModal;
         window.closeLeadModal = closeLeadModal;
+        window.returnToResults = returnToResults;
         
         // Expose full view initialization functions for expand button
         window.initFullView = function() {
             if (!state.map) {
                 loadData();
-                initMap();
-                renderCards();
-                updateResultChip();
-                setupIntersectionObserver();
             }
+            setSheetState('collapsed');
+            setTimeout(() => {
+                if (state.map) applyMapBounds();
+            }, 150);
         };
     </script>
 </body>
