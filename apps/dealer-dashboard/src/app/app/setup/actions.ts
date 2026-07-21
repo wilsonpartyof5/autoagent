@@ -267,7 +267,7 @@ async function resolveDealerIdForUser({
  * Re-sync inventory for the active dealership
  * Uses the dealership's stored MarketCheck dealer ID and settings
  */
-export async function resyncInventory(dealershipId?: string) {
+export async function resyncInventory(selectedDealershipId?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   
@@ -278,13 +278,15 @@ export async function resyncInventory(dealershipId?: string) {
   // A setup page can target a rooftop other than the user's current global
   // selection. Resolve the explicit rooftop through the authorized list so a
   // sync can never silently run against a different dealer.
-  const activeDealership = dealershipId
-    ? (await fetchUserDealerships()).find((dealership) => dealership.id === dealershipId) ?? null
+  const activeDealership = selectedDealershipId
+    ? (await fetchUserDealerships()).find(
+        (dealership) => dealership.id === selectedDealershipId,
+      ) ?? null
     : await getActiveDealership();
   
   if (!activeDealership) {
     throw new Error(
-      dealershipId
+      selectedDealershipId
         ? 'You do not have access to the selected dealership.'
         : 'No active dealership found. Please set up a dealership first.',
     );
