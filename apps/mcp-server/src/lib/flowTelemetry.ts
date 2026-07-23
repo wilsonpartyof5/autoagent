@@ -38,6 +38,10 @@ export async function recordFlowEvent(event: FlowEvent): Promise<void> {
         last_activity_at: now,
         search_location: event.searchLocation ?? null,
         result_count: event.resultCount ?? null,
+        lead_id:
+          typeof event.payload?.leadId === 'string'
+            ? event.payload.leadId
+            : undefined,
       },
       { onConflict: 'id' },
     );

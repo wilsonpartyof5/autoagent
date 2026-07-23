@@ -117,6 +117,12 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
   const flowId = typeof source.flowId === 'string' ? source.flowId : undefined;
   const dealerDefined = (source.dealerDefined as Record<string, unknown> | undefined) ?? {};
   const vdpUrl = typeof dealerDefined.vdpUrl === 'string' ? dealerDefined.vdpUrl : undefined;
+  const detailLoaded = source.detailLoaded === true;
+  const photoUrls = Array.isArray(media.photoUrls)
+    ? media.photoUrls.filter((url): url is string => typeof url === 'string')
+    : photoUrl
+      ? [photoUrl]
+      : [];
 
   return {
     id: source.id,
@@ -131,6 +137,7 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
     ...(searchResultToken && { searchResultToken }),
     ...(flowId && { flowId }),
     ...(vdpUrl && { vdpUrl }),
+    ...(detailLoaded && { detailLoaded: true }),
     baseIdentity: {
       ...(year !== undefined && { year }),
       ...(make && { make }),
@@ -144,13 +151,16 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
       currency,
     },
     coreSpecs: {
+      ...coreSpecs,
       ...(miles !== undefined && { miles }),
     },
     media: {
-      ...(photoUrl && { primaryPhotoUrl: photoUrl, photoUrls: [photoUrl] }),
+      ...(photoUrl && { primaryPhotoUrl: photoUrl }),
+      ...(photoUrls.length > 0 && { photoUrls }),
     },
     location: {
       dealer: {
+        ...dealer,
         ...(dealerName && { name: dealerName }),
         ...(dealerId && { dealerId }),
         ...(dealerCity && { city: dealerCity }),
@@ -312,8 +322,8 @@ function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string,
     radius: Math.round(searchParams.radiusMiles ?? 50),
     body_type: searchParams.bodyStyle,
     miles_range: searchParams.mileageMax ? `0-${Math.floor(searchParams.mileageMax)}` : undefined,
-    rows: 24,
-    fetch_all_photos: false,
+    rows: 12,
+    fetch_all_photos: true,
     include_dealer_object: true,
     include_mc_dealership_object: true,
     include_build_object: true,
@@ -493,6 +503,7 @@ export async function searchVehicles(
           return {
             ...vehicle,
             flowId: runId,
+            detailLoaded: true,
             ...(vin && dealerId
               ? {
                   searchResultToken: signSearchResult({

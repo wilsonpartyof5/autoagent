@@ -5,6 +5,7 @@ import { join } from 'path';
 import { readFileSync } from 'fs';
 import { CONFIG } from './config/env.js';
 import { getMarketcheckMcpDiagnostics } from './services/marketcheckMcpClient.js';
+import { startMarketcheckCanary } from './services/marketcheckCanary.js';
 import { createIngestionRouter } from './api/ingest.js';
 import widgetTrackingRouter from './app/widget-tracking.js';
 
@@ -578,6 +579,7 @@ server.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 MCP endpoint: http://localhost:${PORT}/mcp`);
   console.log(`🎨 Widget: http://localhost:${PORT}/widget/vehicle-results`);
+  startMarketcheckCanary();
 });
 
 // Set longer timeout for MCP requests (5 minutes)
