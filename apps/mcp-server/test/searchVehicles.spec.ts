@@ -6,6 +6,11 @@ vi.mock('../src/config/env.js', () => ({
     inventorySearchProvider: 'uvs',
     diagnosticsEnabled: false,
     widgetHost: 'https://example.com',
+    marketcheckMcpUrl: 'https://api.marketcheck.com/mcp',
+    marketcheckMcpAuthType: 'none',
+    marketcheckMcpAuthToken: '',
+    marketcheckMcpTimeoutMs: 1000,
+    marketcheckApiKey: 'test-key',
   },
 }));
 

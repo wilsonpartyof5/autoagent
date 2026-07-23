@@ -146,7 +146,7 @@ export async function submitLead(
     const uvsDealerName = vehicle?.location?.dealer?.name ?? marketcheckSnapshot?.dealerName;
     
     // Validate dealerId matches UVS
-    if (uvsDealerId && uvsDealerId !== dealerId) {
+    if (dealerId && uvsDealerId && uvsDealerId !== dealerId) {
       return {
         success: false,
         error: `Dealer ID mismatch: provided dealerId "${dealerId}" does not match UVS dealerId "${uvsDealerId}"`,
@@ -154,7 +154,7 @@ export async function submitLead(
     }
     
     // Validate dealerName matches UVS
-    if (uvsDealerName && uvsDealerName !== dealerName) {
+    if (dealerName && uvsDealerName && uvsDealerName !== dealerName) {
       return {
         success: false,
         error: `Dealer name mismatch: provided dealerName "${dealerName}" does not match UVS dealerName "${uvsDealerName}"`,
