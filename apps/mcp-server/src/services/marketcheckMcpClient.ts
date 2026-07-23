@@ -38,13 +38,21 @@ export type MarketcheckDiagnostics = {
   lastErrorCode?: string;
 };
 
+const configuredEndpoint = new URL(CONFIG.marketcheckMcpUrl);
+// The developers.marketcheck.com endpoint is the interactive OAuth connector.
+// AutoAgent is a server-to-server client and must use the API-key hosted endpoint.
+const serverEndpoint =
+  configuredEndpoint.hostname === 'developers.marketcheck.com'
+    ? new URL('https://api.marketcheck.com/mcp')
+    : configuredEndpoint;
+
 const diagnostics: MarketcheckDiagnostics = {
   provider: 'marketcheck_mcp',
-  endpointOrigin: new URL(CONFIG.marketcheckMcpUrl).origin,
+  endpointOrigin: serverEndpoint.origin,
 };
 
 function endpointUrl(): URL {
-  const endpoint = new URL(CONFIG.marketcheckMcpUrl);
+  const endpoint = new URL(serverEndpoint);
   if (
     endpoint.hostname === 'api.marketcheck.com' &&
     !endpoint.searchParams.has('api_key')
@@ -57,7 +65,7 @@ function endpointUrl(): URL {
 function authHeaders(): Record<string, string> {
   if (
     CONFIG.marketcheckMcpAuthType === 'none' ||
-    new URL(CONFIG.marketcheckMcpUrl).hostname === 'api.marketcheck.com'
+    serverEndpoint.hostname === 'api.marketcheck.com'
   ) {
     return {};
   }

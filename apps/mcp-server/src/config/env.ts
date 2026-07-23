@@ -230,7 +230,9 @@ function validateConfig(): void {
     }
 
     const usesOfficialApiKey =
-      new URL(CONFIG.marketcheckMcpUrl).hostname === 'api.marketcheck.com' &&
+      ['api.marketcheck.com', 'developers.marketcheck.com'].includes(
+        new URL(CONFIG.marketcheckMcpUrl).hostname,
+      ) &&
       Boolean(CONFIG.marketcheckApiKey);
     if (
       CONFIG.marketcheckMcpAuthType !== 'none' &&
