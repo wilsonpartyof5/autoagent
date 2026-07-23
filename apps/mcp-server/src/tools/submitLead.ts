@@ -20,8 +20,8 @@ const SubmitLeadSchema = z.object({
   vin: z.string().regex(/^[A-HJ-NPR-Z0-9]{11,17}$/i, 'Invalid VIN format'),
   
   // Required UVS dealer information
-  dealerId: z.string().min(1, 'dealerId is required from UVS'),
-  dealerName: z.string().min(1, 'dealerName is required from UVS'),
+  dealerId: z.string().min(1).optional(),
+  dealerName: z.string().min(1).optional(),
   
   // Required UVS pricing information
   pricing: z.object({
@@ -103,7 +103,7 @@ export async function submitLead(
     if (!vehicle && !marketcheckSnapshot) {
       return {
         success: false,
-        error: 'Vehicle could not be validated. Please refresh the search and try again.',
+        error: 'Vehicle not found in UVS inventory and no valid MarketCheck search token was provided.',
       };
     }
 

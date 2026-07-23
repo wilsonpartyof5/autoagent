@@ -255,7 +255,7 @@ describe('submitLead (UVS-first)', () => {
 
       const params = {
         vehicleId: '550e8400-e29b-41d4-a716-446655440000',
-        vin: 'DIFFERENTVIN123456', // Wrong VIN
+        vin: '1HGCM82633A123456', // Valid but different VIN
         dealerId: 'dealer-123',
         dealerName: 'ABC Auto Sales',
         pricing: {
