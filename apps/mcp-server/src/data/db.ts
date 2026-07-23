@@ -115,7 +115,7 @@ export function insertLead({
   const database = getDatabase();
   
   const stmt = database.prepare(`
-    INSERT INTO leads (
+    INSERT OR IGNORE INTO leads (
       id, uvs_vehicle_id, uvs_dealer_id, dealerId, vehicleId, vin, 
       price, currency, encPayload, consent, createdAt, ipAddress
     )

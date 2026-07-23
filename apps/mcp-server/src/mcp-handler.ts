@@ -32,6 +32,31 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
       }
     });
 
+    const extractToolPayload = (toolResult: unknown) => {
+      const resultRecord = toolResult as {
+        data?: unknown;
+        content?: unknown;
+        structuredContent?: unknown;
+        _meta?: unknown;
+      };
+      const payload = resultRecord.data ?? resultRecord;
+      const payloadRecord = payload as {
+        content?: unknown;
+        structuredContent?: unknown;
+        _meta?: unknown;
+      };
+      if (payloadRecord.content || payloadRecord.structuredContent) {
+        return {
+          ...(payloadRecord.content ? { content: payloadRecord.content } : {}),
+          ...(payloadRecord.structuredContent
+            ? { structuredContent: payloadRecord.structuredContent }
+            : {}),
+          ...(payloadRecord._meta ? { _meta: payloadRecord._meta } : {}),
+        };
+      }
+      return null;
+    };
+
     switch (method) {
       case 'initialize':
         console.log('🔧 Initialize request received:', params);
@@ -119,14 +144,9 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
           }
           
           // Return tool result payload in MCP-compatible shape.
-          const resultData = (result as { data?: unknown }).data;
+          const resultData = extractToolPayload(result);
           if (resultData) {
-            const data = resultData as { content?: unknown; structuredContent?: unknown; _meta?: unknown };
-            return createResponse({
-              content: data.content,
-              structuredContent: data.structuredContent,
-              ...(data._meta ? { _meta: data._meta } : {}),
-            });
+            return createResponse(resultData);
           } else {
             return createError(-32603, 'Internal error', 'Tool returned no result data');
           }
@@ -195,8 +215,10 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             return createError(-32603, 'Internal error', (result as { error?: unknown }).error);
           }
           
-          const resultData = result as { data?: unknown; structuredContent?: unknown };
-          return createResponse(resultData.data || resultData.structuredContent);
+          const resultData = extractToolPayload(result);
+          return resultData
+            ? createResponse(resultData)
+            : createError(-32603, 'Internal error', 'Tool returned no result data');
         }
         return createError(-32602, 'Invalid params', 'Missing tool name');
 

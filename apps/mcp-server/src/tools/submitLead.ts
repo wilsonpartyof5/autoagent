@@ -9,6 +9,7 @@ import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 import { verifySearchResult } from '../lib/searchResultToken.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
+import { createHash } from 'crypto';
 
 const logger = (pino as any)();
 
@@ -201,7 +202,12 @@ export async function submitLead(
     const flowId = marketcheckSnapshot?.flowId ?? generateRequestId();
 
     // Generate lead ID
-    const leadId = nanoid();
+    const leadId = marketcheckSnapshot
+      ? `mc_${createHash('sha256')
+          .update(`${marketcheckSnapshot.flowId}:${marketcheckSnapshot.listingId}`)
+          .digest('base64url')
+          .slice(0, 20)}`
+      : nanoid();
 
     // Encrypt the payload (user contact info only - no vehicle/dealer data)
     const payload = {

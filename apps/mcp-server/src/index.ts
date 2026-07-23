@@ -195,6 +195,56 @@ app.get('/.well-known/openapi.yaml', (req, res) => {
 // UVS Ingestion API
 app.use('/api/ingest', createIngestionRouter());
 
+function summarizeMcpRequest(body: unknown) {
+  const request = (body ?? {}) as {
+    id?: unknown;
+    method?: string;
+    params?: {
+      name?: string;
+      uri?: string;
+      arguments?: Record<string, unknown>;
+    };
+  };
+  return {
+    id: request.id ?? null,
+    method: request.method ?? 'unknown',
+    tool: request.params?.name,
+    resourceUri: request.params?.uri,
+    argumentKeys: request.params?.arguments
+      ? Object.keys(request.params.arguments)
+      : [],
+  };
+}
+
+function summarizeMcpResponse(body: unknown) {
+  const response = (body ?? {}) as {
+    id?: unknown;
+    error?: { code?: number; message?: string };
+    result?: {
+      structuredContent?: {
+        results?: { vehicles?: unknown[]; totalCount?: number; dataSource?: string };
+      };
+      contents?: Array<{ text?: string }>;
+      content?: unknown[];
+    };
+  };
+  const results = response.result?.structuredContent?.results;
+  return {
+    id: response.id ?? null,
+    errorCode: response.error?.code,
+    errorMessage: response.error?.message,
+    vehicleCount: results?.vehicles?.length,
+    totalCount: results?.totalCount,
+    dataSource: results?.dataSource,
+    contentItems: response.result?.content?.length,
+    resourceCount: response.result?.contents?.length,
+    resourceCharacters: response.result?.contents?.reduce(
+      (total, item) => total + (item.text?.length ?? 0),
+      0,
+    ),
+  };
+}
+
 // Deep logging middleware for /mcp endpoint
 app.use((req, res, next) => {
   // only for mcp & health
@@ -215,15 +265,15 @@ app.use((req, res, next) => {
   };
   (res as { __reqInfo?: typeof reqInfo }).__reqInfo = reqInfo;
 
-  // Intercept json responses to log body + headers + timing
+  // Log only non-sensitive response metadata. Tool payloads can contain signed
+  // lead tokens, contact details, full photo arrays, and widget HTML.
   res.json = (body: unknown) => {
     const ms = Date.now() - t0;
     const log = {
       evt: 'mcp.response',
       status: res.statusCode,
       ms,
-      headers: res.getHeaders(),
-      body
+      summary: summarizeMcpResponse(body),
     };
     console.log(JSON.stringify({ evt: 'mcp.request', ...reqInfo }));
     console.log(JSON.stringify(log));
@@ -282,10 +332,10 @@ app.all('/mcp', async (req, res) => {
     return;
   }
   
-  // Log request body for debugging
+  // Log request shape only; submit-lead arguments contain contact PII.
   console.log(JSON.stringify({
     evt: 'mcp.body',
-    body: req.body
+    summary: summarizeMcpRequest(req.body),
   }));
   const requestId = Math.random().toString(36).substr(2, 9);
   const startTime = Date.now();
@@ -298,7 +348,7 @@ app.all('/mcp', async (req, res) => {
       userAgent: req.headers['user-agent'],
       contentType: req.headers['content-type'],
       contentLength: req.headers['content-length'],
-      body: req.body, // Body is safe (parsed JSON)
+      request: summarizeMcpRequest(req.body),
       ip: req.ip || req.connection?.remoteAddress || 'unknown',
       timestamp: new Date().toISOString()
     });
@@ -353,7 +403,7 @@ app.all('/mcp', async (req, res) => {
     const result = await handleMcpRequest(req.body, context);
     
     const duration = Date.now() - startTime;
-    console.log(`✅ [${requestId}] MCP Response (${duration}ms):`, result);
+    console.log(`✅ [${requestId}] MCP Response (${duration}ms):`, summarizeMcpResponse(result));
     
     res.json(result);
   } catch (error) {
