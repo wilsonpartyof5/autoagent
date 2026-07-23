@@ -17,7 +17,7 @@ export default async function PlatformOverviewPage() {
     await Promise.all([
       supabase
         .from('app_events')
-        .select('event_name, provider, status, error_code, duration_ms, result_count, occurred_at')
+        .select('flow_id, event_name, source, provider, status, error_code, duration_ms, result_count, payload, occurred_at')
         .gte('occurred_at', since)
         .order('occurred_at', { ascending: false })
         .limit(1000),
@@ -36,6 +36,14 @@ export default async function PlatformOverviewPage() {
   const searches = rows.filter((event) => event.event_name === 'search.succeeded');
   const failures = rows.filter((event) => Boolean(event.error_code));
   const leads = rows.filter((event) => event.event_name === 'lead.submitted');
+  const hydrationEvents = rows.filter((event) => event.event_name.startsWith('widget.hydrate:'));
+  const imageLoads = rows.filter((event) => event.event_name === 'widget.image:loaded');
+  const imageErrors = rows.filter((event) => event.event_name === 'widget.image:error');
+  const recentDiagnostics = rows.filter((event) =>
+    event.event_name.startsWith('widget.') ||
+    event.event_name === 'provider.canary' ||
+    event.event_name === 'search.fallback'
+  );
   const latencies = searches
     .map((event) => event.duration_ms)
     .filter((value): value is number => typeof value === 'number');
@@ -53,6 +61,9 @@ export default async function PlatformOverviewPage() {
     ['Active inventory provider', health?.inventoryProvider ?? 'unknown'],
     ['MCP deployed commit', health?.commit ?? 'unknown'],
     ['MarketCheck schema', health?.marketcheckMcp?.schemaFingerprint ?? 'pending canary'],
+    ['Widget hydration events', hydrationEvents.length],
+    ['Image hosts loaded', imageLoads.length],
+    ['Image load errors', imageErrors.length],
   ];
 
   return (
@@ -79,6 +90,47 @@ export default async function PlatformOverviewPage() {
             </div>
           ))}
           {!failures.length && <p className="text-muted-foreground">No provider errors recorded.</p>}
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="border-b p-5">
+          <h2 className="font-semibold">Widget and provider diagnostics</h2>
+          <p className="text-sm text-muted-foreground">Latest bridge, hydration, image, canary, and fallback events.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="p-3">Time</th>
+                <th className="p-3">Event</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Flow</th>
+                <th className="p-3">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentDiagnostics.slice(0, 100).map((event, index) => (
+                <tr key={`${event.occurred_at}-${index}`} className="border-t align-top">
+                  <td className="whitespace-nowrap p-3">{new Date(event.occurred_at).toLocaleString()}</td>
+                  <td className="p-3 font-medium">{event.event_name}</td>
+                  <td className="p-3">
+                    <span className={event.error_code ? 'text-destructive' : 'text-primary'}>
+                      {event.error_code ?? event.status ?? 'recorded'}
+                    </span>
+                  </td>
+                  <td className="max-w-40 break-all p-3 font-mono text-xs">{event.flow_id}</td>
+                  <td className="max-w-md p-3 font-mono text-xs">
+                    {event.payload && Object.keys(event.payload).length
+                      ? JSON.stringify(event.payload)
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+              {!recentDiagnostics.length && (
+                <tr><td colSpan={5} className="p-5 text-muted-foreground">No widget diagnostics recorded yet.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
