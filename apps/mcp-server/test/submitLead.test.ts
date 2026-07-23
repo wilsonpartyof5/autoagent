@@ -629,6 +629,17 @@ describe('submitLead (UVS-first)', () => {
       });
 
       expect(result.success).toBe(true);
+      const retryResult = await submitLead({
+        vehicleId: vehicle.id,
+        vin: vehicle.baseIdentity.vin,
+        dealerId: vehicle.location.dealer.dealerId,
+        dealerName: vehicle.location.dealer.name,
+        pricing: vehicle.pricing,
+        user: { name: 'Jane Doe', email: 'jane@example.com' },
+        consent: true,
+        searchResultToken,
+      });
+      expect(retryResult.structuredContent?.leadId).toBe(result.structuredContent?.leadId);
       expect(forwardLead).toHaveBeenCalledWith(expect.objectContaining({
         inventorySource: 'marketcheck_mcp',
         routingStatus: 'platform_inbox',
