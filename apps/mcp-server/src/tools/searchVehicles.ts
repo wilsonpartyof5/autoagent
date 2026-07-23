@@ -500,6 +500,16 @@ export async function searchVehicles(
           const dealer = vehicle.location.dealer;
           const vin = vehicle.baseIdentity.vin;
           const dealerId = dealer.dealerId;
+          const leadSnapshot = {
+            id: vehicle.id,
+            baseIdentity: vehicle.baseIdentity,
+            condition: vehicle.condition,
+            pricing: vehicle.pricing,
+            coreSpecs: vehicle.coreSpecs,
+            media: { primaryPhotoUrl: vehicle.media?.primaryPhotoUrl },
+            location: vehicle.location,
+            dealerDefined: vehicle.dealerDefined,
+          };
           return {
             ...vehicle,
             flowId: runId,
@@ -515,7 +525,7 @@ export async function searchVehicles(
                     currency: vehicle.pricing.currency ?? 'USD',
                     provider: 'marketcheck_mcp',
                     flowId: runId,
-                    vehicle: vehicle as unknown as Record<string, unknown>,
+                    vehicle: leadSnapshot as unknown as Record<string, unknown>,
                   }),
                 }
               : {}),
