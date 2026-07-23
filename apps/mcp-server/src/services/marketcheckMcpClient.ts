@@ -247,7 +247,7 @@ export async function callMarketcheckMcpTool(
 }
 
 export async function inspectMarketcheckMcpContract(
-  correlationId = randomUUID(),
+  correlationId: string = randomUUID(),
 ): Promise<UpstreamCallResult> {
   const result = await rpcCall('tools/list', {}, correlationId, 0);
   if (result.success) {
