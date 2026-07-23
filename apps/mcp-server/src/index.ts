@@ -6,6 +6,8 @@ import { readFileSync } from 'fs';
 import { CONFIG } from './config/env.js';
 import { getMarketcheckMcpDiagnostics } from './services/marketcheckMcpClient.js';
 import { startMarketcheckCanary } from './services/marketcheckCanary.js';
+import { handleVehicleImage } from './app/vehicle-image.js';
+import { recordFlowEvent } from './lib/flowTelemetry.js';
 import { createIngestionRouter } from './api/ingest.js';
 import widgetTrackingRouter from './app/widget-tracking.js';
 
@@ -194,6 +196,7 @@ app.get('/.well-known/openapi.yaml', (req, res) => {
 
 // UVS Ingestion API
 app.use('/api/ingest', createIngestionRouter());
+app.get('/vehicle-image', handleVehicleImage);
 
 function summarizeMcpRequest(body: unknown) {
   const request = (body ?? {}) as {
@@ -533,7 +536,31 @@ app.get('/widget/beacon', (req, res) => {
 app.post('/widget/beacon', express.json(), (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   const b = req.body || {};
-  console.log(JSON.stringify({evt:'diag.beacon', runId:b.rid, tag:b.tag, payload:b, ts:Date.now()}));
+  const flowId = typeof b.flowId === 'string' && b.flowId !== 'none'
+    ? b.flowId
+    : typeof b.rid === 'string' && b.rid !== 'none'
+      ? b.rid
+      : null;
+  const tag = typeof b.tag === 'string' ? b.tag.slice(0, 100) : 'unknown';
+  const detail = typeof b.detail === 'string' ? b.detail.slice(0, 500) : undefined;
+  console.log(JSON.stringify({evt:'diag.beacon', flowId, tag, detail, ts:Date.now()}));
+  if (flowId) {
+    recordFlowEvent({
+      flowId,
+      eventName: `widget.${tag}`,
+      source: 'widget',
+      provider: 'marketcheck_mcp',
+      status: tag.includes('error') || tag.includes('failed') ? 'failed' : 'recorded',
+      errorCode: tag.includes('error') || tag.includes('failed') ? tag.toUpperCase().replace(/[^A-Z0-9]+/g, '_') : undefined,
+      payload: {
+        ...(detail ? { detail } : {}),
+        ...(typeof b.imageHost === 'string' ? { imageHost: b.imageHost.slice(0, 200) } : {}),
+        ...(typeof b.vehicleCount === 'number' ? { vehicleCount: b.vehicleCount } : {}),
+        ...(typeof b.widgetVersion === 'string' ? { widgetVersion: b.widgetVersion } : {}),
+        ...(typeof b.widgetInstanceId === 'string' ? { widgetInstanceId: b.widgetInstanceId.slice(0, 100) } : {}),
+      },
+    }).catch(() => {});
+  }
   res.json({ ok: true });
 });
 
@@ -548,7 +575,13 @@ app.options('/widget/console', (req, res) => {
 app.post('/widget/console', express.json(), (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   const rid = req.query.rid || null;
-  console.log(JSON.stringify({evt:'diag.console', runId:rid, lines:req.body, ts:Date.now()}));
+  const lines = Array.isArray(req.body)
+    ? req.body.slice(-20).map((line) => ({
+        t: typeof line?.t === 'number' ? line.t : undefined,
+        m: typeof line?.m === 'string' ? line.m.slice(0, 500) : undefined,
+      }))
+    : [];
+  console.log(JSON.stringify({evt:'diag.console', runId:rid, lines, ts:Date.now()}));
   res.json({ ok: true });
 });
 

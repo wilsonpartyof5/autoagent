@@ -1,4 +1,5 @@
 import type { UnifiedVehicle } from '@autoagent/shared';
+import { proxiedVehicleImageUrl } from '../app/vehicle-image.js';
 
 type MarketcheckListing = {
   id?: string;
@@ -135,10 +136,11 @@ export function normalizeMarketcheckListing(
 
   const dealer = listing.dealer ?? {};
   const dealerName = dealer.name?.trim() || 'Unknown Dealer';
-  const photos = [
+  const sourcePhotos = [
     ...(listing.media?.photo_links_cached ?? []),
     ...(listing.media?.photo_links ?? []),
   ].filter((url, index, all) => Boolean(url) && all.indexOf(url) === index);
+  const photos = sourcePhotos.map(proxiedVehicleImageUrl);
   const condition =
     listing.inventory_type === 'new'
       ? 'new'

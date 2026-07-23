@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoAgent Vehicle Search</title>
-    <meta name="autoagent-widget-version" content="v17">
+    <meta name="autoagent-widget-version" content="v19">
     <!--
         UVS-Only Widget - Tool-Driven Lead Submission
         
@@ -1332,7 +1332,7 @@
     (function(){
       const params = new URLSearchParams(location.search);
       const DIAG = params.get('diag') === '1';
-      const WIDGET_VERSION = 'v17';
+      const WIDGET_VERSION = 'v19';
       const T0 = performance.now();
       let emitted = false;
       const MAX_WAIT_MS = 10000, INTERVAL_MS = 150;
@@ -1347,6 +1347,7 @@
       window.__AA_RESULTS__ = window.__AA_RESULTS__ || null;
       const GLOBALS = window.GLOBALS;
       const WIDGET_HOST = 'https://autoagentmcp-server-production.up.railway.app';
+      const WIDGET_INSTANCE_ID = `widget_${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
 
       function summarizePayloadShape(payload) {
         if (!payload || typeof payload !== 'object') return typeof payload;
@@ -1407,6 +1408,7 @@
         logHydration(`event:${source}`, summarizePayloadShape(payload));
         const results = extractResults(payload);
         if (!results) return false;
+        if (window.__AA_RESULTS__ === results) return true;
         window.__AA_RESULTS__ = results;
         logHydration(`source:${source}`, `vehicles=${results.vehicles?.length ?? 'n/a'}`);
         window.dispatchEvent(new CustomEvent('aa:results', { detail: results }));
@@ -1437,8 +1439,11 @@
         }
       }
 
-      // Listen for set_globals via OpenAI SDK
-      if (window.openai?.on) {
+      // ChatGPT can inject window.openai after the iframe scripts execute.
+      // Keep retrying until the bridge is present instead of subscribing once.
+      let openAiSubscribed = false;
+      function attachOpenAiListeners() {
+        if (openAiSubscribed || typeof window.openai?.on !== 'function') return false;
         window.openai.on('set_globals', evt => {
           const globals = evt?.globals ?? evt;
           updateGlobals(globals);
@@ -1453,9 +1458,18 @@
             logHydration(`subscribe:${eventName}`, e?.message || 'failed');
           }
         });
-      } else {
-        logHydration('subscribe:none', 'window.openai.on unavailable');
+        openAiSubscribed = true;
+        logHydration('subscribe:bridge', 'attached');
+        return true;
       }
+      attachOpenAiListeners();
+      setInterval(() => {
+        attachOpenAiListeners();
+        if (!window.__AA_RESULTS__) {
+          updateResults(window.openai?.toolOutput, 'poll.toolOutput');
+          updateResults(window.openai?.toolResponseMetadata, 'poll.toolResponseMetadata');
+        }
+      }, 250);
 
       // Fallback: listen for postMessage (legacy openai:set_globals)
       window.addEventListener('message', evt => {
@@ -1485,7 +1499,16 @@
       }
       function beacon(tag, extra){
         const rid = GLOBALS.rid || 'none';
-        post('/widget/beacon', Object.assign({ rid, tag, t: performance.now() }, extra||{}));
+        const flowId = window.__AA_RESULTS__?.vehicles?.[0]?.flowId || (rid !== 'none' ? rid : WIDGET_INSTANCE_ID);
+        post('/widget/beacon', Object.assign({
+          rid,
+          flowId,
+          tag,
+          t: performance.now(),
+          widgetVersion: WIDGET_VERSION,
+          widgetInstanceId: WIDGET_INSTANCE_ID,
+          vehicleCount: window.__AA_RESULTS__?.vehicles?.length,
+        }, extra||{}));
       }
       function getResults(){
         try{
@@ -1556,6 +1579,25 @@
 
       window.addEventListener('error', e=>{ log('window.error', e?.message||e); beacon('error',{msg:e?.message||'error'}); });
       window.addEventListener('unhandledrejection', e=>{ log('unhandledrejection', String(e?.reason||e)); beacon('error',{msg:String(e?.reason||e)}); });
+      const successfulImageHosts = new Set();
+      let imageErrorCount = 0;
+      function imageHost(image) {
+        try { return new URL(image.currentSrc || image.src).origin; } catch (_) { return 'invalid'; }
+      }
+      document.addEventListener('load', event => {
+        const image = event.target;
+        if (!(image instanceof HTMLImageElement)) return;
+        const host = imageHost(image);
+        if (successfulImageHosts.has(host)) return;
+        successfulImageHosts.add(host);
+        beacon('image:loaded', { imageHost: host });
+      }, true);
+      document.addEventListener('error', event => {
+        const image = event.target;
+        if (!(image instanceof HTMLImageElement) || imageErrorCount >= 20) return;
+        imageErrorCount += 1;
+        beacon('image:error', { imageHost: imageHost(image), detail: `count=${imageErrorCount}` });
+      }, true);
 
       document.addEventListener('DOMContentLoaded', ()=>{ 
         const rid = GLOBALS.rid || 'none';
