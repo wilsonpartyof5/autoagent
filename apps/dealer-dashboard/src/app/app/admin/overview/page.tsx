@@ -7,7 +7,13 @@ export default async function PlatformOverviewPage() {
   await requirePlatformAdmin();
   const supabase = await createClient();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: events }, { count: inboxLeads }, { count: sessions }] =
+  const mcpUrl = process.env.MCP_SERVER_URL || process.env.INGESTION_SERVICE_URL;
+  const healthPromise = mcpUrl
+    ? fetch(`${mcpUrl.replace(/\/+$/, '')}/health`, { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : null)
+        .catch(() => null)
+    : Promise.resolve(null);
+  const [{ data: events }, { count: inboxLeads }, { count: sessions }, health] =
     await Promise.all([
       supabase
         .from('app_events')
@@ -23,6 +29,7 @@ export default async function PlatformOverviewPage() {
         .from('app_sessions')
         .select('*', { count: 'exact', head: true })
         .gte('started_at', since),
+      healthPromise,
     ]);
 
   const rows = events ?? [];
@@ -43,6 +50,9 @@ export default async function PlatformOverviewPage() {
     ['Search-to-lead', searches.length ? `${((leads.length / searches.length) * 100).toFixed(1)}%` : '—'],
     ['MarketCheck avg latency', averageLatency ? `${averageLatency} ms` : '—'],
     ['Recent provider errors', failures.length],
+    ['Active inventory provider', health?.inventoryProvider ?? 'unknown'],
+    ['MCP deployed commit', health?.commit ?? 'unknown'],
+    ['MarketCheck schema', health?.marketcheckMcp?.schemaFingerprint ?? 'pending canary'],
   ];
 
   return (
