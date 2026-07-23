@@ -1,0 +1,54 @@
+{
+  "structuredContent": {
+    "success": true,
+    "service": "car_search",
+    "data": {
+      "num_found": 245,
+      "start": "0",
+      "rows": "1",
+      "listings": [
+        {
+          "id": "fixture-listing-1",
+          "vin": "1HGCM82633A123456",
+          "heading": "2024 Honda Accord EX",
+          "price": 28995,
+          "miles": 12000,
+          "msrp": 31000,
+          "inventory_type": "used",
+          "stock_no": "A123",
+          "vdp_url": "https://dealer.example/vehicle/fixture",
+          "dist": 8.4,
+          "media": {
+            "photo_links_cached": [
+              "https://d2v1gjawtegg5z.cloudfront.net/fixture-1.jpg",
+              "https://d2v1gjawtegg5z.cloudfront.net/fixture-2.jpg"
+            ]
+          },
+          "dealer": {
+            "id": "dealer-1",
+            "name": "Example Honda",
+            "street": "100 Main St",
+            "city": "Charlotte",
+            "state": "NC",
+            "zip": "28202",
+            "latitude": 35.2271,
+            "longitude": -80.8431
+          },
+          "build": {
+            "year": 2024,
+            "make": "Honda",
+            "model": "Accord",
+            "trim": "EX",
+            "body_type": "Sedan",
+            "transmission": "Automatic",
+            "drivetrain": "FWD",
+            "fuel_type": "Unleaded",
+            "engine": "1.5L Turbo",
+            "city_mpg": 29,
+            "highway_mpg": 37
+          }
+        }
+      ]
+    }
+  }
+}

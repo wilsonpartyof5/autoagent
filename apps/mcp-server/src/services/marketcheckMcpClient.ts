@@ -1,23 +1,12 @@
 import { randomUUID } from 'crypto';
 import { CONFIG } from '../config/env.js';
 
-type JsonRpcSuccess = {
+type JsonRpcResponse = {
   jsonrpc: '2.0';
-  id: string;
-  result: unknown;
+  id: string | number;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
 };
-
-type JsonRpcError = {
-  jsonrpc: '2.0';
-  id: string;
-  error: {
-    code: number;
-    message: string;
-    data?: unknown;
-  };
-};
-
-type JsonRpcResponse = JsonRpcSuccess | JsonRpcError;
 
 export type UpstreamCallResult =
   | {
@@ -31,142 +20,248 @@ export type UpstreamCallResult =
   | {
       success: false;
       error: string;
+      errorCode: string;
       correlationId: string;
       upstreamRequestId: string;
       status?: number;
       latencyMs: number;
     };
 
-function buildAuthHeaders(): Record<string, string> {
-  if (CONFIG.marketcheckMcpAuthType === 'none') {
-    return {};
-  }
+export type MarketcheckDiagnostics = {
+  provider: 'marketcheck_mcp';
+  endpointOrigin: string;
+  serverVersion?: string;
+  schemaFingerprint?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastLatencyMs?: number;
+  lastErrorCode?: string;
+};
 
-  const token = CONFIG.marketcheckMcpAuthToken;
-  if (!token) {
-    return {};
-  }
+const diagnostics: MarketcheckDiagnostics = {
+  provider: 'marketcheck_mcp',
+  endpointOrigin: new URL(CONFIG.marketcheckMcpUrl).origin,
+};
 
-  if (CONFIG.marketcheckMcpAuthType === 'x-api-key') {
-    return { 'x-api-key': token };
+function endpointUrl(): URL {
+  const endpoint = new URL(CONFIG.marketcheckMcpUrl);
+  if (
+    endpoint.hostname === 'api.marketcheck.com' &&
+    !endpoint.searchParams.has('api_key')
+  ) {
+    endpoint.searchParams.set('api_key', CONFIG.marketcheckApiKey);
   }
-
-  return { Authorization: `Bearer ${token}` };
+  return endpoint;
 }
 
-function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  if (!value || typeof value !== 'object') {
-    return false;
+function authHeaders(): Record<string, string> {
+  if (
+    CONFIG.marketcheckMcpAuthType === 'none' ||
+    new URL(CONFIG.marketcheckMcpUrl).hostname === 'api.marketcheck.com'
+  ) {
+    return {};
+  }
+  if (CONFIG.marketcheckMcpAuthType === 'x-api-key') {
+    return { 'x-api-key': CONFIG.marketcheckMcpAuthToken };
+  }
+  return { Authorization: `Bearer ${CONFIG.marketcheckMcpAuthToken}` };
+}
+
+function parseMcpResponse(body: string): JsonRpcResponse {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{')) {
+    return JSON.parse(trimmed) as JsonRpcResponse;
   }
 
-  const candidate = value as Record<string, unknown>;
-  return candidate.jsonrpc === '2.0' && typeof candidate.id === 'string';
+  const dataLine = trimmed
+    .split(/\r?\n/)
+    .find((line) => line.startsWith('data:'));
+  if (!dataLine) {
+    throw new Error('No JSON-RPC data event in SSE response');
+  }
+  return JSON.parse(dataLine.replace(/^data:\s*/, '')) as JsonRpcResponse;
+}
+
+function stableFingerprint(value: unknown): string {
+  const text = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+async function rpcCall(
+  method: string,
+  params: Record<string, unknown>,
+  correlationId: string,
+  retries = 2,
+): Promise<UpstreamCallResult> {
+  const upstreamRequestId = randomUUID();
+  const startedAt = Date.now();
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(
+      () => controller.abort(),
+      CONFIG.marketcheckMcpTimeoutMs,
+    );
+    try {
+      const response = await fetch(endpointUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'x-autoagent-correlation-id': correlationId,
+          ...authHeaders(),
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: upstreamRequestId,
+          method,
+          params,
+        }),
+        signal: controller.signal,
+      });
+
+      const latencyMs = Date.now() - startedAt;
+      if (!response.ok) {
+        if (
+          attempt < retries &&
+          (response.status === 429 || response.status >= 500)
+        ) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 250 * 2 ** attempt),
+          );
+          continue;
+        }
+        diagnostics.lastFailureAt = new Date().toISOString();
+        diagnostics.lastLatencyMs = latencyMs;
+        diagnostics.lastErrorCode = `HTTP_${response.status}`;
+        return {
+          success: false,
+          error: `Upstream MCP returned HTTP ${response.status}`,
+          errorCode: `HTTP_${response.status}`,
+          correlationId,
+          upstreamRequestId,
+          status: response.status,
+          latencyMs,
+        };
+      }
+
+      let parsed: JsonRpcResponse;
+      try {
+        parsed = parseMcpResponse(await response.text());
+      } catch {
+        diagnostics.lastFailureAt = new Date().toISOString();
+        diagnostics.lastErrorCode = 'MCP_MALFORMED_RESPONSE';
+        return {
+          success: false,
+          error: 'Upstream MCP returned malformed JSON/SSE',
+          errorCode: 'MCP_MALFORMED_RESPONSE',
+          correlationId,
+          upstreamRequestId,
+          status: response.status,
+          latencyMs,
+        };
+      }
+      if (parsed.jsonrpc !== '2.0' || parsed.id === undefined) {
+        return {
+          success: false,
+          error: 'Upstream MCP returned invalid JSON-RPC envelope',
+          errorCode: 'MCP_INVALID_ENVELOPE',
+          correlationId,
+          upstreamRequestId,
+          status: response.status,
+          latencyMs,
+        };
+      }
+      if (parsed.error) {
+        diagnostics.lastFailureAt = new Date().toISOString();
+        diagnostics.lastLatencyMs = latencyMs;
+        diagnostics.lastErrorCode = `RPC_${parsed.error.code}`;
+        return {
+          success: false,
+          error: `Upstream MCP error ${parsed.error.code}: ${parsed.error.message}`,
+          errorCode: `RPC_${parsed.error.code}`,
+          correlationId,
+          upstreamRequestId,
+          status: response.status,
+          latencyMs,
+        };
+      }
+
+      diagnostics.lastSuccessAt = new Date().toISOString();
+      diagnostics.lastLatencyMs = latencyMs;
+      diagnostics.lastErrorCode = undefined;
+      return {
+        success: true,
+        result: parsed.result,
+        correlationId,
+        upstreamRequestId,
+        status: response.status,
+        latencyMs,
+      };
+    } catch (error) {
+      const latencyMs = Date.now() - startedAt;
+      const aborted = error instanceof Error && error.name === 'AbortError';
+      const errorCode = aborted ? 'MCP_TIMEOUT' : 'MCP_NETWORK_ERROR';
+      if (!aborted && attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+        continue;
+      }
+      diagnostics.lastFailureAt = new Date().toISOString();
+      diagnostics.lastLatencyMs = latencyMs;
+      diagnostics.lastErrorCode = errorCode;
+      return {
+        success: false,
+        error: aborted
+          ? `Upstream MCP timeout after ${CONFIG.marketcheckMcpTimeoutMs}ms`
+          : `Upstream MCP request failed: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`,
+        errorCode,
+        correlationId,
+        upstreamRequestId,
+        latencyMs,
+      };
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  throw new Error('Unreachable MarketCheck MCP retry state');
 }
 
 export async function callMarketcheckMcpTool(
   toolName: string,
   args: Record<string, unknown>,
-  correlationId: string
+  correlationId: string,
 ): Promise<UpstreamCallResult> {
-  const startedAt = Date.now();
-  const upstreamRequestId = randomUUID();
+  return rpcCall(
+    'tools/call',
+    { name: toolName, arguments: args },
+    correlationId,
+  );
+}
 
-  const controller = new AbortController();
-  const timeoutMs = CONFIG.marketcheckMcpTimeoutMs;
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-
-  const payload = {
-    jsonrpc: '2.0',
-    id: upstreamRequestId,
-    method: 'tools/call',
-    params: {
-      name: toolName,
-      arguments: args,
-    },
-  };
-
-  try {
-    const response = await fetch(CONFIG.marketcheckMcpUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-autoagent-correlation-id': correlationId,
-        ...buildAuthHeaders(),
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    const latencyMs = Date.now() - startedAt;
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Upstream MCP returned HTTP ${response.status}`,
-        correlationId,
-        upstreamRequestId,
-        status: response.status,
-        latencyMs,
-      };
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = await response.json();
-    } catch (_error) {
-      return {
-        success: false,
-        error: 'Upstream MCP returned malformed JSON',
-        correlationId,
-        upstreamRequestId,
-        status: response.status,
-        latencyMs,
-      };
-    }
-
-    if (!isJsonRpcResponse(parsed)) {
-      return {
-        success: false,
-        error: 'Upstream MCP returned invalid JSON-RPC envelope',
-        correlationId,
-        upstreamRequestId,
-        status: response.status,
-        latencyMs,
-      };
-    }
-
-    if ('error' in parsed) {
-      return {
-        success: false,
-        error: `Upstream MCP error ${parsed.error.code}: ${parsed.error.message}`,
-        correlationId,
-        upstreamRequestId,
-        status: response.status,
-        latencyMs,
-      };
-    }
-
-    return {
-      success: true,
-      result: parsed.result,
-      correlationId,
-      upstreamRequestId,
-      status: response.status,
-      latencyMs,
-    };
-  } catch (error) {
-    const latencyMs = Date.now() - startedAt;
-    const message = error instanceof Error ? error.message : 'Unknown bridge error';
-    return {
-      success: false,
-      error: message.includes('abort')
-        ? `Upstream MCP timeout after ${timeoutMs}ms`
-        : `Upstream MCP request failed: ${message}`,
-      correlationId,
-      upstreamRequestId,
-      latencyMs,
-    };
-  } finally {
-    clearTimeout(timeoutHandle);
+export async function inspectMarketcheckMcpContract(
+  correlationId: string = randomUUID(),
+): Promise<UpstreamCallResult> {
+  const result = await rpcCall('tools/list', {}, correlationId, 0);
+  if (result.success) {
+    const tools = (
+      result.result as { tools?: Array<Record<string, unknown>> } | undefined
+    )?.tools;
+    const searchTool = tools?.find((tool) => tool.name === 'search_active_cars');
+    diagnostics.schemaFingerprint = searchTool
+      ? stableFingerprint(searchTool)
+      : undefined;
   }
+  return result;
+}
+
+export function getMarketcheckMcpDiagnostics(): MarketcheckDiagnostics {
+  return { ...diagnostics };
 }

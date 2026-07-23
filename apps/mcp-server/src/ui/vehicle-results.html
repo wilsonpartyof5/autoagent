@@ -2609,8 +2609,8 @@
         }
 
         // Open details drawer
-        function openDetails(id) {
-            const vehicle = state.vehicles.find(v => v.id === id);
+        async function openDetails(id) {
+            let vehicle = state.vehicles.find(v => v.id === id);
             if (!vehicle) return;
             setActiveVehicle(id);
             
@@ -2620,6 +2620,30 @@
                 vehicleId: vehicle.id,
                 source: 'widget_card',
             });
+
+            if (vehicle.searchResultToken && !vehicle.detailLoaded && window.openai?.callTool) {
+                try {
+                    const detailResult = await window.openai.callTool('get-vehicle-details', {
+                        listingId: vehicle.id,
+                        vin: getUVSVIN(vehicle),
+                        flowId: vehicle.flowId,
+                    });
+                    const detailedVehicle =
+                        detailResult?.structuredContent?.vehicle ||
+                        detailResult?._meta?.vehicle ||
+                        detailResult?.vehicle;
+                    if (detailedVehicle) {
+                        const searchResultToken = vehicle.searchResultToken;
+                        const flowId = vehicle.flowId;
+                        Object.assign(vehicle, detailedVehicle, { searchResultToken, flowId });
+                    }
+                } catch (error) {
+                    logEvent('vehicle.detail_failed', {
+                        vehicleId: vehicle.id,
+                        flowId: vehicle.flowId,
+                    });
+                }
+            }
 
             const drawer = el('detailsDrawer');
             const title = el('drawerTitle');
@@ -2640,6 +2664,8 @@
             
             // Get photo from UVS structure
             const drawerPhoto = getUVSPrimaryPhoto(vehicle) || '/placeholder-car.jpg';
+            const photoUrls = vehicle.media?.photoUrls || [];
+            const specs = vehicle.coreSpecs || {};
             
             // Extract data from UVS structure only
             const sellerComments = vehicle.sellerComments || null;
@@ -2652,6 +2678,11 @@
                      alt="${year} ${make} ${model}" 
                      class="drawer-image"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhciBJbWFnZTwvdGV4dD48L3N2Zz4='">
+                ${photoUrls.length > 1 ? `
+                    <div style="display:flex;gap:8px;overflow-x:auto;margin:10px 0 16px;">
+                        ${photoUrls.slice(1, 8).map(url => `<img src="${safeText(url)}" alt="" style="width:96px;height:64px;object-fit:cover;border-radius:8px;">`).join('')}
+                    </div>
+                ` : ''}
                 
                 <div class="specs-grid">
                     <div class="spec-item">
@@ -2670,6 +2701,10 @@
                         <div class="spec-label">Condition</div>
                         <div class="spec-value">${condition === 'new' ? 'New' : condition === 'certified' ? 'Certified' : 'Used'}</div>
                     </div>
+                    ${specs.bodyType ? `<div class="spec-item"><div class="spec-label">Body</div><div class="spec-value">${safeText(specs.bodyType)}</div></div>` : ''}
+                    ${specs.drivetrain ? `<div class="spec-item"><div class="spec-label">Drivetrain</div><div class="spec-value">${safeText(specs.drivetrain.toUpperCase())}</div></div>` : ''}
+                    ${specs.transmission?.description ? `<div class="spec-item"><div class="spec-label">Transmission</div><div class="spec-value">${safeText(specs.transmission.description)}</div></div>` : ''}
+                    ${specs.engine?.description ? `<div class="spec-item"><div class="spec-label">Engine</div><div class="spec-value">${safeText(specs.engine.description)}</div></div>` : ''}
                 </div>
 
                 ${sellerComments ? `
@@ -2989,6 +3024,9 @@
                         preferredTime: el('leadTime').value || undefined,
                     },
                     consent: el('leadConsent').checked,
+                    ...(currentVehicle.searchResultToken
+                        ? { searchResultToken: currentVehicle.searchResultToken }
+                        : {}),
                 };
 
                 if (!window.openai?.callTool) {
@@ -3176,6 +3214,7 @@
                         source: data.source || 'widget',
                     },
                     sessionId: sessionId,
+                    flowId: vehicle?.flowId || state.vehicles[0]?.flowId || sessionId,
                     dealerId: dealerId,
                     vehicleId: vehicleId,
                     requestId: 'widget_' + Date.now(),

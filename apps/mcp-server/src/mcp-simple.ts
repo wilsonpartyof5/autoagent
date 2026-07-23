@@ -6,11 +6,12 @@ import { pingMicroUi } from './tools/pingMicroUi.js';
 import { search } from './tools/search.js';
 import { fetchContent } from './tools/fetch.js';
 import { renderVehicleResults } from './tools/renderVehicleResults.js';
+import { getVehicleDetails } from './tools/getVehicleDetails.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v17';
+export const VEHICLE_WIDGET_VERSION = 'v18';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const WIDGET_CSP = {
@@ -22,6 +23,7 @@ const WIDGET_CSP = {
     'https://tile.openstreetmap.org',
     'https://vehicle-images.dealerinspire.com',
     'https://pictures.dealer.com',
+    'https://d2v1gjawtegg5z.cloudfront.net',
     'https://www.myrockhillgmc.com',
   ],
 };
@@ -113,6 +115,8 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
       return await renderVehicleResults(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
+    case 'get-vehicle-details':
+      return await getVehicleDetails(args);
     case 'compare-vehicles':
       return await compareVehicles(args, context);
     case 'ping-ui':
@@ -211,6 +215,25 @@ export function getAvailableTools() {
       outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
     },
     {
+      name: 'get-vehicle-details',
+      title: 'Get Vehicle Details',
+      description: 'Load current photos, specifications, pricing, and dealer details for a selected MarketCheck vehicle.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listingId: { type: 'string', description: 'MarketCheck listing ID' },
+          vin: { type: 'string', description: 'Vehicle VIN' },
+          flowId: { type: 'string', description: 'Search flow correlation ID' },
+        },
+        required: [],
+      },
+    },
+    {
       name: 'submit-lead',
       description: 'Submit a lead for a vehicle test drive or quote request',
       inputSchema: {
@@ -277,6 +300,10 @@ export function getAvailableTools() {
             type: 'boolean',
             description: 'User consent to be contacted (must be true)',
           },
+          searchResultToken: {
+            type: 'string',
+            description: 'Signed search-result token returned with MarketCheck inventory',
+          },
         },
         required: ['vehicleId', 'vin', 'dealerId', 'dealerName', 'pricing', 'user', 'consent'],
       },
@@ -338,6 +365,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v17.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v16.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v15.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

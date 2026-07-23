@@ -63,7 +63,7 @@ export interface DecryptedLead {
     phone?: string;
     preferredTime?: string;
   };
-  vehicleId: string;
+  vehicleId?: string;
   dealerId?: string;
   vin?: string;
 }
@@ -90,7 +90,7 @@ export function isDecryptedLead(data: unknown): data is DecryptedLead {
     typeof user.email === 'string' &&
     (user.phone === undefined || typeof user.phone === 'string') &&
     (user.preferredTime === undefined || typeof user.preferredTime === 'string') &&
-    typeof obj.vehicleId === 'string' &&
+    (obj.vehicleId === undefined || typeof obj.vehicleId === 'string') &&
     (obj.dealerId === undefined || typeof obj.dealerId === 'string') &&
     (obj.vin === undefined || typeof obj.vin === 'string')
   );

@@ -6,6 +6,8 @@ vi.mock('../src/config/env.js', () => ({
   CONFIG: {
     diagnosticsEnabled: false,
     marketcheckMcpBridgeEnabled: true,
+    inventorySearchProvider: 'marketcheck_mcp',
+    leadEncKey: Buffer.alloc(32).toString('base64'),
     widgetHost: 'https://example.com',
   },
 }));
@@ -16,6 +18,12 @@ vi.mock('../src/services/marketcheckMcpClient.js', () => ({
 
 vi.mock('../src/lib/analytics/tracking.js', () => ({
   trackEvent: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../src/lib/flowTelemetry.js', () => ({
+  recordFlowEvent: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../src/db/uvs-vehicles.js', () => ({
+  searchUVSVehicles: vi.fn(() => Promise.resolve({ vehicles: [], total: 0, dealerSummary: [] })),
 }));
 
 describe('searchVehicles bridge mode', () => {
@@ -29,9 +37,17 @@ describe('searchVehicles bridge mode', () => {
       success: true,
       result: {
         structuredContent: {
-          results: {
-            vehicles: [{ id: 'veh-1', title: '2024 Test Car' }],
-            totalCount: 1,
+          success: true,
+          data: {
+            num_found: 1,
+            listings: [{
+              id: 'veh-1',
+              vin: '1HGCM82633A123456',
+              price: 25000,
+              inventory_type: 'used',
+              build: { year: 2024, make: 'Test', model: 'Car' },
+              dealer: { id: 'dealer-1', name: 'Test Dealer' },
+            }],
           },
         },
         content: [{ type: 'text', text: 'Found 1 vehicle' }],
@@ -53,10 +69,11 @@ describe('searchVehicles bridge mode', () => {
     expect(result.data?.vehicles).toHaveLength(1);
   });
 
-  it('returns explicit error when upstream bridge call fails', async () => {
+  it('falls back to UVS when upstream bridge call fails', async () => {
     mockCallMarketcheckMcpTool.mockResolvedValue({
       success: false,
       error: 'Upstream MCP returned HTTP 502',
+      errorCode: 'HTTP_502',
       correlationId: 'corr-2',
       upstreamRequestId: 'up-2',
       status: 502,
@@ -69,7 +86,7 @@ describe('searchVehicles bridge mode', () => {
       condition: 'used',
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('HTTP 502');
+    expect(result.success).toBe(true);
+    expect(result.data?.totalCount).toBe(0);
   });
 });

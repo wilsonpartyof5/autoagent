@@ -37,6 +37,9 @@ vi.mock('../src/lib/crypto.js', () => ({
 
 import { getUVSVehicleById, getUVSVehicleByVIN } from '../src/db/uvs-vehicles.js';
 import { insertLead } from '../src/data/db.js';
+import { forwardLead } from '../src/services/forwardLead.js';
+import { deliverLead } from '../src/services/deliverLead.js';
+import { signSearchResult } from '../src/lib/searchResultToken.js';
 
 describe('submitLead (UVS-first)', () => {
   // Sample UVS vehicle for testing
@@ -255,7 +258,7 @@ describe('submitLead (UVS-first)', () => {
 
       const params = {
         vehicleId: '550e8400-e29b-41d4-a716-446655440000',
-        vin: 'DIFFERENTVIN123456', // Wrong VIN
+        vin: '1HGCM82633A123456', // Valid but different VIN
         dealerId: 'dealer-123',
         dealerName: 'ABC Auto Sales',
         pricing: {
@@ -470,7 +473,8 @@ describe('submitLead (UVS-first)', () => {
       expect(insertLead).not.toHaveBeenCalled();
     });
 
-    it('should reject when dealerId is missing', async () => {
+    it('should hydrate dealerId when it is missing from a UVS lead', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(mockUVSVehicle);
       const params = {
         vehicleId: 'mc-12345',
         vin: '1HGBH41JXMN109186',
@@ -488,9 +492,8 @@ describe('submitLead (UVS-first)', () => {
 
       const result = await submitLead(params);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid input');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.structuredContent?.dealerId).toBe('dealer-123');
     });
 
     it('should reject when pricing is missing', async () => {
@@ -571,7 +574,7 @@ describe('submitLead (UVS-first)', () => {
       vi.mocked(getUVSVehicleById).mockResolvedValue(mockUVSVehicle);
 
       const params = {
-        vehicleId: '550e8400-e29b-41d4-a716-446655440000',
+        vehicleId: 'mc-12345',
         vin: '1hgbh41jxmn109186', // Lowercase
         dealerId: 'dealer-123',
         dealerName: 'ABC Auto Sales',
@@ -589,6 +592,50 @@ describe('submitLead (UVS-first)', () => {
       const result = await submitLead(params);
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('MarketCheck nationwide leads', () => {
+    it('accepts a signed search result and routes it to the platform inbox', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(null);
+      vi.mocked(getUVSVehicleByVIN).mockResolvedValue(null);
+      const vehicle = {
+        id: 'mc-listing-1',
+        baseIdentity: { vin: '1HGCM82633A123456', year: 2024, make: 'Honda', model: 'Accord' },
+        pricing: { price: 28995, currency: 'USD' },
+        location: { dealer: { dealerId: 'mc-dealer-1', name: 'Example Honda' } },
+      };
+      const searchResultToken = signSearchResult({
+        listingId: vehicle.id,
+        vin: vehicle.baseIdentity.vin,
+        dealerId: vehicle.location.dealer.dealerId,
+        dealerName: vehicle.location.dealer.name,
+        price: vehicle.pricing.price,
+        currency: 'USD',
+        provider: 'marketcheck_mcp',
+        flowId: 'flow-1',
+        vehicle,
+      });
+
+      const result = await submitLead({
+        vehicleId: vehicle.id,
+        vin: vehicle.baseIdentity.vin,
+        dealerId: vehicle.location.dealer.dealerId,
+        dealerName: vehicle.location.dealer.name,
+        pricing: vehicle.pricing,
+        user: { name: 'Jane Doe', email: 'jane@example.com' },
+        consent: true,
+        searchResultToken,
+      });
+
+      expect(result.success).toBe(true);
+      expect(forwardLead).toHaveBeenCalledWith(expect.objectContaining({
+        inventorySource: 'marketcheck_mcp',
+        routingStatus: 'platform_inbox',
+        flowId: 'flow-1',
+        vehicleSnapshot: vehicle,
+      }));
+      expect(deliverLead).not.toHaveBeenCalled();
     });
   });
 });
