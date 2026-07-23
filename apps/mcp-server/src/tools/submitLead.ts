@@ -7,6 +7,8 @@ import { forwardLead } from '../services/forwardLead.js';
 import { deliverLead } from '../services/deliverLead.js';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
+import { verifySearchResult } from '../lib/searchResultToken.js';
+import { recordFlowEvent } from '../lib/flowTelemetry.js';
 
 const logger = (pino as any)();
 
@@ -37,6 +39,7 @@ const SubmitLeadSchema = z.object({
   
   // Required consent
   consent: z.boolean().refine(val => val === true, 'Consent must be true'),
+  searchResultToken: z.string().min(1).optional(),
 }).strict(); // Reject any additional non-UVS fields
 
 
@@ -73,7 +76,7 @@ export async function submitLead(
       };
     }
 
-    const { vehicleId, vin, dealerId, dealerName, pricing, user, consent } = parseResult.data;
+    const { vehicleId, vin, dealerId, dealerName, pricing, user, consent, searchResultToken } = parseResult.data;
 
     // ENFORCE UVS lookup - vehicle must exist in uvs_vehicles
     const { getUVSVehicleById, getUVSVehicleByVIN } = await import('../db/uvs-vehicles.js');
@@ -86,16 +89,36 @@ export async function submitLead(
       vehicle = await getUVSVehicleByVIN(vin);
     }
     
-    // REJECT if UVS lookup fails
-    if (!vehicle) {
+    let marketcheckSnapshot: ReturnType<typeof verifySearchResult> | null = null;
+    if (!vehicle && searchResultToken) {
+      try {
+        marketcheckSnapshot = verifySearchResult(searchResultToken);
+      } catch (error) {
+        const errorCode = error instanceof Error ? error.message : 'SEARCH_RESULT_TOKEN_INVALID';
+        return { success: false, error: `Unable to validate selected vehicle (${errorCode}). Please refresh the search.` };
+      }
+    }
+
+    // REJECT if neither UVS nor a signed MarketCheck search result can validate it.
+    if (!vehicle && !marketcheckSnapshot) {
       return {
         success: false,
-        error: 'Vehicle not found in UVS inventory. Please verify the vehicle ID or VIN.',
+        error: 'Vehicle could not be validated. Please refresh the search and try again.',
       };
     }
 
+    if (marketcheckSnapshot) {
+      if (
+        marketcheckSnapshot.listingId !== vehicleId ||
+        marketcheckSnapshot.vin.toUpperCase() !== vin.toUpperCase() ||
+        marketcheckSnapshot.dealerId !== dealerId
+      ) {
+        return { success: false, error: 'Selected vehicle information does not match the signed search result.' };
+      }
+    }
+
     // Validate VIN matches UVS record
-    const uvsVin = vehicle.baseIdentity?.vin;
+    const uvsVin = vehicle?.baseIdentity?.vin ?? marketcheckSnapshot?.vin;
     if (!uvsVin) {
       return {
         success: false,
@@ -111,7 +134,7 @@ export async function submitLead(
     }
 
     // Validate vehicleId matches UVS record
-    if (vehicle.id !== vehicleId) {
+    if (vehicle && vehicle.id !== vehicleId) {
       return {
         success: false,
         error: `Vehicle ID mismatch: provided vehicleId "${vehicleId}" does not match UVS vehicle ID "${vehicle.id}"`,
@@ -119,8 +142,8 @@ export async function submitLead(
     }
 
     // Derive dealer information from UVS (source of truth)
-    const uvsDealerId = vehicle.location?.dealer?.dealerId;
-    const uvsDealerName = vehicle.location?.dealer?.name;
+    const uvsDealerId = vehicle?.location?.dealer?.dealerId ?? marketcheckSnapshot?.dealerId;
+    const uvsDealerName = vehicle?.location?.dealer?.name ?? marketcheckSnapshot?.dealerName;
     
     // Validate dealerId matches UVS
     if (uvsDealerId && uvsDealerId !== dealerId) {
@@ -157,8 +180,8 @@ export async function submitLead(
     }
 
     // Derive pricing from UVS (source of truth)
-    const uvsPrice = vehicle.pricing?.price;
-    const uvsCurrency = vehicle.pricing?.currency || 'USD';
+    const uvsPrice = vehicle?.pricing?.price ?? marketcheckSnapshot?.price;
+    const uvsCurrency = vehicle?.pricing?.currency ?? marketcheckSnapshot?.currency ?? 'USD';
     
     // Validate pricing matches UVS
     if (uvsPrice !== undefined && Math.abs(uvsPrice - pricing.price) > 0.01) {
@@ -173,6 +196,9 @@ export async function submitLead(
     // Use UVS pricing (source of truth)
     const resolvedPrice = uvsPrice !== undefined ? uvsPrice : pricing.price;
     const resolvedCurrency = uvsCurrency || pricing.currency || 'USD';
+    const inventorySource = marketcheckSnapshot ? 'marketcheck_mcp' : 'uvs_db';
+    const routingStatus = marketcheckSnapshot ? 'platform_inbox' : 'dealer_assigned';
+    const flowId = marketcheckSnapshot?.flowId ?? generateRequestId();
 
     // Generate lead ID
     const leadId = nanoid();
@@ -209,12 +235,17 @@ export async function submitLead(
       vin: uvsVin,
       createdAt,
       encPayload,
+      inventorySource,
+      routingStatus,
+      flowId,
+      externalListingId: marketcheckSnapshot?.listingId,
+      vehicleSnapshot: marketcheckSnapshot?.vehicle,
     }).catch(error => {
       logger.error('Failed to forward lead', { leadId, error: error.message });
     });
 
     // Deliver to dealer's CRM via ADF XML (fire-and-forget)
-    if (resolvedDealerId) {
+    if (resolvedDealerId && !marketcheckSnapshot) {
       deliverLead({
         leadId,
         dealerId: resolvedDealerId,
@@ -237,11 +268,14 @@ export async function submitLead(
       vin: uvsVin,
       price: resolvedPrice,
       currency: resolvedCurrency,
+      inventorySource,
+      routingStatus,
+      flowId,
       ts: createdAt,
     });
 
     // Track lead submission event (PII-safe: only IDs, no user data)
-    const requestId = generateRequestId(); // Used as sessionId for request correlation
+    const requestId = generateRequestId(); // Used as request-level correlation
     trackEvent('lead.submit', {
       leadId,
       vehicleId,
@@ -252,10 +286,23 @@ export async function submitLead(
       vehicleId, // Required for lead.submit
       vin: uvsVin,
       requestId,
-      sessionId: requestId, // Use requestId as sessionId for request-level correlation
+      sessionId: flowId,
     }).catch(() => {
       // Tracking failures should not break the request
     });
+    recordFlowEvent({
+      flowId,
+      eventName: 'lead.submitted',
+      source: 'mcp-server',
+      provider: inventorySource,
+      requestId,
+      toolName: 'submit-lead',
+      dealerId: resolvedDealerId,
+      vehicleId,
+      vin: uvsVin,
+      status: routingStatus,
+      payload: { leadId },
+    }).catch(() => {});
 
     return {
       success: true,

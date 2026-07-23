@@ -10,6 +10,11 @@ export interface LeadData {
   vin?: string;
   createdAt: number;
   encPayload: string;
+  inventorySource?: 'uvs_db' | 'marketcheck_mcp';
+  routingStatus?: 'dealer_assigned' | 'platform_inbox';
+  flowId?: string;
+  externalListingId?: string;
+  vehicleSnapshot?: Record<string, unknown>;
 }
 
 /**

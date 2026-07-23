@@ -6,6 +6,7 @@ vi.mock('../src/config/env.js', () => ({
     marketcheckMcpAuthType: 'bearer',
     marketcheckMcpAuthToken: 'secret-token',
     marketcheckMcpTimeoutMs: 5000,
+    marketcheckApiKey: 'test-api-key',
   },
 }));
 
@@ -25,7 +26,7 @@ describe('marketcheckMcpClient', () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({
+      text: async () => JSON.stringify({
         jsonrpc: '2.0',
         id: 'abc',
         result: {
@@ -50,7 +51,7 @@ describe('marketcheckMcpClient', () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 502,
-      json: async () => ({}),
+      text: async () => '{}',
     });
 
     const { callMarketcheckMcpTool } = await import('../src/services/marketcheckMcpClient.js');
@@ -67,9 +68,7 @@ describe('marketcheckMcpClient', () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => {
-        throw new Error('invalid json');
-      },
+      text: async () => 'invalid json',
     });
 
     const { callMarketcheckMcpTool } = await import('../src/services/marketcheckMcpClient.js');
@@ -77,7 +76,7 @@ describe('marketcheckMcpClient', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('malformed JSON');
+      expect(result.errorCode).toBe('MCP_MALFORMED_RESPONSE');
     }
   });
 
@@ -85,7 +84,7 @@ describe('marketcheckMcpClient', () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({
+      text: async () => JSON.stringify({
         jsonrpc: '2.0',
         id: 'abc',
         error: {
@@ -108,7 +107,7 @@ describe('marketcheckMcpClient', () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({
+      text: async () => JSON.stringify({
         unexpected: true,
       }),
     });
@@ -118,7 +117,7 @@ describe('marketcheckMcpClient', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('invalid JSON-RPC envelope');
+      expect(result.errorCode).toBe('MCP_INVALID_ENVELOPE');
     }
   });
 });

@@ -9,6 +9,9 @@ import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
+import { normalizeMarketcheckSearchResult } from '../services/marketcheckMcpNormalizer.js';
+import { signSearchResult } from '../lib/searchResultToken.js';
+import { recordFlowEvent } from '../lib/flowTelemetry.js';
 import type { ToolContext } from '../mcp-simple.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
@@ -110,6 +113,10 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
   const dealerCity = typeof dealer.city === 'string' ? dealer.city : undefined;
   const dealerState = typeof dealer.state === 'string' ? dealer.state : undefined;
   const dealerDistanceMiles = typeof dealer.distanceMiles === 'number' ? dealer.distanceMiles : undefined;
+  const searchResultToken = typeof source.searchResultToken === 'string' ? source.searchResultToken : undefined;
+  const flowId = typeof source.flowId === 'string' ? source.flowId : undefined;
+  const dealerDefined = (source.dealerDefined as Record<string, unknown> | undefined) ?? {};
+  const vdpUrl = typeof dealerDefined.vdpUrl === 'string' ? dealerDefined.vdpUrl : undefined;
 
   return {
     id: source.id,
@@ -121,6 +128,9 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
     ...(longitude !== undefined && { lng: longitude }),
     ...(dealerName && { dealerName }),
     ...(condition && { condition }),
+    ...(searchResultToken && { searchResultToken }),
+    ...(flowId && { flowId }),
+    ...(vdpUrl && { vdpUrl }),
     baseIdentity: {
       ...(year !== undefined && { year }),
       ...(make && { make }),
@@ -287,15 +297,26 @@ function buildReadableContent(totalCount: number, vehicles: unknown[], location?
 }
 
 function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
+  const location = searchParams.location.trim();
+  const zipMatch = location.match(/\b(\d{5})(?:-\d{4})?\b/);
+  const cityStateMatch = location.match(/^(.+?),\s*([A-Za-z]{2})$/);
   return {
-    location: searchParams.location,
-    condition: searchParams.condition,
-    maxPrice: searchParams.maxPrice,
+    ...(zipMatch ? { zip: zipMatch[1] } : {}),
+    ...(!zipMatch && cityStateMatch
+      ? { city: cityStateMatch[1].trim(), state: cityStateMatch[2].toUpperCase() }
+      : {}),
+    car_type: searchParams.condition,
+    price_range: searchParams.maxPrice ? `0-${Math.floor(searchParams.maxPrice)}` : undefined,
     make: searchParams.make,
     model: searchParams.model,
-    radiusMiles: searchParams.radiusMiles,
-    bodyStyle: searchParams.bodyStyle,
-    mileageMax: searchParams.mileageMax,
+    radius: Math.round(searchParams.radiusMiles ?? 50),
+    body_type: searchParams.bodyStyle,
+    miles_range: searchParams.mileageMax ? `0-${Math.floor(searchParams.mileageMax)}` : undefined,
+    rows: 24,
+    fetch_all_photos: false,
+    include_dealer_object: true,
+    include_mc_dealership_object: true,
+    include_build_object: true,
   };
 }
 
@@ -427,17 +448,11 @@ export async function searchVehicles(
     // Use single requestId for entire request to maintain correlation
     const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
 
-    if (CONFIG.marketcheckMcpBridgeEnabled) {
+    if (CONFIG.inventorySearchProvider === 'marketcheck_mcp') {
       const runId = randomUUID();
       const bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
-      if (!bridgeArgs.location || !bridgeArgs.condition) {
-        return {
-          success: false,
-          error: 'Bridge mapping failed: location and condition are required for upstream search-vehicles',
-        };
-      }
 
-      const bridgeCall = await callMarketcheckMcpTool('search-vehicles', bridgeArgs, requestId);
+      const bridgeCall = await callMarketcheckMcpTool('search_active_cars', bridgeArgs, requestId);
       if (!bridgeCall.success) {
         console.error(JSON.stringify({
           event: 'search_bridge_failed',
@@ -446,56 +461,109 @@ export async function searchVehicles(
           upstreamRequestId: bridgeCall.upstreamRequestId,
           status: bridgeCall.status,
           latencyMs: bridgeCall.latencyMs,
+          errorCode: bridgeCall.errorCode,
           error: bridgeCall.error,
         }));
-        return {
-          success: false,
-          error: bridgeCall.error,
+        console.warn(JSON.stringify({
+          event: 'search_provider_fallback',
+          flowId: runId,
+          requestId,
+          from: 'marketcheck_mcp',
+          to: 'uvs',
+          errorCode: bridgeCall.errorCode,
+        }));
+        recordFlowEvent({
+          flowId: runId,
+          eventName: 'search.fallback',
+          source: 'mcp-server',
+          provider: 'marketcheck_mcp',
+          requestId,
+          toolName: 'search_active_cars',
+          status: 'fallback',
+          errorCode: bridgeCall.errorCode,
+          durationMs: bridgeCall.latencyMs,
+          searchLocation: searchParams.location,
+        }).catch(() => {});
+      } else {
+        const marketcheck = normalizeMarketcheckSearchResult(bridgeCall.result);
+        const signedVehicles = marketcheck.vehicles.map((vehicle) => {
+          const dealer = vehicle.location.dealer;
+          const vin = vehicle.baseIdentity.vin;
+          const dealerId = dealer.dealerId;
+          return {
+            ...vehicle,
+            flowId: runId,
+            ...(vin && dealerId
+              ? {
+                  searchResultToken: signSearchResult({
+                    listingId: vehicle.baseIdentity.listingId ?? vehicle.id,
+                    vin,
+                    dealerId,
+                    dealerName: dealer.name,
+                    price: vehicle.pricing.price,
+                    currency: vehicle.pricing.currency ?? 'USD',
+                    provider: 'marketcheck_mcp',
+                    flowId: runId,
+                    vehicle: vehicle as unknown as Record<string, unknown>,
+                  }),
+                }
+              : {}),
+          };
+        });
+        const sourceInfo: SourceInfo = {
+          dataSource: 'marketcheck_mcp',
+          inventoryProvider: 'marketcheck',
+          normalizedAs: 'uvs',
         };
+        const normalized = normalizeBridgeSearchResult(
+          { vehicles: signedVehicles, totalCount: marketcheck.totalCount },
+          searchParams,
+          runId,
+          sourceInfo,
+        );
+        console.log(JSON.stringify({
+          event: 'search_bridge_success',
+          flowId: runId,
+          requestId,
+          correlationId: bridgeCall.correlationId,
+          upstreamRequestId: bridgeCall.upstreamRequestId,
+          status: bridgeCall.status,
+          latencyMs: bridgeCall.latencyMs,
+          resultsCount: marketcheck.totalCount,
+          normalizedCount: marketcheck.vehicles.length,
+          rejectedCount: marketcheck.rejectedCount,
+        }));
+        validateToolResult(normalized);
+        recordFlowEvent({
+          flowId: runId,
+          eventName: 'search.succeeded',
+          source: 'mcp-server',
+          provider: 'marketcheck_mcp',
+          requestId,
+          toolName: 'search_active_cars',
+          status: 'success',
+          durationMs: bridgeCall.latencyMs,
+          resultCount: marketcheck.totalCount,
+          searchLocation: searchParams.location,
+          payload: {
+            normalizedCount: marketcheck.vehicles.length,
+            rejectedCount: marketcheck.rejectedCount,
+          },
+        }).catch(() => {});
+        trackEvent('inventory.search', {
+          make: searchParams.make,
+          model: searchParams.model,
+          condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
+          priceMax: searchParams.maxPrice,
+          location: searchParams.location,
+          resultsCount: normalized.totalCount ?? 0,
+          searchDuration: Date.now() - startTime,
+        }, {
+          requestId,
+          sessionId: runId,
+        }).catch(() => {});
+        return { success: true, data: normalized };
       }
-
-      console.log(JSON.stringify({
-        event: 'search_bridge_success',
-        requestId,
-        correlationId: bridgeCall.correlationId,
-        upstreamRequestId: bridgeCall.upstreamRequestId,
-        status: bridgeCall.status,
-        latencyMs: bridgeCall.latencyMs,
-      }));
-
-      const sourceInfo: SourceInfo = {
-        dataSource: 'marketcheck_mcp',
-        inventoryProvider: 'marketcheck',
-        normalizedAs: 'uvs',
-      };
-      const normalized = normalizeBridgeSearchResult(bridgeCall.result, searchParams, runId, sourceInfo);
-      console.log(JSON.stringify({
-        event: 'vehicle_search_source',
-        requestId,
-        ...sourceInfo,
-      }));
-      validateToolResult(normalized);
-
-      trackEvent('inventory.search', {
-        make: searchParams.make,
-        model: searchParams.model,
-        condition: searchParams.condition as 'new' | 'used' | 'certified' | undefined,
-        priceMin: undefined,
-        priceMax: searchParams.maxPrice,
-        location: searchParams.location,
-        resultsCount: normalized.totalCount ?? 0,
-        searchDuration: Date.now() - startTime,
-      }, {
-        requestId,
-        sessionId: requestId,
-      }).catch(() => {
-        // Tracking failures should not break the request
-      });
-
-      return {
-        success: true,
-        data: normalized,
-      };
     }
     
     // Check cache first

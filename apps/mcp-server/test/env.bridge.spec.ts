@@ -19,21 +19,22 @@ describe('bridge env validation', () => {
     delete process.env.MARKETCHECK_MCP_AUTH_TOKEN;
     delete process.env.MARKETCHECK_MCP_AUTH_TYPE;
     delete process.env.MARKETCHECK_MCP_BRIDGE_ENABLED;
+    delete process.env.INVENTORY_SEARCH_PROVIDER;
   });
 
-  it('fails fast when bridge is enabled without URL', async () => {
+  it('uses the official hosted MCP when MarketCheck is primary', async () => {
     process.env.MARKETCHECK_MCP_BRIDGE_ENABLED = '1';
-
-    await expect(import('../src/config/env.js')).rejects.toThrow(
-      'MARKETCHECK_MCP_URL is required'
-    );
+    const { CONFIG } = await import('../src/config/env.js');
+    expect(CONFIG.inventorySearchProvider).toBe('marketcheck_mcp');
+    expect(CONFIG.marketcheckMcpUrl).toBe('https://api.marketcheck.com/mcp');
   });
 
-  it('does not require bridge env when bridge mode is disabled', async () => {
+  it('allows an explicit UVS primary override', async () => {
     process.env.MARKETCHECK_MCP_BRIDGE_ENABLED = '0';
+    process.env.INVENTORY_SEARCH_PROVIDER = 'uvs';
 
     const { CONFIG } = await import('../src/config/env.js');
     expect(CONFIG.marketcheckMcpBridgeEnabled).toBe(false);
-    expect(CONFIG.marketcheckMcpUrl).toBe('');
+    expect(CONFIG.inventorySearchProvider).toBe('uvs');
   });
 });

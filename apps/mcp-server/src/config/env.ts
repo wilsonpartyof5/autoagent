@@ -154,7 +154,11 @@ export const CONFIG = {
     'https://marketcheck-prod.apigee.net'
   ),
   marketcheckMcpBridgeEnabled: optionalBoolEnv('MARKETCHECK_MCP_BRIDGE_ENABLED', false),
-  marketcheckMcpUrl: optionalEnv('MARKETCHECK_MCP_URL', ''),
+  inventorySearchProvider: optionalEnv(
+    'INVENTORY_SEARCH_PROVIDER',
+    'marketcheck_mcp'
+  ) as 'marketcheck_mcp' | 'uvs',
+  marketcheckMcpUrl: optionalEnv('MARKETCHECK_MCP_URL', 'https://api.marketcheck.com/mcp'),
   marketcheckMcpAuthType: optionalEnv('MARKETCHECK_MCP_AUTH_TYPE', 'bearer') as 'none' | 'bearer' | 'x-api-key',
   marketcheckMcpAuthToken: optionalEnv('MARKETCHECK_MCP_AUTH_TOKEN', ''),
   marketcheckMcpTimeoutMs: optionalIntEnv('MARKETCHECK_MCP_TIMEOUT_MS', 10000),
@@ -199,7 +203,14 @@ function validateConfig(): void {
     );
   }
 
-  if (CONFIG.marketcheckMcpBridgeEnabled) {
+  if (!['marketcheck_mcp', 'uvs'].includes(CONFIG.inventorySearchProvider)) {
+    throw new Error(
+      `❌ INVENTORY_SEARCH_PROVIDER must be one of: marketcheck_mcp, uvs\n` +
+        `   Received: ${CONFIG.inventorySearchProvider}`
+    );
+  }
+
+  if (CONFIG.marketcheckMcpBridgeEnabled || CONFIG.inventorySearchProvider === 'marketcheck_mcp') {
     if (!CONFIG.marketcheckMcpUrl) {
       throw new Error(
         '❌ MARKETCHECK_MCP_URL is required when MARKETCHECK_MCP_BRIDGE_ENABLED=true'
@@ -218,7 +229,14 @@ function validateConfig(): void {
       );
     }
 
-    if (CONFIG.marketcheckMcpAuthType !== 'none' && !CONFIG.marketcheckMcpAuthToken) {
+    const usesOfficialApiKey =
+      new URL(CONFIG.marketcheckMcpUrl).hostname === 'api.marketcheck.com' &&
+      Boolean(CONFIG.marketcheckApiKey);
+    if (
+      CONFIG.marketcheckMcpAuthType !== 'none' &&
+      !CONFIG.marketcheckMcpAuthToken &&
+      !usesOfficialApiKey
+    ) {
       throw new Error(
         '❌ MARKETCHECK_MCP_AUTH_TOKEN is required when bridge mode is enabled and auth type is not none'
       );
@@ -234,7 +252,9 @@ function validateConfig(): void {
     console.log(`   MarketCheck API Key: ${CONFIG.marketcheckApiKey ? '✅ Set' : '❌ Missing'}`);
     console.log(
       `   MarketCheck MCP Bridge: ${
-        CONFIG.marketcheckMcpBridgeEnabled ? `Enabled (${CONFIG.marketcheckMcpUrl || 'missing URL'})` : 'Disabled'
+        CONFIG.inventorySearchProvider === 'marketcheck_mcp'
+          ? `Primary (${new URL(CONFIG.marketcheckMcpUrl).origin})`
+          : 'UVS primary'
       }`
     );
     console.log(`   Dashboard Ingest URL: ${CONFIG.dashboardIngestUrl}`);
