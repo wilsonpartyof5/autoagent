@@ -10,8 +10,8 @@ const InputSchema = z
     vin: z.string().regex(/^[A-HJ-NPR-Z0-9]{11,17}$/i).optional(),
     flowId: z.string().optional(),
   })
-  .refine((value) => value.listingId || value.vin, {
-    message: 'listingId or vin is required',
+  .refine((value) => value.vin, {
+    message: 'vin is required for a current detail lookup',
   });
 
 export async function getVehicleDetails(params: unknown) {
@@ -24,12 +24,14 @@ export async function getVehicleDetails(params: unknown) {
     'search_active_cars',
     {
       ...(parsed.data.vin ? { vin: parsed.data.vin } : {}),
-      ...(parsed.data.listingId ? { id: parsed.data.listingId } : {}),
       rows: 1,
       fetch_all_photos: true,
       include_dealer_object: true,
       include_mc_dealership_object: true,
       include_build_object: true,
+      include_finance: true,
+      include_lease: true,
+      include_relevant_links: true,
     },
     flowId,
   );
@@ -57,7 +59,9 @@ export async function getVehicleDetails(params: unknown) {
   }
 
   const normalized = normalizeMarketcheckSearchResult(call.result);
-  const vehicle = normalized.vehicles[0];
+  const vehicle =
+    normalized.vehicles.find((candidate) => candidate.id === parsed.data.listingId) ??
+    normalized.vehicles[0];
   if (!vehicle) {
     return { success: false, error: 'Vehicle detail is no longer available.' };
   }
