@@ -37,6 +37,9 @@ vi.mock('../src/lib/crypto.js', () => ({
 
 import { getUVSVehicleById, getUVSVehicleByVIN } from '../src/db/uvs-vehicles.js';
 import { insertLead } from '../src/data/db.js';
+import { forwardLead } from '../src/services/forwardLead.js';
+import { deliverLead } from '../src/services/deliverLead.js';
+import { signSearchResult } from '../src/lib/searchResultToken.js';
 
 describe('submitLead (UVS-first)', () => {
   // Sample UVS vehicle for testing
@@ -589,6 +592,50 @@ describe('submitLead (UVS-first)', () => {
       const result = await submitLead(params);
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('MarketCheck nationwide leads', () => {
+    it('accepts a signed search result and routes it to the platform inbox', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(null);
+      vi.mocked(getUVSVehicleByVIN).mockResolvedValue(null);
+      const vehicle = {
+        id: 'mc-listing-1',
+        baseIdentity: { vin: '1HGCM82633A123456', year: 2024, make: 'Honda', model: 'Accord' },
+        pricing: { price: 28995, currency: 'USD' },
+        location: { dealer: { dealerId: 'mc-dealer-1', name: 'Example Honda' } },
+      };
+      const searchResultToken = signSearchResult({
+        listingId: vehicle.id,
+        vin: vehicle.baseIdentity.vin,
+        dealerId: vehicle.location.dealer.dealerId,
+        dealerName: vehicle.location.dealer.name,
+        price: vehicle.pricing.price,
+        currency: 'USD',
+        provider: 'marketcheck_mcp',
+        flowId: 'flow-1',
+        vehicle,
+      });
+
+      const result = await submitLead({
+        vehicleId: vehicle.id,
+        vin: vehicle.baseIdentity.vin,
+        dealerId: vehicle.location.dealer.dealerId,
+        dealerName: vehicle.location.dealer.name,
+        pricing: vehicle.pricing,
+        user: { name: 'Jane Doe', email: 'jane@example.com' },
+        consent: true,
+        searchResultToken,
+      });
+
+      expect(result.success).toBe(true);
+      expect(forwardLead).toHaveBeenCalledWith(expect.objectContaining({
+        inventorySource: 'marketcheck_mcp',
+        routingStatus: 'platform_inbox',
+        flowId: 'flow-1',
+        vehicleSnapshot: vehicle,
+      }));
+      expect(deliverLead).not.toHaveBeenCalled();
     });
   });
 });
