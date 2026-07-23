@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Home, LineChart, Layers, DollarSign, Settings } from "lucide-react";
+import { Home, LineChart, Layers, DollarSign, Settings, ShieldCheck, Activity, Inbox } from "lucide-react";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { AppHeader } from "@/components/dashboard/app-header";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { Dealership } from "@/lib/supabase/dealerships";
 
-type IconKey = "leads" | "analytics" | "inventory" | "billing" | "settings";
+type IconKey = "leads" | "analytics" | "inventory" | "billing" | "settings" | "admin" | "sessions" | "admin-leads";
 
 type SerializedNavItem = {
   href: string;
@@ -30,6 +30,9 @@ const iconMap: Record<IconKey, LucideIcon> = {
   inventory: Layers,
   billing: DollarSign,
   settings: Settings,
+  admin: ShieldCheck,
+  sessions: Activity,
+  "admin-leads": Inbox,
 };
 
 export function AppShell({ navItems, children, dealerships, activeDealership, platformAdmin = false }: AppShellProps) {

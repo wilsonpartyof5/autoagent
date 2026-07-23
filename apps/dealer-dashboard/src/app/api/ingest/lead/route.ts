@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { upsertLead } from '../../../../lib/db';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     // Validate required fields
-    const { leadId, dealerId, vehicleId, vin, createdAt, encPayload } = body;
+    const {
+      leadId,
+      dealerId,
+      vehicleId,
+      vin,
+      createdAt,
+      encPayload,
+      inventorySource,
+      routingStatus,
+      flowId,
+      externalListingId,
+      vehicleSnapshot,
+    } = body;
     
     if (!leadId || !vehicleId || !createdAt || !encPayload) {
       return NextResponse.json({ 
@@ -32,15 +44,33 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Store the lead
-    upsertLead({
+    const admin = createAdminClient();
+    const { error } = await admin.from('leads').upsert({
       id: leadId,
-      dealerId,
-      vehicleId,
+      dealer_id: dealerId ?? null,
+      vehicle_id: vehicleId,
       vin,
-      encPayload,
-      createdAt,
-    });
+      enc_payload: encPayload,
+      consent: true,
+      created_at: new Date(createdAt).toISOString(),
+      status: 'new',
+      source: 'chatgpt',
+      user_id: null,
+      inventory_source: inventorySource ?? 'uvs_db',
+      routing_status: routingStatus ?? 'dealer_assigned',
+      flow_id: flowId ?? null,
+      external_listing_id: externalListingId ?? null,
+      vehicle_snapshot: vehicleSnapshot ?? null,
+    }, { onConflict: 'id' });
+
+    if (error) {
+      console.error('Lead ingest Supabase error', {
+        leadId,
+        code: error.code,
+        message: error.message,
+      });
+      return NextResponse.json({ error: 'Unable to persist lead' }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

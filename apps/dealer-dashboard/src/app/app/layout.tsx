@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
-const navItems = [
+const dealerNavItems = [
   { href: "/app/leads", label: "Leads", icon: "leads" as const },
   { href: "/app/analytics", label: "Analytics", icon: "analytics" as const },
   { href: "/app/inventory", label: "Inventory", icon: "inventory" as const },
@@ -35,6 +35,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   } catch (error) {
     console.error('[app/layout] Failed to load profile:', error);
   }
+
+  const navItems = profile?.platformRole === 'platform_admin'
+    ? [
+        ...dealerNavItems,
+        { href: "/app/admin/overview", label: "Platform Overview", icon: "admin" as const },
+        { href: "/app/admin/sessions", label: "App Sessions", icon: "sessions" as const },
+        { href: "/app/admin/leads", label: "Nationwide Leads", icon: "admin-leads" as const },
+      ]
+    : dealerNavItems;
 
   try {
     dealerships = await fetchUserDealerships();
