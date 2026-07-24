@@ -11,7 +11,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v19';
+export const VEHICLE_WIDGET_VERSION = 'v20';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const WIDGET_CSP = {
@@ -81,6 +81,29 @@ const VEHICLE_SEARCH_INPUT_SCHEMA = {
     mileageMax: {
       type: 'number',
       description: 'Maximum mileage',
+    },
+    latitude: {
+      type: 'number',
+      minimum: -90,
+      maximum: 90,
+      description: 'Optional map center latitude for Search this area',
+    },
+    longitude: {
+      type: 'number',
+      minimum: -180,
+      maximum: 180,
+      description: 'Optional map center longitude for Search this area',
+    },
+    mapBounds: {
+      type: 'object',
+      description: 'Visible map bounds for UI context and diagnostics',
+      properties: {
+        north: { type: 'number' },
+        south: { type: 'number' },
+        east: { type: 'number' },
+        west: { type: 'number' },
+      },
+      required: ['north', 'south', 'east', 'west'],
     },
   },
   required: [],
@@ -236,7 +259,14 @@ export function getAvailableTools() {
     },
     {
       name: 'submit-lead',
+      title: 'Submit Vehicle Lead',
       description: 'Submit a lead for a vehicle test drive or quote request',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -366,6 +396,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v19.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v18.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v17.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v16.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

@@ -311,8 +311,12 @@ function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string,
   const zipMatch = location.match(/\b(\d{5})(?:-\d{4})?\b/);
   const cityStateMatch = location.match(/^(.+?),\s*([A-Za-z]{2})$/);
   return {
-    ...(zipMatch ? { zip: zipMatch[1] } : {}),
-    ...(!zipMatch && cityStateMatch
+    ...(searchParams.latitude !== undefined && searchParams.longitude !== undefined
+      ? { latitude: searchParams.latitude, longitude: searchParams.longitude }
+      : zipMatch
+        ? { zip: zipMatch[1] }
+        : {}),
+    ...(searchParams.latitude === undefined && !zipMatch && cityStateMatch
       ? { city: cityStateMatch[1].trim(), state: cityStateMatch[2].toUpperCase() }
       : {}),
     car_type: searchParams.condition,
