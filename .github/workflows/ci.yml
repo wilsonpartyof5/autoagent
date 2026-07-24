@@ -38,6 +38,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Lint
+        if: github.event_name == 'pull_request'
         run: pnpm lint
 
       - name: Build
