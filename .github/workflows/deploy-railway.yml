@@ -1,9 +1,7 @@
 name: Deploy MCP Server to Railway
 
 on:
-  push:
-    branches:
-      - main
+  # Manual only — Railway auto-deploys via GitHub webhook once CI passes (Wait for CI).
   workflow_dispatch:
 
 concurrency:
