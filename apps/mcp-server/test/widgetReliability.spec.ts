@@ -22,7 +22,7 @@ describe('vehicle widget reliability contract', () => {
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
     expect(html.match(/function hydrate\(/g)).toHaveLength(1);
     expect(html).toContain('function attachBridge()');
-    expect(html).toContain('setInterval(() => {');
+    expect(html).toContain('setInterval(()=>');
     expect(html).toContain("receive(window.openai?.toolOutput,'poll.output')");
   });
 
