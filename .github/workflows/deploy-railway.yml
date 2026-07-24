@@ -1,0 +1,37 @@
+name: Deploy MCP Server to Railway
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-railway-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy MCP server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@4.6.0
+
+      - name: Deploy latest main to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error::RAILWAY_TOKEN secret is missing. Add a Railway project token in GitHub repo secrets."
+            exit 1
+          fi
+          railway up \
+            --service 7f4f7a3a-e450-47a0-b445-07e62c79b6e1 \
+            --environment d4fdd9d4-2695-4080-9ca0-3f0fa3eee458 \
+            --detach \
+            --ci
