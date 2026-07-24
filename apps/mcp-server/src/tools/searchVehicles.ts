@@ -13,6 +13,11 @@ import { normalizeMarketcheckSearchResult } from '../services/marketcheckMcpNorm
 import { signSearchResult } from '../lib/searchResultToken.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
 import type { ToolContext } from '../mcp-simple.js';
+import { getOpenAiWidgetCspMeta } from '../mcp-simple.js';
+import {
+  decodeProxiedVehicleImageSource,
+  fetchVehicleImageDataUrl,
+} from '../app/vehicle-image.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -295,6 +300,49 @@ function summarizeVehicleLine(vehicle: unknown): string {
   return `- ${parts.join(' • ')}`;
 }
 
+function resolveInlinePhotoSource(photoUrl: string): string | null {
+  if (!photoUrl || photoUrl.startsWith('data:')) return null;
+  if (photoUrl.includes('/vehicle-image?')) {
+    return decodeProxiedVehicleImageSource(photoUrl);
+  }
+  if (photoUrl.startsWith('https://')) return photoUrl;
+  return null;
+}
+
+async function inlineWidgetPrimaryPhotos(
+  vehicles: Array<Record<string, unknown>>,
+): Promise<{ inlined: number; failed: number }> {
+  let inlined = 0;
+  let failed = 0;
+  await Promise.all(vehicles.map(async (vehicle) => {
+    const media = (vehicle.media as Record<string, unknown> | undefined) ?? {};
+    const photoUrl = (media.primaryPhotoUrl as string | undefined)
+      ?? (vehicle.photoUrl as string | undefined)
+      ?? (vehicle.image as string | undefined);
+    const sourceUrl = photoUrl ? resolveInlinePhotoSource(photoUrl) : null;
+    if (!sourceUrl) {
+      if (photoUrl && !photoUrl.startsWith('data:')) failed += 1;
+      return;
+    }
+    const dataUrl = await fetchVehicleImageDataUrl(sourceUrl);
+    if (!dataUrl) {
+      failed += 1;
+      return;
+    }
+    inlined += 1;
+    vehicle.photoUrl = dataUrl;
+    vehicle.image = dataUrl;
+    vehicle.media = {
+      ...media,
+      primaryPhotoUrl: dataUrl,
+      photoUrls: Array.isArray(media.photoUrls) && media.photoUrls.length
+        ? [dataUrl, ...(media.photoUrls as string[]).slice(1)]
+        : [dataUrl],
+    };
+  }));
+  return { inlined, failed };
+}
+
 function buildReadableContent(totalCount: number, vehicles: unknown[], location?: string): { type: string; text: string }[] {
   const header = `Found ${totalCount} vehicles${location ? ` near ${location}` : ''}.`;
   if (!vehicles.length) {
@@ -334,12 +382,12 @@ function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string,
   };
 }
 
-function normalizeBridgeSearchResult(
+async function normalizeBridgeSearchResult(
   upstreamResult: unknown,
   searchParams: SearchParams,
   runId: string,
   sourceInfo: SourceInfo
-): SearchVehiclesData {
+): Promise<SearchVehiclesData> {
   const bridge = upstreamResult as {
     content?: unknown;
     structuredContent?: unknown;
@@ -367,6 +415,16 @@ function normalizeBridgeSearchResult(
     .slice(0, Math.max(MAX_BRIDGE_RESULTS, MAX_WIDGET_RESULTS * 4))
     .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
   const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_BRIDGE_RESULTS);
+  const inlineStats = await inlineWidgetPrimaryPhotos(vehicles);
+  if (inlineStats.inlined || inlineStats.failed) {
+    console.log(JSON.stringify({
+      event: 'widget_images_inlined',
+      flowId: runId,
+      inlined: inlineStats.inlined,
+      failed: inlineStats.failed,
+      vehicleCount: vehicles.length,
+    }));
+  }
   const dealerSummary = buildDealerSummary(compactVehicles);
 
   const content = buildReadableContent(totalCount, vehicles, searchParams.location);
@@ -398,6 +456,7 @@ function normalizeBridgeSearchResult(
         inventoryProvider: sourceInfo.inventoryProvider,
         normalizedAs: sourceInfo.normalizedAs,
       },
+      ...getOpenAiWidgetCspMeta(),
     },
     ...sourceInfo,
   };
@@ -540,7 +599,7 @@ export async function searchVehicles(
           inventoryProvider: 'marketcheck',
           normalizedAs: 'uvs',
         };
-        const normalized = normalizeBridgeSearchResult(
+        const normalized = await normalizeBridgeSearchResult(
           { vehicles: signedVehicles, totalCount: marketcheck.totalCount },
           searchParams,
           runId,

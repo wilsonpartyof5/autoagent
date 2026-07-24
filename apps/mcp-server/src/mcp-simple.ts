@@ -9,25 +9,43 @@ import { renderVehicleResults } from './tools/renderVehicleResults.js';
 import { getVehicleDetails } from './tools/getVehicleDetails.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v21';
+export const VEHICLE_WIDGET_VERSION = 'v22';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
-const WIDGET_CSP = {
-  connectDomains: [
-    'https://autoagentmcp-server-production.up.railway.app',
-  ],
-  resourceDomains: [
-    'https://unpkg.com',
-    'https://tile.openstreetmap.org',
-    'https://vehicle-images.dealerinspire.com',
-    'https://pictures.dealer.com',
-    'https://d2v1gjawtegg5z.cloudfront.net',
-    'https://www.myrockhillgmc.com',
-    'https://autoagentmcp-server-production.up.railway.app',
-  ],
-};
+const STATIC_WIDGET_RESOURCE_DOMAINS = [
+  'https://unpkg.com',
+  'https://tile.openstreetmap.org',
+  'https://vehicle-images.dealerinspire.com',
+  'https://pictures.dealer.com',
+  'https://d2v1gjawtegg5z.cloudfront.net',
+  'https://www.myrockhillgmc.com',
+];
+
+export function getWidgetCsp() {
+  const widgetHost = CONFIG.widgetHost.replace(/\/$/, '');
+  const resourceDomains = [...STATIC_WIDGET_RESOURCE_DOMAINS];
+  if (!resourceDomains.includes(widgetHost)) {
+    resourceDomains.push(widgetHost);
+  }
+  return {
+    connectDomains: [widgetHost],
+    resourceDomains,
+  };
+}
+
+export function getOpenAiWidgetCspMeta() {
+  const csp = getWidgetCsp();
+  return {
+    'openai/widgetCSP': {
+      connect_domains: csp.connectDomains,
+      resource_domains: csp.resourceDomains,
+      frame_domains: [],
+    },
+  };
+}
 
 const VEHICLE_RESULTS_OUTPUT_SCHEMA = {
   type: 'object',
@@ -396,6 +414,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v21.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v20.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v19.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v18.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
@@ -432,15 +451,11 @@ export function readMcpResource(uri: string) {
         text: readFileSync(path, 'utf8'),
         _meta: {
           ui: {
-            csp: WIDGET_CSP,
+            csp: getWidgetCsp(),
           },
           'openai/widgetDescription': 'Interactive map and card-based vehicle inventory browser.',
           'openai/widgetPrefersBorder': true,
-          'openai/widgetCSP': {
-            connect_domains: WIDGET_CSP.connectDomains,
-            resource_domains: WIDGET_CSP.resourceDomains,
-            frame_domains: [],
-          },
+          ...getOpenAiWidgetCspMeta(),
         },
       },
     ],

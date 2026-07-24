@@ -60,6 +60,19 @@ describe('vehicle image proxy', () => {
     expect(response.send).toHaveBeenCalled();
   });
 
+  it('returns an inline data URL for a valid upstream image', async () => {
+    const { fetchVehicleImageDataUrl } = await import('../src/app/vehicle-image.js');
+    global.fetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { 'content-type': 'image/jpeg', 'content-length': '3' },
+    })) as typeof fetch;
+
+    const dataUrl = await fetchVehicleImageDataUrl(
+      'https://d2v1gjawtegg5z.cloudfront.net/example.jpg',
+    );
+    expect(dataUrl).toBe('data:image/jpeg;base64,AQID');
+  });
+
   it('rejects unsigned requests', async () => {
     const { handleVehicleImage } = await import('../src/app/vehicle-image.js');
     const response = {
