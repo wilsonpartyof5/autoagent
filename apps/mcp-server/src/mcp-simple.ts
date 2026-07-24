@@ -11,7 +11,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v20';
+export const VEHICLE_WIDGET_VERSION = 'v21';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const WIDGET_CSP = {
@@ -396,6 +396,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v20.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v19.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v18.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v17.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

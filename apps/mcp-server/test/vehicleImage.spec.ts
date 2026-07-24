@@ -55,6 +55,8 @@ describe('vehicle image proxy', () => {
     );
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('image/jpeg');
+    expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
+    expect(response.headers['Cross-Origin-Resource-Policy']).toBe('cross-origin');
     expect(response.send).toHaveBeenCalled();
   });
 
