@@ -1,7 +1,9 @@
 name: Deploy MCP Server to Railway
 
 on:
-  # Manual only — Railway auto-deploys via GitHub webhook once CI passes (Wait for CI).
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -26,8 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "::error::RAILWAY_TOKEN secret is missing. Add a Railway project token in GitHub repo secrets."
-            exit 1
+            echo "::warning::RAILWAY_TOKEN secret is not set — skipping CLI deploy."
+            echo "Railway GitHub autodeploy should handle main pushes when Wait for CI passes."
+            exit 0
           fi
           railway up \
             --service 7f4f7a3a-e450-47a0-b445-07e62c79b6e1 \
