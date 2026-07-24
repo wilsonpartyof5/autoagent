@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { isIP } from 'net';
 import type { Request, Response } from 'express';
 import { CONFIG } from '../config/env.js';
@@ -42,6 +42,11 @@ export function proxiedVehicleImageUrl(sourceUrl: string): string {
 }
 
 export async function handleVehicleImage(req: Request, res: Response) {
+  const imageRequestId = randomUUID();
+  const startedAt = Date.now();
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Vary', 'Origin');
   const encoded = typeof req.query.src === 'string' ? req.query.src : '';
   const provided = typeof req.query.sig === 'string' ? req.query.sig : '';
   const expected = signature(encoded);
@@ -52,6 +57,12 @@ export async function handleVehicleImage(req: Request, res: Response) {
     providedBuffer.length !== expectedBuffer.length ||
     !timingSafeEqual(providedBuffer, expectedBuffer)
   ) {
+    console.warn(JSON.stringify({
+      event: 'vehicle_image_rejected',
+      imageRequestId,
+      status: 403,
+      errorCode: 'IMAGE_SIGNATURE_INVALID',
+    }));
     return res.status(403).json({ error: 'Invalid image signature' });
   }
 
@@ -59,6 +70,12 @@ export async function handleVehicleImage(req: Request, res: Response) {
   try {
     target = decodeSource(encoded);
   } catch {
+    console.warn(JSON.stringify({
+      event: 'vehicle_image_rejected',
+      imageRequestId,
+      status: 400,
+      errorCode: 'IMAGE_SOURCE_INVALID',
+    }));
     return res.status(400).json({ error: 'Invalid image source' });
   }
 
@@ -78,6 +95,7 @@ export async function handleVehicleImage(req: Request, res: Response) {
       console.warn(
         JSON.stringify({
           event: 'vehicle_image_failed',
+          imageRequestId,
           imageHost: target.hostname,
           status: upstream.status,
           errorCode: `IMAGE_HTTP_${upstream.status}`,
@@ -91,15 +109,37 @@ export async function handleVehicleImage(req: Request, res: Response) {
       !contentType.toLowerCase().startsWith('image/') ||
       contentLength > MAX_IMAGE_BYTES
     ) {
+      console.warn(JSON.stringify({
+        event: 'vehicle_image_failed',
+        imageRequestId,
+        imageHost: target.hostname,
+        status: 415,
+        errorCode: 'IMAGE_RESPONSE_INVALID',
+      }));
       return res.status(415).json({ error: 'Invalid image response' });
     }
     const bytes = Buffer.from(await upstream.arrayBuffer());
     if (bytes.length > MAX_IMAGE_BYTES) {
+      console.warn(JSON.stringify({
+        event: 'vehicle_image_failed',
+        imageRequestId,
+        imageHost: target.hostname,
+        status: 413,
+        errorCode: 'IMAGE_TOO_LARGE',
+      }));
       return res.status(413).json({ error: 'Image too large' });
     }
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    console.log(JSON.stringify({
+      event: 'vehicle_image_success',
+      imageRequestId,
+      imageHost: target.hostname,
+      status: 200,
+      bytes: bytes.length,
+      durationMs: Date.now() - startedAt,
+    }));
     return res.status(200).send(bytes);
   } catch (error) {
     const errorCode =
@@ -109,6 +149,7 @@ export async function handleVehicleImage(req: Request, res: Response) {
     console.warn(
       JSON.stringify({
         event: 'vehicle_image_failed',
+        imageRequestId,
         imageHost: target.hostname,
         errorCode,
       }),

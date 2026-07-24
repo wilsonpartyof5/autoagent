@@ -55,6 +55,8 @@ describe('vehicle image proxy', () => {
     );
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('image/jpeg');
+    expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
+    expect(response.headers['Cross-Origin-Resource-Policy']).toBe('cross-origin');
     expect(response.send).toHaveBeenCalled();
   });
 
@@ -62,6 +64,8 @@ describe('vehicle image proxy', () => {
     const { handleVehicleImage } = await import('../src/app/vehicle-image.js');
     const response = {
       statusCode: 200,
+      headers: {} as Record<string, string>,
+      setHeader(name: string, value: string) { this.headers[name] = value; },
       status(code: number) { this.statusCode = code; return this; },
       json: vi.fn(function (this: any) { return this; }),
     };

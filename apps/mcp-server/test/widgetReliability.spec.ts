@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v20"');
-    expect(html).toContain("VERSION='v20'");
+    expect(html).toContain('autoagent-widget-version" content="v21"');
+    expect(html).toContain("VERSION='v21'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -30,6 +30,14 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("requestDisplayMode({mode})");
     expect(html).toContain('sendFollowUpMessage');
     expect(html).toContain('setWidgetState');
+  });
+
+  it('reports intrinsic height and gates map bounds on real dimensions and user input', () => {
+    expect(html).toContain('notifyIntrinsicHeight(appHeight)');
+    expect(html).toContain('new ResizeObserver');
+    expect(html).toContain('rect.width<240||rect.height<240');
+    expect(html).toContain('!this.userInteracted');
+    expect(html).toContain("event('map:bounds-skipped'");
   });
 
   it('supports zoom-aware pins and Search this area', () => {

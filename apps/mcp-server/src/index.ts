@@ -196,6 +196,13 @@ app.get('/.well-known/openapi.yaml', (req, res) => {
 
 // UVS Ingestion API
 app.use('/api/ingest', createIngestionRouter());
+app.options('/vehicle-image', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.status(204).end();
+});
 app.get('/vehicle-image', handleVehicleImage);
 
 function summarizeMcpRequest(body: unknown) {
