@@ -109,6 +109,14 @@ export const SearchParamsSchema = z.object({
   radiusMiles: z.number().positive().max(500).optional(),
   bodyStyle: z.string().optional(),
   mileageMax: z.number().positive().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  mapBounds: z.object({
+    north: z.number().min(-90).max(90),
+    south: z.number().min(-90).max(90),
+    east: z.number().min(-180).max(180),
+    west: z.number().min(-180).max(180),
+  }).optional(),
 });
 
 // TypeScript types derived from schemas

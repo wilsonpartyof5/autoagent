@@ -39,6 +39,13 @@ export default async function PlatformOverviewPage() {
   const hydrationEvents = rows.filter((event) => event.event_name.startsWith('widget.hydrate:'));
   const imageLoads = rows.filter((event) => event.event_name === 'widget.image:loaded');
   const imageErrors = rows.filter((event) => event.event_name === 'widget.image:error');
+  const mapInteractions = rows.filter((event) =>
+    event.event_name.startsWith('widget.map:') ||
+    event.event_name.startsWith('widget.selection:') ||
+    event.event_name.startsWith('widget.cluster:')
+  );
+  const refinements = rows.filter((event) => event.event_name.startsWith('widget.refine:'));
+  const fullscreenSessions = rows.filter((event) => event.event_name === 'widget.display:fullscreen');
   const recentDiagnostics = rows.filter((event) =>
     event.event_name.startsWith('widget.') ||
     event.event_name === 'provider.canary' ||
@@ -64,6 +71,9 @@ export default async function PlatformOverviewPage() {
     ['Widget hydration events', hydrationEvents.length],
     ['Image hosts loaded', imageLoads.length],
     ['Image load errors', imageErrors.length],
+    ['Map interactions', mapInteractions.length],
+    ['Search refinements', refinements.length],
+    ['Fullscreen opens', fullscreenSessions.length],
   ];
 
   return (

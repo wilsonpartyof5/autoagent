@@ -89,4 +89,48 @@ describe('searchVehicles bridge mode', () => {
     expect(result.success).toBe(true);
     expect(result.data?.totalCount).toBe(0);
   });
+
+  it('maps Search this area center and radius to MarketCheck', async () => {
+    mockCallMarketcheckMcpTool.mockResolvedValue({
+      success: true,
+      result: {
+        structuredContent: {
+          success: true,
+          data: {
+            num_found: 1,
+            listings: [{
+              id: 'veh-map-1',
+              vin: '1HGCM82633A123456',
+              price: 25000,
+              inventory_type: 'used',
+              build: { year: 2024, make: 'Honda', model: 'Accord' },
+              dealer: { id: 'dealer-1', name: 'Test Dealer', latitude: 35.2, longitude: -80.8 },
+            }],
+          },
+        },
+      },
+      correlationId: 'corr-map',
+      upstreamRequestId: 'up-map',
+      status: 200,
+      latencyMs: 20,
+    });
+    const { searchVehicles } = await import('../src/tools/searchVehicles.js');
+    await searchVehicles({
+      location: 'Charlotte, NC',
+      condition: 'used',
+      latitude: 35.2271,
+      longitude: -80.8431,
+      radiusMiles: 18,
+      mapBounds: { north: 35.4, south: 35.0, east: -80.6, west: -81.0 },
+    });
+    expect(mockCallMarketcheckMcpTool).toHaveBeenCalledWith(
+      'search_active_cars',
+      expect.objectContaining({
+        latitude: 35.2271,
+        longitude: -80.8431,
+        radius: 18,
+      }),
+      expect.any(String),
+    );
+  });
 });
