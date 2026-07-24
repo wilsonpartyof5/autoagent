@@ -550,7 +550,8 @@ app.post('/widget/beacon', express.json(), (req, res) => {
       : null;
   const tag = typeof b.tag === 'string' ? b.tag.slice(0, 100) : 'unknown';
   const detail = typeof b.detail === 'string' ? b.detail.slice(0, 500) : undefined;
-  console.log(JSON.stringify({evt:'diag.beacon', flowId, tag, detail, ts:Date.now()}));
+  const imageHost = typeof b.imageHost === 'string' ? b.imageHost.slice(0, 200) : undefined;
+  console.log(JSON.stringify({evt:'diag.beacon', flowId, tag, detail, imageHost, ts:Date.now()}));
   if (flowId) {
     recordFlowEvent({
       flowId,

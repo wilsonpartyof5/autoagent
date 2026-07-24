@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v21"');
-    expect(html).toContain("VERSION='v21'");
+    expect(html).toContain('autoagent-widget-version" content="v22"');
+    expect(html).toContain("VERSION='v22'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {

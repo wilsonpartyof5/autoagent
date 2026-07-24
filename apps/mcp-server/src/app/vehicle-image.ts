@@ -4,7 +4,9 @@ import type { Request, Response } from 'express';
 import { CONFIG } from '../config/env.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_INLINE_IMAGE_BYTES = 256 * 1024;
 const IMAGE_TIMEOUT_MS = 8_000;
+const INLINE_IMAGE_TIMEOUT_MS = 2_500;
 
 function signature(source: string): string {
   return createHmac('sha256', Buffer.from(CONFIG.leadEncKey, 'base64'))
@@ -39,6 +41,79 @@ export function proxiedVehicleImageUrl(sourceUrl: string): string {
   url.searchParams.set('src', source);
   url.searchParams.set('sig', signature(source));
   return url.toString();
+}
+
+function authenticatedImageTarget(sourceUrl: string): URL {
+  const target = new URL(sourceUrl);
+  if (target.hostname === 'api.marketcheck.com') {
+    target.searchParams.set('api_key', CONFIG.marketcheckApiKey);
+  }
+  return target;
+}
+
+async function fetchVehicleImageBytes(
+  sourceUrl: string,
+  options: { timeoutMs?: number; maxBytes?: number } = {},
+): Promise<{ bytes: Buffer; contentType: string } | null> {
+  let target: URL;
+  try {
+    target = authenticatedImageTarget(sourceUrl);
+    if (target.protocol !== 'https:' || privateIp(target.hostname)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const timeoutMs = options.timeoutMs ?? IMAGE_TIMEOUT_MS;
+  const maxBytes = options.maxBytes ?? MAX_IMAGE_BYTES;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const upstream = await fetch(target, {
+      signal: controller.signal,
+      redirect: 'error',
+      headers: { Accept: 'image/*' },
+    });
+    if (!upstream.ok) return null;
+
+    const contentType = upstream.headers.get('content-type') ?? '';
+    const contentLength = Number(upstream.headers.get('content-length') ?? 0);
+    if (
+      !contentType.toLowerCase().startsWith('image/') ||
+      contentLength > maxBytes
+    ) {
+      return null;
+    }
+
+    const bytes = Buffer.from(await upstream.arrayBuffer());
+    if (bytes.length > maxBytes) return null;
+    return { bytes, contentType };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchVehicleImageDataUrl(sourceUrl: string): Promise<string | null> {
+  const fetched = await fetchVehicleImageBytes(sourceUrl, {
+    timeoutMs: INLINE_IMAGE_TIMEOUT_MS,
+    maxBytes: MAX_INLINE_IMAGE_BYTES,
+  });
+  if (!fetched) return null;
+  return `data:${fetched.contentType};base64,${fetched.bytes.toString('base64')}`;
+}
+
+export function decodeProxiedVehicleImageSource(proxiedUrl: string): string | null {
+  try {
+    const url = new URL(proxiedUrl);
+    const encoded = url.searchParams.get('src');
+    if (!encoded) return null;
+    return Buffer.from(encoded, 'base64url').toString('utf8');
+  } catch {
+    return null;
+  }
 }
 
 export async function handleVehicleImage(req: Request, res: Response) {
@@ -79,56 +154,24 @@ export async function handleVehicleImage(req: Request, res: Response) {
     return res.status(400).json({ error: 'Invalid image source' });
   }
 
-  if (target.hostname === 'api.marketcheck.com') {
-    target.searchParams.set('api_key', CONFIG.marketcheckApiKey);
-  }
+  target = authenticatedImageTarget(target.toString());
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
   try {
-    const upstream = await fetch(target, {
-      signal: controller.signal,
-      redirect: 'error',
-      headers: { Accept: 'image/*' },
+    const fetched = await fetchVehicleImageBytes(target.toString(), {
+      timeoutMs: IMAGE_TIMEOUT_MS,
+      maxBytes: MAX_IMAGE_BYTES,
     });
-    if (!upstream.ok) {
-      console.warn(
-        JSON.stringify({
-          event: 'vehicle_image_failed',
-          imageRequestId,
-          imageHost: target.hostname,
-          status: upstream.status,
-          errorCode: `IMAGE_HTTP_${upstream.status}`,
-        }),
-      );
+    if (!fetched) {
+      console.warn(JSON.stringify({
+        event: 'vehicle_image_failed',
+        imageRequestId,
+        imageHost: target.hostname,
+        status: 502,
+        errorCode: 'IMAGE_FETCH_FAILED',
+      }));
       return res.status(502).json({ error: 'Image unavailable' });
     }
-    const contentType = upstream.headers.get('content-type') ?? '';
-    const contentLength = Number(upstream.headers.get('content-length') ?? 0);
-    if (
-      !contentType.toLowerCase().startsWith('image/') ||
-      contentLength > MAX_IMAGE_BYTES
-    ) {
-      console.warn(JSON.stringify({
-        event: 'vehicle_image_failed',
-        imageRequestId,
-        imageHost: target.hostname,
-        status: 415,
-        errorCode: 'IMAGE_RESPONSE_INVALID',
-      }));
-      return res.status(415).json({ error: 'Invalid image response' });
-    }
-    const bytes = Buffer.from(await upstream.arrayBuffer());
-    if (bytes.length > MAX_IMAGE_BYTES) {
-      console.warn(JSON.stringify({
-        event: 'vehicle_image_failed',
-        imageRequestId,
-        imageHost: target.hostname,
-        status: 413,
-        errorCode: 'IMAGE_TOO_LARGE',
-      }));
-      return res.status(413).json({ error: 'Image too large' });
-    }
+    const { bytes, contentType } = fetched;
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -155,7 +198,5 @@ export async function handleVehicleImage(req: Request, res: Response) {
       }),
     );
     return res.status(502).json({ error: 'Image unavailable' });
-  } finally {
-    clearTimeout(timeout);
   }
 }
