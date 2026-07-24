@@ -64,6 +64,8 @@ describe('vehicle image proxy', () => {
     const { handleVehicleImage } = await import('../src/app/vehicle-image.js');
     const response = {
       statusCode: 200,
+      headers: {} as Record<string, string>,
+      setHeader(name: string, value: string) { this.headers[name] = value; },
       status(code: number) { this.statusCode = code; return this; },
       json: vi.fn(function (this: any) { return this; }),
     };
