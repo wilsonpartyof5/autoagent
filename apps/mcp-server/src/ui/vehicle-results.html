@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v23">
+  <meta name="autoagent-widget-version" content="v24">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -126,13 +126,36 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v23', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v24', HOST='https://autoagentmcp-server-production.up.railway.app';
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
     const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     const state={all:[],visible:[],query:{},dealerSummary:[],selectedId:null,displayMode:'inline',sheetExpanded:false,pending:false,filters:{},flowId:instanceId};
     let readySent=false,bridgeSubscribed=false,lastResults=null,toastTimer=null,lastReportedHeight=0;
+    function hasLiveVehicles(results=lastResults){
+      const vehicles=Array.isArray(results?.vehicles)?results.vehicles:Array.isArray(results)?results:[];
+      return vehicles.length>0;
+    }
+    function captureHostSearchParams(){
+      const input=window.openai?.toolInput;
+      if(input&&typeof input==='object'){
+        pendingSearchParams={...pendingSearchParams,...input};
+        state.query={...state.query,...input};
+      }
+      const outputResults=extractResults(window.openai?.toolOutput)||extractResults(window.openai?.toolResponseMetadata);
+      if(outputResults)rememberSearchParams(outputResults);
+    }
+    function resolvedSearchParams(){
+      captureHostSearchParams();
+      const merged={...state.query,...pendingSearchParams};
+      const make=typeof merged.make==='string'?merged.make.trim():'';
+      const model=typeof merged.model==='string'?merged.model.trim():'';
+      const location=typeof merged.location==='string'&&merged.location.trim()?merged.location.trim():'';
+      const condition=typeof merged.condition==='string'&&merged.condition.trim()?merged.condition.trim():'used';
+      const radiusMiles=Number(merged.radiusMiles)||75;
+      return {make,model,location,condition,radiusMiles};
+    }
 
     function reportIntrinsicHeight(reason='update'){
       if(state.displayMode==='fullscreen'||typeof window.openai?.notifyIntrinsicHeight!=='function')return false;
@@ -169,44 +192,64 @@
       const vehicles=Array.isArray(results.vehicles)?results.vehicles:Array.isArray(results)?results:[];
       if(!vehicles.length){
         emptyResultSeen=true;
-        // Keep waiting so a later successful tool call (or self-fetch) can hydrate.
+        // Keep waiting so a later successful tool call (or constrained self-fetch) can hydrate.
         showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
         event('hydrate:empty',{detail:`source=${source}`});
         scheduleSelfFetch('empty-result');
         return false;
+      }
+      // Never let a recovery self-fetch overwrite inventory already delivered by the host.
+      if(String(source).startsWith('self-fetch:')&&hasLiveVehicles()){
+        event('hydrate:skip-overwrite',{detail:`source=${source}`,vehicleCount:lastResults?.vehicles?.length||state.all.length});
+        return true;
       }
       lastResults=results;state.all=vehicles;state.visible=[...vehicles];state.query=results.searchParams||results.query||state.query;state.dealerSummary=results.dealerSummary||[];state.flowId=vehicles[0]?.flowId||state.flowId;state.selectedId=state.selectedId&&vehicles.some(v=>v.id===state.selectedId)?state.selectedId:vehicles[0].id;
       hideStatus();renderAll();reportIntrinsicHeight('hydrate');MapController.render(true);persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
     function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
     async function selfFetchVehicles(reason='timeout'){
-      if(selfFetchAttempted||lastResults||state.pending)return;
+      if(selfFetchAttempted||hasLiveVehicles()||state.pending)return;
+      // Host may have delivered toolOutput while we were waiting — prefer that over inventing a search.
+      captureHostSearchParams();
+      receive(window.openai?.toolOutput,'self-fetch.precheck.output');
+      receive(window.openai?.toolResponseMetadata,'self-fetch.precheck.meta');
+      if(hasLiveVehicles()){event('self-fetch:aborted-host-data',{detail:reason});return}
       if(typeof window.openai?.callTool!=='function'){event('self-fetch:unavailable',{detail:reason});return}
+      const resolved=resolvedSearchParams();
+      // Never broad-search without make — that returns random inventory and overwrites the real query.
+      if(!resolved.make){
+        event('self-fetch:skipped-no-make',{detail:reason});
+        showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
+        return;
+      }
       const params={
-        location:pendingSearchParams?.location||state.query?.location||'Denver, CO',
-        condition:pendingSearchParams?.condition||state.query?.condition||'used',
-        make:pendingSearchParams?.make||state.query?.make,
-        model:pendingSearchParams?.model||state.query?.model,
-        radiusMiles:pendingSearchParams?.radiusMiles||state.query?.radiusMiles||75,
+        make:resolved.make,
+        condition:resolved.condition,
+        radiusMiles:resolved.radiusMiles,
       };
+      if(resolved.model)params.model=resolved.model;
+      if(resolved.location)params.location=resolved.location;
       // Drop bodyStyle on recovery — invented body styles are a common cause of 0-hit first renders.
       selfFetchAttempted=true;state.pending=true;
       showStatus('Loading live vehicles','Refreshing inventory for the map…');
-      event('self-fetch:start',{detail:reason});
+      event('self-fetch:start',{detail:`${reason};make=${params.make};model=${params.model||''}`});
       try{
         const result=await window.openai.callTool('render-vehicle-results-v2',params);
+        if(hasLiveVehicles()){event('self-fetch:discarded-stale',{detail:reason});return}
         const next=extractResults(result);
         if(!next||!hydrate(next,`self-fetch:${reason}`)){
-          showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
-          event('self-fetch:empty',{detail:reason});
+          if(!hasLiveVehicles()){
+            showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+            event('self-fetch:empty',{detail:reason});
+          }
         }
       }catch(error){
         event('self-fetch:error',{detail:String(error?.message||error)});
-        if(emptyResultSeen)showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+        if(emptyResultSeen&&!hasLiveVehicles())showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
       }finally{state.pending=false}
     }
     function scheduleSelfFetch(reason){
-      setTimeout(()=>{if(!lastResults)selfFetchVehicles(reason)},1800);
+      setTimeout(()=>{if(!hasLiveVehicles())selfFetchVehicles(reason)},1800);
     }
     function attachBridge(){
       if(bridgeSubscribed||typeof window.openai?.on!=='function')return false;
@@ -326,7 +369,7 @@
     }
     const restored=window.openai?.widgetState;if(restored?.privateContent?.displayMode==='fullscreen')setDisplayMode('fullscreen',false);if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
     attachBridge();reportIntrinsicHeight('startup');receive(window.openai?.toolOutput,'initial.output');receive(window.openai?.toolResponseMetadata,'initial.meta');MapController.render(false);
-    setTimeout(()=>{if(!lastResults){showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}},2500);
+    setTimeout(()=>{if(!hasLiveVehicles()){showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}},2500);
   </script>
 </body>
 </html>
