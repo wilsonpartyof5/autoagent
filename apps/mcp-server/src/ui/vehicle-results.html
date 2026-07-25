@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v25">
+  <meta name="autoagent-widget-version" content="v26">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -37,16 +37,20 @@
     .price-pin.selected{background:var(--blue);border-color:#dbeafe;transform:translate(-50%,-50%) scale(1.13);z-index:5}
     .cluster-pin{background:#20242ae8;border-radius:12px;min-width:86px;text-align:center;padding:7px 9px}.cluster-pin span{display:block;font-size:10px;color:#c5cad1;font-weight:650}
     .leaflet-div-icon{background:transparent!important;border:0!important}
-    #embeddedCards{position:absolute;z-index:650;left:12px;right:12px;bottom:12px;pointer-events:none}
+    #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
     #featured{pointer-events:auto;margin:0 auto 10px;max-width:760px;touch-action:manipulation}
-    #rail{pointer-events:auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:2px 0 6px}
+    #railShell{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr) 40px;gap:6px;align-items:center;pointer-events:auto}
+    #rail{pointer-events:auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:2px 0 6px;cursor:grab;min-width:0}
+    #rail.dragging{cursor:grabbing;scroll-snap-type:none;scroll-behavior:auto}
     #rail::-webkit-scrollbar,.gallery::-webkit-scrollbar,.control-scroll::-webkit-scrollbar{display:none}
+    .rail-nav{width:40px;height:40px;border-radius:999px;border:1px solid #ffffff40;background:#15171bf2;backdrop-filter:blur(12px);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px #0005;touch-action:manipulation}
+    .rail-nav:disabled{opacity:.35;cursor:default}
     .vehicle-card{background:#121417f2;border:1px solid var(--line);border-radius:15px;overflow:hidden;display:grid;grid-template-columns:112px 1fr;min-height:112px;cursor:pointer;transition:border-color .15s,transform .15s;scroll-snap-align:start;touch-action:manipulation;-webkit-user-select:none;user-select:none}
     .vehicle-card:hover,.vehicle-card.active{border-color:#4f91ff;transform:translateY(-1px)}.vehicle-card img{width:112px;height:100%;min-height:112px;object-fit:cover;background:#2a2d32;pointer-events:none}
     .vehicle-card .copy{padding:10px;min-width:0}.vehicle-title{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vehicle-price{font-size:20px;font-weight:850;color:#5a9bff;margin-top:2px}
     .vehicle-meta,.dealer{font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #featured .vehicle-card{grid-template-columns:150px 1fr;min-height:128px}#featured .vehicle-card img{width:150px;min-height:128px}
-    #rail .vehicle-card{flex:0 0 260px;grid-template-columns:92px 1fr;min-height:96px}#rail .vehicle-card img{width:92px;min-height:96px}#rail .vehicle-price{font-size:16px}
+    #rail .vehicle-card{flex:0 0 min(78vw,280px);grid-template-columns:92px 1fr;min-height:96px;touch-action:pan-x;cursor:inherit}#rail .vehicle-card img{width:92px;min-height:96px}#rail .vehicle-price{font-size:16px}
     .list-card{grid-template-columns:112px 1fr}.list-card .vehicle-price{font-size:18px}
     #status{position:absolute;z-index:900;inset:0;display:grid;place-items:center;background:#0d0f12d9;padding:24px;text-align:center}
     .status-card{max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}
@@ -95,7 +99,8 @@
     @media(max-width:640px){
       #app{height:580px;min-height:520px;border-radius:18px}.topbar{top:8px;left:8px;right:8px}.pill{padding:8px 11px;font-size:12px}
       #embeddedCards{left:8px;right:8px;bottom:8px}#featured .vehicle-card{grid-template-columns:118px 1fr;min-height:116px}#featured .vehicle-card img{width:118px;min-height:116px}
-      #rail .vehicle-card{flex-basis:225px}.gallery-thumb{width:96px;height:68px}.spec-grid{grid-template-columns:1fr}.drawer,.modal{padding:0}.drawer-panel,.modal-panel{min-height:100%;border-radius:0}
+      #railShell{grid-template-columns:34px minmax(0,1fr) 34px;gap:4px}.rail-nav{width:34px;height:34px;font-size:22px}
+      #rail .vehicle-card{flex-basis:min(82vw,260px)}.gallery-thumb{width:96px;height:68px}.spec-grid{grid-template-columns:1fr}.drawer,.modal{padding:0}.drawer-panel,.modal-panel{min-height:100%;border-radius:0}
       .nav-back{padding:8px 10px;font-size:12px}
     }
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -123,7 +128,14 @@
           <button id="expandButton" class="icon-btn" aria-label="Open fullscreen map">↗</button>
         </div>
         <button id="searchArea" class="hidden">Search this area</button>
-        <div id="embeddedCards"><div id="featured"></div><div id="rail"></div></div>
+        <div id="embeddedCards">
+          <div id="featured"></div>
+          <div id="railShell">
+            <button type="button" id="railPrev" class="rail-nav" aria-label="Previous vehicles">‹</button>
+            <div id="rail" tabindex="0" aria-label="Scrollable vehicle cards"></div>
+            <button type="button" id="railNext" class="rail-nav" aria-label="Next vehicles">›</button>
+          </div>
+        </div>
       </section>
     </div>
     <div id="status"><div class="status-card"><div class="spinner"></div><strong id="statusTitle">Loading live vehicles</strong><p id="statusCopy" class="subtle">Connecting the map to ChatGPT…</p></div></div>
@@ -152,7 +164,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v25', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v26', HOST='https://autoagentmcp-server-production.up.railway.app';
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
@@ -298,33 +310,118 @@
     function renderAll(){
       const selected=state.all.find(v=>v.id===state.selectedId)||state.visible[0]||state.all[0];
       $('featured').innerHTML=selected?card(selected,'featured'):'';
-      $('rail').innerHTML=state.visible.slice(0,10).map(v=>card(v,'rail')).join('');
+      // Keep the full result set in the rail so map pans don't empty the carousel while browsing.
+      const railVehicles=(state.all.length?state.all:state.visible).slice(0,12);
+      $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('');
       $('list').innerHTML=state.visible.map(v=>card(v,'list')).join('');
       $('resultCount').textContent=`${state.visible.length.toLocaleString()} Vehicles`;
       $('resultContext').textContent=state.query.location||'Visible map area';
       document.querySelectorAll('[data-filter]').forEach(button=>button.classList.toggle('active',Boolean(state.filters[button.dataset.filter])));
+      updateRailNav();
     }
     function selectVehicle(id,source='card',pan=false){
       if(!state.all.some(v=>v.id===id))return;state.selectedId=id;renderAll();MapController.render(false);persistState();event(`selection:${source}`,{detail:id});
       if(pan){const v=state.all.find(item=>item.id===id),c=coord(v);if(c)MapController.map?.panTo(c)}
     }
     function shieldFromMap(node){
-      if(!node)return;
+      if(!node||node.dataset.shieldBound)return;
+      node.dataset.shieldBound='1';
       ['pointerdown','pointermove','touchstart','touchmove','wheel'].forEach(type=>{
-        node.addEventListener(type,event=>{event.stopPropagation()},{passive:true});
+        node.addEventListener(type,event=>{
+          event.stopPropagation();
+          if(type==='pointerdown'||type==='touchstart'||type==='wheel')MapController.setInteractionLock?.(true,type);
+        },{passive:type!=='touchmove'&&type!=='pointermove'});
       });
+      node.addEventListener('pointerup',()=>MapController.setInteractionLock?.(false,'pointerup'),{passive:true});
+      node.addEventListener('pointerleave',()=>{if(!railDrag)MapController.setInteractionLock?.(false,'pointerleave')},{passive:true});
+      node.addEventListener('touchend',()=>MapController.setInteractionLock?.(false,'touchend'),{passive:true});
     }
-    ['embeddedCards','rail','featured','controls','resultsPane','list','details'].forEach(id=>shieldFromMap($(id)));
+    let railDrag=null;let suppressCardClick=false;
+    function updateRailNav(){
+      const rail=$('rail'),prev=$('railPrev'),next=$('railNext');
+      if(!rail||!prev||!next)return;
+      const maxScroll=Math.max(0,rail.scrollWidth-rail.clientWidth);
+      prev.disabled=rail.scrollLeft<=4;
+      next.disabled=rail.scrollLeft>=maxScroll-4;
+    }
+    function scrollRailBy(direction){
+      const rail=$('rail');if(!rail)return;
+      const amount=Math.max(220,Math.round(rail.clientWidth*0.85))*direction;
+      rail.scrollBy({left:amount,behavior:'smooth'});
+      setTimeout(updateRailNav,280);
+      event(`rail:nav:${direction<0?'prev':'next'}`);
+    }
+    function bindRailInteractions(){
+      const rail=$('rail');if(!rail||rail.dataset.scrollBound)return;
+      rail.dataset.scrollBound='1';
+      rail.addEventListener('scroll',()=>updateRailNav(),{passive:true});
+      rail.addEventListener('wheel',wheel=>{
+        if(Math.abs(wheel.deltaY)>Math.abs(wheel.deltaX)){
+          rail.scrollLeft+=wheel.deltaY;
+          wheel.preventDefault();
+        }
+        MapController.setInteractionLock?.(true,'wheel');
+        updateRailNav();
+      },{passive:false});
+      rail.addEventListener('pointerdown',down=>{
+        if(down.pointerType==='mouse'&&down.button!==0)return;
+        MapController.setInteractionLock?.(true,'rail-pointer');
+        railDrag={pointerId:down.pointerId,startX:down.clientX,startScroll:rail.scrollLeft,moved:false};
+        rail.classList.add('dragging');
+        try{rail.setPointerCapture(down.pointerId)}catch{}
+      });
+      rail.addEventListener('pointermove',move=>{
+        if(!railDrag||railDrag.pointerId!==move.pointerId)return;
+        const dx=move.clientX-railDrag.startX;
+        if(Math.abs(dx)>8)railDrag.moved=true;
+        if(!railDrag.moved)return;
+        rail.scrollLeft=railDrag.startScroll-dx;
+        move.preventDefault();
+        updateRailNav();
+      });
+      const endDrag=up=>{
+        if(!railDrag||(up.pointerId!=null&&railDrag.pointerId!==up.pointerId))return;
+        if(railDrag.moved){suppressCardClick=true;setTimeout(()=>{suppressCardClick=false},50)}
+        railDrag=null;rail.classList.remove('dragging');
+        MapController.setInteractionLock?.(false,'rail-pointer-end');
+        updateRailNav();
+      };
+      rail.addEventListener('pointerup',endDrag);rail.addEventListener('pointercancel',endDrag);
+      $('railPrev')?.addEventListener('click',()=>scrollRailBy(-1));
+      $('railNext')?.addEventListener('click',()=>scrollRailBy(1));
+    }
+    ['embeddedCards','railShell','rail','featured','controls','resultsPane','list','details'].forEach(id=>shieldFromMap($(id)));
+    bindRailInteractions();
     document.addEventListener('click',click=>{
+      if(click.target.closest?.('.rail-nav'))return;
       const thumb=click.target.closest?.('.gallery-thumb');
       if(thumb&&typeof state.setDetailPhoto==='function'){state.setDetailPhoto(Number(thumb.dataset.index||0));return}
       const cardNode=click.target.closest?.('.vehicle-card');
-      if(cardNode){selectVehicle(cardNode.dataset.id,'card',true);openDetails(cardNode.dataset.id)}
+      if(cardNode){
+        if(suppressCardClick||railDrag?.moved)return;
+        selectVehicle(cardNode.dataset.id,'card',true);openDetails(cardNode.dataset.id);
+      }
     });
     document.addEventListener('keydown',key=>{const cardNode=key.target.closest?.('.vehicle-card');if(cardNode&&(key.key==='Enter'||key.key===' ')){key.preventDefault();selectVehicle(cardNode.dataset.id,'keyboard',true);openDetails(cardNode.dataset.id)}});
 
     const MapController={
-      map:null,markers:new Map(),dealerMarkers:[],suppress:false,moveTimer:null,userInteracted:false,initAttempts:0,
+      map:null,markers:new Map(),dealerMarkers:[],suppress:false,moveTimer:null,userInteracted:false,initAttempts:0,interactionLocked:false,lockTimer:null,
+      setInteractionLock(locked,reason='unknown'){
+        this.interactionLocked=Boolean(locked);
+        clearTimeout(this.lockTimer);
+        if(!this.map)return;
+        const dragging=this.map.dragging,touchZoom=this.map.touchZoom,dbl=this.map.doubleClickZoom,wheel=this.map.scrollWheelZoom;
+        if(locked){
+          dragging?.disable();touchZoom?.disable();dbl?.disable();wheel?.disable();
+          event('map:lock',{detail:String(reason)});
+        }else{
+          // Small delay avoids the map grabbing the same gesture that just scrolled cards.
+          this.lockTimer=setTimeout(()=>{
+            if(this.interactionLocked)return;
+            dragging?.enable();touchZoom?.enable();dbl?.enable();wheel?.enable();
+          },80);
+        }
+      },
       init(){
         if(this.map)return true;
         if(!globalThis.L){this.initAttempts+=1;if(this.initAttempts===1)event('map:leaflet-waiting');return false}
@@ -333,9 +430,14 @@
         this.map=L.map('map',{zoomControl:true}).setView([39.5,-98.35],4);
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(this.map);
         const container=this.map.getContainer();
-        container.addEventListener('pointerdown',()=>{this.userInteracted=true},{passive:true});
-        container.addEventListener('wheel',()=>{this.userInteracted=true},{passive:true});
-        this.map.on('moveend zoomend',()=>{if(this.suppress||!this.userInteracted)return;clearTimeout(this.moveTimer);this.moveTimer=setTimeout(()=>this.onMove(),180)});
+        container.addEventListener('pointerdown',()=>{if(!this.interactionLocked)this.userInteracted=true},{passive:true});
+        container.addEventListener('wheel',()=>{if(!this.interactionLocked)this.userInteracted=true},{passive:true});
+        this.map.on('moveend zoomend',()=>{if(this.suppress||this.interactionLocked||!this.userInteracted)return;clearTimeout(this.moveTimer);this.moveTimer=setTimeout(()=>this.onMove(),180)});
+        const cards=$('embeddedCards');
+        if(cards){
+          L.DomEvent.disableClickPropagation(cards);
+          L.DomEvent.disableScrollPropagation(cards);
+        }
         event('map:initialized',{detail:`${Math.round(rect.width)}x${Math.round(rect.height)}`});
         return true;
       },
