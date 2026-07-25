@@ -106,6 +106,8 @@ export const SearchParamsSchema = z.object({
   maxPrice: z.number().positive().optional(),
   make: z.string().optional(),
   model: z.string().optional(),
+  /** Optional multi-model search (e.g. Cherokee + Wrangler). Prefer this over inventing a single model. */
+  models: z.array(z.string().min(1)).max(6).optional(),
   radiusMiles: z.number().positive().max(500).optional(),
   bodyStyle: z.string().optional(),
   mileageMax: z.number().positive().optional(),

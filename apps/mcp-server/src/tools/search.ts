@@ -56,6 +56,21 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
           .trim()
       : undefined;
 
+    const inferredModels = [
+      lowerQuery.includes('grand cherokee') ? 'Grand Cherokee' : '',
+      lowerQuery.includes('cherokee') && !lowerQuery.includes('grand cherokee') ? 'Cherokee' : '',
+      lowerQuery.includes('wrangler') ? 'Wrangler' : '',
+      lowerQuery.includes('gladiator') ? 'Gladiator' : '',
+      lowerQuery.includes('camry') ? 'Camry' : '',
+      lowerQuery.includes('cr-v') || lowerQuery.includes('crv') ? 'CR-V' : '',
+      lowerQuery.includes('outback') ? 'Outback' : '',
+      lowerQuery.includes('f-150') || lowerQuery.includes('f150') ? 'F-150' : '',
+      lowerQuery.includes('silverado') ? 'Silverado' : '',
+      lowerQuery.includes('sierra') ? 'Sierra' : '',
+      lowerQuery.includes('4runner') || lowerQuery.includes('4-runner') ? '4Runner' : '',
+      lowerQuery.includes('explorer') ? 'Explorer' : '',
+    ].filter(Boolean);
+
     // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
       location: inferredLocation || contextLocation || 'Seattle, WA',
@@ -68,14 +83,21 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
             : lowerQuery.includes('chevrolet') || lowerQuery.includes('chevy') ? 'Chevrolet'
             : lowerQuery.includes('gmc') ? 'GMC'
             : lowerQuery.includes('ram') ? 'Ram'
+            : lowerQuery.includes('jeep') ? 'Jeep'
             : undefined,
-      model: lowerQuery.includes('camry') ? 'Camry'
-             : lowerQuery.includes('cr-v') || lowerQuery.includes('crv') ? 'CR-V'
-             : lowerQuery.includes('outback') ? 'Outback'
-             : lowerQuery.includes('f-150') || lowerQuery.includes('f150') ? 'F-150'
-             : lowerQuery.includes('silverado') ? 'Silverado'
-             : lowerQuery.includes('sierra') ? 'Sierra'
-             : undefined,
+      model: inferredModels[0],
+      models: inferredModels.length > 1 ? inferredModels : undefined,
+      maxPrice: (() => {
+        const kMatch = lowerQuery.match(/under\s*\$?\s*([\d,]+)\s*k\b/i);
+        if (kMatch) {
+          const value = Number(kMatch[1].replace(/,/g, ''));
+          return Number.isFinite(value) ? value * 1000 : undefined;
+        }
+        const match = lowerQuery.match(/under\s*\$?\s*([\d,]+)/i);
+        if (!match) return undefined;
+        const raw = Number(match[1].replace(/,/g, ''));
+        return Number.isFinite(raw) ? raw : undefined;
+      })(),
     };
     
     // Call the existing searchVehicles function

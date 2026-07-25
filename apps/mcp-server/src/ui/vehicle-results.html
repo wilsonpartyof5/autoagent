@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v27">
+  <meta name="autoagent-widget-version" content="v28">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -209,7 +209,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v27', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v28', HOST='https://autoagentmcp-server-production.up.railway.app';
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
@@ -260,7 +260,7 @@
     function showStatus(title,copy){$('statusTitle').textContent=title;$('statusCopy').textContent=copy;$('status').classList.remove('hidden')}
     function hideStatus(){$('status').classList.add('hidden')}
     function extractResults(payload){return payload?.structuredContent?.results||payload?._meta?.results||payload?.result?.structuredContent?.results||payload?.result?._meta?.results||payload?.toolOutput?.structuredContent?.results||payload?.toolOutput?._meta?.results||payload?.toolResponseMetadata?.mcp_tool_result?._meta?.results||payload?.toolResponseMetadata?.call_tool_result?._meta?.results||payload?.results||null}
-    let pendingSearchParams=null;let selfFetchAttempted=false;let emptyResultSeen=false;
+    let pendingSearchParams=null;let selfFetchAttempted=false;let selfFetchScheduled=false;let emptyResultSeen=false;let definitiveEmpty=false;
     function rememberSearchParams(results){
       const next=results?.searchParams||results?.query;
       if(next&&typeof next==='object'){pendingSearchParams={...pendingSearchParams,...next};state.query={...state.query,...next}}
@@ -271,13 +271,34 @@
       window.openai?.setWidgetState?.({modelContent:{currentSearch:state.query,selectedVehicleId:state.selectedId,visibleVehicleIds:state.visible.slice(0,20).map(v=>v.id),map:center?{latitude:center.lat,longitude:center.lng,zoom:map.getZoom()}:null,activeFilters:state.filters},privateContent:{displayMode:state.displayMode,sheetExpanded:state.sheetExpanded},imageIds:[]});
     }
     function emitReady(tag){if(readySent||typeof window.openai?.emitToolEvent!=='function')return;window.openai.emitToolEvent('ui:ready',{ok:true,tag,flowId:state.flowId,widgetVersion:VERSION});readySent=true;event('ui-ready',{detail:tag})}
+    function showEmptyState(results,source='unknown'){
+      definitiveEmpty=true;
+      const empty=results?.emptyState;
+      const title=empty?.title||'No vehicles found';
+      const copy=empty?.message||'Try widening the price, radius, or models in ChatGPT.';
+      showStatus(title,copy);
+      lastResults=results||{vehicles:[],totalCount:0,emptyState:empty};
+      state.all=[];state.visible=[];
+      if(results?.searchParams)state.query={...state.query,...results.searchParams};
+      event('hydrate:empty-final',{detail:`source=${source}`,vehicleCount:0});
+      emitReady('empty');
+    }
     function hydrate(results,source='unknown'){
       if(!results)return false;
       rememberSearchParams(results);
       const vehicles=Array.isArray(results.vehicles)?results.vehicles:Array.isArray(results)?results:[];
       if(!vehicles.length){
+        if(definitiveEmpty)return false;
         emptyResultSeen=true;
-        // Keep waiting so a later successful tool call (or constrained self-fetch) can hydrate.
+        const total=results.totalCount;
+        const hasEmptyState=Boolean(results.emptyState);
+        const sourceText=String(source);
+        const isDefinitive=hasEmptyState||total===0||sourceText.startsWith('self-fetch:')||sourceText.startsWith('callTool:');
+        if(isDefinitive){
+          showEmptyState(results,source);
+          return false;
+        }
+        // Host may still be preparing the first payload — wait briefly, but only schedule recovery once.
         showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
         event('hydrate:empty',{detail:`source=${source}`});
         scheduleSelfFetch('empty-result');
@@ -288,23 +309,28 @@
         event('hydrate:skip-overwrite',{detail:`source=${source}`,vehicleCount:lastResults?.vehicles?.length||state.all.length});
         return true;
       }
+      definitiveEmpty=false;
       lastResults=results;state.all=vehicles;state.visible=[...vehicles];state.query=results.searchParams||results.query||state.query;state.dealerSummary=results.dealerSummary||[];state.flowId=vehicles[0]?.flowId||state.flowId;state.selectedId=state.selectedId&&vehicles.some(v=>v.id===state.selectedId)?state.selectedId:vehicles[0].id;
       hideStatus();renderAll();reportIntrinsicHeight('hydrate');MapController.render(true);persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
     function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
     async function selfFetchVehicles(reason='timeout'){
-      if(selfFetchAttempted||hasLiveVehicles()||state.pending)return;
+      if(selfFetchAttempted||hasLiveVehicles()||state.pending||definitiveEmpty)return;
       // Host may have delivered toolOutput while we were waiting — prefer that over inventing a search.
       captureHostSearchParams();
       receive(window.openai?.toolOutput,'self-fetch.precheck.output');
       receive(window.openai?.toolResponseMetadata,'self-fetch.precheck.meta');
-      if(hasLiveVehicles()){event('self-fetch:aborted-host-data',{detail:reason});return}
+      if(hasLiveVehicles()||definitiveEmpty){event('self-fetch:aborted-host-data',{detail:reason});return}
       if(typeof window.openai?.callTool!=='function'){event('self-fetch:unavailable',{detail:reason});return}
       const resolved=resolvedSearchParams();
       // Never broad-search without make — that returns random inventory and overwrites the real query.
       if(!resolved.make){
         event('self-fetch:skipped-no-make',{detail:reason});
-        showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
+        if(emptyResultSeen){
+          showEmptyState({vehicles:[],totalCount:0,searchParams:resolved,emptyState:{title:'No vehicles found',message:'Still waiting on search details. Ask ChatGPT to search again with make, model, and location.'}},`self-fetch:${reason}`);
+        }else{
+          showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
+        }
         return;
       }
       const params={
@@ -314,6 +340,8 @@
       };
       if(resolved.model)params.model=resolved.model;
       if(resolved.location)params.location=resolved.location;
+      const models=pendingSearchParams?.models||state.query?.models;
+      if(Array.isArray(models)&&models.length)params.models=models;
       // Drop bodyStyle on recovery — invented body styles are a common cause of 0-hit first renders.
       selfFetchAttempted=true;state.pending=true;
       showStatus('Loading live vehicles','Refreshing inventory for the map…');
@@ -323,18 +351,20 @@
         if(hasLiveVehicles()){event('self-fetch:discarded-stale',{detail:reason});return}
         const next=extractResults(result);
         if(!next||!hydrate(next,`self-fetch:${reason}`)){
-          if(!hasLiveVehicles()){
-            showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+          if(!hasLiveVehicles()&&!definitiveEmpty){
+            showEmptyState(next||{vehicles:[],totalCount:0},`self-fetch:${reason}`);
             event('self-fetch:empty',{detail:reason});
           }
         }
       }catch(error){
         event('self-fetch:error',{detail:String(error?.message||error)});
-        if(emptyResultSeen&&!hasLiveVehicles())showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+        if(emptyResultSeen&&!hasLiveVehicles())showEmptyState({vehicles:[],totalCount:0,emptyState:{title:'No vehicles found',message:'Unable to refresh inventory. Try revising the search in ChatGPT.'}},`self-fetch:${reason}`);
       }finally{state.pending=false}
     }
     function scheduleSelfFetch(reason){
-      setTimeout(()=>{if(!hasLiveVehicles())selfFetchVehicles(reason)},1800);
+      if(selfFetchScheduled||selfFetchAttempted||definitiveEmpty||hasLiveVehicles())return;
+      selfFetchScheduled=true;
+      setTimeout(()=>{if(!hasLiveVehicles()&&!definitiveEmpty)selfFetchVehicles(reason)},1800);
     }
     function attachBridge(){
       if(bridgeSubscribed||typeof window.openai?.on!=='function')return false;
@@ -344,7 +374,7 @@
     }
     window.addEventListener('message',message=>{if(message.source!==window.parent)return;receive(message.data,'postMessage')});
     window.addEventListener('openai:set_globals',message=>receive(message.detail,'set_globals.dom'));
-    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false)},250);
+    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false)},250);
 
     const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>v.media?.photoUrls?.length?v.media.photoUrls:[image(v)].filter(Boolean);
     const money=value=>value?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(value):'Call for price';

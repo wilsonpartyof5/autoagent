@@ -12,7 +12,7 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v27';
+export const VEHICLE_WIDGET_VERSION = 'v28';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
@@ -86,7 +86,12 @@ const VEHICLE_SEARCH_INPUT_SCHEMA = {
     },
     model: {
       type: 'string',
-      description: 'Vehicle model (e.g., "Camry", "CR-V")',
+      description: 'Vehicle model (e.g., "Camry", "CR-V"). For multiple models, prefer models[].',
+    },
+    models: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Multiple models to search together (e.g. ["Cherokee","Wrangler"]). Use when the user asks for more than one model.',
     },
     radiusMiles: {
       type: 'number',
@@ -235,7 +240,7 @@ export function getAvailableTools() {
     {
       name: 'render-vehicle-results-v2',
       title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
-      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}). Do not also call search or search-vehicles for the same request.`,
+      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model(s)/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). For multiple models (e.g. Cherokee and Wrangler), pass models:["Cherokee","Wrangler"]. Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}). Do not also call search or search-vehicles for the same request.`,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -422,6 +427,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v27.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v26.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v25.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v24.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

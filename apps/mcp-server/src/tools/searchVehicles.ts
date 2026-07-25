@@ -8,7 +8,7 @@ import { searchUVSVehicles, type UVSDealerSummary, type UVSSearchParams } from '
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
-import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
+import { callMarketcheckMcpTool, type UpstreamCallResult } from '../services/marketcheckMcpClient.js';
 import { normalizeMarketcheckSearchResult } from '../services/marketcheckMcpNormalizer.js';
 import { signSearchResult } from '../lib/searchResultToken.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
@@ -18,6 +18,15 @@ import {
   decodeProxiedVehicleImageSource,
   fetchVehicleImageDataUrl,
 } from '../app/vehicle-image.js';
+import {
+  buildEmptyState,
+  buildReadableSearchContent,
+  coerceSearchInput,
+  relatedModelsFor,
+  requestedModels,
+  type SearchEmptyState,
+  type SearchRelaxation,
+} from './searchRelaxation.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -343,15 +352,18 @@ async function inlineWidgetPrimaryPhotos(
   return { inlined, failed };
 }
 
-function buildReadableContent(totalCount: number, vehicles: unknown[], location?: string): { type: string; text: string }[] {
-  const header = `Found ${totalCount} vehicles${location ? ` near ${location}` : ''}.`;
-  if (!vehicles.length) {
-    return [{ type: 'text', text: header }];
-  }
-
+function buildReadableContent(
+  totalCount: number,
+  vehicles: unknown[],
+  location?: string,
+  emptyState?: SearchEmptyState,
+  relaxations: SearchRelaxation[] = [],
+): { type: string; text: string }[] {
+  const base = buildReadableSearchContent(totalCount, vehicles, location, emptyState, relaxations);
+  if (!vehicles.length || totalCount === 0) return base;
   const topLines = vehicles.slice(0, MAX_SUMMARY_LISTINGS).map((vehicle) => summarizeVehicleLine(vehicle));
-  const text = `${header}\nTop matches:\n${topLines.join('\n')}`;
-  return [{ type: 'text', text }];
+  const header = base[0]?.text ?? `Found ${totalCount} vehicles${location ? ` near ${location}` : ''}.`;
+  return [{ type: 'text', text: `${header}\nTop matches:\n${topLines.join('\n')}` }];
 }
 
 const KNOWN_CITY_STATES: Record<string, string> = {
@@ -453,7 +465,12 @@ async function normalizeBridgeSearchResult(
   upstreamResult: unknown,
   searchParams: SearchParams,
   runId: string,
-  sourceInfo: SourceInfo
+  sourceInfo: SourceInfo,
+  options?: {
+    relaxations?: SearchRelaxation[];
+    emptyState?: SearchEmptyState;
+    originalParams?: SearchParams;
+  },
 ): Promise<SearchVehiclesData> {
   const bridge = upstreamResult as {
     content?: unknown;
@@ -493,8 +510,29 @@ async function normalizeBridgeSearchResult(
     }));
   }
   const dealerSummary = buildDealerSummary(compactVehicles);
+  const relaxations = options?.relaxations ?? [];
+  const emptyState = options?.emptyState
+    ?? (totalCount === 0
+      ? buildEmptyState({
+          originalParams: options?.originalParams ?? searchParams,
+          effectiveParams: searchParams,
+          relaxations,
+        })
+      : undefined);
 
-  const content = buildReadableContent(totalCount, vehicles, searchParams.location);
+  const content = buildReadableContent(totalCount, vehicles, searchParams.location, emptyState, relaxations);
+  const resultsPayload = {
+    vehicles,
+    dealerSummary,
+    totalCount,
+    searchParams: structuredResults?.searchParams ?? searchParams,
+    dataSource: sourceInfo.dataSource,
+    inventoryProvider: sourceInfo.inventoryProvider,
+    normalizedAs: sourceInfo.normalizedAs,
+    ...(relaxations.length ? { relaxations } : {}),
+    ...(emptyState ? { emptyState } : {}),
+    ...(options?.originalParams ? { originalSearchParams: options.originalParams } : {}),
+  };
 
   return {
     content,
@@ -503,26 +541,10 @@ async function normalizeBridgeSearchResult(
     totalCount,
     searchParams,
     structuredContent: {
-      results: {
-        vehicles,
-        dealerSummary,
-        totalCount,
-        searchParams: structuredResults?.searchParams ?? searchParams,
-        dataSource: sourceInfo.dataSource,
-        inventoryProvider: sourceInfo.inventoryProvider,
-        normalizedAs: sourceInfo.normalizedAs,
-      },
+      results: resultsPayload,
     },
     _meta: {
-      results: {
-        vehicles,
-        dealerSummary,
-        totalCount,
-        searchParams: structuredResults?.searchParams ?? searchParams,
-        dataSource: sourceInfo.dataSource,
-        inventoryProvider: sourceInfo.inventoryProvider,
-        normalizedAs: sourceInfo.normalizedAs,
-      },
+      results: resultsPayload,
       ...getOpenAiWidgetCspMeta(),
     },
     ...sourceInfo,
@@ -574,8 +596,11 @@ export async function searchVehicles(
       }
     }
 
-    // Validate input parameters
-    const parseResult = safeParse(SearchParamsSchema, mutableParams ?? params);
+    // Validate input parameters (normalize multi-model strings first)
+    const coercedParams = mutableParams
+      ? coerceSearchInput(mutableParams)
+      : coerceSearchInput((params && typeof params === 'object') ? { ...(params as Record<string, unknown>) } : {});
+    const parseResult = safeParse(SearchParamsSchema, coercedParams);
     if (!parseResult.success) {
       return {
         success: false,
@@ -583,42 +608,210 @@ export async function searchVehicles(
       };
     }
 
-    const searchParams: SearchParams = parseResult.data!;
+    const originalParams: SearchParams = parseResult.data!;
+    let searchParams: SearchParams = { ...originalParams };
     const cacheKey = generateCacheKey(searchParams);
     // Use single requestId for entire request to maintain correlation
     const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
 
     if (CONFIG.inventorySearchProvider === 'marketcheck_mcp') {
       const runId = randomUUID();
-      let bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
-      console.log(JSON.stringify({
-        event: 'search_bridge_args',
-        flowId: runId,
-        requestId,
-        bridgeArgs,
-        searchParams,
-      }));
+      const relaxations: SearchRelaxation[] = [];
+      const models = requestedModels(searchParams);
 
-      let bridgeCall = await callMarketcheckMcpTool('search_active_cars', bridgeArgs, requestId);
+      type ActiveSearch = {
+        params: SearchParams;
+        args: Record<string, unknown>;
+        call: UpstreamCallResult;
+        merged?: {
+          vehicles: UnifiedVehicle[];
+          totalCount: number;
+          rejectedCount: number;
+        };
+      };
+
+      const countFromCall = (call: UpstreamCallResult) => (
+        call.success ? normalizeMarketcheckSearchResult(call.result).totalCount : -1
+      );
+      const activeCount = (item: ActiveSearch) => (
+        typeof item.merged?.totalCount === 'number' ? item.merged.totalCount : countFromCall(item.call)
+      );
+
+      const searchOne = async (params: SearchParams): Promise<ActiveSearch> => {
+        const args = mapSearchParamsToBridgeArgs(params);
+        console.log(JSON.stringify({
+          event: 'search_bridge_args',
+          flowId: runId,
+          requestId,
+          bridgeArgs: args,
+          searchParams: params,
+        }));
+        return {
+          params,
+          args,
+          call: await callMarketcheckMcpTool('search_active_cars', args, requestId),
+        };
+      };
+
+      const searchModels = async (params: SearchParams, modelList: string[]): Promise<ActiveSearch> => {
+        if (modelList.length <= 1) {
+          return searchOne({
+            ...params,
+            model: modelList[0] || params.model,
+            models: modelList.length ? modelList : params.models,
+          });
+        }
+        const fanout = await Promise.all(
+          modelList.map((model) => searchOne({ ...params, model, models: modelList })),
+        );
+        const successful = fanout.filter((item) => item.call.success);
+        if (!successful.length) return fanout[0];
+
+        const mergedVehicles: UnifiedVehicle[] = [];
+        const seen = new Set<string>();
+        let totalCount = 0;
+        let rejectedCount = 0;
+        let latencyMs = 0;
+        for (const item of successful) {
+          if (!item.call.success) continue;
+          const normalized = normalizeMarketcheckSearchResult(item.call.result);
+          totalCount += normalized.totalCount;
+          rejectedCount += normalized.rejectedCount;
+          latencyMs = Math.max(latencyMs, item.call.latencyMs ?? 0);
+          for (const vehicle of normalized.vehicles) {
+            const key = vehicle.id || vehicle.baseIdentity?.vin || JSON.stringify(vehicle.baseIdentity);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            mergedVehicles.push(vehicle);
+          }
+        }
+        const best = successful.find((item) => countFromCall(item.call) > 0) ?? successful[0];
+        if (!best.call.success) return best;
+        return {
+          params: { ...params, model: modelList[0], models: modelList },
+          args: best.args,
+          call: {
+            success: true,
+            result: best.call.result,
+            correlationId: best.call.correlationId,
+            upstreamRequestId: best.call.upstreamRequestId,
+            status: best.call.status,
+            latencyMs,
+          },
+          merged: {
+            vehicles: mergedVehicles,
+            totalCount,
+            rejectedCount,
+          },
+        };
+      };
+
+      let active = await searchModels(searchParams, models.length ? models : (searchParams.model ? [searchParams.model] : []));
+      let bridgeArgs = active.args;
+      let bridgeCall = active.call;
 
       // ChatGPT often invents a bodyStyle that MarketCheck rejects (0 hits). Retry once without it.
-      if (
-        bridgeCall.success
-        && bridgeArgs.body_type
-        && normalizeMarketcheckSearchResult(bridgeCall.result).totalCount === 0
-      ) {
-        const retryArgs = { ...bridgeArgs };
-        delete retryArgs.body_type;
+      if (bridgeCall.success && bridgeArgs.body_type && activeCount(active) === 0) {
+        const dropped = String(bridgeArgs.body_type);
+        const retryParams = { ...active.params, bodyStyle: undefined };
         console.warn(JSON.stringify({
           event: 'search_bridge_retry_without_body_type',
           flowId: runId,
           requestId,
-          droppedBodyType: bridgeArgs.body_type,
+          droppedBodyType: dropped,
         }));
-        const retryCall = await callMarketcheckMcpTool('search_active_cars', retryArgs, requestId);
-        if (retryCall.success) {
-          bridgeArgs = retryArgs;
-          bridgeCall = retryCall;
+        active = await searchModels(retryParams, requestedModels(retryParams));
+        if (active.call.success) {
+          relaxations.push({ step: 'drop_body_type', detail: `Removed body style filter (${dropped})` });
+          searchParams = retryParams;
+          bridgeArgs = active.args;
+          bridgeCall = active.call;
+        }
+      }
+
+      // Drop max price when inventory is empty under a tight budget.
+      if (bridgeCall.success && activeCount(active) === 0 && searchParams.maxPrice) {
+        const droppedPrice = searchParams.maxPrice;
+        const retryParams = { ...searchParams, maxPrice: undefined };
+        console.warn(JSON.stringify({
+          event: 'search_bridge_retry_without_max_price',
+          flowId: runId,
+          requestId,
+          droppedMaxPrice: droppedPrice,
+        }));
+        active = await searchModels(retryParams, requestedModels(retryParams));
+        if (active.call.success) {
+          relaxations.push({ step: 'drop_max_price', detail: `Removed max price filter ($${Math.floor(droppedPrice).toLocaleString('en-US')})` });
+          searchParams = retryParams;
+          bridgeArgs = active.args;
+          bridgeCall = active.call;
+        }
+      }
+
+      // Widen radius stepwise when still empty.
+      if (bridgeCall.success && activeCount(active) === 0) {
+        const currentRadius = Math.round(searchParams.radiusMiles ?? Number(bridgeArgs.radius) ?? 50);
+        for (const nextRadius of [150, 250].filter((radius) => radius > currentRadius)) {
+          const retryParams = { ...searchParams, radiusMiles: nextRadius };
+          console.warn(JSON.stringify({
+            event: 'search_bridge_retry_widen_radius',
+            flowId: runId,
+            requestId,
+            fromRadius: currentRadius,
+            toRadius: nextRadius,
+          }));
+          active = await searchModels(retryParams, requestedModels(retryParams));
+          if (!active.call.success) break;
+          searchParams = retryParams;
+          bridgeArgs = active.args;
+          bridgeCall = active.call;
+          if (activeCount(active) > 0) {
+            relaxations.push({ step: 'widen_radius', detail: `Expanded radius from ${currentRadius} to ${nextRadius} miles` });
+            break;
+          }
+          relaxations.push({ step: 'widen_radius', detail: `Expanded radius to ${nextRadius} miles (still no matches)` });
+        }
+      }
+
+      // Try related models when a single model still returns nothing.
+      if (bridgeCall.success && activeCount(active) === 0) {
+        const primary = requestedModels(searchParams)[0] || searchParams.model;
+        const related = relatedModelsFor(primary).filter((model) => !requestedModels(searchParams).some((item) => item.toLowerCase() === model.toLowerCase()));
+        if (primary && related.length) {
+          const retryModels = [primary, ...related].slice(0, 4);
+          console.warn(JSON.stringify({
+            event: 'search_bridge_retry_related_models',
+            flowId: runId,
+            requestId,
+            fromModel: primary,
+            toModels: retryModels,
+          }));
+          const retryParams = { ...searchParams, model: primary, models: retryModels };
+          active = await searchModels(retryParams, retryModels);
+          if (active.call.success) {
+            relaxations.push({ step: 'related_models', detail: `Also searched related models (${related.join(', ')})` });
+            searchParams = retryParams;
+            bridgeArgs = active.args;
+            bridgeCall = active.call;
+          }
+        }
+      }
+
+      // Last resort: make-only search in the widened area.
+      if (bridgeCall.success && activeCount(active) === 0 && searchParams.make && (searchParams.model || requestedModels(searchParams).length)) {
+        const retryParams = { ...searchParams, model: undefined, models: undefined };
+        console.warn(JSON.stringify({
+          event: 'search_bridge_retry_make_only',
+          flowId: runId,
+          requestId,
+          make: searchParams.make,
+        }));
+        active = await searchOne(retryParams);
+        if (active.call.success) {
+          relaxations.push({ step: 'make_only', detail: `Broadened to all ${searchParams.make} models` });
+          searchParams = retryParams;
+          bridgeArgs = active.args;
+          bridgeCall = active.call;
         }
       }
 
@@ -654,7 +847,7 @@ export async function searchVehicles(
           searchLocation: searchParams.location,
         }).catch(() => {});
       } else {
-        const marketcheck = normalizeMarketcheckSearchResult(bridgeCall.result);
+        const marketcheck = active.merged ?? normalizeMarketcheckSearchResult(bridgeCall.result);
         const signedVehicles = marketcheck.vehicles.map((vehicle) => {
           const dealer = vehicle.location.dealer;
           const vin = vehicle.baseIdentity.vin;
@@ -695,11 +888,23 @@ export async function searchVehicles(
           inventoryProvider: 'marketcheck',
           normalizedAs: 'uvs',
         };
+        const emptyState = marketcheck.totalCount === 0
+          ? buildEmptyState({
+              originalParams,
+              effectiveParams: searchParams,
+              relaxations,
+            })
+          : undefined;
         const normalized = await normalizeBridgeSearchResult(
           { vehicles: signedVehicles, totalCount: marketcheck.totalCount },
           searchParams,
           runId,
           sourceInfo,
+          {
+            relaxations,
+            emptyState,
+            originalParams,
+          },
         );
         console.log(JSON.stringify({
           event: 'search_bridge_success',
@@ -712,22 +917,25 @@ export async function searchVehicles(
           resultsCount: marketcheck.totalCount,
           normalizedCount: marketcheck.vehicles.length,
           rejectedCount: marketcheck.rejectedCount,
+          relaxations,
+          empty: marketcheck.totalCount === 0,
         }));
         validateToolResult(normalized);
         recordFlowEvent({
           flowId: runId,
-          eventName: 'search.succeeded',
+          eventName: marketcheck.totalCount === 0 ? 'search.empty' : 'search.succeeded',
           source: 'mcp-server',
           provider: 'marketcheck_mcp',
           requestId,
           toolName: 'search_active_cars',
-          status: 'success',
+          status: marketcheck.totalCount === 0 ? 'empty' : 'success',
           durationMs: bridgeCall.latencyMs,
           resultCount: marketcheck.totalCount,
           searchLocation: searchParams.location,
           payload: {
             normalizedCount: marketcheck.vehicles.length,
             rejectedCount: marketcheck.rejectedCount,
+            relaxations,
           },
         }).catch(() => {});
         trackEvent('inventory.search', {
