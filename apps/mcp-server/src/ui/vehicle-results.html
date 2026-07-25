@@ -138,10 +138,12 @@
       return vehicles.length>0;
     }
     function captureHostSearchParams(){
-      const input=window.openai?.toolInput;
-      if(input&&typeof input==='object'){
-        pendingSearchParams={...pendingSearchParams,...input};
-        state.query={...state.query,...input};
+      const candidates=[window.openai?.toolInput,window.openai?.widgetState?.modelContent?.currentSearch,state.query];
+      for(const input of candidates){
+        if(input&&typeof input==='object'){
+          pendingSearchParams={...pendingSearchParams,...input};
+          state.query={...state.query,...input};
+        }
       }
       const outputResults=extractResults(window.openai?.toolOutput)||extractResults(window.openai?.toolResponseMetadata);
       if(outputResults)rememberSearchParams(outputResults);
