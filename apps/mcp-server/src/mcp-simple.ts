@@ -178,11 +178,15 @@ export function getAvailableTools() {
     {
       name: 'search',
       title: 'Search',
-      description: 'Search vehicle inventory from natural-language queries (e.g. "cars for sale near Rock Hill, SC")',
+      description: `Search vehicle inventory from natural-language queries (e.g. "used cars near Irvine, CA"). Returns the interactive map + cards widget (${VEHICLE_WIDGET_VERSION}). Prefer render-vehicle-results-v2 when make/model/location are already structured.`,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
       },
       inputSchema: {
         type: 'object',

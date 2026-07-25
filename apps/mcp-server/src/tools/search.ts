@@ -11,6 +11,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
   data?: {
     content: { type: string; text: string; }[];
     structuredContent?: unknown;
+    _meta?: Record<string, unknown>;
   };
   error?: string;
 }> {
@@ -96,6 +97,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
           searchParams?: SearchParams;
         };
       };
+      _meta?: Record<string, unknown>;
       vehicles?: unknown[];
       totalCount?: number;
     } | undefined;
@@ -108,6 +110,9 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
         totalCount,
         searchParams,
       },
+    };
+    const meta = resultData?._meta ?? {
+      results: (structuredContent as { results?: unknown }).results,
     };
 
     const content = Array.isArray(resultData?.content) && resultData.content.length > 0
@@ -124,6 +129,8 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       data: {
         content,
         structuredContent,
+        // Required so ChatGPT can hydrate the map widget when the host routes NL queries to `search`.
+        _meta: meta,
       },
     };
   } catch (error) {
