@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v22">
+  <meta name="autoagent-widget-version" content="v23">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -126,7 +126,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v22', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v23', HOST='https://autoagentmcp-server-production.up.railway.app';
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
@@ -152,6 +152,11 @@
     function showStatus(title,copy){$('statusTitle').textContent=title;$('statusCopy').textContent=copy;$('status').classList.remove('hidden')}
     function hideStatus(){$('status').classList.add('hidden')}
     function extractResults(payload){return payload?.structuredContent?.results||payload?._meta?.results||payload?.result?.structuredContent?.results||payload?.result?._meta?.results||payload?.toolOutput?.structuredContent?.results||payload?.toolOutput?._meta?.results||payload?.toolResponseMetadata?.mcp_tool_result?._meta?.results||payload?.toolResponseMetadata?.call_tool_result?._meta?.results||payload?.results||null}
+    let pendingSearchParams=null;let selfFetchAttempted=false;let emptyResultSeen=false;
+    function rememberSearchParams(results){
+      const next=results?.searchParams||results?.query;
+      if(next&&typeof next==='object'){pendingSearchParams={...pendingSearchParams,...next};state.query={...state.query,...next}}
+    }
     function persistState(){
       const map=MapController.map;
       const center=map?.getCenter();
@@ -160,12 +165,49 @@
     function emitReady(tag){if(readySent||typeof window.openai?.emitToolEvent!=='function')return;window.openai.emitToolEvent('ui:ready',{ok:true,tag,flowId:state.flowId,widgetVersion:VERSION});readySent=true;event('ui-ready',{detail:tag})}
     function hydrate(results,source='unknown'){
       if(!results)return false;
+      rememberSearchParams(results);
       const vehicles=Array.isArray(results.vehicles)?results.vehicles:Array.isArray(results)?results:[];
-      if(!vehicles.length){showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');return false}
+      if(!vehicles.length){
+        emptyResultSeen=true;
+        // Keep waiting so a later successful tool call (or self-fetch) can hydrate.
+        showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');
+        event('hydrate:empty',{detail:`source=${source}`});
+        scheduleSelfFetch('empty-result');
+        return false;
+      }
       lastResults=results;state.all=vehicles;state.visible=[...vehicles];state.query=results.searchParams||results.query||state.query;state.dealerSummary=results.dealerSummary||[];state.flowId=vehicles[0]?.flowId||state.flowId;state.selectedId=state.selectedId&&vehicles.some(v=>v.id===state.selectedId)?state.selectedId:vehicles[0].id;
       hideStatus();renderAll();reportIntrinsicHeight('hydrate');MapController.render(true);persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
     function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
+    async function selfFetchVehicles(reason='timeout'){
+      if(selfFetchAttempted||lastResults||state.pending)return;
+      if(typeof window.openai?.callTool!=='function'){event('self-fetch:unavailable',{detail:reason});return}
+      const params={
+        location:pendingSearchParams?.location||state.query?.location||'Denver, CO',
+        condition:pendingSearchParams?.condition||state.query?.condition||'used',
+        make:pendingSearchParams?.make||state.query?.make,
+        model:pendingSearchParams?.model||state.query?.model,
+        radiusMiles:pendingSearchParams?.radiusMiles||state.query?.radiusMiles||75,
+      };
+      // Drop bodyStyle on recovery — invented body styles are a common cause of 0-hit first renders.
+      selfFetchAttempted=true;state.pending=true;
+      showStatus('Loading live vehicles','Refreshing inventory for the map…');
+      event('self-fetch:start',{detail:reason});
+      try{
+        const result=await window.openai.callTool('render-vehicle-results-v2',params);
+        const next=extractResults(result);
+        if(!next||!hydrate(next,`self-fetch:${reason}`)){
+          showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+          event('self-fetch:empty',{detail:reason});
+        }
+      }catch(error){
+        event('self-fetch:error',{detail:String(error?.message||error)});
+        if(emptyResultSeen)showStatus('No vehicles found','Try revising the location, price, or vehicle type in ChatGPT.');
+      }finally{state.pending=false}
+    }
+    function scheduleSelfFetch(reason){
+      setTimeout(()=>{if(!lastResults)selfFetchVehicles(reason)},1800);
+    }
     function attachBridge(){
       if(bridgeSubscribed||typeof window.openai?.on!=='function')return false;
       ['tool-result','toolResult','ui/notifications/tool-result','openai/tool-result'].forEach(name=>{try{window.openai.on(name,value=>receive(value,name))}catch{}});
@@ -284,7 +326,7 @@
     }
     const restored=window.openai?.widgetState;if(restored?.privateContent?.displayMode==='fullscreen')setDisplayMode('fullscreen',false);if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
     attachBridge();reportIntrinsicHeight('startup');receive(window.openai?.toolOutput,'initial.output');receive(window.openai?.toolResponseMetadata,'initial.meta');MapController.render(false);
-    setTimeout(()=>{if(!lastResults)showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.')},2500);
+    setTimeout(()=>{if(!lastResults){showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}},2500);
   </script>
 </body>
 </html>

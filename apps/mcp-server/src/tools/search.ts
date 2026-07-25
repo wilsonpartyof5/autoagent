@@ -36,13 +36,22 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
     }
 
     const lowerQuery = query.toLowerCase();
-    const locationMatch = lowerQuery.match(/(?:in|near)\s+([a-z\s]+,\s*[a-z]{2}|[a-z\s]+(?:south carolina|north carolina|sc|nc))/i);
+    const locationMatch = lowerQuery.match(
+      /(?:in|near|around)\s+(?:the\s+)?([a-z\s]+?,\s*[a-z]{2}|[a-z\s]+?(?:metro(?:\s+area)?|area)?|[a-z\s]+(?:south carolina|north carolina|sc|nc|co|colorado|wa|texas|tx|california|ca))\b/i,
+    );
     const inferredLocation = locationMatch?.[1]
       ? locationMatch[1]
           .replace(/\bsc\b/i, 'SC')
           .replace(/\bnc\b/i, 'NC')
+          .replace(/\bco\b/i, 'CO')
+          .replace(/\bwa\b/i, 'WA')
+          .replace(/\btx\b/i, 'TX')
+          .replace(/\bca\b/i, 'CA')
           .replace(/\bsouth carolina\b/i, 'South Carolina')
           .replace(/\bnorth carolina\b/i, 'North Carolina')
+          .replace(/\bcolorado\b/i, 'CO')
+          .replace(/\bmetro(?:\s+area)?\b/i, '')
+          .replace(/\barea\b/i, '')
           .trim()
       : undefined;
 
@@ -50,14 +59,22 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
     const searchParams: SearchParams = {
       location: inferredLocation || contextLocation || 'Seattle, WA',
       condition: lowerQuery.includes('new') ? 'new' : 'used',
-      radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') ? 50 : undefined,
-      // Try to extract make/model from query if possible
-      make: lowerQuery.includes('toyota') ? 'Toyota' : 
-            lowerQuery.includes('honda') ? 'Honda' : 
-            lowerQuery.includes('subaru') ? 'Subaru' : undefined,
-      model: lowerQuery.includes('camry') ? 'Camry' : 
-             lowerQuery.includes('cr-v') ? 'CR-V' : 
-             lowerQuery.includes('outback') ? 'Outback' : undefined,
+      radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') || lowerQuery.includes('metro') ? 75 : undefined,
+      make: lowerQuery.includes('toyota') ? 'Toyota'
+            : lowerQuery.includes('honda') ? 'Honda'
+            : lowerQuery.includes('subaru') ? 'Subaru'
+            : lowerQuery.includes('ford') ? 'Ford'
+            : lowerQuery.includes('chevrolet') || lowerQuery.includes('chevy') ? 'Chevrolet'
+            : lowerQuery.includes('gmc') ? 'GMC'
+            : lowerQuery.includes('ram') ? 'Ram'
+            : undefined,
+      model: lowerQuery.includes('camry') ? 'Camry'
+             : lowerQuery.includes('cr-v') || lowerQuery.includes('crv') ? 'CR-V'
+             : lowerQuery.includes('outback') ? 'Outback'
+             : lowerQuery.includes('f-150') || lowerQuery.includes('f150') ? 'F-150'
+             : lowerQuery.includes('silverado') ? 'Silverado'
+             : lowerQuery.includes('sierra') ? 'Sierra'
+             : undefined,
     };
     
     // Call the existing searchVehicles function

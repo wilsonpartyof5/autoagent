@@ -354,25 +354,92 @@ function buildReadableContent(totalCount: number, vehicles: unknown[], location?
   return [{ type: 'text', text }];
 }
 
-function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
-  const location = searchParams.location.trim();
+const KNOWN_CITY_STATES: Record<string, string> = {
+  denver: 'CO',
+  seattle: 'WA',
+  portland: 'OR',
+  austin: 'TX',
+  dallas: 'TX',
+  houston: 'TX',
+  phoenix: 'AZ',
+  atlanta: 'GA',
+  chicago: 'IL',
+  miami: 'FL',
+  'los angeles': 'CA',
+  'san francisco': 'CA',
+  'san diego': 'CA',
+  'new york': 'NY',
+  boston: 'MA',
+  'charlotte': 'NC',
+  raleigh: 'NC',
+  'rock hill': 'SC',
+};
+
+/** Map model-supplied body styles onto MarketCheck body_type values. */
+export function normalizeBodyType(bodyStyle?: string): string | undefined {
+  if (!bodyStyle) return undefined;
+  const raw = bodyStyle.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (/(pickup|pick-up|pick up|truck|crew cab|supercrew)/.test(raw)) return 'Truck';
+  if (/(suv|crossover|cuv)/.test(raw)) return 'SUV';
+  if (/(sedan|saloon)/.test(raw)) return 'Sedan';
+  if (/coupe/.test(raw)) return 'Coupe';
+  if (/(hatch|hatchback)/.test(raw)) return 'Hatchback';
+  if (/wagon/.test(raw)) return 'Wagon';
+  if (/(van|minivan)/.test(raw)) return 'Van';
+  if (/(convertible|cabriolet)/.test(raw)) return 'Convertible';
+  // Unknown free-text body styles (e.g. "F-150", "electric") zero out MarketCheck.
+  return undefined;
+}
+
+/** Normalize free-form locations like "denver metro area" into MarketCheck city/state/zip. */
+export function resolveBridgeLocation(searchParams: SearchParams): Record<string, unknown> {
+  if (searchParams.latitude !== undefined && searchParams.longitude !== undefined) {
+    return { latitude: searchParams.latitude, longitude: searchParams.longitude };
+  }
+
+  const location = (searchParams.location || '').trim();
+  if (!location) return {};
+
   const zipMatch = location.match(/\b(\d{5})(?:-\d{4})?\b/);
-  const cityStateMatch = location.match(/^(.+?),\s*([A-Za-z]{2})$/);
+  if (zipMatch) return { zip: zipMatch[1] };
+
+  const cityStateMatch = location.match(/^(.+?),\s*([A-Za-z]{2})\b/);
+  if (cityStateMatch) {
+    return { city: cityStateMatch[1].trim(), state: cityStateMatch[2].toUpperCase() };
+  }
+
+  const cleaned = location
+    .replace(/\b(metro(?:\s+area)?|area|greater|downtown)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  const state = KNOWN_CITY_STATES[cleaned];
+  if (state) {
+    return {
+      city: cleaned.replace(/\b\w/g, (c) => c.toUpperCase()),
+      state,
+    };
+  }
+
+  // Last resort: pass city token so MarketCheck still has a place hint.
+  if (cleaned.length >= 3) {
+    return { city: cleaned.replace(/\b\w/g, (c) => c.toUpperCase()) };
+  }
+  return {};
+}
+
+export function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<string, unknown> {
+  const bodyType = normalizeBodyType(searchParams.bodyStyle);
   return {
-    ...(searchParams.latitude !== undefined && searchParams.longitude !== undefined
-      ? { latitude: searchParams.latitude, longitude: searchParams.longitude }
-      : zipMatch
-        ? { zip: zipMatch[1] }
-        : {}),
-    ...(searchParams.latitude === undefined && !zipMatch && cityStateMatch
-      ? { city: cityStateMatch[1].trim(), state: cityStateMatch[2].toUpperCase() }
-      : {}),
+    ...resolveBridgeLocation(searchParams),
     car_type: searchParams.condition,
     price_range: searchParams.maxPrice ? `0-${Math.floor(searchParams.maxPrice)}` : undefined,
     make: searchParams.make,
     model: searchParams.model,
     radius: Math.round(searchParams.radiusMiles ?? 50),
-    body_type: searchParams.bodyStyle,
+    ...(bodyType ? { body_type: bodyType } : {}),
     miles_range: searchParams.mileageMax ? `0-${Math.floor(searchParams.mileageMax)}` : undefined,
     rows: 12,
     fetch_all_photos: true,
@@ -523,9 +590,38 @@ export async function searchVehicles(
 
     if (CONFIG.inventorySearchProvider === 'marketcheck_mcp') {
       const runId = randomUUID();
-      const bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
+      let bridgeArgs = mapSearchParamsToBridgeArgs(searchParams);
+      console.log(JSON.stringify({
+        event: 'search_bridge_args',
+        flowId: runId,
+        requestId,
+        bridgeArgs,
+        searchParams,
+      }));
 
-      const bridgeCall = await callMarketcheckMcpTool('search_active_cars', bridgeArgs, requestId);
+      let bridgeCall = await callMarketcheckMcpTool('search_active_cars', bridgeArgs, requestId);
+
+      // ChatGPT often invents a bodyStyle that MarketCheck rejects (0 hits). Retry once without it.
+      if (
+        bridgeCall.success
+        && bridgeArgs.body_type
+        && normalizeMarketcheckSearchResult(bridgeCall.result).totalCount === 0
+      ) {
+        const retryArgs = { ...bridgeArgs };
+        delete retryArgs.body_type;
+        console.warn(JSON.stringify({
+          event: 'search_bridge_retry_without_body_type',
+          flowId: runId,
+          requestId,
+          droppedBodyType: bridgeArgs.body_type,
+        }));
+        const retryCall = await callMarketcheckMcpTool('search_active_cars', retryArgs, requestId);
+        if (retryCall.success) {
+          bridgeArgs = retryArgs;
+          bridgeCall = retryCall;
+        }
+      }
+
       if (!bridgeCall.success) {
         console.error(JSON.stringify({
           event: 'search_bridge_failed',

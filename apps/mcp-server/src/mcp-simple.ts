@@ -12,7 +12,7 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v22';
+export const VEHICLE_WIDGET_VERSION = 'v23';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
@@ -94,7 +94,7 @@ const VEHICLE_SEARCH_INPUT_SCHEMA = {
     },
     bodyStyle: {
       type: 'string',
-      description: 'Vehicle body style (e.g., "SUV", "Sedan", "Truck")',
+      description: 'Optional body style ONLY when the user explicitly asks for one. Allowed: SUV, Sedan, Truck, Coupe, Hatchback, Wagon, Van, Convertible. Do not invent a body style for trucks/pickups unless the user said SUV/Sedan/etc.',
     },
     mileageMax: {
       type: 'number',
@@ -231,7 +231,7 @@ export function getAvailableTools() {
     {
       name: 'render-vehicle-results-v2',
       title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
-      description: `Current (${VEHICLE_WIDGET_VERSION}) UI tool for rendering the latest interactive in-chat vehicle inventory map, dealer clusters, vehicle cards, VDP details, and back-to-results navigation. Prefer this tool for visual vehicle browsing.`,
+      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}). Do not also call search or search-vehicles for the same request.`,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -247,11 +247,15 @@ export function getAvailableTools() {
     {
       name: 'search-vehicles',
       title: 'Search Vehicles',
-      description: 'Data-only vehicle inventory search. Use render-vehicle-results-v2 when the user wants the interactive map and card UI.',
+      description: 'Secondary data search. Prefer render-vehicle-results-v2 for shopping UI. If used, still returns the same map widget template so results can hydrate the UI.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
       },
       inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
       outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
@@ -414,6 +418,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v22.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v21.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v20.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v19.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

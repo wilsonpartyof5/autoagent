@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v22"');
-    expect(html).toContain("VERSION='v22'");
+    expect(html).toContain('autoagent-widget-version" content="v23"');
+    expect(html).toContain("VERSION='v23'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -24,6 +24,8 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('function attachBridge()');
     expect(html).toContain('setInterval(()=>');
     expect(html).toContain("receive(window.openai?.toolOutput,'poll.output')");
+    expect(html).toContain('function selfFetchVehicles');
+    expect(html).toContain("event('hydrate:empty'");
   });
 
   it('supports fullscreen, native follow-ups, and persistent widget state', () => {

@@ -88,7 +88,7 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             name: 'autoagent-mcp-server',
             version: `1.0.0-${VEHICLE_WIDGET_VERSION}-${CONFIG.commitSha.substring(0, 7)}`,
           },
-          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For interactive vehicle inventory UI, use render-vehicle-results-v2. Use search-vehicles only for data-only vehicle searches.`
+          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For vehicle shopping, call render-vehicle-results-v2 ONCE with make, model, location, and condition. Do not also call search or search-vehicles for the same user request. Omit bodyStyle unless the user explicitly requested a body style.`
         });
 
       case 'initialized':
