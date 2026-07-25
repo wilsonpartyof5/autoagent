@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v26">
+  <meta name="autoagent-widget-version" content="v27">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -12,26 +12,28 @@
       color-scheme: light dark;
       --bg:#0d0f12;--panel:#17191d;--panel2:#202329;--text:#f8fafc;--muted:#a1a8b3;
       --line:#343842;--blue:#2878ff;--blue2:#1557c8;--red:#d8322f;--shadow:0 12px 32px #0008;
+      --touch:44px;
       font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
     *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;min-height:620px;overflow:hidden;background:var(--bg);color:var(--text)}
     button,input{font:inherit} button{color:inherit}.hidden{display:none!important}
     #app{position:relative;width:100%;height:620px;min-height:540px;overflow:hidden;border:1px solid var(--line);border-radius:24px;background:var(--bg)}
-    #workspace{display:grid;grid-template-columns:1fr;width:100%;height:100%}
+    #workspace{display:grid;grid-template-columns:1fr;width:100%;height:100%;min-height:0}
     #resultsPane{display:none;background:var(--panel);border-right:1px solid var(--line);min-width:0;overflow:hidden}
-    #resultsHeader{height:62px;padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    #resultsHeader{min-height:62px;padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
     #resultCount{font-weight:750}.subtle{font-size:12px;color:var(--muted)}
     #list{height:calc(100% - 62px);overflow:auto;padding:10px;display:grid;gap:10px;align-content:start}
-    #mapPane{position:relative;min-width:0;height:100%;overflow:hidden}
-    #map{position:absolute;inset:0;background:#d8e4e8}.leaflet-container{font-family:inherit}
+    #mapPane{position:relative;min-width:0;min-height:0;height:100%;overflow:hidden}
+    #map{position:absolute;inset:0;background:#d8e4e8}.leaflet-container{font-family:inherit;width:100%;height:100%}
     .leaflet-control-attribution{font-size:9px!important}
+    .leaflet-control-zoom a{width:36px!important;height:36px!important;line-height:36px!important;font-size:18px!important}
     .topbar{position:absolute;z-index:700;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:flex-start;pointer-events:none}
-    .control-scroll{display:flex;gap:7px;overflow:auto;scrollbar-width:none;pointer-events:auto;padding:1px}
-    .pill,.icon-btn,.primary-btn{border:1px solid #ffffff30;background:#15171bea;backdrop-filter:blur(12px);border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px #0004}
+    .control-scroll{display:flex;gap:7px;overflow:auto;scrollbar-width:none;pointer-events:auto;padding:1px;max-width:100%}
+    .pill,.icon-btn,.primary-btn{border:1px solid #ffffff30;background:#15171bea;backdrop-filter:blur(12px);border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px #0004;min-height:40px}
     .pill:hover,.pill.active,.icon-btn:hover{border-color:#75a7ff;background:#173f78}.pill:disabled{opacity:.55;cursor:wait}
-    .icon-btn{margin-left:auto;width:42px;height:42px;padding:0;font-size:18px;pointer-events:auto}
+    .icon-btn{margin-left:auto;width:44px;height:44px;min-height:44px;padding:0;font-size:18px;pointer-events:auto;flex:0 0 auto}
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
-    #searchArea{position:absolute;z-index:710;top:66px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer}
+    #searchArea{position:absolute;z-index:710;top:66px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
     #searchArea[disabled]{opacity:.65}
     .price-pin,.cluster-pin{transform:translate(-50%,-50%);background:var(--red);color:#fff;border:2px solid #fff;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:850;box-shadow:0 4px 12px #0007;white-space:nowrap;transition:transform .16s,border-color .16s,background .16s}
     .price-pin.selected{background:var(--blue);border-color:#dbeafe;transform:translate(-50%,-50%) scale(1.13);z-index:5}
@@ -39,11 +41,11 @@
     .leaflet-div-icon{background:transparent!important;border:0!important}
     #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
     #featured{pointer-events:auto;margin:0 auto 10px;max-width:760px;touch-action:manipulation}
-    #railShell{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr) 40px;gap:6px;align-items:center;pointer-events:auto}
+    #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;pointer-events:auto}
     #rail{pointer-events:auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:2px 0 6px;cursor:grab;min-width:0}
     #rail.dragging{cursor:grabbing;scroll-snap-type:none;scroll-behavior:auto}
     #rail::-webkit-scrollbar,.gallery::-webkit-scrollbar,.control-scroll::-webkit-scrollbar{display:none}
-    .rail-nav{width:40px;height:40px;border-radius:999px;border:1px solid #ffffff40;background:#15171bf2;backdrop-filter:blur(12px);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px #0005;touch-action:manipulation}
+    .rail-nav{width:44px;height:44px;border-radius:999px;border:1px solid #ffffff40;background:#15171bf2;backdrop-filter:blur(12px);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px #0005;touch-action:manipulation}
     .rail-nav:disabled{opacity:.35;cursor:default}
     .vehicle-card{background:#121417f2;border:1px solid var(--line);border-radius:15px;overflow:hidden;display:grid;grid-template-columns:112px 1fr;min-height:112px;cursor:pointer;transition:border-color .15s,transform .15s;scroll-snap-align:start;touch-action:manipulation;-webkit-user-select:none;user-select:none}
     .vehicle-card:hover,.vehicle-card.active{border-color:#4f91ff;transform:translateY(-1px)}.vehicle-card img{width:112px;height:100%;min-height:112px;object-fit:cover;background:#2a2d32;pointer-events:none}
@@ -62,46 +64,89 @@
     .drawer-panel,.modal-panel{max-width:760px;margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
     #details .drawer-panel{display:flex;flex-direction:column;width:100%;height:100%;max-width:none;margin:0;border-radius:0;overflow:hidden;border:0}
     .drawer-head,.modal-head{position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);padding-top:calc(12px + env(safe-area-inset-top))}
-    #details .drawer-head{position:relative;flex:0 0 auto;top:auto}
+    #details .drawer-head{position:relative;flex:0 0 auto;top:auto;min-height:56px}
     .drawer-head h2,.modal-head h2{margin:0;font-size:17px;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .nav-back{flex:0 0 auto;border-radius:999px;padding:8px 12px;font-size:13px;font-weight:750;white-space:nowrap}
-    .close{margin-left:0;background:transparent;border:0;font-size:28px;line-height:1;cursor:pointer;width:40px;height:40px;border-radius:999px}
+    .nav-back{flex:0 0 auto;border-radius:999px;padding:10px 14px;font-size:13px;font-weight:750;white-space:nowrap;min-height:var(--touch)}
+    .close{margin-left:0;background:transparent;border:0;font-size:28px;line-height:1;cursor:pointer;width:44px;height:44px;border-radius:999px}
     .close:hover{background:#ffffff14}
     #detailBody{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:16px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
     .hero-wrap{position:relative;border-radius:13px;overflow:hidden;background:#292c31}
     .hero-image{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#292c31;touch-action:manipulation}
-    .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;border-radius:999px;background:#0d0f12cc;color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:2;touch-action:manipulation}
+    .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;border-radius:999px;background:#0d0f12cc;color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:2;touch-action:manipulation}
     .hero-nav.prev{left:8px}.hero-nav.next{right:8px}.hero-nav:disabled{opacity:.35;cursor:default}
     .hero-count{position:absolute;right:10px;bottom:10px;background:#0d0f12cc;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700}
     .gallery{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;margin-top:10px;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:2px 0 6px}
     .gallery-thumb{flex:0 0 auto;width:112px;height:76px;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#292c31;cursor:pointer;scroll-snap-align:start;touch-action:manipulation}
     .gallery-thumb.active{border-color:var(--blue)}.gallery-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
     .vdp-footer-nav{position:sticky;bottom:0;display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:12px;background:linear-gradient(180deg,#17191d00,#17191df2 28%,#17191d);padding-bottom:calc(8px + env(safe-area-inset-bottom))}
-    .spec-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:16px}.spec{background:#101215;border:1px solid #292d34;border-radius:11px;padding:11px}.spec label{display:block;color:var(--muted);font-size:11px}.spec strong{display:block;margin-top:3px}
-    .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.secondary{background:#20242a;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;touch-action:manipulation}
+    .spec-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:16px}.spec{background:#101215;border:1px solid #292d34;border-radius:11px;padding:11px}.spec label{display:block;color:var(--muted);font-size:11px}.spec strong{display:block;margin-top:3px;word-break:break-word}
+    .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.secondary{background:#20242a;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;touch-action:manipulation;min-height:var(--touch)}
     form{padding:16px;display:grid;gap:12px}label.field{display:grid;gap:5px;font-weight:700;font-size:13px}input{width:100%;background:#0f1114;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:11px}input:focus{outline:2px solid #4f91ff}
     .consent{display:flex;align-items:flex-start;gap:8px;font-size:13px}.consent input{width:auto;margin-top:2px}
+    .label-short{display:none}
     body.fullscreen #app{height:100vh;max-height:none;border:0;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}
-    body.fullscreen #workspace{grid-template-columns:360px minmax(0,1fr)}
+    body.fullscreen #workspace{grid-template-columns:380px minmax(0,1fr)}
     body.fullscreen #resultsPane{display:block}
     body.fullscreen #embeddedCards{display:none}
-    body.fullscreen #mapPane{height:100%}
+    body.fullscreen #mapPane{height:100%;display:block}
+    body.fullscreen #map{position:absolute;inset:0}
     .sheet-handle{display:none}
+
+    /* Tablet / narrow fullscreen: bottom sheet over map */
     @media(max-width:1023px){
       body.fullscreen #workspace{display:block}
-      body.fullscreen #resultsPane{display:block;position:absolute;z-index:720;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));height:42vh;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:height .2s}
-      body.fullscreen #resultsPane.expanded{height:78vh}
+      body.fullscreen #resultsPane{display:block;position:absolute;z-index:720;left:0;right:0;bottom:0;height:40vh;border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:var(--shadow);transition:height .2s}
+      body.fullscreen #resultsPane.expanded{height:74vh}
       body.fullscreen #mapPane{height:100%}
-      .sheet-handle{display:block;width:46px;height:5px;border:0;border-radius:3px;background:#7d8490;margin:7px auto;cursor:pointer}
-      #resultsHeader{height:52px;padding-top:4px}#list{height:calc(100% - 52px);grid-auto-flow:column;grid-auto-columns:min(82vw,330px);grid-template-rows:1fr;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none}
+      .sheet-handle{display:block;width:48px;height:5px;border:0;border-radius:3px;background:#7d8490;margin:8px auto 0;cursor:pointer}
+      #resultsHeader{min-height:52px;padding:6px 14px 10px}
+      #list{height:calc(100% - 58px);grid-auto-flow:column;grid-auto-columns:min(84vw,340px);grid-template-rows:1fr;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;padding:10px 12px 16px;gap:12px}
       #list .vehicle-card{height:100%}
     }
-    @media(max-width:640px){
-      #app{height:580px;min-height:520px;border-radius:18px}.topbar{top:8px;left:8px;right:8px}.pill{padding:8px 11px;font-size:12px}
-      #embeddedCards{left:8px;right:8px;bottom:8px}#featured .vehicle-card{grid-template-columns:118px 1fr;min-height:116px}#featured .vehicle-card img{width:118px;min-height:116px}
-      #railShell{grid-template-columns:34px minmax(0,1fr) 34px;gap:4px}.rail-nav{width:34px;height:34px;font-size:22px}
-      #rail .vehicle-card{flex-basis:min(82vw,260px)}.gallery-thumb{width:96px;height:68px}.spec-grid{grid-template-columns:1fr}.drawer,.modal{padding:0}.drawer-panel,.modal-panel{min-height:100%;border-radius:0}
-      .nav-back{padding:8px 10px;font-size:12px}
+
+    /* Mobile / chat-bubble: map on top, cards below (not stacked overlays) */
+    @media(max-width:720px){
+      html,body{min-height:0}
+      #app{height:min(70vh,620px);min-height:480px;border-radius:16px}
+      #mapPane{display:grid;grid-template-rows:minmax(200px,1fr) auto;height:100%}
+      #map{position:relative;inset:auto;width:100%;height:100%;min-height:200px}
+      .topbar{top:8px;left:8px;right:8px;gap:6px}
+      .control-scroll{gap:6px}
+      .pill{padding:8px 11px;font-size:12px;min-height:36px}
+      .label-full{display:none}.label-short{display:inline}
+      #searchArea{top:52px;padding:8px 12px;font-size:12px;min-height:34px}
+      #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:10px 10px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+      #featured{display:none}
+      #railShell{grid-template-columns:44px minmax(0,1fr) 44px;gap:6px}
+      #rail .vehicle-card{flex:0 0 min(85vw,300px);grid-template-columns:96px 1fr;min-height:104px}
+      #rail .vehicle-card img{width:96px;min-height:104px}
+      #rail .vehicle-price{font-size:18px}
+      .gallery-thumb{width:88px;height:64px}
+      .hero-image{aspect-ratio:16/10}
+      .hero-nav{width:44px;height:44px}
+      .spec-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+      .actions{flex-direction:column}
+      .actions .primary-btn,.actions .secondary{width:100%;justify-content:center}
+      .vdp-footer-nav{flex-direction:column}
+      .vdp-footer-nav .secondary{width:100%}
+      .drawer,.modal{padding:0}
+      .drawer-panel,.modal-panel{min-height:100%;border-radius:0}
+      .nav-back{padding:10px 12px}
+      body.fullscreen #app{height:100vh;min-height:100vh;border-radius:0}
+      body.fullscreen #mapPane{display:block}
+      body.fullscreen #map{position:absolute;inset:0}
+      body.fullscreen #embeddedCards{display:none}
+      body.fullscreen #resultsPane{height:36vh}
+      body.fullscreen #resultsPane.expanded{height:70vh}
+    }
+
+    /* Desktop comfort */
+    @media(min-width:721px){
+      #featured{display:block}
+      #rail .vehicle-card{flex-basis:min(42vw,300px)}
+      body.fullscreen #workspace{grid-template-columns:400px minmax(0,1fr)}
+      #details .drawer-panel{max-width:820px;margin:24px auto;height:calc(100% - 48px);border-radius:18px;border:1px solid var(--line)}
+      #details.drawer{padding:0 16px;background:#0e1013cc}
     }
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
   </style>
@@ -111,7 +156,7 @@
     <div id="workspace">
       <aside id="resultsPane" aria-label="Vehicle results">
         <button id="sheetHandle" class="sheet-handle" aria-label="Expand results panel"></button>
-        <header id="resultsHeader"><div><div id="resultCount">Vehicles</div><div id="resultContext" class="subtle"></div></div><button id="inlineButton" class="secondary nav-back">← Map</button></header>
+        <header id="resultsHeader"><div><div id="resultCount">Vehicles</div><div id="resultContext" class="subtle"></div></div><button id="inlineButton" class="secondary nav-back" type="button" aria-label="Back to map">Map</button></header>
         <div id="list"></div>
       </aside>
       <section id="mapPane" aria-label="Interactive vehicle map">
@@ -122,10 +167,10 @@
             <button class="pill" data-filter="new">New</button>
             <button class="pill" data-filter="under30">Under $30k</button>
             <button class="pill" data-filter="suv">SUV</button>
-            <button class="pill" id="refineButton">Refine in ChatGPT</button>
+            <button class="pill" id="refineButton"><span class="label-full">Refine in ChatGPT</span><span class="label-short">Refine</span></button>
             <button class="pill" id="resetButton">Reset</button>
           </div>
-          <button id="expandButton" class="icon-btn" aria-label="Open fullscreen map">↗</button>
+          <button id="expandButton" class="icon-btn" aria-label="Open fullscreen map" title="Open fullscreen">↗</button>
         </div>
         <button id="searchArea" class="hidden">Search this area</button>
         <div id="embeddedCards">
@@ -143,7 +188,7 @@
     <section id="details" class="drawer hidden" aria-modal="true" role="dialog">
       <div class="drawer-panel">
         <header class="drawer-head">
-          <button id="detailBack" class="secondary nav-back" type="button">← Map</button>
+          <button id="detailBack" class="secondary nav-back" type="button" aria-label="Back to map">Map</button>
           <h2 id="detailTitle">Vehicle</h2>
           <button id="detailClose" class="close" type="button" aria-label="Close vehicle details">×</button>
         </header>
@@ -164,7 +209,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v26', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v27', HOST='https://autoagentmcp-server-production.up.railway.app';
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
@@ -495,7 +540,7 @@
       const d=dealer(v),specs=v.coreSpecs||{};let photoIndex=0;
       $('detailTitle').textContent=title(v);
       const galleryHtml=gallery.map((url,index)=>`<button type="button" class="gallery-thumb ${index===0?'active':''}" data-index="${index}" aria-label="Photo ${index+1}"><img src="${escapeHtml(url)}" alt=""></button>`).join('');
-      $('detailBody').innerHTML=`<div class="hero-wrap"><img class="hero-image" id="detailHero" src="${escapeHtml(gallery[0])}" alt="${escapeHtml(title(v))}"><button type="button" class="hero-nav prev" id="heroPrev" aria-label="Previous photo">‹</button><button type="button" class="hero-nav next" id="heroNext" aria-label="Next photo">›</button><div class="hero-count" id="heroCount">1 / ${gallery.length}</div></div><div class="gallery" id="detailGallery">${galleryHtml}</div><div class="spec-grid">${spec('Price',money(price(v)))}${spec('Mileage',miles(v)?`${miles(v).toLocaleString()} mi`:'New')}${spec('Condition',v.condition)}${spec('Body',specs.bodyType)}${spec('Drivetrain',specs.drivetrain?.toUpperCase())}${spec('Transmission',specs.transmission?.description)}${spec('Engine',specs.engine?.description)}${spec('VIN',vin(v))}</div><div class="spec" style="margin-top:12px"><label>Dealer</label><strong>${escapeHtml(d.name||'Dealer')}</strong><div class="subtle">${escapeHtml([d.address,d.city,d.state].filter(Boolean).join(', '))}</div></div><div class="actions"><button class="primary-btn" id="bookButton" type="button">Book test drive</button>${v.vdpUrl?'<button class="secondary" id="vdpButton" type="button">Dealer listing</button>':''}<button class="secondary" id="moreLikeButton" type="button">More like this</button></div><div class="vdp-footer-nav"><button class="secondary nav-back" id="detailMapButton" type="button">← Back to map</button><button class="secondary" id="detailCardsButton" type="button">Vehicle cards</button></div>`;
+      $('detailBody').innerHTML=`<div class="hero-wrap"><img class="hero-image" id="detailHero" src="${escapeHtml(gallery[0])}" alt="${escapeHtml(title(v))}"><button type="button" class="hero-nav prev" id="heroPrev" aria-label="Previous photo">‹</button><button type="button" class="hero-nav next" id="heroNext" aria-label="Next photo">›</button><div class="hero-count" id="heroCount">1 / ${gallery.length}</div></div><div class="gallery" id="detailGallery">${galleryHtml}</div><div class="spec-grid">${spec('Price',money(price(v)))}${spec('Mileage',miles(v)?`${miles(v).toLocaleString()} mi`:'New')}${spec('Condition',v.condition)}${spec('Body',specs.bodyType)}${spec('Drivetrain',specs.drivetrain?.toUpperCase())}${spec('Transmission',specs.transmission?.description)}${spec('Engine',specs.engine?.description)}${spec('VIN',vin(v))}</div><div class="spec" style="margin-top:12px"><label>Dealer</label><strong>${escapeHtml(d.name||'Dealer')}</strong><div class="subtle">${escapeHtml([d.address,d.city,d.state].filter(Boolean).join(', '))}</div></div><div class="actions"><button class="primary-btn" id="bookButton" type="button">Book test drive</button>${v.vdpUrl?'<button class="secondary" id="vdpButton" type="button">Dealer listing</button>':''}<button class="secondary" id="moreLikeButton" type="button">More like this</button></div><div class="vdp-footer-nav"><button class="secondary nav-back" id="detailMapButton" type="button">Map</button><button class="secondary" id="detailCardsButton" type="button">Vehicle cards</button></div>`;
       const setDetailPhoto=index=>{
         if(!gallery.length)return;
         photoIndex=(index+gallery.length)%gallery.length;
@@ -555,6 +600,16 @@
         event('layout:resize',{detail:`${Math.round(rect.width)}x${Math.round(rect.height)}`});
       });
       resizeObserver.observe($('app'));
+    }
+    if(globalThis.matchMedia){
+      const mobileQuery=window.matchMedia('(max-width:720px)');
+      const onBreakpoint=()=>{
+        event('layout:breakpoint',{detail:mobileQuery.matches?'mobile':'desktop'});
+        MapController.resize();
+        reportIntrinsicHeight('breakpoint');
+      };
+      if(typeof mobileQuery.addEventListener==='function')mobileQuery.addEventListener('change',onBreakpoint);
+      else mobileQuery.addListener?.(onBreakpoint);
     }
     const restored=window.openai?.widgetState;if(restored?.privateContent?.displayMode==='fullscreen')setDisplayMode('fullscreen',false);if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
     attachBridge();reportIntrinsicHeight('startup');receive(window.openai?.toolOutput,'initial.output');receive(window.openai?.toolResponseMetadata,'initial.meta');MapController.render(false);
