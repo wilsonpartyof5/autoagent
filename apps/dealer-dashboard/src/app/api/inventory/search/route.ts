@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  searchLiveInventory,
+  searchActiveCarsMcp as searchLiveInventory,
   boundsToRadiusMiles,
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
   type LiveSearchFilters,
-} from '@/lib/marketcheck/live-search';
+} from '@/lib/marketcheck/mcp-adapter';
 
 /**
  * POST /api/inventory/search

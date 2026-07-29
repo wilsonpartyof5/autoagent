@@ -9,12 +9,26 @@ build/
 .next/
 out/
 
-# Environment variables
+# Environment variables / secrets
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.local.production
+.env.vercel
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
 
 # Logs
 npm-debug.log*

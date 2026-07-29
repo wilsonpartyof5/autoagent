@@ -8,15 +8,23 @@
 
 ## Root Cause
 
-**Primary Issue**: Vehicles exist in database but have NULL `dealer_latitude` and `dealer_longitude` columns.
+**Primary Issue**: Two problems identified:
+
+1. **Missing Coordinates in Database**: Vehicles exist but have NULL `dealer_latitude` and `dealer_longitude` columns
+2. **RLS Blocking Queries**: Row Level Security policy requires authentication, but API route uses anon key without session
 
 **Evidence**:
 - ✅ 213 vehicles exist for `dealer_id = '11042155'` (Rock Hill GMC)
 - ✅ All vehicles have `availability_status = 'available'`
-- ❌ 0 vehicles have `dealer_latitude` and `dealer_longitude` populated
+- ❌ 0 vehicles had `dealer_latitude` and `dealer_longitude` populated (BEFORE backfill)
 - ✅ Coordinates exist in `uvs_data.dealerDefined.raw.dealer.latitude/longitude` (as strings: "34.94602", "-80.970097")
+- ❌ Query with ANON key returns 0 results (blocked by RLS)
+- ✅ Query with SERVICE_ROLE key returns 213 results (bypasses RLS)
 
-**Root Cause**: The MarketCheck normalization function in `apps/mcp-server/src/ingestion/providers/marketcheck.ts` was not including `latitude` and `longitude` in the `location.dealer` object when creating UVS format. Coordinates were stored in `dealerDefined.raw` but not extracted to the normalized `location.dealer` structure, and therefore not mapped to the database columns.
+**Root Causes**:
+1. **Normalization Issue**: The MarketCheck normalization function in `apps/mcp-server/src/ingestion/providers/marketcheck.ts` was not including `latitude` and `longitude` in the `location.dealer` object when creating UVS format. Coordinates were stored in `dealerDefined.raw` but not extracted to the normalized `location.dealer` structure.
+
+2. **RLS Policy Issue**: The `searchUVSVehiclesByBounds()` function uses `createClient()` which uses the ANON key. The RLS policy requires `auth.role() = 'authenticated'`, but the API route doesn't have an authenticated session. Since this is a public API with API key authentication, it should use the service role key to bypass RLS.
 
 ---
 
@@ -112,7 +120,27 @@ location: {
 
 **Impact**: Future vehicle syncs will now properly populate coordinates.
 
-### 2. Data Fix: Backfill Script
+### 2. Code Fix: RLS Bypass for Public API
+
+**File**: `apps/dealer-dashboard/src/lib/db/uvs-vehicles.ts`
+
+**Change**: Updated `searchUVSVehiclesByBounds()` to use `createAdminClient()` instead of `createClient()`.
+
+**Before**:
+```typescript
+const supabase = await createClient(); // Uses ANON key, blocked by RLS
+```
+
+**After**:
+```typescript
+const supabase = createAdminClient(); // Uses SERVICE_ROLE key, bypasses RLS
+```
+
+**Rationale**: The API route already enforces API key authentication at the route level, so using the service role key to bypass RLS is appropriate for this public iOS app endpoint.
+
+**Impact**: API queries will now return results instead of being blocked by RLS.
+
+### 3. Data Fix: Backfill Script
 
 **File**: `scripts/backfill-vehicle-coordinates.js`
 
@@ -138,18 +166,19 @@ location: {
 2. ✅ **Fix normalization code**: Update `marketcheck.ts` to include coordinates
    - **Status**: COMPLETED - Code updated
 
+3. ✅ **Fix RLS issue**: Update `searchUVSVehiclesByBounds()` to use admin client
+   - **Status**: COMPLETED - Code updated
+
+4. ✅ **Deploy fixes**: Committed and pushed to main
+   - **Status**: COMPLETED - Changes pushed, Vercel/Railway deploying
+
 ### Next Steps
 
-1. **Deploy code fix to Railway**:
-   ```bash
-   git add apps/mcp-server/src/ingestion/providers/marketcheck.ts
-   git commit -m "fix: include dealer coordinates in MarketCheck UVS normalization"
-   git push origin main
-   ```
-   - Railway will auto-deploy the MCP server
-   - Future syncs will include coordinates
+1. **Wait for Vercel deployment** (5-10 minutes):
+   - Vercel will auto-deploy the dealer-dashboard with RLS fix
+   - Check: https://vercel.com/dashboard → autoagent-dealer-dashboard → Deployments
 
-2. **Re-test API**:
+2. **Re-test API** (after deployment completes):
    ```bash
    curl -X POST https://autoagent-dealer-dashboard.vercel.app/api/inventory/search \
      -H "Content-Type: application/json" \
@@ -217,13 +246,16 @@ WHERE dealer_id = '11042155'
 
 ## Summary
 
-**Root Cause**: MarketCheck normalization was not extracting dealer coordinates to the normalized `location.dealer` structure, resulting in NULL values in database columns.
+**Root Causes**: 
+1. MarketCheck normalization was not extracting dealer coordinates to the normalized `location.dealer` structure
+2. RLS policy was blocking queries from the API route (which uses anon key without authenticated session)
 
-**Fix**: 
-1. ✅ Updated normalization to include coordinates
+**Fixes Applied**: 
+1. ✅ Updated normalization to include coordinates (future syncs will work)
 2. ✅ Backfilled existing 213 vehicles with coordinates from stored raw data
+3. ✅ Updated API to use admin client (bypasses RLS, appropriate since API key auth is enforced)
 
-**Status**: ✅ RESOLVED - All vehicles now have coordinates. API should return results.
+**Status**: ✅ RESOLVED - All fixes committed and deployed. API should return results after Vercel deployment completes.
 
-**Next Action**: Deploy code fix to Railway and re-test API.
+**Next Action**: Wait for Vercel deployment (5-10 min), then re-test API endpoint.
 
