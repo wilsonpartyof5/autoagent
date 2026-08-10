@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "vercel": {
+      "type": "http",
       "url": "https://mcp.vercel.com"
     },
     "railway": {
+      "type": "http",
       "url": "https://mcp.railway.com"
     }
   }
