@@ -1,1 +1,3 @@
-# deploy trigger 2026-07-25T03:34:44Z
+# Railway rebuild trigger - 2026-08-14
+Build triggered at: 2026-08-14 14:51:00 UTC
+Reason: deploy ChatGPT widget v29 (dense map pins) to production MCP

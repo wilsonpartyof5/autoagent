@@ -8,7 +8,8 @@
       "packages/shared/**",
       "Dockerfile",
       "pnpm-lock.yaml",
-      "railway.json"
+      "railway.json",
+      ".railway-rebuild"
     ]
   },
   "deploy": {}
