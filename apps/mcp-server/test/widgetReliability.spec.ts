@@ -70,8 +70,19 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('#rail .vehicle-card{flex:0 0 calc(100% - 28px)');
     expect(html).toContain('.rail-nav{display:none}');
     expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff');
+    expect(html).toContain('-webkit-text-fill-color:#fff');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
     expect(html).toContain('.cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px');
+    expect(html).toContain('background:#111;color:#fff;-webkit-text-fill-color:#fff;border:2px solid #fff');
+  });
+
+  it('loads the tapped map pin into the carousel', () => {
+    expect(html).toContain("selectVehicle(vehicle.id,'pin')");
+    expect(html).toContain("selectVehicle(match.id,'cluster')");
+    expect(html).toContain('function vehiclesForRail()');
+    expect(html).toContain('function scrollRailToSelected()');
+    expect(html).toContain("if(source==='pin'||source==='cluster')requestAnimationFrame(()=>scrollRailToSelected())");
+    expect(html).toContain('list.unshift(selected)');
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {

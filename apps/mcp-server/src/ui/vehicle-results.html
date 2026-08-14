@@ -35,7 +35,7 @@
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
     #searchArea{position:absolute;z-index:710;top:12px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
     #searchArea[disabled]{opacity:.65}
-    .price-pin,.cluster-pin{color-scheme:only light;white-space:nowrap;line-height:1.1;box-shadow:0 1px 4px #0006}
+    .price-pin,.cluster-pin{color-scheme:only light;forced-color-adjust:none;white-space:nowrap;line-height:1.1;box-shadow:0 1px 4px #0006;color:#fff;-webkit-text-fill-color:#fff}
     .price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff;-webkit-text-fill-color:#fff;border:1px solid #fff;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:800;letter-spacing:.01em;text-shadow:none}
     .price-pin:after{content:"";position:absolute;left:50%;bottom:-4px;width:7px;height:7px;background:#111;border-right:1px solid #fff;border-bottom:1px solid #fff;transform:translateX(-50%) rotate(45deg)}
     .price-pin.selected{background:#0b7a3b;border-color:#fff;transform:translate(-50%,-100%) scale(1.08);z-index:20}
@@ -400,12 +400,28 @@
     const title=v=>[year(v),make(v),model(v),trim(v)].filter(Boolean).join(' ');
     const coord=v=>{const d=dealer(v),lat=Number(v.lat??d.latitude),lng=Number(v.lng??d.longitude);return Number.isFinite(lat)&&Number.isFinite(lng)?[lat,lng]:null};
     function card(v,kind='list'){return `<article class="vehicle-card ${kind==='list'?'list-card':''} ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img src="${escapeHtml(image(v)||FALLBACK_IMAGE)}" alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-title">${escapeHtml(title(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`: 'New'}${v.condition?` · ${escapeHtml(v.condition)}`:''}</div><div class="dealer">${escapeHtml(dealer(v).name||v.dealerName||'Dealer')}</div></div></article>`}
+    function vehiclesForRail(){
+      const list=[...(state.all.length?state.all:state.visible)];
+      if(!state.selectedId)return list.slice(0,RAIL_CARD_LIMIT);
+      const idx=list.findIndex(v=>v.id===state.selectedId);
+      if(idx>0){
+        const [selected]=list.splice(idx,1);
+        list.unshift(selected);
+      }
+      return list.slice(0,RAIL_CARD_LIMIT);
+    }
+    function scrollRailToSelected(){
+      const rail=$('rail');
+      if(!rail||!state.selectedId)return;
+      const card=[...rail.querySelectorAll('.vehicle-card')].find(node=>node.dataset.id===state.selectedId);
+      if(!card)return;
+      rail.scrollTo({left:Math.max(0,card.offsetLeft-rail.offsetLeft),behavior:'smooth'});
+      updateRailNav();
+    }
     function renderAll(){
       const selected=state.all.find(v=>v.id===state.selectedId)||state.visible[0]||state.all[0];
       $('featured').innerHTML=selected?card(selected,'featured'):'';
-      // Keep the full result set in the rail so map pans don't empty the carousel while browsing.
-      const railVehicles=(state.all.length?state.all:state.visible).slice(0,RAIL_CARD_LIMIT);
-      $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('');
+      $('rail').innerHTML=vehiclesForRail().map(v=>card(v,'rail')).join('');
       $('list').innerHTML=state.visible.slice(0,RAIL_CARD_LIMIT).map(v=>card(v,'list')).join('');
       $('resultCount').textContent=`${state.visible.length.toLocaleString()} Vehicles`;
       $('resultContext').textContent=state.query.location||'Visible map area';
@@ -413,8 +429,13 @@
       updateRailNav();
     }
     function selectVehicle(id,source='card',pan=false){
-      if(!state.all.some(v=>v.id===id))return;state.selectedId=id;renderAll();MapController.render(false);persistState();event(`selection:${source}`,{detail:id});
-      if(pan){const v=state.all.find(item=>item.id===id),c=coord(v);if(c)MapController.map?.panTo(c)}
+      if(!state.all.some(v=>v.id===id))return;
+      const selected=state.all.find(item=>item.id===id);
+      state.selectedId=id;
+      if(selected&&!state.visible.some(item=>item.id===id))state.visible=[selected,...state.visible];
+      renderAll();MapController.render(false);persistState();event(`selection:${source}`,{detail:id});
+      if(source==='pin'||source==='cluster')requestAnimationFrame(()=>scrollRailToSelected());
+      if(pan){const c=coord(selected);if(c)MapController.map?.panTo(c)}
     }
     function shieldFromMap(node){
       if(!node||node.dataset.shieldBound)return;
@@ -598,7 +619,7 @@
         const selected=vehicle.id===state.selectedId;
         const label=count>1?`${shortMoney(price(vehicle))} · ${count}`:shortMoney(price(vehicle));
         const marker=L.marker(latlng,{icon:L.divIcon({className:'',html:`<div class="price-pin ${selected?'selected':''}">${label}</div>`,iconAnchor:[0,0]}),zIndexOffset:selected?800:0});
-        marker.on('click',()=>{selectVehicle(vehicle.id,'pin');if(count>1)this.map.setView(latlng,Math.max(this.map.getZoom(),14))});
+        marker.on('click',()=>{selectVehicle(vehicle.id,'pin');if(count>1)this.quietView(latlng,Math.max(this.map.getZoom(),14))});
         marker.addTo(this.map);
         this.markers.set(vehicle.id,marker);
       },
@@ -607,13 +628,19 @@
         const marker=L.marker(latlng,{icon:L.divIcon({className:'',html:`<div class="cluster-pin ${count>9?'lg':''}">${count}</div>`,iconAnchor:[0,0]}),zIndexOffset:400});
         marker.on('click',()=>{
           const nextZoom=Math.min(16,Math.max(this.map.getZoom()+2,12));
-          this.map.setView(latlng,nextZoom);
+          this.quietView(latlng,nextZoom);
           const match=vehicles.find(item=>item.id===state.selectedId)||vehicles[0];
           if(match)selectVehicle(match.id,'cluster');
           event('cluster:click',{vehicleCount:count});
         });
         marker.addTo(this.map);
         this.dealerMarkers.push(marker);
+      },
+      quietView(latlng,zoom){
+        if(!this.map)return;
+        this.suppress=true;
+        this.map.setView(latlng,zoom);
+        setTimeout(()=>{this.suppress=false},600);
       },
       fit(){
         const coords=state.all.map(coord).filter(Boolean);
