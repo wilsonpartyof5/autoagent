@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v31">
+  <meta name="autoagent-widget-version" content="v32">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -77,7 +77,7 @@
     .nav-back{flex:0 0 auto;border-radius:999px;padding:10px 14px;font-size:13px;font-weight:750;white-space:nowrap;min-height:var(--touch)}
     .close{margin-left:0;background:transparent;border:0;font-size:28px;line-height:1;cursor:pointer;width:44px;height:44px;border-radius:999px}
     .close:hover{background:#ffffff14}
-    #detailBody{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:16px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+    #detailBody{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:16px;padding-bottom:16px}
     .hero-wrap{position:relative;border-radius:13px;overflow:hidden;background:#292c31}
     .hero-image{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#292c31;touch-action:manipulation}
     .hero-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;border-radius:999px;background:#0d0f12cc;color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:2;touch-action:manipulation}
@@ -86,7 +86,8 @@
     .gallery{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;margin-top:10px;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:2px 0 6px}
     .gallery-thumb{flex:0 0 auto;width:112px;height:76px;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#292c31;cursor:pointer;scroll-snap-align:start;touch-action:manipulation}
     .gallery-thumb.active{border-color:var(--blue)}.gallery-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
-    .vdp-footer-nav{position:sticky;bottom:0;display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:12px;background:linear-gradient(180deg,#17191d00,#17191df2 28%,#17191d);padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+    .vdp-footer-nav{flex:0 0 auto;position:relative;display:flex;gap:8px;margin:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
+    .vdp-footer-nav .secondary{flex:1;justify-content:center}
     .spec-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:16px}.spec{background:#101215;border:1px solid #292d34;border-radius:11px;padding:11px}.spec label{display:block;color:var(--muted);font-size:11px}.spec strong{display:block;margin-top:3px;word-break:break-word}
     .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.secondary{background:#20242a;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;touch-action:manipulation;min-height:var(--touch)}
     form{padding:16px;display:grid;gap:12px}label.field{display:grid;gap:5px;font-weight:700;font-size:13px}input{width:100%;background:#0f1114;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:11px}input:focus{outline:2px solid #4f91ff}
@@ -139,8 +140,8 @@
       .spec-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
       .actions{flex-direction:column}
       .actions .primary-btn,.actions .secondary{width:100%;justify-content:center}
-      .vdp-footer-nav{flex-direction:column}
-      .vdp-footer-nav .secondary{width:100%}
+      .vdp-footer-nav{flex-direction:row}
+      .vdp-footer-nav .secondary{width:auto}
       .drawer,.modal{padding:0}
       .drawer-panel,.modal-panel{min-height:100%;border-radius:0}
       .nav-back{padding:10px 12px}
@@ -205,6 +206,10 @@
           <button id="detailClose" class="close" type="button" aria-label="Close vehicle details">×</button>
         </header>
         <div id="detailBody"></div>
+        <nav id="detailFooter" class="vdp-footer-nav">
+          <button class="secondary nav-back" id="detailMapButton" type="button">Map</button>
+          <button class="secondary" id="detailCardsButton" type="button">Vehicle cards</button>
+        </nav>
       </div>
     </section>
     <section id="leadModal" class="modal hidden" aria-modal="true" role="dialog">
@@ -221,7 +226,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v31', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v32', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -513,10 +518,10 @@
       const cardNode=click.target.closest?.('.vehicle-card');
       if(cardNode){
         if(suppressCardClick||railDrag?.moved)return;
-        selectVehicle(cardNode.dataset.id,'card',true);openDetails(cardNode.dataset.id);
+        selectVehicle(cardNode.dataset.id,'card',true);openCardDetails(cardNode.dataset.id);
       }
     });
-    document.addEventListener('keydown',key=>{const cardNode=key.target.closest?.('.vehicle-card');if(cardNode&&(key.key==='Enter'||key.key===' ')){key.preventDefault();selectVehicle(cardNode.dataset.id,'keyboard',true);openDetails(cardNode.dataset.id)}});
+    document.addEventListener('keydown',key=>{const cardNode=key.target.closest?.('.vehicle-card');if(cardNode&&(key.key==='Enter'||key.key===' ')){key.preventDefault();selectVehicle(cardNode.dataset.id,'keyboard',true);openCardDetails(cardNode.dataset.id)}});
 
     let pendingMoveSearch=false;
     const DEFAULT_VIEW_MILES=10;
@@ -709,13 +714,17 @@
     $('sheetHandle').addEventListener('click',()=>{state.sheetExpanded=!state.sheetExpanded;$('resultsPane').classList.toggle('expanded',state.sheetExpanded);persistState();event(`sheet:${state.sheetExpanded?'expanded':'collapsed'}`);MapController.resize()});
 
     function spec(label,value){return value?`<div class="spec"><label>${escapeHtml(label)}</label><strong>${escapeHtml(value)}</strong></div>`:''}
+    async function openCardDetails(id){
+      if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true);
+      openDetails(id);
+    }
     function openDetails(id){
       const v=state.all.find(item=>item.id===id);if(!v)return;selectVehicle(id,'detail');
       const p=photos(v).filter(Boolean).slice(0,12);const gallery=p.length?p:[FALLBACK_IMAGE];
       const d=dealer(v),specs=v.coreSpecs||{};let photoIndex=0;
       $('detailTitle').textContent=title(v);
       const galleryHtml=gallery.map((url,index)=>`<button type="button" class="gallery-thumb ${index===0?'active':''}" data-index="${index}" aria-label="Photo ${index+1}"><img src="${escapeHtml(url)}" alt=""></button>`).join('');
-      $('detailBody').innerHTML=`<div class="hero-wrap"><img class="hero-image" id="detailHero" src="${escapeHtml(gallery[0])}" alt="${escapeHtml(title(v))}"><button type="button" class="hero-nav prev" id="heroPrev" aria-label="Previous photo">‹</button><button type="button" class="hero-nav next" id="heroNext" aria-label="Next photo">›</button><div class="hero-count" id="heroCount">1 / ${gallery.length}</div></div><div class="gallery" id="detailGallery">${galleryHtml}</div><div class="spec-grid">${spec('Price',money(price(v)))}${spec('Mileage',miles(v)?`${miles(v).toLocaleString()} mi`:'New')}${spec('Condition',v.condition)}${spec('Body',specs.bodyType)}${spec('Drivetrain',specs.drivetrain?.toUpperCase())}${spec('Transmission',specs.transmission?.description)}${spec('Engine',specs.engine?.description)}${spec('VIN',vin(v))}</div><div class="spec" style="margin-top:12px"><label>Dealer</label><strong>${escapeHtml(d.name||'Dealer')}</strong><div class="subtle">${escapeHtml([d.address,d.city,d.state].filter(Boolean).join(', '))}</div></div><div class="actions"><button class="primary-btn" id="bookButton" type="button">Book test drive</button>${v.vdpUrl?'<button class="secondary" id="vdpButton" type="button">Dealer listing</button>':''}<button class="secondary" id="moreLikeButton" type="button">More like this</button></div><div class="vdp-footer-nav"><button class="secondary nav-back" id="detailMapButton" type="button">Map</button><button class="secondary" id="detailCardsButton" type="button">Vehicle cards</button></div>`;
+      $('detailBody').innerHTML=`<div class="hero-wrap"><img class="hero-image" id="detailHero" src="${escapeHtml(gallery[0])}" alt="${escapeHtml(title(v))}"><button type="button" class="hero-nav prev" id="heroPrev" aria-label="Previous photo">‹</button><button type="button" class="hero-nav next" id="heroNext" aria-label="Next photo">›</button><div class="hero-count" id="heroCount">1 / ${gallery.length}</div></div><div class="gallery" id="detailGallery">${galleryHtml}</div><div class="spec-grid">${spec('Price',money(price(v)))}${spec('Mileage',miles(v)?`${miles(v).toLocaleString()} mi`:'New')}${spec('Condition',v.condition)}${spec('Body',specs.bodyType)}${spec('Drivetrain',specs.drivetrain?.toUpperCase())}${spec('Transmission',specs.transmission?.description)}${spec('Engine',specs.engine?.description)}${spec('VIN',vin(v))}</div><div class="spec" style="margin-top:12px"><label>Dealer</label><strong>${escapeHtml(d.name||'Dealer')}</strong><div class="subtle">${escapeHtml([d.address,d.city,d.state].filter(Boolean).join(', '))}</div></div><div class="actions"><button class="primary-btn" id="bookButton" type="button">Book test drive</button>${v.vdpUrl?'<button class="secondary" id="vdpButton" type="button">Dealer listing</button>':''}<button class="secondary" id="moreLikeButton" type="button">More like this</button></div>`;
       const setDetailPhoto=index=>{
         if(!gallery.length)return;
         photoIndex=(index+gallery.length)%gallery.length;
@@ -749,13 +758,13 @@
       $('bookButton').onclick=()=>openLead(v);
       if($('vdpButton'))$('vdpButton').onclick=()=>window.openai?.openExternal?.({href:v.vdpUrl})||window.open(v.vdpUrl,'_blank');
       $('moreLikeButton').onclick=()=>window.openai?.sendFollowUpMessage?.({prompt:`Show me more vehicles like this ${title(v)} near ${state.query.location||'the current area'}.`,scrollToBottom:true});
-      $('detailMapButton').onclick=()=>returnToMap('vdp-footer');
-      $('detailCardsButton').onclick=()=>{closeDetails();if(state.displayMode==='inline')setDisplayMode('fullscreen',true);event('nav:cards:vdp-footer')};
       event('vehicle:detail',{detail:id});
     }
     function closeDetails(){$('details').classList.add('hidden');state.setDetailPhoto=null;event('nav:close-details')}
     $('detailClose').onclick=()=>{closeDetails();MapController.resize();event('nav:close:vdp-x')};
     $('detailBack').onclick=()=>returnToMap('vdp-back');
+    $('detailMapButton').onclick=()=>returnToMap('vdp-footer');
+    $('detailCardsButton').onclick=()=>{closeDetails();if(state.displayMode==='inline')setDisplayMode('fullscreen',true);event('nav:cards:vdp-footer')};
     function openLead(v){state.leadVehicle=v;$('leadError').classList.add('hidden');$('leadModal').classList.remove('hidden');event('lead:start',{detail:v.id})}
     $('leadClose').onclick=()=>$('leadModal').classList.add('hidden');
     $('leadForm').addEventListener('submit',async submit=>{submit.preventDefault();const v=state.leadVehicle,d=dealer(v),button=$('leadSubmit');button.disabled=true;button.textContent='Submitting…';try{const result=await window.openai.callTool('submit-lead',{vehicleId:v.id,vin:vin(v),dealerId:d.dealerId,dealerName:d.name,pricing:{price:price(v),currency:v.pricing?.currency||'USD'},user:{name:$('leadName').value,email:$('leadEmail').value,phone:$('leadPhone').value||undefined,preferredTime:$('leadTime').value||undefined},consent:$('leadConsent').checked,searchResultToken:v.searchResultToken});if(result?.error)throw new Error(result.error.message||'Lead submission failed');toast('Request submitted. We’ll confirm with the dealer.');$('leadModal').classList.add('hidden');event('lead:submitted',{detail:v.id})}catch(error){const node=$('leadError');node.textContent=error?.message||'Unable to submit request';node.style.cssText='display:block;background:#7f1d1d;padding:10px;border-radius:8px';node.classList.remove('hidden');event('lead:error',{detail:String(error?.message||error)})}finally{button.disabled=false;button.textContent='Submit request'}});
