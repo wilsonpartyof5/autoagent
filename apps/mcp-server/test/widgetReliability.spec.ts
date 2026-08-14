@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v32"');
-    expect(html).toContain("VERSION='v32'");
+    expect(html).toContain('autoagent-widget-version" content="v33"');
+    expect(html).toContain("VERSION='v33'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -42,10 +42,14 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("event('map:bounds-skipped'");
   });
 
-  it('clusters overlapping pins and auto-refreshes inventory after map moves', () => {
+  it('clusters overlapping dealer pins and auto-refreshes inventory after map moves', () => {
     expect(html).toContain('this.renderMarkers()');
     expect(html).toContain('addClusterPin');
+    expect(html).toContain('addDealerGroup');
+    expect(html).toContain('const cell=zoom>=15?20:zoom>=13?28:36');
     expect(html).not.toContain('pinOffset(index,count)');
+    expect(html).toContain('spiderOffset(index,count)');
+    expect(html).toContain('this.render(false)');
     expect(html).toContain("callSearch(args,'map-move',true)");
     expect(html).toContain("callSearch(MapController.boundsArgs(),'search-area')");
     expect(html).toContain('markers:new Map()');
@@ -92,6 +96,13 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
     expect(html).not.toContain('position:sticky;bottom:0');
     expect(html).not.toContain('.vdp-footer-nav{flex-direction:column}');
+  });
+
+  it('keeps ChatGPT revisions on the current widget', () => {
+    expect(html).toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}");
+    expect(html).toContain('hideStatus();closeDetails();renderAll()');
+    expect(html).not.toContain('scrollToBottom:true');
+    expect(html).toContain("callSearch({make:make(v),model:model(v)},'more-like')");
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v32">
+  <meta name="autoagent-widget-version" content="v33">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -226,7 +226,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v32', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v33', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -334,7 +334,7 @@
       }
       definitiveEmpty=false;
       lastResults=results;state.all=vehicles;state.visible=[...vehicles];state.query=results.searchParams||results.query||state.query;state.dealerSummary=results.dealerSummary||[];state.flowId=vehicles[0]?.flowId||state.flowId;state.selectedId=state.selectedId&&vehicles.some(v=>v.id===state.selectedId)?state.selectedId:vehicles[0].id;
-      hideStatus();renderAll();reportIntrinsicHeight('hydrate');MapController.render(!/map-move|search-area/.test(String(source)));persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
+      hideStatus();closeDetails();renderAll();reportIntrinsicHeight('hydrate');MapController.render(!/map-move|search-area/.test(String(source)));persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
     function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
     async function selfFetchVehicles(reason='timeout'){
@@ -397,7 +397,7 @@
     }
     window.addEventListener('message',message=>{if(message.source!==window.parent)return;receive(message.data,'postMessage')});
     window.addEventListener('openai:set_globals',message=>receive(message.detail,'set_globals.dom'));
-    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false)},250);
+    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}},250);
 
     const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>v.media?.photoUrls?.length?v.media.photoUrls:[image(v)].filter(Boolean);
     const money=value=>value?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(value):'Call for price';
@@ -593,38 +593,58 @@
       renderMarkers(){
         if(!this.map)return;
         const zoom=this.map.getZoom();
-        const cell=zoom>=15?28:zoom>=13?44:64;
-        const points=[];
-        state.all.forEach(v=>{const c=coord(v);if(!c)return;points.push({v,c,pt:this.map.latLngToLayerPoint(c)})});
-        if(!cell){this.renderDealerPins(points);return}
+        const cell=zoom>=15?20:zoom>=13?28:36;
+        const dealers=new Map();
+        state.all.forEach(v=>{
+          const c=coord(v);if(!c)return;
+          const key=`${c[0].toFixed(5)},${c[1].toFixed(5)}`;
+          const group=dealers.get(key)||{c,vehicles:[]};
+          group.vehicles.push(v);
+          dealers.set(key,group);
+        });
         const buckets=new Map();
-        points.forEach(point=>{
-          const key=`${Math.floor(point.pt.x/cell)},${Math.floor(point.pt.y/cell)}`;
-          const bucket=buckets.get(key)||[];bucket.push(point);buckets.set(key,bucket);
+        dealers.forEach(group=>{
+          const pt=this.map.latLngToLayerPoint(group.c);
+          const key=`${Math.floor(pt.x/cell)},${Math.floor(pt.y/cell)}`;
+          const bucket=buckets.get(key)||[];
+          bucket.push(group);
+          buckets.set(key,bucket);
         });
         buckets.forEach(bucket=>{
-          if(bucket.length===1){this.addPricePin(bucket[0].v,bucket[0].c);return}
-          const unique=new Map();
-          bucket.forEach(point=>{const key=`${point.c[0].toFixed(5)},${point.c[1].toFixed(5)}`;if(!unique.has(key))unique.set(key,point)});
-          if(unique.size===1){this.addPricePin(bucket[0].v,bucket[0].c,bucket.length);return}
-          const lat=bucket.reduce((sum,point)=>sum+point.c[0],0)/bucket.length;
-          const lng=bucket.reduce((sum,point)=>sum+point.c[1],0)/bucket.length;
-          this.addClusterPin([lat,lng],bucket.map(point=>point.v));
+          if(bucket.length===1){this.addDealerGroup(bucket[0]);return}
+          const lat=bucket.reduce((sum,group)=>sum+group.c[0],0)/bucket.length;
+          const lng=bucket.reduce((sum,group)=>sum+group.c[1],0)/bucket.length;
+          this.addClusterPin([lat,lng],bucket.flatMap(group=>group.vehicles));
         });
       },
-      renderDealerPins(points){
-        const groups=new Map();
-        points.forEach(point=>{const key=`${point.c[0].toFixed(5)},${point.c[1].toFixed(5)}`;const group=groups.get(key)||[];group.push(point);groups.set(key,group)});
-        groups.forEach(group=>{
-          const selected=group.find(point=>point.v.id===state.selectedId)||group[0];
-          this.addPricePin(selected.v,selected.c,group.length);
-        });
+      addDealerGroup(group){
+        const zoom=this.map.getZoom();
+        if(zoom>=15&&group.vehicles.length>1){
+          group.vehicles.forEach((vehicle,index)=>{
+            const offset=this.spiderOffset(index,group.vehicles.length);
+            this.addPricePin(vehicle,[group.c[0]+offset[0],group.c[1]+offset[1]]);
+          });
+          return;
+        }
+        const selected=group.vehicles.find(item=>item.id===state.selectedId)||group.vehicles[0];
+        this.addPricePin(selected,group.c,group.vehicles.length);
+      },
+      spiderOffset(index,count){
+        if(count<=1)return[0,0];
+        const angle=(index/count)*Math.PI*2-(Math.PI/2);
+        const meters=18+Math.floor(index/8)*12;
+        const lat=meters/111320;
+        const lng=meters/(111320*Math.cos((this.map.getCenter().lat||0)*Math.PI/180)||1);
+        return[Math.cos(angle)*lat,Math.sin(angle)*lng];
       },
       addPricePin(vehicle,latlng,count=1){
         const selected=vehicle.id===state.selectedId;
         const label=count>1?`${shortMoney(price(vehicle))} · ${count}`:shortMoney(price(vehicle));
         const marker=L.marker(latlng,{icon:L.divIcon({className:'',html:`<div class="price-pin ${selected?'selected':''}">${label}</div>`,iconAnchor:[0,0]}),zIndexOffset:selected?800:0});
-        marker.on('click',()=>{selectVehicle(vehicle.id,'pin');if(count>1)this.quietView(latlng,Math.max(this.map.getZoom(),14))});
+        marker.on('click',()=>{
+          selectVehicle(vehicle.id,'pin');
+          if(count>1)this.quietView(latlng,Math.min(16,Math.max(this.map.getZoom()+2,15)));
+        });
         marker.addTo(this.map);
         this.markers.set(vehicle.id,marker);
       },
@@ -632,7 +652,7 @@
         const count=vehicles.length;
         const marker=L.marker(latlng,{icon:L.divIcon({className:'',html:`<div class="cluster-pin ${count>9?'lg':''}">${count}</div>`,iconAnchor:[0,0]}),zIndexOffset:400});
         marker.on('click',()=>{
-          const nextZoom=Math.min(16,Math.max(this.map.getZoom()+2,12));
+          const nextZoom=Math.min(16,this.map.getZoom()+2);
           this.quietView(latlng,nextZoom);
           const match=vehicles.find(item=>item.id===state.selectedId)||vehicles[0];
           if(match)selectVehicle(match.id,'cluster');
@@ -645,6 +665,7 @@
         if(!this.map)return;
         this.suppress=true;
         this.map.setView(latlng,zoom);
+        this.render(false);
         setTimeout(()=>{this.suppress=false},600);
       },
       fit(){
@@ -695,7 +716,7 @@
     $('controls').addEventListener('click',click=>{const filter=click.target.dataset?.filter;if(!filter)return;if(filter==='used'){state.filters.used=true;state.filters.new=false;callSearch({condition:'used'},'used')}if(filter==='new'){state.filters.new=true;state.filters.used=false;callSearch({condition:'new'},'new')}if(filter==='under30'){state.filters.under30=true;callSearch({maxPrice:30000},'under30')}if(filter==='suv'){state.filters.suv=true;callSearch({bodyStyle:'SUV'},'suv')}});
     $('resetButton').addEventListener('click',()=>{state.filters={};callSearch({condition:state.query.condition||'used',maxPrice:undefined,bodyStyle:undefined,latitude:undefined,longitude:undefined,mapBounds:undefined},'reset')});
     $('searchArea').addEventListener('click',()=>callSearch(MapController.boundsArgs(),'search-area'));
-    $('refineButton').addEventListener('click',async()=>{const prompt=`Help me refine my vehicle search near ${state.query.location||'this map area'}. Current filters: ${JSON.stringify(state.filters)}. Ask what I want to change, then update the map.`;persistState();try{if(typeof window.openai?.sendFollowUpMessage!=='function')throw new Error('Use the ChatGPT composer below to refine this search.');await window.openai.sendFollowUpMessage({prompt,scrollToBottom:true});event('refine:follow-up:sent')}catch(error){toast(error.message||'Use the ChatGPT composer below to refine this search.');event('refine:follow-up:fallback')}});
+    $('refineButton').addEventListener('click',async()=>{persistState();try{if(typeof window.openai?.sendFollowUpMessage==='function'){await window.openai.sendFollowUpMessage({prompt:`Help me refine my vehicle search near ${state.query.location||'this map area'}. Current filters: ${JSON.stringify(state.filters)}. Ask what I want to change, then update the map.`});event('refine:follow-up:sent')}else{toast('Use Ask ChatGPT below to refine this search.');event('refine:follow-up:fallback')}}catch(error){toast(error.message||'Use Ask ChatGPT below to refine this search.');event('refine:follow-up:fallback')}});
 
     async function setDisplayMode(mode,requestHost=true){
       state.displayMode=mode;document.body.classList.toggle('fullscreen',mode==='fullscreen');$('expandButton').classList.toggle('hidden',mode==='fullscreen');persistState();event(`display:${mode}`);
@@ -757,7 +778,7 @@
       shieldFromMap($('detailGallery'));
       $('bookButton').onclick=()=>openLead(v);
       if($('vdpButton'))$('vdpButton').onclick=()=>window.openai?.openExternal?.({href:v.vdpUrl})||window.open(v.vdpUrl,'_blank');
-      $('moreLikeButton').onclick=()=>window.openai?.sendFollowUpMessage?.({prompt:`Show me more vehicles like this ${title(v)} near ${state.query.location||'the current area'}.`,scrollToBottom:true});
+      $('moreLikeButton').onclick=()=>{closeDetails();callSearch({make:make(v),model:model(v)},'more-like')};
       event('vehicle:detail',{detail:id});
     }
     function closeDetails(){$('details').classList.add('hidden');state.setDetailPhoto=null;event('nav:close-details')}
