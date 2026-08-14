@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v29"');
-    expect(html).toContain("VERSION='v29'");
+    expect(html).toContain('autoagent-widget-version" content="v30"');
+    expect(html).toContain("VERSION='v30'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -54,6 +54,13 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('.slice(0,RAIL_CARD_LIMIT)');
     expect(html).toContain('pinOffset(index,count)');
     expect(html).toContain('if(fit)this.fit();const zoom=this.map.getZoom()');
+  });
+
+  it('uses compact Zillow-like cards and high-contrast map pins', () => {
+    expect(html).toContain('#rail .vehicle-card{flex:0 0 calc(100% - 28px)');
+    expect(html).toContain('.rail-nav{display:none}');
+    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff');
+    expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {

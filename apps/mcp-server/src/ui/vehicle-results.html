@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v29">
-  <!-- mcp-server railway trigger 2026-08-14T15:07Z -->
+  <meta name="autoagent-widget-version" content="v30">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -36,11 +35,12 @@
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
     #searchArea{position:absolute;z-index:710;top:12px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
     #searchArea[disabled]{opacity:.65}
-    .price-pin,.cluster-pin{background:var(--red);color:#fff;border:2px solid #fff;box-shadow:0 4px 12px #0007;white-space:nowrap;transition:transform .16s,border-color .16s,background .16s;line-height:1.15}
-    .price-pin{position:relative;transform:translate(-50%,-100%);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:850}
-    .price-pin:after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;background:inherit;border-right:2px solid #fff;border-bottom:2px solid #fff;transform:translateX(-50%) rotate(45deg)}
-    .price-pin.selected{background:var(--blue);border-color:#dbeafe;transform:translate(-50%,-100%) scale(1.12);z-index:20}
-    .cluster-pin{transform:translate(-50%,-50%);background:#20242ae8;border-radius:12px;min-width:86px;text-align:center;padding:7px 9px;font-size:11px;font-weight:850}.cluster-pin span{display:block;font-size:10px;color:#c5cad1;font-weight:650}
+    .price-pin,.cluster-pin{color-scheme:only light;white-space:nowrap;line-height:1.1;box-shadow:0 1px 4px #0006}
+    .price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff;-webkit-text-fill-color:#fff;border:1px solid #fff;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:800;letter-spacing:.01em;text-shadow:none}
+    .price-pin:after{content:"";position:absolute;left:50%;bottom:-4px;width:7px;height:7px;background:#111;border-right:1px solid #fff;border-bottom:1px solid #fff;transform:translateX(-50%) rotate(45deg)}
+    .price-pin.selected{background:#0b7a3b;border-color:#fff;transform:translate(-50%,-100%) scale(1.08);z-index:20}
+    .price-pin.selected:after{background:#0b7a3b}
+    .cluster-pin{transform:translate(-50%,-50%);background:#111;color:#fff;border:1px solid #fff;border-radius:8px;min-width:72px;text-align:center;padding:5px 7px;font-size:11px;font-weight:800}.cluster-pin span{display:block;font-size:10px;color:#d4d4d4;font-weight:650}
     .leaflet-div-icon{background:transparent!important;border:0!important}
     #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
     #featured{pointer-events:auto;margin:0 auto 10px;max-width:760px;touch-action:manipulation}
@@ -50,13 +50,16 @@
     #rail::-webkit-scrollbar,.gallery::-webkit-scrollbar,.control-scroll::-webkit-scrollbar{display:none}
     .rail-nav{width:44px;height:44px;border-radius:999px;border:1px solid #ffffff40;background:#15171bf2;backdrop-filter:blur(12px);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px #0005;touch-action:manipulation}
     .rail-nav:disabled{opacity:.35;cursor:default}
-    .vehicle-card{background:#121417f2;border:1px solid var(--line);border-radius:15px;overflow:hidden;display:grid;grid-template-columns:112px 1fr;min-height:112px;cursor:pointer;transition:border-color .15s,transform .15s;scroll-snap-align:start;touch-action:manipulation;-webkit-user-select:none;user-select:none}
-    .vehicle-card:hover,.vehicle-card.active{border-color:#4f91ff;transform:translateY(-1px)}.vehicle-card img{width:112px;height:100%;min-height:112px;object-fit:cover;background:#2a2d32;pointer-events:none}
-    .vehicle-card .copy{padding:10px;min-width:0}.vehicle-title{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vehicle-price{font-size:20px;font-weight:850;color:#5a9bff;margin-top:2px}
-    .vehicle-meta,.dealer{font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #featured .vehicle-card{grid-template-columns:150px 1fr;min-height:128px}#featured .vehicle-card img{width:150px;min-height:128px}
-    #rail .vehicle-card{flex:0 0 min(78vw,280px);grid-template-columns:92px 1fr;min-height:96px;touch-action:pan-x;cursor:inherit}#rail .vehicle-card img{width:92px;min-height:96px}#rail .vehicle-price{font-size:16px}
-    .list-card{grid-template-columns:112px 1fr}.list-card .vehicle-price{font-size:18px}
+    .vehicle-card{background:#fff;color:#111;border:0;border-radius:12px;overflow:hidden;display:grid;grid-template-columns:108px 1fr;height:92px;cursor:pointer;scroll-snap-align:start;scroll-snap-stop:always;touch-action:manipulation;-webkit-user-select:none;user-select:none;box-shadow:0 8px 24px #0004}
+    .vehicle-card.active{outline:2px solid var(--blue);outline-offset:-2px}
+    .vehicle-card img{width:108px;height:92px;object-fit:cover;background:#d9dde3;pointer-events:none}
+    .vehicle-card .copy{padding:8px 10px 8px 12px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+    .vehicle-price{font-size:18px;font-weight:800;color:#111;letter-spacing:-.02em;line-height:1.1}
+    .vehicle-title{font-size:13px;font-weight:650;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .vehicle-meta,.dealer{font-size:11px;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #featured .vehicle-card{grid-template-columns:120px 1fr;height:100px}#featured .vehicle-card img{width:120px;height:100px}
+    #rail .vehicle-card{flex:0 0 calc(100% - 40px);touch-action:pan-x;cursor:inherit}
+    .list-card{grid-template-columns:108px 1fr}
     #status{position:absolute;z-index:900;inset:0;display:grid;place-items:center;background:#0d0f12d9;padding:24px;text-align:center}
     .status-card{max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}
     .spinner{width:30px;height:30px;border:3px solid #ffffff28;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}@keyframes spin{to{transform:rotate(360deg)}}
@@ -103,8 +106,8 @@
       body.fullscreen #mapPane{height:100%}
       .sheet-handle{display:block;width:48px;height:5px;border:0;border-radius:3px;background:#7d8490;margin:8px auto 0;cursor:pointer}
       #resultsHeader{min-height:52px;padding:6px 14px 10px}
-      #list{height:calc(100% - 58px);grid-auto-flow:column;grid-auto-columns:min(84vw,340px);grid-template-rows:1fr;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;padding:10px 12px 16px;gap:12px}
-      #list .vehicle-card{height:100%}
+      #list{height:calc(100% - 58px);grid-auto-flow:column;grid-auto-columns:min(78vw,300px);grid-template-rows:88px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;padding:10px 12px 16px;gap:8px;align-content:start}
+      #list .vehicle-card{height:88px}
     }
 
     /* Mobile / chat-bubble: map on top, cards below (not stacked overlays) */
@@ -118,13 +121,16 @@
       .icon-btn{margin-left:0;pointer-events:auto}
       .label-full{display:none}.label-short{display:inline}
       #searchArea{top:12px;padding:8px 12px;font-size:12px;min-height:34px}
-      .price-pin,.cluster-pin{padding:3px 7px;font-size:10px;border-radius:7px}
-      #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:10px 10px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+      .price-pin{padding:3px 6px;font-size:10px;border-radius:5px;background:#111;color:#fff;-webkit-text-fill-color:#fff}
+      #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:8px 10px 10px;background:transparent}
       #featured{display:none}
-      #railShell{grid-template-columns:44px minmax(0,1fr) 44px;gap:6px}
-      #rail .vehicle-card{flex:0 0 min(85vw,300px);grid-template-columns:96px 1fr;min-height:104px}
-      #rail .vehicle-card img{width:96px;min-height:104px}
-      #rail .vehicle-price{font-size:18px}
+      .rail-nav{display:none}
+      #railShell{grid-template-columns:minmax(0,1fr);gap:0}
+      #rail{gap:8px;padding:0 2px 2px;scroll-padding-inline:2px}
+      #rail .vehicle-card{flex:0 0 calc(100% - 28px);height:88px;grid-template-columns:96px 1fr}
+      #rail .vehicle-card img{width:96px;height:88px}
+      #rail .vehicle-price{font-size:17px}
+      #rail .copy{padding:7px 10px}
       .gallery-thumb{width:88px;height:64px}
       .hero-image{aspect-ratio:16/10}
       .hero-nav{width:44px;height:44px}
@@ -147,7 +153,7 @@
     /* Desktop comfort */
     @media(min-width:721px){
       #featured{display:block}
-      #rail .vehicle-card{flex-basis:min(42vw,300px)}
+      #rail .vehicle-card{flex-basis:calc(100% - 40px)}
       body.fullscreen #workspace{grid-template-columns:400px minmax(0,1fr)}
       #details .drawer-panel{max-width:820px;margin:24px auto;height:calc(100% - 48px);border-radius:18px;border:1px solid var(--line)}
       #details.drawer{padding:0 16px;background:#0e1013cc}
@@ -213,7 +219,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v29', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v30', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -386,7 +392,7 @@
     const shortMoney=value=>value>=1000?`$${(value/1000).toFixed(value>=100000?0:1)}k`:money(value);
     const title=v=>[year(v),make(v),model(v),trim(v)].filter(Boolean).join(' ');
     const coord=v=>{const d=dealer(v),lat=Number(v.lat??d.latitude),lng=Number(v.lng??d.longitude);return Number.isFinite(lat)&&Number.isFinite(lng)?[lat,lng]:null};
-    function card(v,kind='list'){return `<article class="vehicle-card ${kind==='list'?'list-card':''} ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img src="${escapeHtml(image(v)||FALLBACK_IMAGE)}" alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-title">${escapeHtml(title(v))}</div><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} miles`:'New'} · ${escapeHtml(v.condition||'')}</div><div class="dealer">${escapeHtml(dealer(v).name||v.dealerName||'Dealer')}</div></div></article>`}
+    function card(v,kind='list'){return `<article class="vehicle-card ${kind==='list'?'list-card':''} ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img src="${escapeHtml(image(v)||FALLBACK_IMAGE)}" alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-title">${escapeHtml(title(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`: 'New'}${v.condition?` · ${escapeHtml(v.condition)}`:''}</div><div class="dealer">${escapeHtml(dealer(v).name||v.dealerName||'Dealer')}</div></div></article>`}
     function renderAll(){
       const selected=state.all.find(v=>v.id===state.selectedId)||state.visible[0]||state.all[0];
       $('featured').innerHTML=selected?card(selected,'featured'):'';
