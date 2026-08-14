@@ -35,12 +35,12 @@
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
     #searchArea{position:absolute;z-index:710;top:12px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
     #searchArea[disabled]{opacity:.65}
-    .price-pin,.cluster-pin{color-scheme:only light;forced-color-adjust:none;white-space:nowrap;line-height:1.1;box-shadow:0 1px 4px #0006;color:#fff;-webkit-text-fill-color:#fff}
-    .price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff;-webkit-text-fill-color:#fff;border:1px solid #fff;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:800;letter-spacing:.01em;text-shadow:none}
-    .price-pin:after{content:"";position:absolute;left:50%;bottom:-4px;width:7px;height:7px;background:#111;border-right:1px solid #fff;border-bottom:1px solid #fff;transform:translateX(-50%) rotate(45deg)}
-    .price-pin.selected{background:#0b7a3b;border-color:#fff;transform:translate(-50%,-100%) scale(1.08);z-index:20}
-    .price-pin.selected:after{background:#0b7a3b}
-    .cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;background:#111;color:#fff;-webkit-text-fill-color:#fff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;box-shadow:0 2px 8px #0006}
+    .price-pin,.cluster-pin{color-scheme:only light;forced-color-adjust:none;white-space:nowrap;line-height:1.1;box-shadow:0 1px 4px #0006;color:#111;-webkit-text-fill-color:#111}
+    .price-pin{position:relative;transform:translate(-50%,-100%);background:#fff;color:#111;-webkit-text-fill-color:#111;border:1px solid #111;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:800;letter-spacing:.01em;text-shadow:none}
+    .price-pin:after{content:"";position:absolute;left:50%;bottom:-4px;width:7px;height:7px;background:#fff;border-right:1px solid #111;border-bottom:1px solid #111;transform:translateX(-50%) rotate(45deg)}
+    .price-pin.selected{background:#fff;color:#111;-webkit-text-fill-color:#111;border-color:var(--blue);transform:translate(-50%,-100%) scale(1.08);z-index:20}
+    .price-pin.selected:after{background:#fff;border-color:var(--blue)}
+    .cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;background:#fff;color:#111;-webkit-text-fill-color:#111;border:2px solid #111;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;box-shadow:0 2px 8px #0006}
     .cluster-pin.lg{width:42px;height:42px;min-width:42px;font-size:13px}
     .cluster-pin span{display:none}
     .leaflet-div-icon{background:transparent!important;border:0!important}
@@ -123,7 +123,7 @@
       .icon-btn{margin-left:0;pointer-events:auto}
       .label-full{display:none}.label-short{display:inline}
       #searchArea{top:12px;padding:8px 12px;font-size:12px;min-height:34px}
-      .price-pin{padding:3px 6px;font-size:10px;border-radius:5px;background:#111;color:#fff;-webkit-text-fill-color:#fff}
+      .price-pin{padding:3px 6px;font-size:10px;border-radius:5px;background:#fff;color:#111;-webkit-text-fill-color:#111}
       #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:8px 10px 10px;background:transparent}
       #featured{display:none}
       .rail-nav{display:none}

@@ -69,11 +69,11 @@ describe('vehicle widget reliability contract', () => {
   it('uses compact Zillow-like cards and high-contrast map pins', () => {
     expect(html).toContain('#rail .vehicle-card{flex:0 0 calc(100% - 28px)');
     expect(html).toContain('.rail-nav{display:none}');
-    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff');
-    expect(html).toContain('-webkit-text-fill-color:#fff');
+    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#fff;color:#111');
+    expect(html).toContain('-webkit-text-fill-color:#111');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
     expect(html).toContain('.cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px');
-    expect(html).toContain('background:#111;color:#fff;-webkit-text-fill-color:#fff;border:2px solid #fff');
+    expect(html).toContain('background:#fff;color:#111;-webkit-text-fill-color:#111;border:2px solid #111');
   });
 
   it('loads the tapped map pin into the carousel', () => {
