@@ -35,14 +35,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm --filter @autoagent/shared typecheck && pnpm --filter @autoagent/mcp-server typecheck
 
       - name: Lint
         if: github.event_name == 'pull_request'
-        run: pnpm lint
+        run: pnpm --filter @autoagent/mcp-server lint
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter @autoagent/shared build && pnpm --filter @autoagent/mcp-server build
 
       - name: Test
-        run: pnpm --filter mcp-server test
+        run: pnpm --filter @autoagent/mcp-server test
