@@ -1,0 +1,4 @@
+# Bump this file to deploy @autoagent/mcp-server only.
+# Do not bump repo-root Dockerfile/railway.json for MCP deploys — those
+# rebuild @autoagent/dealer-dashboard.
+2026-08-14T15:07:30Z widget-v29
