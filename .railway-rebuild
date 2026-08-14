@@ -1,3 +1,3 @@
 # Railway rebuild trigger - 2026-08-14
-Build triggered at: 2026-08-14 14:57:30 UTC
-Reason: unblock Wait for CI and deploy ChatGPT widget v29
+Build triggered at: 2026-08-14 15:04:30 UTC
+Reason: watch-pattern commit after green CI (Wait for CI skipped earlier v29 pushes)

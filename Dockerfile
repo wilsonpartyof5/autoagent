@@ -1,4 +1,5 @@
 # Railway production MCP server image
+# Trigger: widget v29 ChatGPT map UX (2026-08-14)
 FROM node:20-bullseye
 RUN apt-get update && apt-get install -y python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
