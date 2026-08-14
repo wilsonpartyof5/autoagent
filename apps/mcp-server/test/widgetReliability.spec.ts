@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v30"');
-    expect(html).toContain("VERSION='v30'");
+    expect(html).toContain('autoagent-widget-version" content="v31"');
+    expect(html).toContain("VERSION='v31'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -42,25 +42,47 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("event('map:bounds-skipped'");
   });
 
-  it('supports zoom-aware pins and Search this area', () => {
-    expect(html).toContain("if(zoom<7)this.renderClusters();else this.renderPrices()");
+  it('clusters overlapping pins and auto-refreshes inventory after map moves', () => {
+    expect(html).toContain('this.renderMarkers()');
+    expect(html).toContain('addClusterPin');
+    expect(html).not.toContain('pinOffset(index,count)');
+    expect(html).toContain("callSearch(args,'map-move',true)");
     expect(html).toContain("callSearch(MapController.boundsArgs(),'search-area')");
     expect(html).toContain('markers:new Map()');
+  });
+
+  it('fits the initial map to about 10 miles around the search city or user location', () => {
+    expect(html).toContain('const DEFAULT_VIEW_MILES=10');
+    expect(html).toContain('cityCenterFromLocation');
+    expect(html).toContain("'charlotte, nc':[35.2271,-80.8431]");
+    expect(html).toContain('L.latLng(center).toBounds(DEFAULT_VIEW_MILES*1609.344*2)');
+    expect(html).toContain('MapController.render(!/map-move|search-area/.test(String(source)))');
   });
 
   it('hides mobile filter chips and keeps an 8-card rail with dense map pins', () => {
     expect(html).toContain('.control-scroll{display:none}');
     expect(html).toContain('const RAIL_CARD_LIMIT=8');
     expect(html).toContain('.slice(0,RAIL_CARD_LIMIT)');
-    expect(html).toContain('pinOffset(index,count)');
-    expect(html).toContain('if(fit)this.fit();const zoom=this.map.getZoom()');
+    expect(html).toContain('if(fit)this.fit();this.renderMarkers()');
   });
 
   it('uses compact Zillow-like cards and high-contrast map pins', () => {
     expect(html).toContain('#rail .vehicle-card{flex:0 0 calc(100% - 28px)');
     expect(html).toContain('.rail-nav{display:none}');
-    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#111;color:#fff');
+    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#fff;color:#111');
+    expect(html).toContain('-webkit-text-fill-color:#111');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
+    expect(html).toContain('.cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px');
+    expect(html).toContain('background:#fff;color:#111;-webkit-text-fill-color:#111;border:2px solid #111');
+  });
+
+  it('loads the tapped map pin into the carousel', () => {
+    expect(html).toContain("selectVehicle(vehicle.id,'pin')");
+    expect(html).toContain("selectVehicle(match.id,'cluster')");
+    expect(html).toContain('function vehiclesForRail()');
+    expect(html).toContain('function scrollRailToSelected()');
+    expect(html).toContain("if(source==='pin'||source==='cluster')requestAnimationFrame(()=>scrollRailToSelected())");
+    expect(html).toContain('list.unshift(selected)');
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {
