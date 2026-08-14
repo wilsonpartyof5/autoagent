@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v31"');
-    expect(html).toContain("VERSION='v31'");
+    expect(html).toContain('autoagent-widget-version" content="v32"');
+    expect(html).toContain("VERSION='v32'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -83,6 +83,15 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('function scrollRailToSelected()');
     expect(html).toContain("if(source==='pin'||source==='cluster')requestAnimationFrame(()=>scrollRailToSelected())");
     expect(html).toContain('list.unshift(selected)');
+  });
+
+  it('opens card details in fullscreen so the VDP is not cramped over the inline map', () => {
+    expect(html).toContain('async function openCardDetails(id)');
+    expect(html).toContain("if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true)");
+    expect(html).toContain('openCardDetails(cardNode.dataset.id)');
+    expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
+    expect(html).not.toContain('position:sticky;bottom:0');
+    expect(html).not.toContain('.vdp-footer-nav{flex-direction:column}');
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {
