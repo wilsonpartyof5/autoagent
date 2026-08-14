@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v23"');
-    expect(html).toContain("VERSION='v23'");
+    expect(html).toContain('autoagent-widget-version" content="v29"');
+    expect(html).toContain("VERSION='v29'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -43,9 +43,17 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('supports zoom-aware pins and Search this area', () => {
-    expect(html).toContain("if(zoom<11)this.renderClusters();else this.renderPrices()");
+    expect(html).toContain("if(zoom<7)this.renderClusters();else this.renderPrices()");
     expect(html).toContain("callSearch(MapController.boundsArgs(),'search-area')");
     expect(html).toContain('markers:new Map()');
+  });
+
+  it('hides mobile filter chips and keeps an 8-card rail with dense map pins', () => {
+    expect(html).toContain('.control-scroll{display:none}');
+    expect(html).toContain('const RAIL_CARD_LIMIT=8');
+    expect(html).toContain('.slice(0,RAIL_CARD_LIMIT)');
+    expect(html).toContain('pinOffset(index,count)');
+    expect(html).toContain('if(fit)this.fit();const zoom=this.map.getZoom()');
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {

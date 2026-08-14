@@ -204,8 +204,9 @@ type SourceInfo = {
   inventoryProvider: 'marketcheck' | 'uvs';
   normalizedAs: 'uvs';
 };
-const MAX_BRIDGE_RESULTS = 8;
-const MAX_WIDGET_RESULTS = 12;
+const RAIL_CARD_LIMIT = 8;
+const MAX_MAP_PINS = 80;
+const MAX_WIDGET_RESULTS = MAX_MAP_PINS;
 const MAX_SUMMARY_LISTINGS = 3;
 
 function buildDealerSummary(vehicles: Array<Record<string, unknown>>): UVSDealerSummary[] {
@@ -453,8 +454,8 @@ export function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<
     radius: Math.round(searchParams.radiusMiles ?? 50),
     ...(bodyType ? { body_type: bodyType } : {}),
     miles_range: searchParams.mileageMax ? `0-${Math.floor(searchParams.mileageMax)}` : undefined,
-    rows: 12,
-    fetch_all_photos: true,
+    rows: MAX_MAP_PINS,
+    fetch_all_photos: false,
     include_dealer_object: true,
     include_mc_dealership_object: true,
     include_build_object: true,
@@ -494,12 +495,12 @@ async function normalizeBridgeSearchResult(
     : typeof bridge.totalCount === 'number'
       ? bridge.totalCount
       : rawVehicles.length;
-  // Keep bridge payload bounded so ChatGPT can reliably consume and render.
+  // Map gets a dense pin set; carousel photos stay limited to the first 8 cards.
   const compactVehicles = rawVehicles
-    .slice(0, Math.max(MAX_BRIDGE_RESULTS, MAX_WIDGET_RESULTS * 4))
+    .slice(0, MAX_MAP_PINS)
     .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
-  const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_BRIDGE_RESULTS);
-  const inlineStats = await inlineWidgetPrimaryPhotos(vehicles);
+  const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_MAP_PINS);
+  const inlineStats = await inlineWidgetPrimaryPhotos(vehicles.slice(0, RAIL_CARD_LIMIT));
   if (inlineStats.inlined || inlineStats.failed) {
     console.log(JSON.stringify({
       event: 'widget_images_inlined',
