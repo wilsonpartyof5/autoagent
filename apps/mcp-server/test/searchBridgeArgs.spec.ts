@@ -43,4 +43,18 @@ describe('MarketCheck bridge arg mapping', () => {
     expect(args.make).toBe('Ford');
     expect(args.model).toBe('F-150');
   });
+
+  it('requests a dense map pin set without fetching every photo', () => {
+    const args = mapSearchParamsToBridgeArgs({
+      location: 'Dallas, TX',
+      condition: 'used',
+      radiusMiles: 50,
+      maxPrice: 30000,
+    } as any);
+    expect(args.rows).toBe(80);
+    expect(args.fetch_all_photos).toBe(false);
+    expect(args.city).toBe('Dallas');
+    expect(args.state).toBe('TX');
+    expect(args.price_range).toBe('0-30000');
+  });
 });

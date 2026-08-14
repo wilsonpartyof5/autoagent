@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v28">
+  <meta name="autoagent-widget-version" content="v29">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -27,17 +27,19 @@
     #map{position:absolute;inset:0;background:#d8e4e8}.leaflet-container{font-family:inherit;width:100%;height:100%}
     .leaflet-control-attribution{font-size:9px!important}
     .leaflet-control-zoom a{width:36px!important;height:36px!important;line-height:36px!important;font-size:18px!important}
-    .topbar{position:absolute;z-index:700;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:flex-start;pointer-events:none}
-    .control-scroll{display:flex;gap:7px;overflow:auto;scrollbar-width:none;pointer-events:auto;padding:1px;max-width:100%}
+    .topbar{position:absolute;z-index:700;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:flex-start;justify-content:flex-end;pointer-events:none}
+    .control-scroll{display:none}
     .pill,.icon-btn,.primary-btn{border:1px solid #ffffff30;background:#15171bea;backdrop-filter:blur(12px);border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px #0004;min-height:40px}
     .pill:hover,.pill.active,.icon-btn:hover{border-color:#75a7ff;background:#173f78}.pill:disabled{opacity:.55;cursor:wait}
     .icon-btn{margin-left:auto;width:44px;height:44px;min-height:44px;padding:0;font-size:18px;pointer-events:auto;flex:0 0 auto}
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
-    #searchArea{position:absolute;z-index:710;top:66px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
+    #searchArea{position:absolute;z-index:710;top:12px;left:50%;transform:translateX(-50%);background:#fff;color:#172033;border:0;border-radius:999px;padding:10px 16px;font-weight:800;box-shadow:var(--shadow);cursor:pointer;min-height:40px}
     #searchArea[disabled]{opacity:.65}
-    .price-pin,.cluster-pin{transform:translate(-50%,-50%);background:var(--red);color:#fff;border:2px solid #fff;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:850;box-shadow:0 4px 12px #0007;white-space:nowrap;transition:transform .16s,border-color .16s,background .16s}
-    .price-pin.selected{background:var(--blue);border-color:#dbeafe;transform:translate(-50%,-50%) scale(1.13);z-index:5}
-    .cluster-pin{background:#20242ae8;border-radius:12px;min-width:86px;text-align:center;padding:7px 9px}.cluster-pin span{display:block;font-size:10px;color:#c5cad1;font-weight:650}
+    .price-pin,.cluster-pin{background:var(--red);color:#fff;border:2px solid #fff;box-shadow:0 4px 12px #0007;white-space:nowrap;transition:transform .16s,border-color .16s,background .16s;line-height:1.15}
+    .price-pin{position:relative;transform:translate(-50%,-100%);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:850}
+    .price-pin:after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;background:inherit;border-right:2px solid #fff;border-bottom:2px solid #fff;transform:translateX(-50%) rotate(45deg)}
+    .price-pin.selected{background:var(--blue);border-color:#dbeafe;transform:translate(-50%,-100%) scale(1.12);z-index:20}
+    .cluster-pin{transform:translate(-50%,-50%);background:#20242ae8;border-radius:12px;min-width:86px;text-align:center;padding:7px 9px;font-size:11px;font-weight:850}.cluster-pin span{display:block;font-size:10px;color:#c5cad1;font-weight:650}
     .leaflet-div-icon{background:transparent!important;border:0!important}
     #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
     #featured{pointer-events:auto;margin:0 auto 10px;max-width:760px;touch-action:manipulation}
@@ -110,11 +112,12 @@
       #app{height:min(70vh,620px);min-height:480px;border-radius:16px}
       #mapPane{display:grid;grid-template-rows:minmax(200px,1fr) auto;height:100%}
       #map{position:relative;inset:auto;width:100%;height:100%;min-height:200px}
-      .topbar{top:8px;left:8px;right:8px;gap:6px}
-      .control-scroll{gap:6px}
-      .pill{padding:8px 11px;font-size:12px;min-height:36px}
+      .topbar{top:8px;left:auto;right:8px;justify-content:flex-end;pointer-events:none}
+      .control-scroll{display:none}
+      .icon-btn{margin-left:0;pointer-events:auto}
       .label-full{display:none}.label-short{display:inline}
-      #searchArea{top:52px;padding:8px 12px;font-size:12px;min-height:34px}
+      #searchArea{top:12px;padding:8px 12px;font-size:12px;min-height:34px}
+      .price-pin,.cluster-pin{padding:3px 7px;font-size:10px;border-radius:7px}
       #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:10px 10px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
       #featured{display:none}
       #railShell{grid-template-columns:44px minmax(0,1fr) 44px;gap:6px}
@@ -209,7 +212,8 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v28', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v29', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
@@ -386,9 +390,9 @@
       const selected=state.all.find(v=>v.id===state.selectedId)||state.visible[0]||state.all[0];
       $('featured').innerHTML=selected?card(selected,'featured'):'';
       // Keep the full result set in the rail so map pans don't empty the carousel while browsing.
-      const railVehicles=(state.all.length?state.all:state.visible).slice(0,12);
+      const railVehicles=(state.all.length?state.all:state.visible).slice(0,RAIL_CARD_LIMIT);
       $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('');
-      $('list').innerHTML=state.visible.map(v=>card(v,'list')).join('');
+      $('list').innerHTML=state.visible.slice(0,RAIL_CARD_LIMIT).map(v=>card(v,'list')).join('');
       $('resultCount').textContent=`${state.visible.length.toLocaleString()} Vehicles`;
       $('resultContext').textContent=state.query.location||'Visible map area';
       document.querySelectorAll('[data-filter]').forEach(button=>button.classList.toggle('active',Boolean(state.filters[button.dataset.filter])));
@@ -517,10 +521,25 @@
         return true;
       },
       clear(){this.markers.forEach(marker=>marker.remove());this.markers.clear();this.dealerMarkers.forEach(marker=>marker.remove());this.dealerMarkers=[]},
-      render(fit=false){if(!this.init()){if(this.initAttempts<80)setTimeout(()=>this.render(fit),150);else event('map:init-failed',{detail:'container-never-reached-minimum-size'});return}this.clear();const zoom=this.map.getZoom();if(zoom<11)this.renderClusters();else this.renderPrices();if(fit)this.fit();},
-      renderPrices(){state.all.forEach(v=>{const c=coord(v);if(!c)return;const selected=v.id===state.selectedId;const marker=L.marker(c,{icon:L.divIcon({className:'',html:`<div class="price-pin ${selected?'selected':''}">${shortMoney(price(v))}</div>`,iconAnchor:[0,0]})}).on('click',()=>selectVehicle(v.id,'pin'));marker.addTo(this.map);this.markers.set(v.id,marker)})},
-      renderClusters(){const groups=new Map();state.all.forEach(v=>{const d=dealer(v),c=coord(v);if(!c)return;const key=d.dealerId||`${d.name}|${c.join(',')}`;const group=groups.get(key)||{vehicles:[],coord:c,name:d.name||'Dealer'};group.vehicles.push(v);groups.set(key,group)});groups.forEach(group=>{const min=Math.min(...group.vehicles.map(price).filter(Boolean));const marker=L.marker(group.coord,{icon:L.divIcon({className:'',html:`<div class="cluster-pin">${group.vehicles.length} cars<span>From ${shortMoney(min)}</span></div>`,iconAnchor:[0,0]})}).on('click',()=>{this.map.setView(group.coord,13);event('cluster:click',{detail:group.name})});marker.addTo(this.map);this.dealerMarkers.push(marker)})},
-      fit(){const coords=state.all.map(coord).filter(Boolean);if(!coords.length)return;this.suppress=true;this.userInteracted=false;this.map.invalidateSize();this.map.fitBounds(L.latLngBounds(coords).pad(.12),{maxZoom:12});setTimeout(()=>{this.suppress=false},600)},
+      render(fit=false){if(!this.init()){if(this.initAttempts<80)setTimeout(()=>this.render(fit),150);else event('map:init-failed',{detail:'container-never-reached-minimum-size'});return}this.clear();if(fit)this.fit();const zoom=this.map.getZoom();if(zoom<7)this.renderClusters();else this.renderPrices();},
+      pinOffset(index,count){if(count<=1)return[0,0];const angle=(index/count)*Math.PI*2-(Math.PI/2);const ring=Math.floor(index/7)+1;const meters=90*ring;const lat=meters/111320;const lng=meters/80000;return[Math.cos(angle)*lat,Math.sin(angle)*lng]},
+      renderPrices(){
+        const groups=new Map();
+        state.all.forEach(v=>{const c=coord(v);if(!c)return;const key=`${c[0].toFixed(5)},${c[1].toFixed(5)}`;const group=groups.get(key)||[];group.push(v);groups.set(key,group)});
+        groups.forEach(group=>{
+          group.forEach((v,index)=>{
+            const base=coord(v);if(!base)return;
+            const offset=this.pinOffset(index,group.length);
+            const selected=v.id===state.selectedId;
+            const marker=L.marker([base[0]+offset[0],base[1]+offset[1]],{icon:L.divIcon({className:'',html:`<div class="price-pin ${selected?'selected':''}">${shortMoney(price(v))}</div>`,iconAnchor:[0,0]}),zIndexOffset:selected?800:index});
+            marker.on('click',()=>selectVehicle(v.id,'pin'));
+            marker.addTo(this.map);
+            this.markers.set(v.id,marker);
+          });
+        });
+      },
+      renderClusters(){const groups=new Map();state.all.forEach(v=>{const d=dealer(v),c=coord(v);if(!c)return;const key=d.dealerId||`${d.name}|${c.join(',')}`;const group=groups.get(key)||{vehicles:[],coord:c,name:d.name||'Dealer'};group.vehicles.push(v);groups.set(key,group)});groups.forEach(group=>{const min=Math.min(...group.vehicles.map(price).filter(Boolean));const marker=L.marker(group.coord,{icon:L.divIcon({className:'',html:`<div class="cluster-pin">${group.vehicles.length} cars<span>From ${shortMoney(min)}</span></div>`,iconAnchor:[0,0]})}).on('click',()=>{this.map.setView(group.coord,11);event('cluster:click',{detail:group.name})});marker.addTo(this.map);this.dealerMarkers.push(marker)})},
+      fit(){const coords=state.all.map(coord).filter(Boolean);if(!coords.length)return;this.suppress=true;this.userInteracted=false;this.map.invalidateSize();this.map.fitBounds(L.latLngBounds(coords).pad(.08),{maxZoom:11,padding:[24,24]});setTimeout(()=>{this.suppress=false},600)},
       onMove(){
         if(!state.all.length||!this.userInteracted)return;
         const rect=this.map.getContainer().getBoundingClientRect();
