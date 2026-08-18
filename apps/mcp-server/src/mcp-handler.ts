@@ -74,9 +74,6 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
               subscribe: true,
               listChanged: true
             },
-            prompts: {
-              listChanged: true
-            },
             logging: {},
             experimental: {
               'io.modelcontextprotocol/ui': {
@@ -88,7 +85,7 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             name: 'autoagent-mcp-server',
             version: `1.0.0-${VEHICLE_WIDGET_VERSION}-${CONFIG.commitSha.substring(0, 7)}`,
           },
-          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. Prefer render-vehicle-results-v2 ONCE with make, model, location, and condition for vehicle shopping. If you call search or search-vehicles instead, those tools also return the same interactive map widget — do not skip the widget UI. Omit bodyStyle unless the user explicitly requested a body style.`
+          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For vehicle shopping, call render-vehicle-results-v2 ONCE with make, model, location, and condition. Use get-vehicle-details for one listing and submit-lead only after the user consents to be contacted. Omit bodyStyle unless the user explicitly requested a body style.`
         });
 
       case 'initialized':

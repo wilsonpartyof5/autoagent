@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v33"');
-    expect(html).toContain("VERSION='v33'");
+    expect(html).toContain('autoagent-widget-version" content="v34"');
+    expect(html).toContain("VERSION='v34'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -103,6 +103,8 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('hideStatus();closeDetails();renderAll()');
     expect(html).not.toContain('scrollToBottom:true');
     expect(html).toContain("callSearch({make:make(v),model:model(v)},'more-like')");
+    expect(html).not.toContain("callTool('search-vehicles'");
+    expect(html).toContain("callTool('render-vehicle-results-v2'");
   });
 
   it('validates postMessage source and reports UX diagnostics', () => {

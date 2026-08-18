@@ -12,7 +12,7 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v33';
+export const VEHICLE_WIDGET_VERSION = 'v34';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
@@ -176,87 +176,15 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
 }
 
 /**
- * Get available tools
+ * Tools advertised on tools/list (imported by OpenAI Scan Tools).
+ * Extra handlers in handleMcpToolCall stay callable for older ChatGPT threads.
  */
 export function getAvailableTools() {
   return [
     {
-      name: 'search',
-      title: 'Search',
-      description: `Search vehicle inventory from natural-language queries (e.g. "used cars near Irvine, CA"). Returns the interactive map + cards widget (${VEHICLE_WIDGET_VERSION}). Prefer render-vehicle-results-v2 when make/model/location are already structured.`,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: true,
-      },
-      _meta: {
-        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-      },
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Search query string',
-          },
-        },
-        required: ['query'],
-      },
-      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
-    },
-    {
-      name: 'fetch',
-      description: 'Fetch content from a URL',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          url: {
-            type: 'string',
-            description: 'URL to fetch content from',
-          },
-        },
-        required: ['url'],
-      },
-    },
-    {
-      name: 'ping-ui',
-      description: 'Test UI component loading and ChatGPT bridge connectivity',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-        required: [],
-      },
-    },
-    {
-      name: 'ping-micro-ui',
-      description: 'Ultra-minimal UI test with immediate ui:ready emission',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-        required: [],
-      },
-    },
-    {
       name: 'render-vehicle-results-v2',
       title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
-      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model(s)/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). For multiple models (e.g. Cherokee and Wrangler), pass models:["Cherokee","Wrangler"]. Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}). Do not also call search or search-vehicles for the same request.`,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: true,
-      },
-      _meta: {
-        ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
-        'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
-      },
-      inputSchema: VEHICLE_SEARCH_INPUT_SCHEMA,
-      outputSchema: VEHICLE_RESULTS_OUTPUT_SCHEMA,
-    },
-    {
-      name: 'search-vehicles',
-      title: 'Search Vehicles',
-      description: 'Secondary data search. Prefer render-vehicle-results-v2 for shopping UI. If used, still returns the same map widget template so results can hydrate the UI.',
+      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model(s)/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). For multiple models (e.g. Cherokee and Wrangler), pass models:["Cherokee","Wrangler"]. Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}).`,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -370,30 +298,6 @@ export function getAvailableTools() {
         required: ['vehicleId', 'vin', 'dealerId', 'dealerName', 'pricing', 'user', 'consent'],
       },
     },
-    {
-      name: 'compare-vehicles',
-      description: 'Compare multiple vehicles by IDs or VINs',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          vehicleIds: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Array of vehicle IDs to compare',
-          },
-          vins: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Array of VINs to compare (when vehicleIds not available)',
-          },
-          dealerId: {
-            type: 'string',
-            description: 'ID of the dealer (optional)',
-          },
-        },
-        required: [],
-      },
-    },
   ];
 }
 
@@ -408,18 +312,6 @@ export function getAvailableResources() {
       description: `Current ${VEHICLE_WIDGET_VERSION} interactive widget displaying vehicle search results`,
       mimeType: MCP_APP_HTML_MIME,
     },
-    {
-      uri: 'ui://ping.html',
-      name: 'Ping Widget',
-      description: 'Minimal diagnostic UI for bridge readiness',
-      mimeType: MCP_APP_HTML_MIME,
-    },
-    {
-      uri: 'ui://micro.html',
-      name: 'Micro Widget',
-      description: 'Ultra-minimal diagnostic UI',
-      mimeType: MCP_APP_HTML_MIME,
-    },
   ];
 }
 
@@ -427,6 +319,7 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v33.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v32.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v31.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v30.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),

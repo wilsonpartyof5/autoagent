@@ -150,7 +150,7 @@ app.get('/', (req, res) => {
       mcp: '/mcp',
       widget: '/widget/vehicle-results',
     },
-    tools: ['search-vehicles', 'submit-lead'],
+    tools: ['render-vehicle-results-v2', 'get-vehicle-details', 'submit-lead'],
     resources: ['ui://vehicle-results.html'],
   });
 });
@@ -603,7 +603,7 @@ app.get('/', (req, res) => {
       mcp: '/mcp',
       widget: '/widget/vehicle-results',
     },
-    tools: ['search-vehicles', 'submit-lead'],
+    tools: ['render-vehicle-results-v2', 'get-vehicle-details', 'submit-lead'],
     resources: ['ui://vehicle-results.html'],
   });
 });

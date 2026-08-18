@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v33">
+  <meta name="autoagent-widget-version" content="v34">
   <title>AutoAgent Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -226,7 +226,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v33', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v34', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -709,7 +709,7 @@
       try{
         if(typeof window.openai?.callTool!=='function')throw new Error('ChatGPT tool bridge is unavailable');
         const params={...state.query,...overrides,location:state.query.location||'United States',condition:overrides.condition||state.query.condition||'used'};
-        const result=await window.openai.callTool('search-vehicles',params);const next=extractResults(result);if(!next)throw new Error('No updated results were returned');hydrate(next,`callTool:${source}`);$('searchArea').classList.add('hidden');event(`refine:${source}:success`);
+        const result=await window.openai.callTool('render-vehicle-results-v2',params);const next=extractResults(result);if(!next)throw new Error('No updated results were returned');hydrate(next,`callTool:${source}`);$('searchArea').classList.add('hidden');event(`refine:${source}:success`);
       }catch(error){if(!quiet)hideStatus();toast(error?.message||'Unable to update search',true);event(`refine:${source}:error`,{detail:String(error?.message||error)})}
       finally{state.pending=false;document.querySelectorAll('.pill').forEach(button=>button.disabled=false);if(pendingMoveSearch){pendingMoveSearch=false;MapController.refreshArea()}}
     }
