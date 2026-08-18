@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './marketcheck.js';
 export * from './marketcheck-enrichment.js';
+export * from './marketcheck-dealer-id.js';
 // Export UVS types and functions (full export to ensure all types are available)
 export * from './uvs.js';
 // Explicit type exports for clarity (using aliases to avoid conflicts)

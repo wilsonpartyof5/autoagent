@@ -20,6 +20,7 @@ import {
   enrichListing,
   mergeEnrichment,
   isEnrichmentEnabled,
+  pickInventoryDealerId,
 } from '@autoagent/shared';
 
 const MARKETCHECK_DEFAULT_BASE = 'https://api.marketcheck.com';
@@ -42,10 +43,20 @@ type FetchAndIngestInput = {
   condition?: 'all' | 'new' | 'used';
   pageSize?: number;
   page?: number;
+  maxPages?: number;
+  maxVehicles?: number;
 };
 
 type DealerLookupResult =
-  | { status: 'found'; dealerId: string; dealerName?: string | null; numFound?: number }
+  | {
+      status: 'found';
+      dealerId: string;
+      dealerName?: string | null;
+      numFound?: number;
+      websiteId?: string | null;
+      marketcheckDealerId?: string | null;
+      inventoryUrl?: string | null;
+    }
   | { status: 'no_match'; numFound?: number }
   | { status: 'error'; message: string; statusCode?: number };
 
@@ -122,11 +133,10 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
     }
 
     const primary = mcDealerships[0];
-    const dealerId = primary?.mc_dealer_id ?? primary?.dealer_id;
-    const dealerName = primary?.dealer_name ?? primary?.name ?? null;
+    const picked = pickInventoryDealerId(primary);
 
-    if (!dealerId) {
-      console.error('[marketcheck_lookup] Missing dealer ID in response', {
+    if (!picked) {
+      console.error('[marketcheck_lookup] Missing inventory dealer ID in response', {
         inventoryUrl,
         primary,
       });
@@ -135,12 +145,22 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
 
     console.log('[marketcheck_lookup] Dealer resolved from inventory URL', {
       inventoryUrl,
-      dealerId,
+      dealerId: picked.inventoryDealerId,
+      websiteId: picked.websiteId,
+      marketcheckDealerId: picked.dealerId,
       numFound,
       durationMs: Date.now() - startedAt,
     });
 
-    return { status: 'found', dealerId: String(dealerId), dealerName, numFound };
+    return {
+      status: 'found',
+      dealerId: picked.inventoryDealerId,
+      dealerName: picked.dealerName,
+      numFound,
+      websiteId: picked.websiteId,
+      marketcheckDealerId: picked.dealerId,
+      inventoryUrl: picked.inventoryUrl ?? inventoryUrl,
+    };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -246,21 +266,15 @@ async function resolveDealerIdForUser({
     dealerId: lookupResult.dealerId,
     websiteUrl,
     dealershipId: activeDealership?.id ?? null,
+    dealerName: lookupResult.dealerName ?? null,
   });
 
-    await cacheDealerId({
-      dealerId: lookupResult.dealerId,
-      websiteUrl,
-      dealershipId: activeDealership?.id ?? null,
-      dealerName: lookupResult.dealerName ?? null,
-    });
-
-    return {
-      status: 'resolved',
-      dealerId: lookupResult.dealerId,
-      dealerName: lookupResult.dealerName ?? null,
-      websiteUrl,
-    };
+  return {
+    status: 'resolved',
+    dealerId: lookupResult.dealerId,
+    dealerName: lookupResult.dealerName ?? null,
+    websiteUrl,
+  };
 }
 
 /**
@@ -350,21 +364,25 @@ export async function resyncInventory(selectedDealershipId?: string) {
   }
 
   const dealerIdToUse = persisted.marketcheck_dealer_id;
-  const fallbackSource =
+  // Prefer website/source for MarketCheck inventory bodies. Listing dealer.id
+  // matches mc_website_id; the hostname source endpoint returns actual rows.
+  const websiteSource =
     resolvedWebsite ||
     (activeDealership.marketcheckWebsiteUrl
       ? normalizeInventoryUrlHost(activeDealership.marketcheckWebsiteUrl)
+      : undefined) ||
+    (persisted.marketcheck_website_url
+      ? normalizeInventoryUrlHost(persisted.marketcheck_website_url)
       : undefined);
 
-  // Use auto-detect for known dealers (marketcheck_source column doesn't exist in dealerships table)
   const dealerSourceMap: Record<string, string> = {
     '11042155': 'myrockhillgmc.com',
   };
-  
-  const source = dealerSourceMap[dealerIdToUse] || undefined;
+
+  const source = websiteSource || dealerSourceMap[dealerIdToUse] || undefined;
   const zip = activeDealership.marketcheckZip || undefined;
 
-  // Use the new fetch-and-ingest endpoint (primary: dealerId)
+  // Primary: dealerId (mc_website_id) + source hostname when available
   let result = await fetchAndIngestMarketCheckInventory({
     dealerId: dealerIdToUse,
     source,
@@ -373,26 +391,24 @@ export async function resyncInventory(selectedDealershipId?: string) {
     condition: 'all',
   });
 
-  // Fallback: if nothing fetched/imported and we have a website, retry with source-based fetch
+  // Fallback: if source path returned nothing, retry dealerId-only search
   const hasNoResults =
     (result?.fetched ?? 0) === 0 && (result?.imported ?? 0) === 0 && (result?.valid ?? 0) === 0;
-  if (hasNoResults && fallbackSource) {
+  if (hasNoResults && source) {
     try {
-      console.log('[resyncInventory] Primary dealerId fetch returned 0; retrying with source', {
+      console.log('[resyncInventory] Source fetch returned 0; retrying dealerId-only', {
         dealerId: dealerIdToUse,
-        source: fallbackSource,
+        source,
       });
       result = await fetchAndIngestMarketCheckInventory({
-        dealerId: dealerIdToUse, // keep dealerId for tracking; backend can prefer source when provided
-        source: fallbackSource,
+        dealerId: dealerIdToUse,
         zip,
         radiusMiles: 50,
         condition: 'all',
       });
     } catch (fallbackErr) {
-      console.error('[resyncInventory] Fallback source fetch failed', fallbackErr);
-      // Keep the original result (zero) but surface the fallback failure
-      throw new Error('MarketCheck sync returned no vehicles; source-based retry failed.');
+      console.error('[resyncInventory] dealerId-only retry failed', fallbackErr);
+      throw new Error('MarketCheck sync returned no vehicles; dealerId-only retry failed.');
     }
   }
 
@@ -421,6 +437,8 @@ export async function fetchAndIngestMarketCheckInventory({
   condition = 'all',
   pageSize = 100,
   page = 1,
+  maxPages = 1,
+  maxVehicles,
 }: FetchAndIngestInput) {
   if (!dealerId && !source) {
     throw new Error('dealerId or source is required');
@@ -443,11 +461,13 @@ export async function fetchAndIngestMarketCheckInventory({
       zip,
       radiusMiles,
       condition,
+      maxPages,
+      maxVehicles,
     });
 
     // The ingestion service owns MarketCheck pagination and returns the full
     // inventory in one response. Do not paginate this endpoint again here.
-    const maxPages = 1;
+    const pageBudget = Math.max(1, Number(maxPages) || 1);
     let currentPage = page;
     let totalFetched = 0;
     let totalStored = 0;
@@ -469,11 +489,13 @@ export async function fetchAndIngestMarketCheckInventory({
           condition,
           pageSize: requestedPageSize,
           page: requestedPage,
+          maxPages: pageBudget,
+          ...(typeof maxVehicles === 'number' ? { maxVehicles } : {}),
         }),
       });
     }
 
-    while (currentPage <= maxPages) {
+    while (currentPage <= pageBudget) {
       let response = await callIngest(pageSize, currentPage);
 
       // If MarketCheck rejects due to pagination limits, retry this page with smaller size
