@@ -107,7 +107,7 @@ export const TOOL_HINT_JUSTIFICATIONS = {
     readOnlyHint:
       'This tool creates a dealer lead and can email or HTTP-forward the user’s contact details.',
     openWorldHint:
-      'The lead is sent to a third-party dealership outside AutoAgent.',
+      'The lead is stored in the AutoAgent dashboard and sent to a third-party dealership outside AutoAgent.',
     destructiveHint:
       'Creating a lead does not delete or overwrite records and is not an irreversible payment or access change.',
   },
@@ -234,7 +234,7 @@ export function getAvailableTools() {
       name: 'render-vehicle-results-v2',
       title: 'Search cars',
       description:
-        'Find cars for sale near a city. Call once with location, condition (new or used), and optional make, model, models[], max price, and mileage. Omit bodyStyle unless the user asked for SUV, Sedan, Truck, or similar. Returns an interactive map and listing cards.',
+        'Find cars for sale near a city. Call once with location, condition (new or used), and optional make, model, models[], max price, and mileage. If the user does not name a city, use the ChatGPT-provided user location when it is available. Omit bodyStyle unless the user asked for SUV, Sedan, Truck, or similar. Returns an interactive map and listing cards.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
