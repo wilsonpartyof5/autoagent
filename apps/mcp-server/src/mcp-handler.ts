@@ -1,4 +1,4 @@
-import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, VEHICLE_RESULTS_RESOURCE_URI, VEHICLE_WIDGET_VERSION, type ToolContext } from './mcp-simple.js';
+import { getAvailableTools, getAvailableResources, handleMcpToolCall, readMcpResource, VEHICLE_WIDGET_VERSION, type ToolContext } from './mcp-simple.js';
 import { CONFIG } from './config/env.js';
 
 /**
@@ -85,7 +85,7 @@ export async function handleMcpRequest(body: unknown, context?: ToolContext & { 
             name: 'autoagent-mcp-server',
             version: `1.0.0-${VEHICLE_WIDGET_VERSION}-${CONFIG.commitSha.substring(0, 7)}`,
           },
-          instructions: `Current vehicle widget version is ${VEHICLE_WIDGET_VERSION} at ${VEHICLE_RESULTS_RESOURCE_URI}. For vehicle shopping, call render-vehicle-results-v2 ONCE with make, model, location, and condition. Use get-vehicle-details for one listing and submit-lead only after the user consents to be contacted. Omit bodyStyle unless the user explicitly requested a body style.`
+          instructions: `Use render-vehicle-results-v2 to search cars near a location. Use get-vehicle-details for one listing. Use submit-lead only after the user consents to be contacted. Omit bodyStyle unless the user asked for a body style.`
         });
 
       case 'initialized':

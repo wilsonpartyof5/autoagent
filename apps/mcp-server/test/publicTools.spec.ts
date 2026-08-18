@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getAvailableResources, getAvailableTools } from '../src/mcp-simple.js';
+import {
+  getAvailableResources,
+  getAvailableTools,
+  TOOL_HINT_JUSTIFICATIONS,
+} from '../src/mcp-simple.js';
 
 const PUBLIC_TOOL_NAMES = [
   'render-vehicle-results-v2',
@@ -25,13 +29,34 @@ describe('public MCP tool surface', () => {
     }
   });
 
-  it('sets readOnly, openWorld, and destructive hints on every advertised tool', () => {
+  it('labels look-up tools as read-only and the quote tool as a third-party write', () => {
+    const tools = Object.fromEntries(getAvailableTools().map((tool) => [tool.name, tool]));
+
+    expect(tools['render-vehicle-results-v2']).toMatchObject({
+      title: 'Search cars',
+      annotations: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+    });
+    expect(tools['render-vehicle-results-v2'].outputSchema).toBeDefined();
+
+    expect(tools['get-vehicle-details']).toMatchObject({
+      title: 'Vehicle details',
+      annotations: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+    });
+    expect(tools['get-vehicle-details'].outputSchema).toBeDefined();
+
+    expect(tools['submit-lead']).toMatchObject({
+      title: 'Request a quote',
+      annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
+    });
+    expect(tools['submit-lead'].outputSchema).toBeDefined();
+  });
+
+  it('has a matching OpenAI form justification for every advertised hint', () => {
     for (const tool of getAvailableTools()) {
-      expect(tool.annotations, tool.name).toMatchObject({
-        readOnlyHint: expect.any(Boolean),
-        openWorldHint: expect.any(Boolean),
-        destructiveHint: expect.any(Boolean),
-      });
+      const justifications = TOOL_HINT_JUSTIFICATIONS[tool.name as keyof typeof TOOL_HINT_JUSTIFICATIONS];
+      expect(justifications.readOnlyHint.length).toBeGreaterThan(10);
+      expect(justifications.openWorldHint.length).toBeGreaterThan(10);
+      expect(justifications.destructiveHint.length).toBeGreaterThan(10);
     }
   });
 

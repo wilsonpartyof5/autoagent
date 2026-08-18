@@ -64,6 +64,55 @@ const VEHICLE_RESULTS_OUTPUT_SCHEMA = {
   required: ['results'],
 };
 
+const VEHICLE_DETAILS_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    vehicle: { type: 'object', description: 'Selected vehicle listing details' },
+  },
+  required: ['vehicle'],
+};
+
+const SUBMIT_LEAD_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    leadId: { type: 'string' },
+    vehicleId: { type: 'string' },
+    dealerId: { type: 'string' },
+    vin: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+  },
+  required: ['leadId', 'vehicleId', 'dealerId', 'vin', 'price', 'currency'],
+};
+
+/** One-sentence OpenAI form justifications. Must match annotations on each public tool. */
+export const TOOL_HINT_JUSTIFICATIONS = {
+  'render-vehicle-results-v2': {
+    readOnlyHint:
+      'This tool only retrieves live vehicle listings and never creates, updates, or sends data.',
+    openWorldHint:
+      'This tool does not change publicly visible internet state; it only reads inventory.',
+    destructiveHint:
+      'This tool cannot delete, overwrite, or otherwise irreversibly change data.',
+  },
+  'get-vehicle-details': {
+    readOnlyHint:
+      'This tool only loads one vehicle listing and never creates, updates, or sends data.',
+    openWorldHint:
+      'This tool does not change publicly visible internet state; it only reads listing details.',
+    destructiveHint:
+      'This tool cannot delete, overwrite, or otherwise irreversibly change data.',
+  },
+  'submit-lead': {
+    readOnlyHint:
+      'This tool creates a dealer lead and can email or HTTP-forward the user’s contact details.',
+    openWorldHint:
+      'The lead is sent to a third-party dealership outside AutoAgent.',
+    destructiveHint:
+      'Creating a lead does not delete or overwrite records and is not an irreversible payment or access change.',
+  },
+} as const;
+
 const VEHICLE_SEARCH_INPUT_SCHEMA = {
   type: 'object',
   properties: {
@@ -183,12 +232,13 @@ export function getAvailableTools() {
   return [
     {
       name: 'render-vehicle-results-v2',
-      title: `Render Vehicle Results ${VEHICLE_WIDGET_VERSION.toUpperCase()}`,
-      description: `PRIMARY tool for vehicle shopping. Call this ONCE with make/model(s)/location/condition (omit bodyStyle unless the user explicitly asked for SUV/Sedan/Truck). For multiple models (e.g. Cherokee and Wrangler), pass models:["Cherokee","Wrangler"]. Returns interactive map + cards (${VEHICLE_WIDGET_VERSION}).`,
+      title: 'Search cars',
+      description:
+        'Find cars for sale near a city. Call once with location, condition (new or used), and optional make, model, models[], max price, and mileage. Omit bodyStyle unless the user asked for SUV, Sedan, Truck, or similar. Returns an interactive map and listing cards.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: true,
+        openWorldHint: false,
       },
       _meta: {
         ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
@@ -199,12 +249,13 @@ export function getAvailableTools() {
     },
     {
       name: 'get-vehicle-details',
-      title: 'Get Vehicle Details',
-      description: 'Load current photos, specifications, pricing, and dealer details for a selected MarketCheck vehicle.',
+      title: 'Vehicle details',
+      description:
+        'Load photos, specifications, price, and dealer information for one vehicle by VIN or listing ID.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: true,
+        openWorldHint: false,
       },
       inputSchema: {
         type: 'object',
@@ -215,11 +266,13 @@ export function getAvailableTools() {
         },
         required: [],
       },
+      outputSchema: VEHICLE_DETAILS_OUTPUT_SCHEMA,
     },
     {
       name: 'submit-lead',
-      title: 'Submit Vehicle Lead',
-      description: 'Submit a lead for a vehicle test drive or quote request',
+      title: 'Request a quote',
+      description:
+        'Send a quote or test-drive request to the dealership after the user provides name, email, and consent to be contacted.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -297,6 +350,7 @@ export function getAvailableTools() {
         },
         required: ['vehicleId', 'vin', 'dealerId', 'dealerName', 'pricing', 'user', 'consent'],
       },
+      outputSchema: SUBMIT_LEAD_OUTPUT_SCHEMA,
     },
   ];
 }
