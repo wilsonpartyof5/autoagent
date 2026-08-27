@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: dealerships, error: dealershipsError } = await supabase
       .from('dealerships')
-      .select('id, name, marketcheck_dealer_id, marketcheck_zip, marketcheck_source')
+      .select('id, name, marketcheck_dealer_id, marketcheck_website_url')
       .not('marketcheck_dealer_id', 'is', null)
       .eq('is_active', true);
 
@@ -80,10 +80,7 @@ export async function POST(request: NextRequest) {
 
         const result = await fetchAndIngestMarketCheckInventory({
           dealerId,
-          source: dealership.marketcheck_source || undefined,
-          zip: dealership.marketcheck_zip || undefined,
-          radiusMiles: 50,
-          condition: 'all',
+          source: dealership.marketcheck_website_url || undefined,
         });
 
         // Note: Dealership sync status tracking would require additional fields in the dealerships table
