@@ -6,12 +6,14 @@
 
 import express from 'express';
 import { ingestVehiclesFromProvider, type IngestionServiceOptions } from '../ingestion/service.js';
-import { CONFIG } from '../config/env.js';
+import {
+  SYNDICATION_MAX_ROWS,
+  buildDealershipInventoryUrl,
+} from '../ingestion/marketcheckSyndication.js';
 import pino from 'pino';
 
 const logger = (pino as any)();
 const MARKETCHECK_DEFAULT_BASE = 'https://api.marketcheck.com';
-const MARKETCHECK_SOURCE_BASE = 'https://mc-api.marketcheck.com';
 
 /**
  * Create ingestion API router
@@ -41,20 +43,18 @@ export function createIngestionRouter(): express.Router {
   
   /**
    * POST /api/ingest/marketcheck/fetch-and-ingest
-   * End-to-end sync: fetch from MarketCheck then ingest into UVS
+   * Enrolled-dealer sync via Cars Dealer Inventory Syndication
+   * GET /v2/dealerships/inventory (24h cache allowed). Not live search.
    */
   router.post('/marketcheck/fetch-and-ingest', async (req, res) => {
     const {
       dealerId,
       source,
-      zip,
-      radiusMiles = 50,
-      condition = 'all',
-      pageSize = 100,
+      pageSize,
       page = 1,
       // Safety rails: MarketCheck pagination behavior can be inconsistent.
       // These caps prevent runaway loops and excessively large ingestions.
-      maxPages = 50,
+      maxPages = 10,
       maxVehicles = 5000,
     } = req.body || {};
 
@@ -67,22 +67,12 @@ export function createIngestionRouter(): express.Router {
       return res.status(400).json({ error: 'dealerId or source is required' });
     }
 
-    const useSourceEndpoint = !!source;
-    const baseUrl = useSourceEndpoint
-      ? MARKETCHECK_SOURCE_BASE
-      : (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
-
-    const endpoint = useSourceEndpoint
-      ? '/v2/car/dealer/inventory/active'
-      : '/v2/search/car/active';
-
-    // Normalize URL construction to prevent double slashes
-    const normalizedBase = baseUrl.replace(/\/+$/, ''); // Remove trailing slashes
-    const normalizedEndpoint = endpoint.replace(/^\/+/, '/'); // Ensure single leading slash
+    const baseUrl = (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
 
     try {
       logger.info({
-        event: 'marketcheck_fetch_start',
+        event: 'marketcheck_syndication_fetch_start',
+        endpoint: '/v2/dealerships/inventory',
         dealerId,
         source,
         page,
@@ -91,37 +81,18 @@ export function createIngestionRouter(): express.Router {
         maxVehicles,
       });
 
-      // Use a mutable page size so we can shrink it on pagination limit errors.
-      let effectivePageSize = Number(pageSize) || 100;
+      // Syndication paid max is 1,500 rows; ignore smaller pageSize from callers.
+      let effectivePageSize = SYNDICATION_MAX_ROWS;
 
-      const buildUrlForPage = (pageNum: number, useOffsetBased = false, actualStartOffset?: number) => {
-    const searchParams = new URLSearchParams({
-      api_key: apiKey,
-    });
-
-      // Try offset-based pagination if page-based doesn't work
-    // Some MarketCheck endpoints use 'start' and 'rows' instead of 'page' and 'pageSize'
-    if (useOffsetBased) {
-      // Use actual offset if provided (based on vehicles already fetched), otherwise calculate
-      const start = actualStartOffset !== undefined ? actualStartOffset : (pageNum - 1) * effectivePageSize;
-      searchParams.set('start', String(start));
-      searchParams.set('rows', String(effectivePageSize));
-    } else {
-      searchParams.set('page', String(pageNum));
-      searchParams.set('pageSize', String(effectivePageSize));
-    }
-
-    if (useSourceEndpoint) {
-      searchParams.set('source', source);
-    } else {
-      searchParams.set('dealer_id', dealerId);
-      if (zip) searchParams.set('zip', zip);
-      if (radiusMiles) searchParams.set('radius', String(radiusMiles));
-      if (condition === 'new') searchParams.set('car_type', 'new');
-      if (condition === 'used') searchParams.set('car_type', 'used');
-    }
-
-        return `${normalizedBase}${normalizedEndpoint}?${searchParams.toString()}`;
+      const buildUrlForPage = (_pageNum: number, _useOffsetBased = false, actualStartOffset?: number) => {
+        const start = actualStartOffset !== undefined ? actualStartOffset : 0;
+        return buildDealershipInventoryUrl(baseUrl, {
+          apiKey,
+          dealerId,
+          source,
+          start,
+          rows: effectivePageSize,
+        });
       };
 
       const allVehicles: any[] = [];
@@ -129,8 +100,8 @@ export function createIngestionRouter(): express.Router {
       let duplicatesSkipped = 0;
       let pagesFetched = 0;
       let numFound: number | null = null;
-      let useOffsetBased = false; // Try offset-based pagination if page-based fails
-      let actualStartOffset = 0; // Track actual offset for offset-based pagination
+      let useOffsetBased = true;
+      let actualStartOffset = 0;
 
       let currentPage = Number.isFinite(Number(page)) ? Number(page) : 1;
       if (currentPage < 1) currentPage = 1;
