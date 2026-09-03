@@ -71,9 +71,17 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
       lowerQuery.includes('explorer') ? 'Explorer' : '',
     ].filter(Boolean);
 
+    const location = inferredLocation || contextLocation;
+    if (!location) {
+      return {
+        success: false,
+        error: 'Please name a city so I can search for cars nearby.',
+      };
+    }
+
     // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
-      location: inferredLocation || contextLocation,
+      location,
       condition: lowerQuery.includes('new') ? 'new' : 'used',
       radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') || lowerQuery.includes('metro') ? 75 : undefined,
       make: lowerQuery.includes('toyota') ? 'Toyota'

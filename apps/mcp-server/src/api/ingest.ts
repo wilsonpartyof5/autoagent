@@ -446,7 +446,6 @@ export function createIngestionRouter(): express.Router {
       const ingestionOptions: IngestionServiceOptions = {
         provider: 'marketcheck',
         dataSource: options?.dataSource || 'marketcheck-api',
-        dealerId: options?.dealerId,
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
@@ -506,12 +505,16 @@ export function createIngestionRouter(): express.Router {
       const ingestionOptions: IngestionServiceOptions = {
         provider: 'csv-import',
         dataSource: options?.dataSource || 'csv-import',
-        dealerId: options?.dealerId,
-        deletionStrategy: options?.deletionStrategy || 'none',
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
         ...options,
+        dealerId: options?.dealerId,
+        deletionStrategy: resolveDeletionStrategy(
+          options?.deletionStrategy || 'none',
+          options?.dealerId,
+          'none',
+        ),
       };
       
       const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
@@ -545,7 +548,6 @@ export function createIngestionRouter(): express.Router {
       const ingestionOptions: IngestionServiceOptions = {
         provider: 'dealer-api',
         dataSource: options?.dataSource || 'dealer-api',
-        dealerId: options?.dealerId,
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
@@ -597,7 +599,6 @@ export function createIngestionRouter(): express.Router {
       const ingestionOptions: IngestionServiceOptions = {
         provider: provider as any,
         dataSource: options?.dataSource || provider,
-        dealerId: options?.dealerId,
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,

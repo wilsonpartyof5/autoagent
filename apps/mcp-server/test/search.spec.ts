@@ -7,6 +7,8 @@ vi.mock('../src/tools/searchVehicles.js', () => ({
   searchVehicles: vi.fn(),
 }));
 
+const denverHint = { userLocation: { city: 'Denver', region: 'CO' } };
+
 describe('search Tool', () => {
   beforeEach(() => {
     searchCache.clear();
@@ -53,7 +55,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'Toyota Camry' });
+      const result = await search({ query: 'Toyota Camry' }, denverHint);
       
       expect(result.success).toBe(true);
       expect(result.data?.content).toBeDefined();
@@ -61,26 +63,15 @@ describe('search Tool', () => {
   });
 
   describe('Query mapping', () => {
-    it('should map query to search parameters with defaults', async () => {
-      const mockSearchVehicles = vi.fn().mockResolvedValue({
-        success: true,
-        data: {
-          vehicles: [],
-          totalCount: 0,
-        },
-      });
-
+    it('asks for a city when the query and ChatGPT hint have no location', async () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
-      vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
+      const mockSearchVehicles = vi.mocked(searchVehicles);
 
-      await search({ query: 'test query' });
+      const result = await search({ query: 'test query' });
 
-      expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: undefined,
-        condition: 'used',
-        make: undefined,
-        model: undefined,
-      }, undefined);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/name a city/i);
+      expect(mockSearchVehicles).not.toHaveBeenCalled();
     });
 
     it('should extract make from query', async () => {
@@ -95,14 +86,17 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      await search({ query: 'Toyota car' });
+      await search({ query: 'Toyota car in Denver, CO' });
 
-      expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: undefined,
-        condition: 'used',
-        make: 'Toyota',
-        model: undefined,
-      }, undefined);
+      expect(mockSearchVehicles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: 'denver, CO',
+          condition: 'used',
+          make: 'Toyota',
+          model: undefined,
+        }),
+        undefined,
+      );
     });
 
     it('should extract model from query', async () => {
@@ -117,14 +111,17 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      await search({ query: 'Honda CR-V' });
+      await search({ query: 'Honda CR-V in Denver, CO' });
 
-      expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: undefined,
-        condition: 'used',
-        make: 'Honda',
-        model: 'CR-V',
-      }, undefined);
+      expect(mockSearchVehicles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: 'denver, CO',
+          condition: 'used',
+          make: 'Honda',
+          model: 'CR-V',
+        }),
+        undefined,
+      );
     });
 
     it('uses ChatGPT userLocation hint when query lacks location', async () => {
@@ -144,13 +141,15 @@ describe('search Tool', () => {
         { userLocation: { city: 'Rock Hill', region: 'SC' } }
       );
 
-      expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: 'Rock Hill, SC',
-        condition: 'used',
-        radiusMiles: undefined,
-        make: undefined,
-        model: undefined,
-      }, { userLocation: { city: 'Rock Hill', region: 'SC' } });
+      expect(mockSearchVehicles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: 'Rock Hill, SC',
+          condition: 'used',
+          make: undefined,
+          model: undefined,
+        }),
+        { userLocation: { city: 'Rock Hill', region: 'SC' } },
+      );
     });
   });
 
@@ -186,7 +185,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'cars' });
+      const result = await search({ query: 'cars' }, denverHint);
 
       expect(result.success).toBe(true);
       expect(result.data?.content[0].text).toContain('Found 2 vehicles');
@@ -210,7 +209,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'no results' });
+      const result = await search({ query: 'no results' }, denverHint);
 
       expect(result.success).toBe(true);
       expect(result.data?.content[0].text).toContain('Found 0 vehicles');
@@ -233,7 +232,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'test' });
+      const result = await search({ query: 'test' }, denverHint);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Search failed');
@@ -245,7 +244,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'test' });
+      const result = await search({ query: 'test' }, denverHint);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network error');
@@ -276,7 +275,7 @@ describe('search Tool', () => {
       const { searchVehicles } = await import('../src/tools/searchVehicles.js');
       vi.mocked(searchVehicles).mockImplementation(mockSearchVehicles);
 
-      const result = await search({ query: 'Toyota' });
+      const result = await search({ query: 'Toyota' }, denverHint);
 
       expect(result.success).toBe(true);
       expect(result.data?.structuredContent).toMatchObject({
