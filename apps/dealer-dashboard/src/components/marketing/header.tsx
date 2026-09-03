@@ -8,7 +8,7 @@ export function Header() {
       <div className="container mx-auto flex items-center justify-between max-w-6xl px-6 py-3.5">
         {/* Logo */}
         <Link href="/" className="gradient-text text-2xl font-bold">
-          AutoAgent
+          Drevvy
         </Link>
 
         {/* Navigation */}

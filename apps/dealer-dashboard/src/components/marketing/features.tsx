@@ -30,7 +30,7 @@ const features = [
   {
     icon: Shield,
     title: 'Be Visible or Be Forgotten',
-    description: 'Traditional car shopping sites are dying. ChatGPT is the new showroom floor. AutoAgent puts you there before your competitors even know it exists.'
+    description: 'Traditional car shopping sites are dying. ChatGPT is the new showroom floor. Drevvy puts you there before your competitors even know it exists.'
   }
 ];
 

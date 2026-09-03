@@ -1,11 +1,11 @@
 {
   "schemaVersion": "v1",
-  "name": "AutoAgent Dealer Demo",
+  "name": "Drevvy Dealer Demo",
   "description": "Car search and dealership inventory near me; find vehicles by make/model/VIN/price and submit leads for test drives/quotes.",
   "version": "1.0.0",
   "author": {
-    "name": "AutoAgent",
-    "email": "support@autoagent.com"
+    "name": "Drevvy",
+    "email": "support@drevvy.com"
   },
   "connectors": [
     {

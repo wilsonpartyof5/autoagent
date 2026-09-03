@@ -90,7 +90,7 @@ export function LeadDeliveryForm({ currentMethod, currentEndpoint, currentEmail 
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-foreground">Lead Delivery</h2>
         <p className="text-sm text-muted-foreground">
-          Configure how leads are delivered to your CRM. AutoAgent generates ADF XML format compatible
+          Configure how leads are delivered to your CRM. Drevvy generates ADF XML format compatible
           with most automotive CRM systems.
         </p>
       </div>

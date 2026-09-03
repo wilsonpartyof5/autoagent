@@ -139,8 +139,8 @@ export function InventoryProviderForm({ currentProvider, websiteUrl, dealershipI
           providerName={provider === "cdk" ? "CDK" : "vAuto"}
           description={
             provider === "cdk"
-              ? "CDK integration is in beta—contact support@autoagent.ai to join waitlist."
-              : "vAuto integration is in beta—contact support@autoagent.ai to join waitlist."
+              ? "CDK integration is in beta—contact support@drevvy.com to join waitlist."
+              : "vAuto integration is in beta—contact support@drevvy.com to join waitlist."
           }
         />
       )}

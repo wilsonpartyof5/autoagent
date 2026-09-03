@@ -32,7 +32,7 @@ export function AppSidebar({ items, isMobile = false, onNavigate }: AppSidebarPr
           <span className="text-lg font-semibold">AA</span>
         </div>
         <div>
-          <p className="text-sm font-semibold text-foreground">AutoAgent</p>
+          <p className="text-sm font-semibold text-foreground">Drevvy</p>
           <p className="text-xs text-muted-foreground">Dealer Dashboard</p>
         </div>
       </div>

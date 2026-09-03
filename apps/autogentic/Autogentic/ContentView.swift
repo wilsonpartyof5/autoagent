@@ -108,7 +108,7 @@ struct ContentView: View {
   private var sidebar: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
-        Text("AutoAgent")
+        Text("Drevvy")
           .font(.system(size: 20, weight: .bold))
           .foregroundStyle(.white)
         Spacer()

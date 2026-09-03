@@ -21,7 +21,7 @@ struct MapToolView: View {
     VStack(alignment: .leading, spacing: 10) {
       // Header label (mimicking Zillow branding)
       HStack(spacing: 4) {
-        Text("AutoAgent")
+        Text("Drevvy")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(.white)
         Text("•")

@@ -106,7 +106,7 @@ export const TOOL_HINT_JUSTIFICATIONS = {
     readOnlyHint:
       'This tool creates a dealer lead and can email or HTTP-forward the user’s contact details.',
     openWorldHint:
-      'The lead is stored in the AutoAgent dashboard and sent to a third-party dealership outside AutoAgent.',
+      'The lead is stored in the Drevvy dashboard and sent to a third-party dealership outside Drevvy.',
     destructiveHint:
       'Creating a lead does not delete or overwrite records and is not an irreversible payment or access change.',
   },

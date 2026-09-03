@@ -21,7 +21,7 @@ export function Hero() {
             <span className="gradient-up">Up?</span>
           </h1>
           <p className="text-lg md:text-xl leading-[1.75] text-muted-foreground max-w-3xl mx-auto tracking-[-0.01em]">
-            The customer journey has changed forever. Buyers now ask ChatGPT for the exact vehicle they want—“show me affordable AWD SUVs near me”—and your competitors’ inventory shows up while yours doesn’t. AutoAgent fixes that.
+            The customer journey has changed forever. Buyers now ask ChatGPT for the exact vehicle they want—“show me affordable AWD SUVs near me”—and your competitors’ inventory shows up while yours doesn’t. Drevvy fixes that.
           </p>
         </div>
 

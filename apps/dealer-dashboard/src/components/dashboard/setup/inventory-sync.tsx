@@ -158,7 +158,7 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
       <header className="space-y-2">
         <h1 className="text-2xl font-bold text-foreground">Connect Your Inventory</h1>
         <p className="text-sm text-muted-foreground">
-          Choose your inventory provider to sync your active listings into AutoAgent.
+          Choose your inventory provider to sync your active listings into Drevvy.
         </p>
       </header>
 
@@ -225,14 +225,14 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
         {provider === "cdk" && (
           <PlaceholderProvider
             providerName="CDK"
-            description="CDK integration is in beta—contact support@autoagent.ai to join waitlist."
+            description="CDK integration is in beta—contact support@drevvy.com to join waitlist."
           />
         )}
 
         {provider === "vauto" && (
           <PlaceholderProvider
             providerName="vAuto"
-            description="vAuto integration is in beta—contact support@autoagent.ai to join waitlist."
+            description="vAuto integration is in beta—contact support@drevvy.com to join waitlist."
           />
         )}
       </section>
@@ -641,7 +641,7 @@ function MarketCheckForm({
         )}
 
         <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-          Data Privacy: Vehicles are stored securely inside your AutoAgent account. We only import listing
+          Data Privacy: Vehicles are stored securely inside your Drevvy account. We only import listing
           details (VIN, pricing, mileage, photos, vehicle metadata) and never customer information.
         </div>
 
@@ -649,7 +649,7 @@ function MarketCheckForm({
           <p className="text-sm text-muted-foreground">
             Need help locating your dealer ID?{" "}
             <a
-              href="mailto:support@autoagent.ai"
+              href="mailto:support@drevvy.com"
               className="font-medium text-primary underline-offset-2 hover:underline"
             >
               Contact our onboarding team

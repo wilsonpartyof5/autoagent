@@ -61,7 +61,7 @@ export default function RequestDemoPage() {
           <p className="text-sm font-semibold uppercase tracking-widest text-primary">Talk To Sales</p>
           <h1 className="text-4xl font-bold text-foreground">Book A Demo</h1>
           <p className="text-muted-foreground text-lg">
-            Share a few details and we&apos;ll show you how AutoAgent syncs inventory into ChatGPT, captures leads, and connects to your CRM.
+            Share a few details and we&apos;ll show you how Drevvy syncs inventory into ChatGPT, captures leads, and connects to your CRM.
           </p>
         </div>
 

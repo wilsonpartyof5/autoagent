@@ -21,7 +21,7 @@ export default async function LeadsPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
           <p className="mt-2 text-gray-600">
-            Recent lead submissions from the AutoAgent widget
+            Recent lead submissions from the Drevvy widget
           </p>
         </div>
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "v1",
-  "name_for_human": "AutoAgent Vehicle Search",
+  "name_for_human": "Drevvy Vehicle Search",
   "name_for_model": "autoagent_vehicle_search",
   "description_for_human": "Search for vehicles, get VIN details, and submit leads for test drives and quotes.",
   "description_for_model": "A comprehensive vehicle search and lead management system that can search for vehicles by location, price, make, model, and other criteria. Can also submit leads for test drives and provide detailed vehicle information including VIN lookups.",
@@ -12,6 +12,6 @@
     "url": "https://autoagentmcp-server-production.up.railway.app/.well-known/openapi.yaml"
   },
   "logo_url": "https://autoagentmcp-server-production.up.railway.app/logo.png",
-  "contact_email": "support@autoagent.com",
+  "contact_email": "support@drevvy.com",
   "legal_info_url": "https://autoagentmcp-server-production.up.railway.app/legal"
 }

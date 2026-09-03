@@ -54,7 +54,7 @@ struct ExpandedMapView: View {
       // Top bar — header label + close button
       HStack {
         HStack(spacing: 4) {
-          Text("AutoAgent")
+          Text("Drevvy")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
           Text("•")

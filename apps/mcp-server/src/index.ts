@@ -141,7 +141,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   console.log('🏠 Root endpoint requested');
   res.json({
-    service: 'AutoAgent MCP Server',
+    service: 'Drevvy MCP Server',
     version: '1.0.0',
     status: 'running',
     endpoints: {
@@ -596,7 +596,7 @@ app.post('/widget/console', express.json(), (req, res) => {
 // Root endpoint with basic info
 app.get('/', (req, res) => {
   res.json({
-    service: 'AutoAgent MCP Server',
+    service: 'Drevvy MCP Server',
     version: '1.0.0',
     endpoints: {
       health: '/health',
@@ -666,7 +666,7 @@ app.use((req, res) => {
 const server = createServer(app);
 
 server.listen(PORT, () => {
-  console.log(`🚗 AutoAgent MCP Server running on http://localhost:${PORT}`);
+  console.log(`🚗 Drevvy MCP Server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 MCP endpoint: http://localhost:${PORT}/mcp`);
   console.log(`🎨 Widget: http://localhost:${PORT}/widget/vehicle-results`);

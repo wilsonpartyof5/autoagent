@@ -8,7 +8,7 @@ import { fetchUserDealerships, getActiveDealership } from "@/lib/supabase/dealer
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Dealer Dashboard | AutoAgent",
+  title: "Dealer Dashboard | Drevvy",
 };
 
 export const dynamic = 'force-dynamic';
@@ -115,7 +115,7 @@ function SetupBanner({
   const primaryLabel = inventoryConnected ? "Add Billing" : "Sync Inventory";
   const primaryHref = inventoryConnected ? "/app/billing" : "/app/setup";
   const secondaryLabel = inventoryConnected ? "View Inventory" : "View Docs";
-  const secondaryHref = inventoryConnected ? "/app/inventory" : "https://docs.autoagent.ai";
+  const secondaryHref = inventoryConnected ? "/app/inventory" : "https://www.drevvy.com";
 
   const tasks = [
     {

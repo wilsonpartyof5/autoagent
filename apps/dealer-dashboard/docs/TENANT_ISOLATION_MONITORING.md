@@ -188,20 +188,20 @@ COMMIT;
 
 Send email to affected user:
 
-**Subject:** AutoAgent Account Setup - Action Required
+**Subject:** Drevvy Account Setup - Action Required
 
 **Body:**
 ```
 Hi there,
 
-We detected an issue with your AutoAgent account setup and have reset your account to ensure data integrity.
+We detected an issue with your Drevvy account setup and have reset your account to ensure data integrity.
 
 Please log back in at https://autoagent-dealer-dashboard.vercel.app/auth and complete the onboarding process to connect your dealership.
 
-If you continue to experience issues or have questions, please contact support at support@autoagent.com.
+If you continue to experience issues or have questions, please contact support at support@drevvy.com.
 
 Thank you,
-AutoAgent Support Team
+Drevvy Support Team
 ```
 
 ### Step 5: Post-Incident Review
@@ -254,7 +254,7 @@ Run this checklist quarterly or after major deployments:
 ## Contact
 
 **Ops Questions:** ops@autoagent.com  
-**Support Escalation:** support@autoagent.com  
+**Support Escalation:** support@drevvy.com  
 **Engineering Escalation:** dev@autoagent.com
 
 ---

@@ -171,7 +171,7 @@ export const CONFIG = {
   dashboardIngestToken: requireEnv('DASHBOARD_INGEST_TOKEN'),
   
   // Optional: OpenAI App configuration
-  openaiAppName: optionalEnv('OPENAI_APP_NAME', 'AutoAgent'),
+  openaiAppName: optionalEnv('OPENAI_APP_NAME', 'Drevvy'),
   
   // Optional: Diagnostics flag
   diagnosticsEnabled: optionalBoolEnv('AA_DIAG', false),

@@ -24,7 +24,7 @@ function AuthForm() {
     
     if (errorParam === 'integrity_check_failed' && messageParam) {
       setError(
-        `${messageParam} Please contact support at support@autoagent.com for assistance.`
+        `${messageParam} Please contact support at support@drevvy.com for assistance.`
       );
     }
   }, [searchParams]);
@@ -99,8 +99,8 @@ function AuthForm() {
           </CardTitle>
           <CardDescription>
             {isSignUp
-              ? 'Create your AutoAgent dealer account'
-              : 'Sign in to your AutoAgent account'}
+              ? 'Create your Drevvy dealer account'
+              : 'Sign in to your Drevvy account'}
           </CardDescription>
         </CardHeader>
         <CardContent>

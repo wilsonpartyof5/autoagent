@@ -149,7 +149,7 @@ export default function OnboardingPage() {
         <div className="text-center mb-8 animate-fade-in">
           <Shield className="h-12 w-12 text-primary mx-auto mb-4" />
           <h1 className="text-4xl font-bold text-white text-center mb-2">
-            AutoAgent
+            Drevvy
           </h1>
           <p className="text-xl text-muted-foreground text-center">
             Smarter leads. Lower costs.
