@@ -455,7 +455,7 @@ export function normalize(raw: HomenetVehicle): UVS {
   let year = raw.year;
   let make = raw.make || raw.manufacturer;
   let model = raw.model;
-  let trim = raw.trim;
+  const trim = raw.trim;
   
   // Try parsing from description if fields are missing
   if (!year || !make || !model) {

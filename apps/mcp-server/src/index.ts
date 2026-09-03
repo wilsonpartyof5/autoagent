@@ -637,7 +637,7 @@ app.use(async (error: unknown, req: express.Request, res: express.Response, next
     ).catch(() => {
       // Ignore tracking errors
     });
-  } catch (trackError) {
+  } catch {
     // Ignore tracking import/execution errors
   }
   

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import pino from 'pino';
 import { encryptJson } from '../lib/crypto.js';
-import { insertLead, countRecentLeadsByIp } from '../data/db.js';
+import { insertLead } from '../data/db.js';
 import { forwardLead } from '../services/forwardLead.js';
 import { deliverLead } from '../services/deliverLead.js';
 import { trackEvent } from '../lib/analytics/tracking.js';
@@ -53,7 +53,7 @@ export interface SubmitLeadContext {
  */
 export async function submitLead(
   params: unknown,
-  context?: SubmitLeadContext
+  _context?: SubmitLeadContext
 ): Promise<{
   success: boolean;
   content?: Array<{ type: string; text: string }>;
@@ -67,6 +67,7 @@ export async function submitLead(
   };
   error?: string;
 }> {
+  void _context;
   try {
     // Validate input schema
     const parseResult = SubmitLeadSchema.safeParse(params);

@@ -9,7 +9,7 @@ import type { UnifiedVehicle } from '@autoagent/shared';
  */
 export async function compareVehicles(
   params: unknown,
-  context?: { /* No PII context */ }
+  _context?: { /* No PII context */ }
 ): Promise<{
   success: boolean;
   data?: {
@@ -20,6 +20,7 @@ export async function compareVehicles(
   };
   error?: string;
 }> {
+  void _context;
   try {
     // Validate input parameters
     const input = params as {

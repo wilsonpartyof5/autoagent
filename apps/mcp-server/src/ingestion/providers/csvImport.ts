@@ -311,7 +311,7 @@ export function normalize(raw: CSVVehicleRow): UVS {
   const now = new Date().toISOString();
   
   // Extract identity fields - handle various CSV column name variations
-  let vin = (raw.VIN || raw.vin || raw.Vin || raw['VIN Number'] || raw['VIN_Number']) as string | undefined;
+  const vin = (raw.VIN || raw.vin || raw.Vin || raw['VIN Number'] || raw['VIN_Number']) as string | undefined;
   let year: number | undefined = typeof raw.Year === 'number' ? raw.Year : 
                                   typeof raw.year === 'number' ? raw.year :
                                   typeof raw.YEAR === 'number' ? raw.YEAR :

@@ -79,7 +79,7 @@ export function createIngestionRouter(): express.Router {
       // Syndication paid max is 1,500 rows; ignore smaller pageSize from callers.
       let effectivePageSize = SYNDICATION_MAX_ROWS;
 
-      const buildUrlForPage = (_pageNum: number, _useOffsetBased = false, actualStartOffset?: number) => {
+      const buildUrlForPage = (_pageNum: number, actualStartOffset?: number) => {
         const start = actualStartOffset !== undefined ? actualStartOffset : 0;
         return buildDealershipInventoryUrl(baseUrl, {
           apiKey,
@@ -116,7 +116,7 @@ export function createIngestionRouter(): express.Router {
           break;
         }
 
-        const url = buildUrlForPage(currentPage, useOffsetBased, useOffsetBased ? actualStartOffset : undefined);
+        const url = buildUrlForPage(currentPage, useOffsetBased ? actualStartOffset : undefined);
 
       logger.info({
           event: 'marketcheck_fetch_page_start',

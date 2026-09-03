@@ -222,7 +222,7 @@ function validateConfig(): void {
       if (!['http:', 'https:'].includes(bridgeUrl.protocol)) {
         throw new Error('invalid protocol');
       }
-    } catch (_error) {
+    } catch {
       throw new Error(
         `❌ MARKETCHECK_MCP_URL must be a valid HTTP/HTTPS URL\n` +
           `   Received: ${CONFIG.marketcheckMcpUrl}`

@@ -504,7 +504,7 @@ export function normalize(raw: DealerComVehicle): UVS {
   let year = raw.year;
   let make = raw.make || raw.manufacturer;
   let model = raw.model;
-  let trim = raw.trim;
+  const trim = raw.trim;
   
   // Try parsing from description/title if fields are missing
   if (!year || !make || !model) {

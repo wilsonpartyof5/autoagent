@@ -476,7 +476,7 @@ export function normalize(raw: VAutoVehicle): UVS {
   let year = raw.year;
   let make = raw.make;
   let model = raw.model;
-  let trim = raw.trim;
+  const trim = raw.trim;
   
   // Validate required fields - log warnings and use fallbacks
   if (!year || year < 1900 || year > 2100) {

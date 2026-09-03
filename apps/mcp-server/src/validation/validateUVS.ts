@@ -10,7 +10,7 @@
 
 import type { UVS } from '../types/UVS.js';
 import type { UnifiedVehicle } from '@autoagent/shared';
-import { validateStrictUVS, type StrictValidationResult } from '@autoagent/shared';
+import { validateStrictUVS } from '@autoagent/shared';
 
 /**
  * Validation result (backward compatible with existing code)

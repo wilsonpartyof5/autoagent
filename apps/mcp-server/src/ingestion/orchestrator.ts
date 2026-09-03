@@ -13,7 +13,6 @@
 
 import type { UnifiedVehicle } from '@autoagent/shared';
 import { validateStrictUVS } from '@autoagent/shared';
-import { validateUVS } from '../validation/validateUVS.js';
 import { normalize as normalizeMarketCheck } from './providers/marketcheck.js';
 import { normalize as normalizeCSV } from './providers/csvImport.js';
 import { normalize as normalizeDealerAPI } from './providers/dealerApi.js';

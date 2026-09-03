@@ -416,7 +416,7 @@ export function normalize(raw: DealerAPIVehicle): UVS {
   const now = new Date().toISOString();
   
   // Extract identity fields - handle various field name variations
-  let vin = (raw.vin) as string | undefined;
+  const vin = (raw.vin) as string | undefined;
   let year = raw.year as number | undefined;
   let make = (raw.make || raw.manufacturer) as string | undefined;
   let model = raw.model as string | undefined;

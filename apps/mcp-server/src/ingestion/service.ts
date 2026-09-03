@@ -9,7 +9,7 @@
  */
 
 import { ingestVehicles, type IngestionOptions, getValidVehicles, getInvalidVehicles } from './orchestrator.js';
-import { storeIngestedVehicles, storeUVSVehicle } from './storage.js';
+import { storeIngestedVehicles } from './storage.js';
 import { createClient } from '@supabase/supabase-js';
 import { CONFIG } from '../config/env.js';
 import { resolveDeletionStrategy } from '../lib/ingestAuth.js';
@@ -335,22 +335,6 @@ export async function ingestSingleVehicle(
     };
   }
   
-  // Get the stored vehicle ID
-  const validVehicles = getValidVehicles({
-    results: result.invalidVehicles ? [] : [{ success: true }],
-    total: 1,
-    valid: result.summary.valid,
-    invalid: result.summary.invalid,
-    errors: 0,
-    provider: options.provider,
-    dataSource: options.dataSource || options.provider,
-    startedAt: new Date().toISOString(),
-    completedAt: new Date().toISOString(),
-    durationMs: 0,
-  });
-  
-  // Actually, we need to get the ID from the stored vehicle
-  // For simplicity, extract from the raw vehicle
   const vehicleId = (rawVehicle as any)?.id || (rawVehicle as any)?.vin || 'unknown';
   
   return {

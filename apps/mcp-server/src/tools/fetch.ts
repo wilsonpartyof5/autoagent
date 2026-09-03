@@ -2,7 +2,7 @@
  * Public fetch is disabled. ChatGPT must not be able to ask the server
  * to retrieve arbitrary URLs (SSRF).
  */
-export async function fetchContent(_params: unknown): Promise<{
+export async function fetchContent(): Promise<{
   success: boolean;
   data?: {
     content: { type: string; text: string; }[];
