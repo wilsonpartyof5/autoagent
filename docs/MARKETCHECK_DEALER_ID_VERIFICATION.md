@@ -1,7 +1,7 @@
 # MarketCheck Dealer ID Enrollment & Integration Verification
 
 **Date**: 2025-02-19  
-**Verification Scope**: Dealer ID onboarding process and AutoAgent integration
+**Verification Scope**: Dealer ID onboarding process and Drevvy integration
 
 ---
 
@@ -60,7 +60,7 @@ No documentation found about:
 
 ---
 
-## 2. AutoAgent Integration
+## 2. Drevvy Integration
 
 ### 2.1 Dealer ID Storage Location
 
@@ -217,11 +217,11 @@ const url = `${baseUrl}/v2/search/car/active?${searchParams.toString()}`;
 
 **Issue Identified**:
 - Line 22 marks `dealer_id` as optional (correct for `/v2/search/car/active` API)
-- However, for AutoAgent's **inventory sync feature**, dealer ID is **required** (see `apps/dealer-dashboard/src/app/app/setup/actions.ts:30-32`)
+- However, for Drevvy's **inventory sync feature**, dealer ID is **required** (see `apps/dealer-dashboard/src/app/app/setup/actions.ts:30-32`)
 - Documentation should clarify: optional for general search, required for dealer-specific inventory sync
 
 **Recommendation**:
-- Add a note: "`dealer_id` is optional for general search but **required** for dealer inventory sync in AutoAgent"
+- Add a note: "`dealer_id` is optional for general search but **required** for dealer inventory sync in Drevvy"
 - Add a section on dealer onboarding or link to onboarding guide
 
 ---
@@ -262,7 +262,7 @@ const url = `${baseUrl}/v2/search/car/active?${searchParams.toString()}`;
 2. **Update `docs/api/marketcheck-endpoints.md`** (after line 22):
    ```markdown
    - `dealer_id` (string): Restrict results to a single dealer's inventory. Example: `"12345"`.
-     - **Note**: Optional for general search; **required** for AutoAgent dealer inventory sync (`/app/setup`).
+     - **Note**: Optional for general search; **required** for Drevvy dealer inventory sync (`/app/setup`).
    ```
 
 3. **Add to `docs/overview.md`** (after line 48):
@@ -280,7 +280,7 @@ const url = `${baseUrl}/v2/search/car/active?${searchParams.toString()}`;
 - Current implementation relies on **manual dealer ID entry** by dealers
 
 **Current Implementation**:
-- AutoAgent requires dealers to manually enter their dealer ID
+- Drevvy requires dealers to manually enter their dealer ID
 - No programmatic lookup is implemented
 - Dealers must find their ID in the MarketCheck dashboard or contact support
 
@@ -314,7 +314,7 @@ const url = `${baseUrl}/v2/search/car/active?${searchParams.toString()}`;
 1. What is the exact URL for the MarketCheck dealer dashboard? (varies by account)
 2. Where exactly in the dashboard is the dealer ID displayed? (account settings or dealer profile section - needs confirmation)
 3. Is there a verified API endpoint to look up dealer ID by name/location? (needs confirmation from MarketCheck)
-4. Can we search by ZIP/radius without dealer ID for dealer inventory sync, or is dealer ID always required? (currently required in AutoAgent)
+4. Can we search by ZIP/radius without dealer ID for dealer inventory sync, or is dealer ID always required? (currently required in Drevvy)
 
 ### 4.7 Column Name Consistency Verification
 

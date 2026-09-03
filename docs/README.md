@@ -1,4 +1,4 @@
-# AutoAgent Documentation Hub
+# Drevvy Documentation Hub
 
 This hub keeps Cursor/Codex agents oriented. Start here, follow the reading order, and jump to deeper guides as needed.
 

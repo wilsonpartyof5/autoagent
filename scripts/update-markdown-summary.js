@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * AutoAgent Markdown Summary Updater
+ * Drevvy Markdown Summary Updater
  * 
  * This script scans the project for markdown files, analyzes new ones,
  * and updates MARKDOWN_FILES_SUMMARY.md automatically.

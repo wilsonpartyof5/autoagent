@@ -1,5 +1,5 @@
 /**
- * Sync MarketCheck dealer inventory to AutoAgent
+ * Sync MarketCheck dealer inventory to Drevvy
  * 
  * This script:
  * 1. Updates the Supabase profile with marketcheck_dealer_id
@@ -102,7 +102,7 @@ async function syncInventory(dealerId) {
 }
 
 async function main() {
-  console.log("🚀 AutoAgent MarketCheck Inventory Sync");
+  console.log("🚀 Drevvy MarketCheck Inventory Sync");
   console.log("========================================");
   console.log(`\nDealer: ${dealerInfo.name}`);
   console.log(`ID: ${dealerInfo.id}`);

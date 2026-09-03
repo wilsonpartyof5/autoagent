@@ -5,7 +5,7 @@
 
 ## Overview
 
-The AutoAgent dealer dashboard now supports multi-dealership management, allowing a single user to own and manage multiple dealerships/locations. All inventory, leads, and settings are scoped to the currently selected dealership.
+The Drevvy dealer dashboard now supports multi-dealership management, allowing a single user to own and manage multiple dealerships/locations. All inventory, leads, and settings are scoped to the currently selected dealership.
 
 ## Key Features
 

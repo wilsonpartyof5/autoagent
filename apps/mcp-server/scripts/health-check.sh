@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Health check script for AutoAgent MCP Server
+# Health check script for Drevvy MCP Server
 # Usage: ./scripts/health-check.sh
 
 BASE_URL="https://autoagentmcp-server-production.up.railway.app"
 TIMEOUT=10
 
-echo "🏥 AutoAgent MCP Server Health Check"
+echo "🏥 Drevvy MCP Server Health Check"
 echo "=================================="
 
 # Check MCP endpoint

@@ -9,18 +9,18 @@ This document consolidates all API documentation, MarketCheck endpoint guides, a
 
 ## Table of Contents
 
-1. [AutoAgent MCP API](#autoagent-mcp-api)
+1. [Drevvy MCP API](#drevvy-mcp-api)
 2. [MarketCheck API Endpoints](#marketcheck-api-endpoints)
 3. [API Audit & Validation](#api-audit--validation)
 4. [Integration Checklist](#integration-checklist)
 
 ---
 
-## AutoAgent MCP API
+## Drevvy MCP API
 
 ### Overview
 
-AutoAgent provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.
+Drevvy provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.
 
 **Base URL**: `http://localhost:8787` (development) or `https://autoagentmcp-server-production.up.railway.app` (production)
 
@@ -474,7 +474,7 @@ curl -X POST http://localhost:8787/mcp \
 **Authentication**: Every request must include `api_key` as a query parameter.
 
 > **Endpoint status legend**  
-> ✅ Live in AutoAgent | ⚠️ Planned (documented, not yet integrated)
+> ✅ Live in Drevvy | ⚠️ Planned (documented, not yet integrated)
 
 ### Endpoint Status
 
@@ -500,7 +500,7 @@ Primary search endpoint for active dealer inventory. Returned payload powers our
 
 ##### Optional (Dealer Filter)
 - `dealer_id` (string): Restrict results to a single dealer's inventory. Example: `"12345"`.
-  - **Note**: While `dealer_id` is optional for the MarketCheck API (allows general search), it is **required** for AutoAgent's dealer inventory sync feature (`/app/setup`). Dealers must obtain their dealer ID from the MarketCheck dashboard before syncing. See `docs/01-CORE-DOCUMENTATION.md` for instructions on finding your dealer ID.
+  - **Note**: While `dealer_id` is optional for the MarketCheck API (allows general search), it is **required** for Drevvy's dealer inventory sync feature (`/app/setup`). Dealers must obtain their dealer ID from the MarketCheck dashboard before syncing. See `docs/01-CORE-DOCUMENTATION.md` for instructions on finding your dealer ID.
 
 ##### Optional (Location - Mutually Exclusive)
 - `location` (string): Location string for geographic search
@@ -690,25 +690,25 @@ Primary search endpoint for active dealer inventory. Returned payload powers our
 
 #### `/v2/listing/car/{id}` ⚠️
 
-**⚠️ Status**: This endpoint is documented but not currently used in the AutoAgent codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
+**⚠️ Status**: This endpoint is documented but not currently used in the Drevvy codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
 
 **Use Case**: Get detailed information for a specific vehicle listing by ID.
 
 #### `/v2/listing/car/{id}/media` ⚠️
 
-**⚠️ Status**: This endpoint is documented but not currently used in the AutoAgent codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
+**⚠️ Status**: This endpoint is documented but not currently used in the Drevvy codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
 
 **Use Case**: Get media assets (photos, videos) for a specific vehicle listing.
 
 #### `/v2/listing/car/{id}/extra` ⚠️
 
-**⚠️ Status**: This endpoint is documented but not currently used in the AutoAgent codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
+**⚠️ Status**: This endpoint is documented but not currently used in the Drevvy codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
 
 **Use Case**: Get additional details (seller comments, option packages, specifications) for a specific vehicle listing.
 
 #### `/v2/dealer/{dealer_id}` ⚠️
 
-**⚠️ Status**: This endpoint is documented but not currently used in the AutoAgent codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
+**⚠️ Status**: This endpoint is documented but not currently used in the Drevvy codebase. Verify endpoint path and response structure against official MarketCheck API documentation before implementation.
 
 **Use Case**: Get dealer information including hours, ratings, and metadata.
 
@@ -774,7 +774,7 @@ Before relying on this documentation:
 - [ ] Handle pagination (max 100 per page)
 - [ ] Implement rate limiting and exponential backoff
 - [ ] Normalize response fields (handle `dom` vs `days_on_market`, etc.)
-- [ ] Map MarketCheck response to AutoAgent Vehicle schema
+- [ ] Map MarketCheck response to Drevvy Vehicle schema
 - [ ] Implement error handling for API failures
 - [ ] Add caching layer (60s TTL recommended)
 - [ ] Test with various search parameters

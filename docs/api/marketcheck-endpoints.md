@@ -5,7 +5,7 @@
 **Authentication**: Every request must include `api_key` as a query parameter.
 
 > **Endpoint status legend**  
-> ✅ Live in AutoAgent | ⚠️ Planned (documented, not yet integrated)
+> ✅ Live in Drevvy | ⚠️ Planned (documented, not yet integrated)
 
 ---
 
@@ -20,7 +20,7 @@ Primary search endpoint for active dealer inventory. Returned payload powers our
 
 #### Optional
 - `dealer_id` (string): Restrict results to a single dealer's inventory. Example: `"12345"`.
-  - **Note**: While `dealer_id` is optional for the MarketCheck API (allows general search), it is **required** for AutoAgent's dealer inventory sync feature (`/app/setup`). Dealers must obtain their dealer ID from the MarketCheck dashboard before syncing. See `docs/quickstart.md` for instructions on finding your dealer ID.
+  - **Note**: While `dealer_id` is optional for the MarketCheck API (allows general search), it is **required** for Drevvy's dealer inventory sync feature (`/app/setup`). Dealers must obtain their dealer ID from the MarketCheck dashboard before syncing. See `docs/quickstart.md` for instructions on finding your dealer ID.
 - `location` (string): Location string for geographic search
   - Format: `"City, State"` or `"City, ST"`
   - Example: `"Seattle, WA"` or `"New York, NY"`

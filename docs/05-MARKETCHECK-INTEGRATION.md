@@ -52,7 +52,7 @@ This document consolidates all MarketCheck integration guides, onboarding proced
 
 ### Rock Hill GMC Onboarding
 
-This guide walks through the complete onboarding flow for My Rock Hill GMC (dealer ID: 11042155) to import real MarketCheck inventory into the AutoAgent dealer dashboard.
+This guide walks through the complete onboarding flow for My Rock Hill GMC (dealer ID: 11042155) to import real MarketCheck inventory into the Drevvy dealer dashboard.
 
 #### Prerequisites
 
@@ -229,7 +229,7 @@ WHERE table_name = 'inventory_vehicles' AND column_name = 'dealership_id';
 
 ### Overview
 
-The AutoAgent dealer dashboard now supports multi-dealership management, allowing a single user to own and manage multiple dealerships/locations. All inventory, leads, and settings are scoped to the currently selected dealership.
+The Drevvy dealer dashboard now supports multi-dealership management, allowing a single user to own and manage multiple dealerships/locations. All inventory, leads, and settings are scoped to the currently selected dealership.
 
 ### Key Features
 
@@ -629,7 +629,7 @@ curl "https://marketcheck-prod.apigee.net/v2/search/car/active?api_key=YOUR_KEY&
 
 **Current Implementation**:
 - ✅ Manual dealer ID entry required (no programmatic lookup)
-- ✅ Dealer ID is required for AutoAgent inventory sync
+- ✅ Dealer ID is required for Drevvy inventory sync
 - ✅ ZIP/radius are optional refinements, not replacements for dealer ID
 
 **Open Questions**:

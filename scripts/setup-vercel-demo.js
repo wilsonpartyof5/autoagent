@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * AutoAgent Vercel Demo Account Setup Script
+ * Drevvy Vercel Demo Account Setup Script
  * 
  * This script sets up a complete demo account for the Vercel deployment:
  * - Creates demo user in Supabase Auth

@@ -22,7 +22,7 @@ This document consolidates all testing guides, quality assurance procedures, val
 
 ### Purpose
 
-Complete validation checklist for testing the ChatGPT App integration with the AutoAgent MCP server using Rock Hill GMC inventory data.
+Complete validation checklist for testing the ChatGPT App integration with the Drevvy MCP server using Rock Hill GMC inventory data.
 
 **Estimated Time**: 45-60 minutes
 
@@ -46,7 +46,7 @@ pnpm --filter mcp-server dev
 
 **Expected Output**:
 ```
-🚗 AutoAgent MCP Server running on http://localhost:8787
+🚗 Drevvy MCP Server running on http://localhost:8787
 📊 Health check: http://localhost:8787/health
 🔧 MCP endpoint: http://localhost:8787/mcp
 🎨 Widget: http://localhost:8787/widget/vehicle-results
@@ -260,7 +260,7 @@ bash scripts/testChatGPTHandshake.sh https://abc123.ngrok-free.dev
 
 **Expected Output**:
 ```
-🧪 AutoAgent ChatGPT MCP Handshake Test
+🧪 Drevvy ChatGPT MCP Handshake Test
 ========================================
 MCP Server URL: https://abc123.ngrok-free.dev
 MCP Endpoint: https://abc123.ngrok-free.dev/mcp

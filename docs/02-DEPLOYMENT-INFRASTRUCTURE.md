@@ -23,7 +23,7 @@ This document consolidates all deployment guides, infrastructure setup, and prod
 
 ## Project Overview
 
-AutoAgent is a monorepo containing:
+Drevvy is a monorepo containing:
 1. **Next.js 15 Dashboard** (`apps/dealer-dashboard`) - Dealer SaaS dashboard with Supabase auth
 2. **Node.js MCP Server** (`apps/mcp-server`) - Express server for ChatGPT integration
 

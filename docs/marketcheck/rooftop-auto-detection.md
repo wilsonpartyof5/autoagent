@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AutoAgent dealer onboarding flow now automatically detects dealer rooftops/locations from MarketCheck when a dealer ID is entered. This streamlines the setup process by eliminating the need for manual ZIP code entry in most cases.
+The Drevvy dealer onboarding flow now automatically detects dealer rooftops/locations from MarketCheck when a dealer ID is entered. This streamlines the setup process by eliminating the need for manual ZIP code entry in most cases.
 
 ## How It Works
 

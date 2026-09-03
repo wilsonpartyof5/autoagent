@@ -20,7 +20,7 @@ This document consolidates all core project documentation including README, chan
 
 ## Project Overview
 
-AutoAgent is a ChatGPT-native vehicle search and lead generation platform built on the Apps SDK and MCP. It connects live MarketCheck inventory, secure lead capture, and a dealer dashboard to deliver a complete automotive commerce workflow directly inside ChatGPT.
+Drevvy is a ChatGPT-native vehicle search and lead generation platform built on the Apps SDK and MCP. It connects live MarketCheck inventory, secure lead capture, and a dealer dashboard to deliver a complete automotive commerce workflow directly inside ChatGPT.
 
 ### Key Capabilities
 
@@ -116,7 +116,7 @@ After adding Supabase credentials, run all SQL files in `apps/dealer-dashboard/s
 
 ### Get Your MarketCheck Dealer ID
 
-Before syncing inventory in AutoAgent, you need your MarketCheck dealer ID. Follow these steps:
+Before syncing inventory in Drevvy, you need your MarketCheck dealer ID. Follow these steps:
 
 #### Prerequisites
 - ✅ Active MarketCheck account with signed contract
@@ -140,13 +140,13 @@ Before syncing inventory in AutoAgent, you need your MarketCheck dealer ID. Foll
      - **Support Center**: [MarketCheck Support](https://www.marketcheck.com/apis/pricing/)
    - Provide your dealership name and location to expedite lookup
 
-#### What to Enter in AutoAgent
+#### What to Enter in Drevvy
 
 - **Dealer ID**: Enter the numeric dealer ID (e.g., `102345`) in the setup form at `/app/setup`
 - **ZIP Code** (optional today): Helps refine results for multi-store groups; we're building an automatic rooftop confirmation step that will read the available locations from MarketCheck and let you pick the correct store before syncing.
 - **Radius** (optional): Search radius in miles (default: 50) for geographic filtering
 
-> **Note**: The dealer ID is **required** for AutoAgent's inventory sync feature. ZIP and radius are optional refinements that help filter results but cannot replace the dealer ID.
+> **Note**: The dealer ID is **required** for Drevvy's inventory sync feature. ZIP and radius are optional refinements that help filter results but cannot replace the dealer ID.
 
 ### Inventory Sync Workflow (Current State)
 
@@ -258,7 +258,7 @@ curl -sS https://autoagentmcp-server-production.up.railway.app/mcp \
 
 ## System Architecture
 
-The AutoAgent platform delivers real-time vehicle discovery, lead capture, and dealer workflow management inside ChatGPT via the Apps SDK and MCP.
+The Drevvy platform delivers real-time vehicle discovery, lead capture, and dealer workflow management inside ChatGPT via the Apps SDK and MCP.
 
 ### Product Mission
 
@@ -272,7 +272,7 @@ The AutoAgent platform delivers real-time vehicle discovery, lead capture, and d
 | Layer            | Technology                                  | Purpose                                     |
 | ---------------- | ------------------------------------------- | ------------------------------------------- |
 | Server           | **Node.js + Express**                       | Hosts MCP endpoint, tools, and widget assets |
-| MCP              | **OpenAI Apps SDK (JSON-RPC 2.0)**          | ChatGPT ↔ AutoAgent communication layer     |
+| MCP              | **OpenAI Apps SDK (JSON-RPC 2.0)**          | ChatGPT ↔ Drevvy communication layer     |
 | Database         | **SQLite**                                  | Encrypted lead storage (pluggable backend)  |
 | Frontend Widgets | **HTML + Leaflet.js + Vanilla JS**          | Embedded vehicle results UI                 |
 | External API     | **MarketCheck**                             | Live vehicle data, dealer metadata          |

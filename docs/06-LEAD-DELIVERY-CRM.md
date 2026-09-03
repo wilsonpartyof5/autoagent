@@ -24,14 +24,14 @@ This document consolidates all lead delivery system documentation, ADF XML forma
 
 ### Objective
 
-Replace bespoke CRM integrations with a universal ADF XML push so every dealer can self-configure how leads leave AutoAgent. Dealers will enter either a CRM webhook URL or fallback email. Every new lead should generate an ADF payload, attempt delivery, log the outcome, and support manual resend.
+Replace bespoke CRM integrations with a universal ADF XML push so every dealer can self-configure how leads leave Drevvy. Dealers will enter either a CRM webhook URL or fallback email. Every new lead should generate an ADF payload, attempt delivery, log the outcome, and support manual resend.
 
 ### Implementation Status
 
 | Area | Summary | Status |
 | --- | --- | --- |
 | Dashboard settings | Add "Lead Delivery" card (method selector, endpoint/email inputs, validation) and persist in `profiles`. | ✅ **Done** (2025-02-21) |
-| ADF payload generator | Build reusable helper that maps AutoAgent lead + vehicle data → ADF XML (Prospect, Customer, Vehicle, Vendor, Provider, timestamps). | ✅ **Done** (2025-02-21) |
+| ADF payload generator | Build reusable helper that maps Drevvy lead + vehicle data → ADF XML (Prospect, Customer, Vehicle, Vendor, Provider, timestamps). | ✅ **Done** (2025-02-21) |
 | Delivery service | After lead creation: fetch dealer settings, send XML via HTTP POST or email fallback, handle timeouts/retries, store logs. Lives in MCP server. | ✅ **Done** (2025-02-21) |
 | Delivery logging | New `lead_delivery_logs` table (+ RLS) capturing method, target, status, http status/response, payload reference, attempted_at/by. | ✅ **Done** (2025-02-21) |
 | Resend workflow | Dealer dashboard lead list shows latest delivery status and exposes "Resend" button (replays stored payload + creates new log). | ✅ **Done** (2025-02-21) |
@@ -361,7 +361,7 @@ ADF XML is compatible with most automotive CRM systems including:
    - Request ADF XML webhook endpoint
    - Verify endpoint accepts `POST` requests with `Content-Type: application/xml`
 
-2. **Configure in AutoAgent**
+2. **Configure in Drevvy**
    - Navigate to `/app/settings`
    - Select "HTTP Endpoint" as delivery method
    - Enter your CRM webhook URL

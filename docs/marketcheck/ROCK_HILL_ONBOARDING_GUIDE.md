@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide walks through the complete onboarding flow for My Rock Hill GMC (dealer ID: 11042155) to import real MarketCheck inventory into the AutoAgent dealer dashboard.
+This guide walks through the complete onboarding flow for My Rock Hill GMC (dealer ID: 11042155) to import real MarketCheck inventory into the Drevvy dealer dashboard.
 
 ## Prerequisites
 

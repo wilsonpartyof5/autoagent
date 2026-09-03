@@ -1,6 +1,6 @@
-# AutoAgent Markdown Files Summary
+# Drevvy Markdown Files Summary
 
-This document provides a comprehensive summary of all 72 markdown files in the AutoAgent project, organized by category.
+This document provides a comprehensive summary of all 72 markdown files in the Drevvy project, organized by category.
 
 ---
 

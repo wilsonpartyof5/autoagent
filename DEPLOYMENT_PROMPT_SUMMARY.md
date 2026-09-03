@@ -1,7 +1,7 @@
 # Deployment Prompt Summary for ChatGPT
 
 ## Project Overview
-AutoAgent is a monorepo containing:
+Drevvy is a monorepo containing:
 1. **Next.js 15 Dashboard** (`apps/dealer-dashboard`) - Dealer SaaS dashboard with Supabase auth
 2. **Node.js MCP Server** (`apps/mcp-server`) - Express server for ChatGPT integration
 
@@ -124,7 +124,7 @@ pnpm --filter @autoagent/mcp-server start
 ---
 
 ## Prompt for ChatGPT
-"Help me deploy my AutoAgent monorepo to production. I have a Next.js 15 dashboard and a Node.js MCP server. I want to deploy the dashboard to Vercel and the MCP server to Railway. My domain is [DOMAIN_NAME] registered at [REGISTRAR]. I have a GitHub repository at [REPO_URL]. Please provide step-by-step deployment instructions including:
+"Help me deploy my Drevvy monorepo to production. I have a Next.js 15 dashboard and a Node.js MCP server. I want to deploy the dashboard to Vercel and the MCP server to Railway. My domain is [DOMAIN_NAME] registered at [REGISTRAR]. I have a GitHub repository at [REPO_URL]. Please provide step-by-step deployment instructions including:
 1. Vercel deployment for Next.js dashboard
 2. Railway deployment for MCP server
 3. Custom domain configuration

@@ -1,5 +1,5 @@
 /**
- * AutoAgent x MarketCheck Dealership Verification Script
+ * Drevvy x MarketCheck Dealership Verification Script
  * ------------------------------------------------------
  * Purpose:
  * 1. Check if a dealership exists in MarketCheck.
@@ -128,7 +128,7 @@ async function verifyDealer() {
 
     if (inventoryResponse.data.listings && inventoryResponse.data.listings.length > 0) {
       console.log(`✅ Found ${inventoryResponse.data.listings.length} active vehicles.`);
-      console.log("Dealer is LIVE and ready to import into AutoAgent.");
+      console.log("Dealer is LIVE and ready to import into Drevvy.");
     } else {
       console.log("⚠️ Dealer record exists but no active inventory found.");
       console.log("Check if dealer feed is paused or recently onboarded.");

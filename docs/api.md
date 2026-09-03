@@ -1,8 +1,8 @@
-# AutoAgent API Documentation
+# Drevvy API Documentation
 
 ## Overview
 
-AutoAgent provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.  
+Drevvy provides a comprehensive API for vehicle search and lead generation through the MCP (Model Context Protocol) for ChatGPT App integration.  
 For direct MarketCheck REST endpoints (request parameters, response fields, and integration notes), see `api/marketcheck-endpoints.md`.
 
 ## Base URL

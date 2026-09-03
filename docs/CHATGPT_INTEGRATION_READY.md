@@ -7,7 +7,7 @@
 
 ## Summary
 
-AutoAgent is now ready for end-to-end ChatGPT App integration testing with:
+Drevvy is now ready for end-to-end ChatGPT App integration testing with:
 - ✅ **MarketCheck Integration**: Rock Hill GMC (dealer 11042155) API verified - 232 vehicles available
 - ✅ **Sync Function**: Enhanced to auto-detect source parameter for dealer 11042155
 - ✅ **Onboarding Guide**: Complete step-by-step guide for Rock Hill GMC onboarding

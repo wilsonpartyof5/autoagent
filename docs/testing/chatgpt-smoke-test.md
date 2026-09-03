@@ -1,6 +1,6 @@
 # ChatGPT App Smoke Test - Rock Hill GMC Inventory Flow
 
-**Purpose**: Complete validation checklist for testing the ChatGPT App integration with the AutoAgent MCP server using Rock Hill GMC inventory data.
+**Purpose**: Complete validation checklist for testing the ChatGPT App integration with the Drevvy MCP server using Rock Hill GMC inventory data.
 
 **Estimated Time**: 45-60 minutes
 
@@ -35,7 +35,7 @@ pnpm --filter mcp-server dev
 
 **Expected Output**:
 ```
-🚗 AutoAgent MCP Server running on http://localhost:8787
+🚗 Drevvy MCP Server running on http://localhost:8787
 📊 Health check: http://localhost:8787/health
 🔧 MCP endpoint: http://localhost:8787/mcp
 🎨 Widget: http://localhost:8787/widget/vehicle-results
@@ -359,7 +359,7 @@ curl https://your-tunnel-url.ngrok-free.dev/mcp \
 2. **Add New Connector** or **Edit Existing**:
    - **MCP Server URL**: `https://your-tunnel-url.ngrok-free.dev/mcp`
    - **Authentication**: None (unless you've configured bearer token auth)
-   - **Name** (optional): "AutoAgent MCP Server"
+   - **Name** (optional): "Drevvy MCP Server"
 3. **Save** the connector
 
 ### 3.2 Handshake Validation
@@ -661,7 +661,7 @@ Show me new GMC trucks near Rock Hill, SC
 <?xml version="1.0" encoding="UTF-8"?>
 <adf>
   <prospect>
-    <id source="AutoAgent">abc123...</id>
+    <id source="Drevvy">abc123...</id>
     <requestdate>2025-02-21T10:30:00Z</requestdate>
     <vehicle>
       <vin>1GT...</vin>

@@ -1,6 +1,6 @@
 /**
  * Fetch sample inventory for a MarketCheck dealer
- * Used to get test data for AutoAgent sync
+ * Used to get test data for Drevvy sync
  */
 
 const axios = require("axios");

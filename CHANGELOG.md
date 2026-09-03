@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AutoAgent are documented in this file.
+All notable changes to Drevvy are documented in this file.
 
 ## [Unreleased]
 

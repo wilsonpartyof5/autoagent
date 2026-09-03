@@ -1,6 +1,6 @@
 # Autogentic (iOS)
 
-Native SwiftUI consumer app for AutoAgent inventory search.
+Native SwiftUI consumer app for Drevvy inventory search.
 
 ## Open in Xcode
 

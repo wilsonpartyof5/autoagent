@@ -1,6 +1,6 @@
-# AutoAgent System Overview
+# Drevvy System Overview
 
-The AutoAgent platform delivers real-time vehicle discovery, lead capture, and dealer workflow management inside ChatGPT via the Apps SDK and MCP.
+The Drevvy platform delivers real-time vehicle discovery, lead capture, and dealer workflow management inside ChatGPT via the Apps SDK and MCP.
 
 ## Product Mission
 - Help car shoppers browse live MarketCheck inventory without leaving ChatGPT.
@@ -12,7 +12,7 @@ The AutoAgent platform delivers real-time vehicle discovery, lead capture, and d
 | Layer            | Technology                                  | Purpose                                     |
 | ---------------- | ------------------------------------------- | ------------------------------------------- |
 | Server           | **Node.js + Express**                       | Hosts MCP endpoint, tools, and widget assets |
-| MCP              | **OpenAI Apps SDK (JSON-RPC 2.0)**          | ChatGPT ↔ AutoAgent communication layer     |
+| MCP              | **OpenAI Apps SDK (JSON-RPC 2.0)**          | ChatGPT ↔ Drevvy communication layer     |
 | Database         | **SQLite**                                  | Encrypted lead storage (pluggable backend)  |
 | Frontend Widgets | **HTML + Leaflet.js + Vanilla JS**          | Embedded vehicle results UI                 |
 | External API     | **MarketCheck**                             | Live vehicle data, dealer metadata          |
