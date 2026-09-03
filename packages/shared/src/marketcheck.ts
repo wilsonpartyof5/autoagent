@@ -65,7 +65,7 @@ export interface MarketCheckVehicle {
 }
 
 /**
- * Normalize a MarketCheck listing into the AutoAgent Vehicle schema.
+ * Normalize a MarketCheck listing into the Drevvy Vehicle schema.
  */
 export function normalizeMarketCheckVehicle(listing: MarketCheckVehicle): Vehicle {
   const nowIso = new Date().toISOString();

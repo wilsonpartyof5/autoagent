@@ -1,7 +1,7 @@
 {
   "name": "@autoagent/dealer-dashboard",
   "version": "1.0.0",
-  "description": "Dealer dashboard for AutoAgent",
+  "description": "Dealer dashboard for Drevvy",
   "private": true,
   "scripts": {
     "build": "next build",

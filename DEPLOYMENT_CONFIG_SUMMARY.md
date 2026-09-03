@@ -58,7 +58,7 @@ DASHBOARD_INGEST_URL=https://your-dashboard-domain.com/api/ingest/lead
 DASHBOARD_INGEST_TOKEN=<secure_token>
 WIDGET_HOST=https://your-mcp-server-domain.com
 AA_DIAG=1
-OPENAI_APP_NAME=AutoAgent
+OPENAI_APP_NAME=Drevvy
 ```
 
 **Optional (for future Postgres migration):**

@@ -1,10 +1,10 @@
 # ADF XML Lead Delivery
 
-AutoAgent delivers leads to dealer CRM systems using the **ADF (AutoLead Data Format)** XML standard, an industry-standard format supported by most automotive CRM systems.
+Drevvy delivers leads to dealer CRM systems using the **ADF (AutoLead Data Format)** XML standard, an industry-standard format supported by most automotive CRM systems.
 
 ## Overview
 
-When a lead is submitted through ChatGPT, AutoAgent:
+When a lead is submitted through ChatGPT, Drevvy:
 
 1. Generates an ADF XML payload with lead and vehicle information
 2. Delivers it to the dealer's configured endpoint (HTTP or Email)
@@ -41,7 +41,7 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
 <?adf version="1.0"?>
 <adf>
   <prospect>
-    <id source="AutoAgent">lead_abc123</id>
+    <id source="Drevvy">lead_abc123</id>
     <requestdate>2025-02-21T18:30:00Z</requestdate>
     <customer>
       <contact>
@@ -64,8 +64,8 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
       <condition>used</condition>
     </vehicle>
     <vendor>
-      <id source="AutoAgent">lead_abc123</id>
-      <vendorname>AutoAgent</vendorname>
+      <id source="Drevvy">lead_abc123</id>
+      <vendorname>Drevvy</vendorname>
       <contact>
         <name part="full">ABC Auto Sales</name>
         <phone type="voice">206-555-1234</phone>
@@ -77,10 +77,10 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
       </contact>
     </vendor>
     <provider>
-      <id source="AutoAgent">lead_abc123</id>
-      <name part="full">AutoAgent</name>
-      <service>AutoAgent Lead Generation</service>
-      <url>https://autoagent.ai</url>
+      <id source="Drevvy">lead_abc123</id>
+      <name part="full">Drevvy</name>
+      <service>Drevvy Lead Generation</service>
+      <url>https://www.drevvy.com</url>
     </provider>
   </prospect>
 </adf>
@@ -90,7 +90,7 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
 
 | Section | Field | Description |
 |---------|-------|-------------|
-| `prospect/id` | `source` | Always "AutoAgent" |
+| `prospect/id` | `source` | Always "Drevvy" |
 | `prospect/id` | Content | Unique lead ID |
 | `requestdate` | | ISO 8601 timestamp of lead submission |
 | `customer/contact` | `name` | Split into first/last name |
@@ -157,7 +157,7 @@ Contact your CRM provider to confirm ADF XML support and obtain your webhook end
 ### HTTP Status 401/403
 
 Your CRM endpoint may require authentication. Contact your CRM provider to:
-- Add AutoAgent's IP addresses to allowlist
+- Add Drevvy's IP addresses to allowlist
 - Configure API key authentication
 - Set up OAuth if required
 
@@ -187,7 +187,7 @@ cat > test-adf.xml << 'EOF'
 <?adf version="1.0"?>
 <adf>
   <prospect>
-    <id source="AutoAgent">test_lead_123</id>
+    <id source="Drevvy">test_lead_123</id>
     <requestdate>2025-02-21T18:30:00Z</requestdate>
     <customer>
       <contact>
@@ -267,7 +267,7 @@ curl -X POST https://your-crm.com/webhook/leads \
 <?adf version="1.0"?>
 <adf>
   <prospect>
-    <id source="AutoAgent">abc123xyz</id>
+    <id source="Drevvy">abc123xyz</id>
     <requestdate>2025-02-21T19:35:00Z</requestdate>
     <customer>
       <contact>
@@ -288,8 +288,8 @@ curl -X POST https://your-crm.com/webhook/leads \
       <condition>used</condition>
     </vehicle>
     <vendor>
-      <id source="AutoAgent">abc123xyz</id>
-      <vendorname>AutoAgent</vendorname>
+      <id source="Drevvy">abc123xyz</id>
+      <vendorname>Drevvy</vendorname>
       <contact>
         <name part="full">Ask Jorge Lopez</name>
         <phone type="voice">281-555-1234</phone>
@@ -301,10 +301,10 @@ curl -X POST https://your-crm.com/webhook/leads \
       </contact>
     </vendor>
     <provider>
-      <id source="AutoAgent">abc123xyz</id>
-      <name part="full">AutoAgent</name>
-      <service>AutoAgent Lead Generation</service>
-      <url>https://autoagent.ai</url>
+      <id source="Drevvy">abc123xyz</id>
+      <name part="full">Drevvy</name>
+      <service>Drevvy Lead Generation</service>
+      <url>https://www.drevvy.com</url>
     </provider>
   </prospect>
 </adf>

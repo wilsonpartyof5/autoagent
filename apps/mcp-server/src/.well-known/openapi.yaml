@@ -1,14 +1,14 @@
 openapi: 3.0.1
 info:
-  title: AutoAgent Vehicle Search API
+  title: Drevvy Vehicle Search API
   description: "A comprehensive vehicle search and lead management system that can search for vehicles by location, price, make, model, and other criteria. Can also submit leads for test drives and provide detailed vehicle information including VIN lookups."
   version: "1.0.0"
   contact:
-    name: AutoAgent Support
-    email: support@autoagent.com
+    name: Drevvy Support
+    email: support@drevvy.com
 servers:
-  - url: https://rana-flightiest-malcolm.ngrok-free.dev
-    description: AutoAgent MCP Server
+  - url: https://autoagentmcp-server-production.up.railway.app
+    description: Drevvy MCP Server
 paths:
   /mcp:
     post:

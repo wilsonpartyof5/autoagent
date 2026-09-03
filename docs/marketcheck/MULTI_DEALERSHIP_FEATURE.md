@@ -282,5 +282,5 @@ For issues or questions about the multi-dealership feature:
 2. Verify RLS policies are correctly applied
 3. Check user_dealerships table for membership records
 4. Verify user_preferences table has active_dealership_id set
-5. Contact support@autoagent.ai for assistance
+5. Contact support@drevvy.com for assistance
 

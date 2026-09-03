@@ -116,7 +116,7 @@ export function generateAdfXml(data: LeadData): string {
       <id source="${escapeXml(source)}">${escapeXml(leadId)}</id>
       <name part="full">${escapeXml(source)}</name>
       <service>${escapeXml(source)} Lead Generation</service>
-      <url>https://autoagent.ai</url>
+      <url>https://www.drevvy.com</url>
     </provider>
   </prospect>
 </adf>`;

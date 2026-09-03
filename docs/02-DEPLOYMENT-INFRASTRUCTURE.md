@@ -295,7 +295,7 @@ If you already have a Railway project:
 | `PORT` | ⚠️ Optional | Server port (defaults to `8787`) | `8787` |
 | `MARKETCHECK_BASE_URL` | ⚠️ Optional | MarketCheck API base URL (defaults to `https://marketcheck-prod.apigee.net`) | `https://marketcheck-prod.apigee.net` |
 | `AA_DIAG` | ⚠️ Optional | Enable diagnostics (set to `1` or `true`) | `1` |
-| `OPENAI_APP_NAME` | ⚠️ Optional | OpenAI App name (defaults to `AutoAgent`) | `AutoAgent` |
+| `OPENAI_APP_NAME` | ⚠️ Optional | OpenAI App name (defaults to `Drevvy`) | `Drevvy` |
 | `SUPABASE_URL` | ⚠️ Optional | Supabase project URL (only needed for delivery logs) | `https://xxx.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | ⚠️ Optional | Supabase service role key (only needed for delivery logs) | `your-service-role-key` |
 | `SUPABASE_ANON_KEY` | ⚠️ Optional | Supabase anon key (fallback, only needed for delivery logs) | `your-anon-key` |
@@ -350,7 +350,7 @@ AA_DIAG=1
 
 **OpenAI App Configuration (Optional)**
 ```bash
-OPENAI_APP_NAME=AutoAgent
+OPENAI_APP_NAME=Drevvy
 ```
 
 #### Generate Lead Encryption Key
@@ -532,7 +532,7 @@ DASHBOARD_INGEST_URL=https://your-dashboard-domain.com/api/ingest/lead
 DASHBOARD_INGEST_TOKEN=<secure_token>
 WIDGET_HOST=https://your-mcp-server-domain.com
 AA_DIAG=1
-OPENAI_APP_NAME=AutoAgent
+OPENAI_APP_NAME=Drevvy
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<supabase_service_role_key>
 SUPABASE_ANON_KEY=<supabase_anon_key>

@@ -17,7 +17,7 @@ The codebase references finding the dealer ID in:
   - Reference: `apps/dealer-dashboard/src/components/dashboard/settings/inventory-provider-form.tsx:75`
 
 - **Support Contact**: 
-  - AutoAgent onboarding team: `support@autoagent.ai`  
+  - Drevvy onboarding team: `support@drevvy.com`  
     - Reference: `apps/dealer-dashboard/src/components/dashboard/setup/inventory-sync.tsx:143-148`
   - MarketCheck support (mentioned generically)  
     - Reference: `apps/dealer-dashboard/src/components/dashboard/settings/inventory-provider-form.tsx:75`

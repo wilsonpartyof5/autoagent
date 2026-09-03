@@ -51,7 +51,7 @@ Replace bespoke CRM integrations with a universal ADF XML push so every dealer c
 
 ### Overview
 
-AutoAgent delivers leads to dealer CRM systems using the **ADF (AutoLead Data Format)** XML standard, an industry-standard format supported by most automotive CRM systems.
+Drevvy delivers leads to dealer CRM systems using the **ADF (AutoLead Data Format)** XML standard, an industry-standard format supported by most automotive CRM systems.
 
 ### ADF XML Structure
 
@@ -62,7 +62,7 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
 <?adf version="1.0"?>
 <adf>
   <prospect>
-    <id source="AutoAgent">lead_abc123</id>
+    <id source="Drevvy">lead_abc123</id>
     <requestdate>2025-02-21T18:30:00Z</requestdate>
     <customer>
       <contact>
@@ -85,8 +85,8 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
       <condition>used</condition>
     </vehicle>
     <vendor>
-      <id source="AutoAgent">lead_abc123</id>
-      <vendorname>AutoAgent</vendorname>
+      <id source="Drevvy">lead_abc123</id>
+      <vendorname>Drevvy</vendorname>
       <contact>
         <name part="full">ABC Auto Sales</name>
         <phone type="voice">206-555-1234</phone>
@@ -98,10 +98,10 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
       </contact>
     </vendor>
     <provider>
-      <id source="AutoAgent">lead_abc123</id>
-      <name part="full">AutoAgent</name>
-      <service>AutoAgent Lead Generation</service>
-      <url>https://autoagent.ai</url>
+      <id source="Drevvy">lead_abc123</id>
+      <name part="full">Drevvy</name>
+      <service>Drevvy Lead Generation</service>
+      <url>https://www.drevvy.com</url>
     </provider>
   </prospect>
 </adf>
@@ -111,7 +111,7 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
 
 | Section | Field | Description |
 |---------|-------|-------------|
-| `prospect/id` | `source` | Always "AutoAgent" |
+| `prospect/id` | `source` | Always "Drevvy" |
 | `prospect/id` | Content | Unique lead ID |
 | `requestdate` | | ISO 8601 timestamp of lead submission |
 | `customer/contact` | `name` | Split into first/last name |
@@ -125,7 +125,7 @@ The generated ADF XML follows the [AutoLead Data Format specification](https://w
 | `vehicle` | `condition` | new, used, or certified |
 | `vendor` | `vendorname` | Dealer name |
 | `vendor/contact` | `name`, `phone`, `address` | Dealer contact information |
-| `provider` | `name`, `service`, `url` | AutoAgent provider information |
+| `provider` | `name`, `service`, `url` | Drevvy provider information |
 
 ### ADF XML Generator
 
@@ -136,7 +136,7 @@ The ADF generator creates compliant ADF XML payloads with:
 - Customer section (contact information)
 - Vehicle section (VIN, specs, pricing)
 - Vendor section (dealer information)
-- Provider section (AutoAgent information)
+- Provider section (Drevvy information)
 
 ---
 

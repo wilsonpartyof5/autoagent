@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://autoagent.ai/schema/unified-vehicle/v1",
+  "$id": "https://www.drevvy.com/schema/unified-vehicle/v1",
   "title": "Unified Vehicle Schema (UVS)",
   "description": "Provider-agnostic schema for normalizing dealership vehicle inventory across MarketCheck, Homenet, vAuto, OEM feeds, Dealer.com, Dealer Inspire, CDK, Reynolds, S3, CSV, and direct dealer APIs.",
   "type": "object",

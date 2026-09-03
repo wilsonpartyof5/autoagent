@@ -1,6 +1,6 @@
-# AutoAgent
+# Drevvy
 
-AutoAgent is a ChatGPT-native vehicle search and lead generation platform built on the Apps SDK and MCP. It connects live MarketCheck inventory, secure lead capture, and a dealer dashboard to deliver a complete automotive commerce workflow directly inside ChatGPT.
+Drevvy (repo still named AutoAgent) is a ChatGPT-native vehicle search and lead generation platform built on the Apps SDK and MCP. It connects live MarketCheck inventory, secure lead capture, and a dealer dashboard to deliver a complete automotive commerce workflow directly inside ChatGPT.
 
 ## Key Capabilities
 - Live MarketCheck inventory with VINs, pricing, dealer info, and availability

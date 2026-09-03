@@ -1,6 +1,6 @@
-# AutoAgent ChatGPT App Manifest
+# Drevvy ChatGPT App Manifest
 
-This directory contains the canonical manifest.json file for the AutoAgent ChatGPT App.
+This directory contains the canonical manifest.json file for the Drevvy ChatGPT App.
 
 ## File Structure
 

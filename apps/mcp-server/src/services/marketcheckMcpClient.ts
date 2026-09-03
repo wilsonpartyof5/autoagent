@@ -40,7 +40,7 @@ export type MarketcheckDiagnostics = {
 
 const configuredEndpoint = new URL(CONFIG.marketcheckMcpUrl);
 // The developers.marketcheck.com endpoint is the interactive OAuth connector.
-// AutoAgent is a server-to-server client and must use the API-key hosted endpoint.
+// Drevvy is a server-to-server client and must use the API-key hosted endpoint.
 const serverEndpoint =
   configuredEndpoint.hostname === 'developers.marketcheck.com'
     ? new URL('https://api.marketcheck.com/mcp')
