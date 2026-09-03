@@ -2,16 +2,26 @@
 
 This hub keeps Cursor/Codex agents oriented. Start here, follow the reading order, and jump to deeper guides as needed.
 
+## Sources of truth (read first)
+
+The product brand is **Drevvy**. These two files override older AutoAgent docs when they conflict:
+
+1. **Product, business model, MarketCheck strategy** → [`drevvy/DREVVY_CONTEXT.md`](./drevvy/DREVVY_CONTEXT.md)
+2. **Data architecture for MarketCheck MCP/API, inventory, events** → [`drevvy/DREVVY_DATA_ARCHITECTURE.md`](./drevvy/DREVVY_DATA_ARCHITECTURE.md)
+
+Index: [`drevvy/README.md`](./drevvy/README.md)
+
 ## Reading Order
-1. **Quick Start Checklist** → `quickstart.md`  
+1. **Drevvy context + data architecture** → `drevvy/` (sources of truth above)
+2. **Quick Start Checklist** → `quickstart.md`  
    Covers environment setup, critical commands, and current deployment endpoints.
-2. **System Overview** → `overview.md`  
+3. **System Overview** → `overview.md`  
    Explains architecture, core features, diagnostics, and current state.
-3. **API & MCP Contract** → `api.md`  
+4. **API & MCP Contract** → `api.md`  
    JSON-RPC methods, schemas, sample payloads, and error handling.
-4. **MarketCheck Endpoint Guide** → `api/marketcheck-endpoints.md`  
-   REST parameters, response shapes, and integration notes for MarketCheck inventory APIs.
-5. **Supabase Setup** → `apps/dealer-dashboard/docs/SUPABASE_SETUP.md`  
+5. **MarketCheck Endpoint Guide** → `api/marketcheck-endpoints.md`  
+   REST parameters, response shapes, and integration notes for MarketCheck inventory APIs. Implementation detail only — strategy lives in `drevvy/`.
+6. **Supabase Setup** → `apps/dealer-dashboard/docs/SUPABASE_SETUP.md`  
    Defines the tables used by dashboard onboarding (MarketCheck sync, billing banner, inventory listings).
 
 ## Current Onboarding Focus

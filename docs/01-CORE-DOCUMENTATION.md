@@ -3,6 +3,8 @@
 **Last Updated**: 2025-02-21  
 **Status**: ✅ Active Documentation
 
+> **Sources of truth:** [`docs/drevvy/DREVVY_CONTEXT.md`](./drevvy/DREVVY_CONTEXT.md) (product vision and business model) and [`docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`](./drevvy/DREVVY_DATA_ARCHITECTURE.md) (MarketCheck MCP/API and data architecture). This consolidation describes the current AutoAgent stack.
+
 This document consolidates all core project documentation including README, changelog, overview, quickstart, and documentation hub.
 
 ---

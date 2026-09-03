@@ -30,6 +30,8 @@ const IGNORE_PATTERNS = [
   '**/dist/**',
   '**/.next/**',
   '**/temp/**',
+  '**/.agents/**',
+  '**/.cursor/**',
   '**/MARKDOWN_FILES_SUMMARY.md', // Don't analyze the summary itself
 ];
 
@@ -48,6 +50,7 @@ const CATEGORY_MAP = {
   'docs/api/': 'API Documentation',
   'docs/deployment/': 'Deployment Documentation',
   'docs/testing/': 'Testing Documentation',
+  'docs/drevvy/': 'Drevvy Strategy & Architecture',
   'docs/marketcheck/': 'MarketCheck Integration',
   'docs/enrichment-': 'MarketCheck Integration',
   'docs/lead-delivery/': 'Lead Delivery Documentation',
@@ -142,7 +145,7 @@ function shouldIgnorePath(filePath) {
   const pathParts = relativePath.split(path.sep);
   
   // Check for ignored directory names
-  const ignoredDirs = ['node_modules', 'dist', '.next', 'temp', '.git', 'build', 'coverage', '.turbo'];
+  const ignoredDirs = ['node_modules', 'dist', '.next', 'temp', '.git', 'build', 'coverage', '.turbo', '.agents', '.cursor'];
   if (pathParts.some(part => ignoredDirs.includes(part))) {
     return true;
   }

@@ -65,6 +65,9 @@ Add Supabase credentials (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) to `apps/dealer-d
 - **Widget** `ui://vehicle-results.html`: Zillow-style map and card experience for search results
 
 ## Documentation Map
+- **Sources of truth (Drevvy)**: `docs/drevvy/README.md`
+  - Product vision and business model: `docs/drevvy/DREVVY_CONTEXT.md`
+  - Data architecture and MarketCheck MCP/API: `docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`
 - **Onboarding Portal**: `docs/README.md`
   - Quick setup checklist: `docs/quickstart.md`
   - System deep dive: `docs/overview.md`

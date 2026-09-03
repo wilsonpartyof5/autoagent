@@ -1,5 +1,16 @@
 # Cursor Rules for AutoAgent
 
+## Drevvy sources of truth
+
+This product is Drevvy (repo still uses the AutoAgent name). Two documents are the strategic source of truth. Read them before changing MarketCheck, MCP/API inventory search, dealer workflow, monetization, events, or data architecture. If older AutoAgent docs conflict, these files win unless a newer written decision explicitly overrides them.
+
+- `docs/drevvy/DREVVY_CONTEXT.md` — product vision, business model, MarketCheck relationship, consumer/dealer experience, legal guardrails
+- `docs/drevvy/DREVVY_DATA_ARCHITECTURE.md` — target data layers, MarketCheck MCP/API vs feed usage, event taxonomy, IDs, search/ranking, engineering rules
+
+Index: `docs/drevvy/README.md`
+
+Preserve the product direction in those documents. MarketCheck is the upstream inventory/data provider; Drevvy owns search, ranking, the consumer relationship, dealer workflow, offers, analytics, and transaction intelligence.
+
 ## Markdown Documentation
 
 When creating new markdown files, run the documentation updater to keep the summary current:
