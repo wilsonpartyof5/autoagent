@@ -1,5 +1,7 @@
 # Unified Vehicle Schema (UVS) Architecture
 
+> **Source of truth:** Canonical vehicle vs listing IDs, MarketCheck identity mapping, and search-index fields are defined in [`docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`](../drevvy/DREVVY_DATA_ARCHITECTURE.md). UVS is the current implementation schema; do not treat VIN as the only primary key.
+
 ## Overview
 
 The Unified Vehicle Schema (UVS) is a provider-agnostic data model designed to represent vehicle inventory data from multiple sources in a standardized format. It supports integration with:

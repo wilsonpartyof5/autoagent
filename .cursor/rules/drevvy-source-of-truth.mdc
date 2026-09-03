@@ -1,0 +1,17 @@
+---
+description: Drevvy product and data-architecture sources of truth
+alwaysApply: true
+---
+
+# Drevvy sources of truth
+
+This repo is AutoAgent; the product brand is Drevvy.
+
+Before changing MarketCheck MCP/API usage, inventory search, dealer workflow, monetization, events, or data architecture, read:
+
+- `docs/drevvy/DREVVY_CONTEXT.md` — vision, business model, MarketCheck relationship
+- `docs/drevvy/DREVVY_DATA_ARCHITECTURE.md` — data layers, MCP/API vs feed, events, IDs, engineering rules
+
+If older AutoAgent docs conflict, these files win unless a newer written decision explicitly overrides them.
+
+MarketCheck supplies the raw inventory/data layer. Drevvy owns search, ranking, the consumer relationship, dealer workflow, offers, analytics, and transaction intelligence.

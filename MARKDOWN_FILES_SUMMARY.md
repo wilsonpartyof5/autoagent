@@ -1,21 +1,22 @@
 # AutoAgent Markdown Files Summary
 
-This document provides a comprehensive summary of all 72 markdown files in the AutoAgent project, organized by category.
+This document provides a comprehensive summary of all 75 markdown files in the AutoAgent project, organized by category.
 
 ---
 
 ## 📋 Table of Contents
 
 1. [Root-Level Documentation](#root-level-documentation)
-2. [Core Documentation Hub](#core-documentation-hub)
-3. [API Documentation](#api-documentation)
-4. [Deployment Documentation](#deployment-documentation)
-5. [Testing Documentation](#testing-documentation)
-6. [MarketCheck Integration](#marketcheck-integration)
-7. [Lead Delivery Documentation](#lead-delivery-documentation)
-8. [Design Documentation](#design-documentation)
-9. [Operations & Support](#operations--support)
-10. [App-Specific Documentation](#app-specific-documentation)
+2. [Drevvy Strategy & Architecture](#drevvy-strategy--architecture)
+3. [Core Documentation Hub](#core-documentation-hub)
+4. [API Documentation](#api-documentation)
+5. [Deployment Documentation](#deployment-documentation)
+6. [Testing Documentation](#testing-documentation)
+7. [MarketCheck Integration](#marketcheck-integration)
+8. [Lead Delivery Documentation](#lead-delivery-documentation)
+9. [Design Documentation](#design-documentation)
+10. [Operations & Support](#operations--support)
+11. [App-Specific Documentation](#app-specific-documentation)
 
 ---
 
@@ -69,6 +70,45 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 - Additional requirements (HTTPS/SSL, CI/CD, database hosting, monitoring, rate limiting, CORS)
 - Deployment checklist
 - Summary for ChatGPT deployment prompt
+
+---
+
+## 🧭 Drevvy Strategy & Architecture
+
+These files are the product and data-architecture sources of truth. They override older AutoAgent docs when they conflict.
+
+### `docs/drevvy/README.md`
+**Purpose**: Index for the Drevvy sources of truth  
+**Key Content**:
+- Points agents at `DREVVY_CONTEXT.md` and `DREVVY_DATA_ARCHITECTURE.md`
+- Lists when both files must be read (MarketCheck MCP/API, inventory, dealer workflow, events, monetization)
+- States that older MarketCheck operational guides do not override this strategy
+
+### `docs/drevvy/DREVVY_CONTEXT.md`
+**Purpose**: Strategic source of truth for Drevvy product vision, business model, and MarketCheck relationship  
+**Key Content**:
+- Consumer AI buyer's agent and dealer offer/communication platform
+- Shared backend across ChatGPT, mobile, and dealer surfaces
+- Privacy/identity strategy and legal/product guardrails
+- MarketCheck role: upstream inventory provider, not the live search engine at mature scale
+- Sales-call notes (API vs feed, syndication, enterprise pricing, coverage, sold logic)
+- Data-feed knowledge, NeoVIN, MarketCheck Price, incentives, image rights
+- Revenue model (consumer agent fee, dealer opportunity/transaction fees)
+- Proprietary moat: Intent → Inventory → Recommendation → Interaction → Dealer Behavior → Offer → Negotiation → Transaction
+- Current stack (Supabase/Vercel/Railway) and target infrastructure direction
+- Open contract and legal questions
+
+### `docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`
+**Purpose**: Target data and infrastructure architecture for nationwide inventory, MCP/API, events, and intelligence  
+**Key Content**:
+- Separate transactional, search, event, data-lake, analytics, and MCP layers
+- MarketCheck MVP (live MCP/API + rooftop syndication) vs future daily feed → R2 → Typesense
+- Universal event envelope, core IDs, and event taxonomy
+- Vehicle vs listing model; do not use VIN as the only primary key
+- ChatGPT/MCP tools should query a ranked index, not raw inventory tables
+- Structured offer/negotiation state machines
+- PII separation and credit/financing data rules
+- 12 engineering rules for MarketCheck and agent work
 
 ---
 
@@ -5799,8 +5839,9 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 
 ## 📊 Summary Statistics
 
-- **Total Markdown Files**: 72
+- **Total Markdown Files**: 75
 - **Root-Level Files**: 4
+- **Drevvy Strategy & Architecture**: 3
 - **Core Documentation**: 7
 - **API Documentation**: 4
 - **Deployment Documentation**: 13
@@ -5859,6 +5900,6 @@ This document provides a comprehensive summary of all 72 markdown files in the A
 
 ---
 
-**Last Updated**: 2026-07-17  
-**Total Files Analyzed**: 72
+**Last Updated**: 2026-09-03  
+**Total Files Analyzed**: 75
 

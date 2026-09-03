@@ -3,6 +3,8 @@
 **Last Updated**: 2025-02-23  
 **Status**: ✅ Active Documentation
 
+> **Source of truth:** Strategy, business model, and how MarketCheck should be used (live MCP/API vs syndication vs future feed) live in [`docs/drevvy/DREVVY_CONTEXT.md`](./drevvy/DREVVY_CONTEXT.md) and [`docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`](./drevvy/DREVVY_DATA_ARCHITECTURE.md). This file is the current implementation/onboarding guide. If they conflict, the Drevvy docs win.
+
 This document consolidates all MarketCheck integration guides, onboarding procedures, sync troubleshooting, and enrichment documentation.
 
 ---

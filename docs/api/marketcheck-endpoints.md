@@ -4,6 +4,8 @@
 
 **Authentication**: Every request must include `api_key` as a query parameter.
 
+> **Source of truth:** Before adding or changing MarketCheck MCP/API usage, read [`docs/drevvy/DREVVY_CONTEXT.md`](../drevvy/DREVVY_CONTEXT.md) and [`docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`](../drevvy/DREVVY_DATA_ARCHITECTURE.md). This page documents current endpoint shapes. The Drevvy docs define which APIs we use for MVP vs later nationwide feed, caching rules, and identity mapping.
+
 > **Endpoint status legend**  
 > ✅ Live in AutoAgent | ⚠️ Planned (documented, not yet integrated)
 

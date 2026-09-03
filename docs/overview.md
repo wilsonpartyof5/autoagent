@@ -2,6 +2,8 @@
 
 The AutoAgent platform delivers real-time vehicle discovery, lead capture, and dealer workflow management inside ChatGPT via the Apps SDK and MCP.
 
+> **Product and data sources of truth:** [`docs/drevvy/DREVVY_CONTEXT.md`](./drevvy/DREVVY_CONTEXT.md) (vision, business model, MarketCheck relationship) and [`docs/drevvy/DREVVY_DATA_ARCHITECTURE.md`](./drevvy/DREVVY_DATA_ARCHITECTURE.md) (inventory layers, MCP/API, events). This overview describes the current shipped stack.
+
 ## Product Mission
 - Help car shoppers browse live MarketCheck inventory without leaving ChatGPT.
 - Capture high-quality, encrypted leads and route them directly to dealers.
