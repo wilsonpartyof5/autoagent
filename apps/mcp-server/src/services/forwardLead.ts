@@ -18,15 +18,16 @@ export interface LeadData {
 }
 
 /**
- * Forward lead to dashboard ingest API
+ * Persist the lead to the dealer dashboard. Callers must await this
+ * before telling the shopper the request was saved.
  */
-export async function forwardLead(leadData: LeadData): Promise<void> {
+export async function forwardLead(leadData: LeadData): Promise<boolean> {
   const ingestUrl = CONFIG.dashboardIngestUrl;
   const ingestToken = CONFIG.dashboardIngestToken;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const response = await fetch(ingestUrl, {
       method: 'POST',
@@ -49,13 +50,12 @@ export async function forwardLead(leadData: LeadData): Promise<void> {
       dealerId: leadData.dealerId,
       vehicleId: leadData.vehicleId,
     });
+    return true;
   } catch (error) {
     logger.error('Failed to forward lead to dashboard', {
       leadId: leadData.leadId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
-    
-    // Don't throw - this is fire-and-forget
-    // The lead is still stored locally even if forwarding fails
+    return false;
   }
 }

@@ -10,6 +10,8 @@ import {
   type Dealership,
 } from '@/lib/supabase/dealerships';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAndIngestMarketCheckInventory } from '@/lib/ingest/marketcheck';
+import { pickInventoryDealerId } from '@autoagent/shared';
 
 const MARKETCHECK_DEFAULT_BASE = 'https://api.marketcheck.com';
 const MARKETCHECK_LOOKUP_TIMEOUT_MS = 8000;
@@ -21,11 +23,6 @@ type SyncInput = {
   condition?: 'all' | 'new' | 'used';
   source?: string; // Optional source parameter for dealer inventory endpoint
   dealershipName?: string; // Optional dealership name for creating/updating dealership
-};
-
-type FetchAndIngestInput = {
-  dealerId: string;
-  source?: string;
 };
 
 type DealerLookupResult =
@@ -106,12 +103,10 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
     }
 
     const primary = mcDealerships[0];
-    // Inventory listings key off mc_website_id; fall back to dealer_id fields.
-    const dealerId = primary?.mc_website_id ?? primary?.mc_dealer_id ?? primary?.dealer_id;
-    const dealerName = primary?.seller_name ?? primary?.dealer_name ?? primary?.name ?? null;
+    const picked = pickInventoryDealerId(primary);
 
-    if (!dealerId) {
-      console.error('[marketcheck_lookup] Missing dealer ID in response', {
+    if (!picked) {
+      console.error('[marketcheck_lookup] Missing inventory dealer ID in response', {
         inventoryUrl,
         primary,
       });
@@ -120,12 +115,19 @@ async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<Deale
 
     console.log('[marketcheck_lookup] Dealer resolved from inventory URL', {
       inventoryUrl,
-      dealerId,
+      dealerId: picked.inventoryDealerId,
+      websiteId: picked.websiteId,
+      marketcheckDealerId: picked.dealerId,
       numFound,
       durationMs: Date.now() - startedAt,
     });
 
-    return { status: 'found', dealerId: String(dealerId), dealerName, numFound };
+    return {
+      status: 'found',
+      dealerId: picked.inventoryDealerId,
+      dealerName: picked.dealerName,
+      numFound,
+    };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -231,14 +233,8 @@ async function resolveDealerIdForUser({
     dealerId: lookupResult.dealerId,
     websiteUrl,
     dealershipId: activeDealership?.id ?? null,
+    dealerName: lookupResult.dealerName ?? null,
   });
-
-    await cacheDealerId({
-      dealerId: lookupResult.dealerId,
-      websiteUrl,
-      dealershipId: activeDealership?.id ?? null,
-      dealerName: lookupResult.dealerName ?? null,
-    });
 
     return {
       status: 'resolved',
@@ -360,92 +356,7 @@ export async function resyncInventory(selectedDealershipId?: string) {
   };
 }
 
-/**
- * Fetch and ingest MarketCheck inventory via MCP server endpoint
- * This is the new automated flow that handles both fetching and ingestion in one call
- */
-export async function fetchAndIngestMarketCheckInventory({
-  dealerId,
-  source,
-}: FetchAndIngestInput) {
-  if (!dealerId && !source) {
-    throw new Error('dealerId or source is required');
-  }
-
-  const mcpServerUrl = process.env.MCP_SERVER_URL || process.env.INGESTION_SERVICE_URL;
-  if (!mcpServerUrl) {
-    throw new Error('MCP_SERVER_URL or INGESTION_SERVICE_URL must be configured');
-  }
-
-  const ingestionToken = process.env.INGESTION_API_TOKEN || process.env.MCP_SERVER_TOKEN;
-  const url = `${mcpServerUrl.replace(/\/+$/, '')}/api/ingest/marketcheck/fetch-and-ingest`;
-
-  try {
-    console.log('[fetchAndIngestMarketCheckInventory] Calling MCP syndication ingest:', {
-      url: url.replace(ingestionToken || '', '***REDACTED***'),
-      dealerId,
-      source,
-      endpoint: '/v2/dealerships/inventory',
-    });
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(ingestionToken ? { Authorization: `Bearer ${ingestionToken}` } : {}),
-      },
-      body: JSON.stringify({
-        dealerId,
-        source,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `MCP fetch-and-ingest failed (${response.status})`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error || errorMessage;
-        if (errorJson.details) {
-          errorMessage += `: ${errorJson.details}`;
-        }
-      } catch {
-        errorMessage += `: ${errorText.substring(0, 500)}`;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const result = await response.json();
-    if (!result.success) {
-      throw new Error(result.error || 'Fetch and ingest failed');
-    }
-
-    const summary = result.ingestion?.summary || {};
-    const fetched = result.fetched || 0;
-    const stored = summary.stored || 0;
-    const valid = summary.valid || 0;
-    const invalid = summary.invalid || 0;
-
-    revalidatePath('/app/inventory');
-    revalidatePath('/app/setup');
-
-    return {
-      success: true,
-      fetched,
-      imported: stored,
-      valid,
-      invalid,
-      summary: { stored, valid, invalid },
-    };
-  } catch (error) {
-    console.error('[fetchAndIngestMarketCheckInventory] Error:', {
-      dealerId,
-      source,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
-}
+export { fetchAndIngestMarketCheckInventory };
 
 export type DealerRooftop = {
   name: string;
@@ -548,6 +459,9 @@ export async function syncMarketCheckInventory({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
   const activeDealership = await getActiveDealership();
 
   const dealerResolution = await resolveDealerIdForUser({
@@ -582,16 +496,17 @@ export async function syncMarketCheckInventory({
     source: sourceHost ?? undefined,
   });
 
-  if (user) {
-    try {
-      await updateDealerProfile({
-        dmsProvider: 'marketcheck',
-        inventoryConnected: result.imported > 0,
-      });
-    } catch (profileError) {
-      console.error('[syncMarketCheckInventory] Profile update failed:', profileError);
-    }
+  try {
+    await updateDealerProfile({
+      dmsProvider: 'marketcheck',
+      inventoryConnected: result.imported > 0,
+    });
+  } catch (profileError) {
+    console.error('[syncMarketCheckInventory] Profile update failed:', profileError);
   }
+
+  revalidatePath('/app/inventory');
+  revalidatePath('/app/setup');
 
   return {
     success: true,

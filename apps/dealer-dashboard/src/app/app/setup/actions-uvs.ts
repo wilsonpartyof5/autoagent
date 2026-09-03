@@ -5,7 +5,10 @@
  * Inventory is pulled via Cars Dealer Inventory Syndication (same path as setup/resync).
  */
 
-import { fetchAndIngestMarketCheckInventory } from '@/app/app/setup/actions';
+import { revalidatePath } from 'next/cache';
+import { createClient } from '@/lib/supabase/server';
+import { fetchUserDealerships } from '@/lib/supabase/dealerships';
+import { fetchAndIngestMarketCheckInventory } from '@/lib/ingest/marketcheck';
 
 type SyncInput = {
   dealerId: string;
@@ -24,10 +27,28 @@ export async function syncMarketCheckInventoryUVS({
     throw new Error('Enter your MarketCheck dealer ID before syncing.');
   }
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const authorized = (await fetchUserDealerships()).some(
+    (dealership) => dealership.marketcheckDealerId === dealerId,
+  );
+  if (!authorized) {
+    throw new Error('You do not have access to this dealership.');
+  }
+
   const result = await fetchAndIngestMarketCheckInventory({
     dealerId,
     source,
   });
+
+  revalidatePath('/app/inventory');
+  revalidatePath('/app/setup');
 
   return {
     success: true,

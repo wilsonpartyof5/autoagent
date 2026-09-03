@@ -39,7 +39,8 @@ export default async function LeadsPage() {
   // Get active dealership to scope leads
   const activeDealership = await getActiveDealership();
 
-  // Fetch leads from Supabase with UVS vehicle join via FK
+  // ChatGPT leads are dealership-scoped (user_id is often null).
+  // Left-join UVS so MarketCheck-only leads still appear via vehicle_snapshot.
   let leadsQuery = supabase
     .from("leads")
     .select(`
@@ -53,7 +54,8 @@ export default async function LeadsPage() {
       closed_at,
       status,
       source,
-      uvs_vehicles!inner(
+      vehicle_snapshot,
+      uvs_vehicles(
         id,
         vin,
         year,
@@ -63,7 +65,6 @@ export default async function LeadsPage() {
         uvs_data
       )
     `)
-    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -86,8 +87,11 @@ export default async function LeadsPage() {
   const leads = await Promise.all(
     (leadsData || []).map(async (lead: any) => {
       // Get UVS vehicle data from the join
-      const uvsVehicle = lead.uvs_vehicles;
-      const vehicleData = uvsVehicle?.uvs_data || {};
+      const uvsVehicle = Array.isArray(lead.uvs_vehicles)
+        ? lead.uvs_vehicles[0]
+        : lead.uvs_vehicles;
+      const snapshot = lead.vehicle_snapshot || {};
+      const vehicleData = uvsVehicle?.uvs_data || snapshot || {};
       
       let decrypted: DecryptedLead | null = null;
       
@@ -106,17 +110,17 @@ export default async function LeadsPage() {
         id: lead.id,
         dealerId: lead.dealer_id || undefined,
         vehicleId: lead.vehicle_id,
-        vin: uvsVehicle?.vin || lead.vin || undefined,
+        vin: uvsVehicle?.vin || lead.vin || snapshot?.vin || undefined,
         createdAt: new Date(lead.created_at).getTime(),
         repliedAt: lead.replied_at ? new Date(lead.replied_at).getTime() : null,
         status: lead.status || "new",
         source: lead.source || "chatgpt",
-        vehicle: uvsVehicle
+        vehicle: (uvsVehicle || snapshot?.year || snapshot?.make)
           ? {
-              year: uvsVehicle.year || vehicleData?.baseIdentity?.year || null,
-              make: uvsVehicle.make || vehicleData?.baseIdentity?.make || null,
-              model: uvsVehicle.model || vehicleData?.baseIdentity?.model || null,
-              trim: uvsVehicle.trim || vehicleData?.baseIdentity?.trim || undefined,
+              year: uvsVehicle?.year || snapshot?.year || vehicleData?.baseIdentity?.year || null,
+              make: uvsVehicle?.make || snapshot?.make || vehicleData?.baseIdentity?.make || null,
+              model: uvsVehicle?.model || snapshot?.model || vehicleData?.baseIdentity?.model || null,
+              trim: uvsVehicle?.trim || snapshot?.trim || vehicleData?.baseIdentity?.trim || undefined,
             }
           : undefined,
         decrypted: decrypted
@@ -137,7 +141,6 @@ export default async function LeadsPage() {
     .from("lead_delivery_logs")
     .select("lead_id, status, delivery_method, attempted_at, error_message, http_status")
     .in("lead_id", leadIds.length > 0 ? leadIds : ["__none__"])
-    .eq("user_id", user.id)
     .order("attempted_at", { ascending: false });
 
   // Create a map of lead_id -> latest delivery log

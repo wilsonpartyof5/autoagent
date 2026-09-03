@@ -76,7 +76,7 @@ describe('search Tool', () => {
       await search({ query: 'test query' });
 
       expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: 'Seattle, WA',
+        location: undefined,
         condition: 'used',
         make: undefined,
         model: undefined,
@@ -98,7 +98,7 @@ describe('search Tool', () => {
       await search({ query: 'Toyota car' });
 
       expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: 'Seattle, WA',
+        location: undefined,
         condition: 'used',
         make: 'Toyota',
         model: undefined,
@@ -120,7 +120,7 @@ describe('search Tool', () => {
       await search({ query: 'Honda CR-V' });
 
       expect(mockSearchVehicles).toHaveBeenCalledWith({
-        location: 'Seattle, WA',
+        location: undefined,
         condition: 'used',
         make: 'Honda',
         model: 'CR-V',

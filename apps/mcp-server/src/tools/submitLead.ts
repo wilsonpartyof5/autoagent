@@ -233,8 +233,7 @@ export async function submitLead(
       createdAt,
     });
 
-    // Forward to dashboard (fire-and-forget)
-    forwardLead({
+    const persisted = await forwardLead({
       leadId,
       dealerId: resolvedDealerId,
       vehicleId,
@@ -246,9 +245,14 @@ export async function submitLead(
       flowId,
       externalListingId: marketcheckSnapshot?.listingId,
       vehicleSnapshot: marketcheckSnapshot?.vehicle,
-    }).catch(error => {
-      logger.error('Failed to forward lead', { leadId, error: error.message });
     });
+
+    if (!persisted) {
+      return {
+        success: false,
+        error: 'Unable to save your request. Please try again.',
+      };
+    }
 
     // Deliver to dealer's CRM via ADF XML (fire-and-forget)
     if (resolvedDealerId && !marketcheckSnapshot) {

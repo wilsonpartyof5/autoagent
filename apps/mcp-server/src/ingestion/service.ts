@@ -12,6 +12,7 @@ import { ingestVehicles, type IngestionOptions, getValidVehicles, getInvalidVehi
 import { storeIngestedVehicles, storeUVSVehicle } from './storage.js';
 import { createClient } from '@supabase/supabase-js';
 import { CONFIG } from '../config/env.js';
+import { resolveDeletionStrategy } from '../lib/ingestAuth.js';
 import pino from 'pino';
 import type { UnifiedVehicle } from '@autoagent/shared';
 
@@ -198,9 +199,21 @@ async function handleDeletions(
   newVehicles: UnifiedVehicle[],
   options: IngestionServiceOptions
 ): Promise<{ deleted: number; markedUnavailable: number }> {
-  const deletionStrategy = options.deletionStrategy || 'none';
+  const deletionStrategy = resolveDeletionStrategy(
+    options.deletionStrategy || 'none',
+    options.dealerId,
+  );
   
   if (deletionStrategy === 'none') {
+    return { deleted: 0, markedUnavailable: 0 };
+  }
+
+  if (!options.dealerId?.trim()) {
+    logger.warn({
+      event: 'deletion_refused_missing_dealerId',
+      provider: options.provider,
+      requestedStrategy: options.deletionStrategy,
+    });
     return { deleted: 0, markedUnavailable: 0 };
   }
   
@@ -211,15 +224,12 @@ async function handleDeletions(
   const newVehicleIds = new Set(newVehicles.map(v => v.id));
   
   try {
-    // Get existing vehicles from this provider
-    let query = supabase
+    // Get existing vehicles from this provider, always scoped to one dealer.
+    const query = supabase
       .from('uvs_vehicles')
       .select('id, availability_status')
-      .eq('data_source', dataSource);
-    
-    if (options.dealerId) {
-      query = query.eq('dealer_id', options.dealerId);
-    }
+      .eq('data_source', dataSource)
+      .eq('dealer_id', options.dealerId);
     
     const { data: existingVehicles, error } = await query;
     

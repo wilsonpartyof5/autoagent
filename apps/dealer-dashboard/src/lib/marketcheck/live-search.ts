@@ -714,8 +714,8 @@ function buildSearchUrl(params: LiveSearchParams, rows: number, start: number): 
   sp.set('radius', params.radiusMiles.toString());
   sp.set('rows', rows.toString());
   sp.set('start', start.toString());
-  // Ensure image URLs work when dealers block hotlinking; MC default is true but set explicitly
-  sp.set('append_api_key', 'true');
+  // Never append the MarketCheck key onto public photo URLs.
+  sp.set('append_api_key', 'false');
 
   const f = params.filters ?? {};
 

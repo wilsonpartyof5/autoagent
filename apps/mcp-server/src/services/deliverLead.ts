@@ -4,9 +4,11 @@
  */
 
 import pino from 'pino';
+import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { generateAdfXml, type LeadData } from './adf-generator.js';
 import { decryptToJson } from '../lib/crypto.js';
+import { assertSafeHttpsUrl } from '../lib/safeHttpUrl.js';
 
 const logger = (pino as any)();
 
@@ -175,11 +177,16 @@ async function getVehicleInfo(vehicleId: string, vin?: string): Promise<VehicleI
  * Deliver ADF XML via HTTP POST
  */
 async function deliverViaHttp(endpoint: string, adfXml: string): Promise<{ success: boolean; status?: number; body?: string; error?: string }> {
+  const safeEndpoint = assertSafeHttpsUrl(endpoint);
+  if (!safeEndpoint.ok) {
+    return { success: false, error: `Unsafe CRM endpoint: ${safeEndpoint.error}` };
+  }
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-    const response = await fetch(endpoint, {
+    const response = await fetch(safeEndpoint.url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/xml',
@@ -253,7 +260,7 @@ async function logDeliveryAttempt(log: DeliveryLog): Promise<void> {
       http_status: log.httpStatus || null,
       response_body: log.responseBody || null,
       error_message: log.errorMessage || null,
-      adf_payload: log.adfPayload,
+      adf_payload: `<adf-hash alg="sha256">${createHash('sha256').update(log.adfPayload).digest('hex')}</adf-hash>`,
       attempted_by: 'system',
     });
 

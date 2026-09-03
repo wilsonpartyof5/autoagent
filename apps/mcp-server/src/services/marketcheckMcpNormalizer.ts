@@ -139,7 +139,19 @@ export function normalizeMarketcheckListing(
   const sourcePhotos = [
     ...(listing.media?.photo_links_cached ?? []),
     ...(listing.media?.photo_links ?? []),
-  ].filter((url, index, all) => Boolean(url) && all.indexOf(url) === index);
+  ]
+    .map((url) => {
+      try {
+        const parsed = new URL(url);
+        parsed.searchParams.delete('api_key');
+        parsed.searchParams.delete('apikey');
+        parsed.searchParams.delete('token');
+        return parsed.toString();
+      } catch {
+        return url;
+      }
+    })
+    .filter((url, index, all) => Boolean(url) && all.indexOf(url) === index);
   const photos = sourcePhotos.map(proxiedVehicleImageUrl);
   const condition =
     listing.inventory_type === 'new'

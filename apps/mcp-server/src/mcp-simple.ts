@@ -4,7 +4,6 @@ import { compareVehicles } from './tools/compareVehicles.js';
 import { pingUi } from './tools/pingUi.js';
 import { pingMicroUi } from './tools/pingMicroUi.js';
 import { search } from './tools/search.js';
-import { fetchContent } from './tools/fetch.js';
 import { renderVehicleResults } from './tools/renderVehicleResults.js';
 import { getVehicleDetails } from './tools/getVehicleDetails.js';
 import { readFileSync } from 'fs';
@@ -202,7 +201,7 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
     case 'search':
       return await search(args, context);
     case 'fetch':
-      return await fetchContent(args);
+      throw new Error('The fetch tool is not available.');
     case 'search-vehicles':
       return await searchVehicles(args, context);
     case 'render-vehicle-results':

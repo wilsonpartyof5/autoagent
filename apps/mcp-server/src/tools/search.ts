@@ -73,7 +73,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
 
     // Map query to search parameters - use defaults when query does not provide them
     const searchParams: SearchParams = {
-      location: inferredLocation || contextLocation || 'Seattle, WA',
+      location: inferredLocation || contextLocation,
       condition: lowerQuery.includes('new') ? 'new' : 'used',
       radiusMiles: lowerQuery.includes('near') || lowerQuery.includes('around') || lowerQuery.includes('metro') ? 75 : undefined,
       make: lowerQuery.includes('toyota') ? 'Toyota'

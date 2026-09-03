@@ -20,7 +20,7 @@ vi.mock('../src/data/db.js', () => ({
 }));
 
 vi.mock('../src/services/forwardLead.js', () => ({
-  forwardLead: vi.fn(() => Promise.resolve()),
+  forwardLead: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('../src/services/deliverLead.js', () => ({
@@ -111,6 +111,7 @@ describe('submitLead (UVS-first)', () => {
       expect(getUVSVehicleById).toHaveBeenCalledWith('mc-12345');
 
       // Verify lead was stored with UVS fields
+      expect(forwardLead).toHaveBeenCalled();
       expect(insertLead).toHaveBeenCalledWith(
         expect.objectContaining({
           uvsVehicleId: 'mc-12345',
@@ -122,6 +123,24 @@ describe('submitLead (UVS-first)', () => {
           currency: 'USD',
         })
       );
+    });
+
+    it('fails when dashboard persist does not succeed', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(mockUVSVehicle);
+      vi.mocked(forwardLead).mockResolvedValueOnce(false);
+
+      const result = await submitLead({
+        vehicleId: 'mc-12345',
+        vin: '1HGBH41JXMN109186',
+        dealerId: 'dealer-123',
+        dealerName: 'ABC Auto Sales',
+        pricing: { price: 28500, currency: 'USD' },
+        user: { name: 'John Doe', email: 'john.doe@example.com' },
+        consent: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/save your request/i);
     });
 
     it('should hydrate missing dealer fields from UVS', async () => {

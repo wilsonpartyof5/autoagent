@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { tokensEqual } from '@/lib/auth/tokens';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
     
     const token = authHeader.substring(7);
-    if (token !== expectedToken) {
+    if (!tokensEqual(token, expectedToken)) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
@@ -45,6 +46,27 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient();
+
+    let ownerUserId: string | null = null;
+    if (dealerId) {
+      const { data: dealership } = await admin
+        .from('dealerships')
+        .select('id')
+        .eq('marketcheck_dealer_id', dealerId)
+        .maybeSingle();
+
+      if (dealership?.id) {
+        const { data: membership } = await admin
+          .from('user_dealerships')
+          .select('user_id')
+          .eq('dealership_id', dealership.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        ownerUserId = membership?.user_id ?? null;
+      }
+    }
+
     const { error } = await admin.from('leads').upsert({
       id: leadId,
       dealer_id: dealerId ?? null,
@@ -55,7 +77,7 @@ export async function POST(request: NextRequest) {
       created_at: new Date(createdAt).toISOString(),
       status: 'new',
       source: 'chatgpt',
-      user_id: null,
+      user_id: ownerUserId,
       inventory_source: inventorySource ?? 'uvs_db',
       routing_status: routingStatus ?? 'dealer_assigned',
       flow_id: flowId ?? null,

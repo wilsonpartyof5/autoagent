@@ -10,6 +10,7 @@ import {
   SYNDICATION_MAX_ROWS,
   buildDealershipInventoryUrl,
 } from '../ingestion/marketcheckSyndication.js';
+import { authorizeIngestRequest, resolveDeletionStrategy } from '../lib/ingestAuth.js';
 import pino from 'pino';
 
 const logger = (pino as any)();
@@ -24,20 +25,14 @@ export function createIngestionRouter(): express.Router {
   // Parse JSON bodies
   router.use(express.json());
   
-  // Authentication middleware (simple bearer token check)
   router.use((req, res, next) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') 
-      ? authHeader.substring(7)
-      : req.query.token as string;
-    
-    // For now, allow if no token is required or if token matches env var
-    // In production, use proper authentication
-    const requiredToken = process.env.INGESTION_API_TOKEN;
-    if (requiredToken && token !== requiredToken) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const auth = authorizeIngestRequest(
+      { authorization: req.headers.authorization },
+      process.env.INGESTION_API_TOKEN,
+    );
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
     }
-    
     next();
   });
   
@@ -452,11 +447,16 @@ export function createIngestionRouter(): express.Router {
         provider: 'marketcheck',
         dataSource: options?.dataSource || 'marketcheck-api',
         dealerId: options?.dealerId,
-        deletionStrategy: options?.deletionStrategy || 'mark_unavailable',
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
         ...options,
+        dealerId: options?.dealerId,
+        deletionStrategy: resolveDeletionStrategy(
+          options?.deletionStrategy || 'mark_unavailable',
+          options?.dealerId,
+          'mark_unavailable',
+        ),
       };
       
       logger.info({
@@ -546,11 +546,16 @@ export function createIngestionRouter(): express.Router {
         provider: 'dealer-api',
         dataSource: options?.dataSource || 'dealer-api',
         dealerId: options?.dealerId,
-        deletionStrategy: options?.deletionStrategy || 'mark_unavailable',
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
         ...options,
+        dealerId: options?.dealerId,
+        deletionStrategy: resolveDeletionStrategy(
+          options?.deletionStrategy || 'mark_unavailable',
+          options?.dealerId,
+          'mark_unavailable',
+        ),
       };
       
       const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
@@ -593,11 +598,16 @@ export function createIngestionRouter(): express.Router {
         provider: provider as any,
         dataSource: options?.dataSource || provider,
         dealerId: options?.dealerId,
-        deletionStrategy: options?.deletionStrategy || 'mark_unavailable',
         timeoutMs: options?.timeoutMs || 30000,
         batchSize: options?.batchSize || 100,
         continueOnError: options?.continueOnError !== false,
         ...options,
+        dealerId: options?.dealerId,
+        deletionStrategy: resolveDeletionStrategy(
+          options?.deletionStrategy || 'mark_unavailable',
+          options?.dealerId,
+          'mark_unavailable',
+        ),
       };
       
       const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
