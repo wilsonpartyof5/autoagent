@@ -239,8 +239,9 @@
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
     const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    const state={all:[],visible:[],query:{},dealerSummary:[],totalCount:0,cardLimit:RAIL_CARD_LIMIT,selectedId:null,displayMode:'inline',sheetExpanded:false,pending:false,filters:{},flowId:instanceId};
-    let readySent=false,bridgeSubscribed=false,lastResults=null,toastTimer=null,lastReportedHeight=0;
+    const state={all:[],visible:[],query:{},originalQuery:{},dealerSummary:[],totalCount:0,cardLimit:RAIL_CARD_LIMIT,selectedId:null,displayMode:'inline',sheetExpanded:false,pending:false,filters:{},flowId:instanceId};
+    let readySent=false,bridgeSubscribed=false,lastResults=null,lastHydrationKey='',toastTimer=null,lastReportedHeight=0;
+    const mergeDefined=(base,next)=>Object.fromEntries(Object.entries({...base,...next}).filter(([,value])=>value!==undefined));
     function hasLiveVehicles(results=lastResults){
       const vehicles=Array.isArray(results?.vehicles)?results.vehicles:Array.isArray(results)?results:[];
       return vehicles.length>0;
@@ -249,8 +250,8 @@
       const candidates=[window.openai?.toolInput,window.openai?.widgetState?.modelContent?.currentSearch,state.query];
       for(const input of candidates){
         if(input&&typeof input==='object'){
-          pendingSearchParams={...pendingSearchParams,...input};
-          state.query={...state.query,...input};
+          pendingSearchParams=mergeDefined(pendingSearchParams,input);
+          state.query=mergeDefined(state.query,input);
         }
       }
       const outputResults=extractResults(window.openai?.toolOutput)||extractResults(window.openai?.toolResponseMetadata);
@@ -258,7 +259,7 @@
     }
     function resolvedSearchParams(){
       captureHostSearchParams();
-      const merged={...state.query,...pendingSearchParams};
+      const merged={...state.originalQuery,...state.query,...pendingSearchParams};
       const make=typeof merged.make==='string'?merged.make.trim():'';
       const model=typeof merged.model==='string'?merged.model.trim():'';
       const location=typeof merged.location==='string'&&merged.location.trim()?merged.location.trim():'';
@@ -289,13 +290,22 @@
     function showStatus(title,copy){$('statusTitle').textContent=title;$('statusCopy').textContent=copy;$('status').classList.remove('hidden')}
     function hideStatus(){$('status').classList.add('hidden')}
     function extractResults(payload){return payload?.structuredContent?.results||payload?._meta?.results||payload?.result?.structuredContent?.results||payload?.result?._meta?.results||payload?.toolOutput?.structuredContent?.results||payload?.toolOutput?._meta?.results||payload?.toolResponseMetadata?.mcp_tool_result?._meta?.results||payload?.toolResponseMetadata?.call_tool_result?._meta?.results||payload?.results||null}
-    let pendingSearchParams=null;let selfFetchAttempted=false;let selfFetchScheduled=false;let emptyResultSeen=false;let definitiveEmpty=false;
+    let pendingSearchParams=null;let selfFetchAttempted=false;let selfFetchScheduled=false;let selfFetchTimer=null;let emptyResultSeen=false;let definitiveEmpty=false;
+    function cancelSelfFetch(){
+      if(selfFetchTimer)clearTimeout(selfFetchTimer);
+      selfFetchTimer=null;selfFetchScheduled=false;
+    }
     function rememberSearchParams(results){
       const next=results?.searchParams||results?.query;
+      const original=results?.originalSearchParams;
+      if(original&&typeof original==='object'){
+        const {pageOffset,...baseOriginal}=original;
+        state.originalQuery=mergeDefined(state.originalQuery,baseOriginal);
+      }
       if(next&&typeof next==='object'){
         const {pageOffset,...baseParams}=next;
-        pendingSearchParams={...pendingSearchParams,...baseParams};
-        state.query={...state.query,...baseParams};
+        pendingSearchParams=mergeDefined(pendingSearchParams,baseParams);
+        state.query=mergeDefined(state.query,baseParams);
       }
     }
     function persistState(){
@@ -368,9 +378,16 @@
       state.dealerSummary=results.dealerSummary||state.dealerSummary||[];
       state.flowId=vehicles[0]?.flowId||state.flowId;
       state.selectedId=state.selectedId&&merged.some(v=>v.id===state.selectedId)?state.selectedId:merged[0].id;
+      cancelSelfFetch();
       hideStatus();closeDetails();renderAll();reportIntrinsicHeight('hydrate');MapController.render(!/map-move|search-area/.test(String(source)));persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
-    function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
+    function receive(payload,source){
+      const results=extractResults(payload);if(!results)return;
+      const vehicles=Array.isArray(results.vehicles)?results.vehicles:[];
+      const key=`${vehicles.length}|${results.totalCount||0}|${vehicles[0]?.id||''}|${vehicles[vehicles.length-1]?.id||''}`;
+      if(key===lastHydrationKey)return;
+      lastHydrationKey=key;hydrate(results,source);
+    }
     async function selfFetchVehicles(reason='timeout'){
       if(selfFetchAttempted||hasLiveVehicles()||state.pending||definitiveEmpty)return;
       // Host may have delivered toolOutput while we were waiting — prefer that over inventing a search.
@@ -423,7 +440,7 @@
     function scheduleSelfFetch(reason){
       if(selfFetchScheduled||selfFetchAttempted||definitiveEmpty||hasLiveVehicles())return;
       selfFetchScheduled=true;
-      setTimeout(()=>{if(!hasLiveVehicles()&&!definitiveEmpty)selfFetchVehicles(reason)},1800);
+      selfFetchTimer=setTimeout(()=>{selfFetchTimer=null;if(!hasLiveVehicles()&&!definitiveEmpty)selfFetchVehicles(reason)},1800);
     }
     function attachBridge(){
       if(bridgeSubscribed||typeof window.openai?.on!=='function')return false;
@@ -764,7 +781,8 @@
       event(`refine:${source}:start`);
       try{
         if(typeof window.openai?.callTool!=='function')throw new Error('ChatGPT tool bridge is unavailable');
-        const params={...state.query,...overrides,location:state.query.location||'United States',condition:overrides.condition||state.query.condition||'used'};
+        captureHostSearchParams();
+        const params={...state.originalQuery,...state.query,...overrides,location:state.query.location||state.originalQuery.location||'United States',condition:overrides.condition||state.query.condition||state.originalQuery.condition||'used'};
         const result=await window.openai.callTool('render-vehicle-results-v2',params);const next=extractResults(result);if(!next)throw new Error('No updated results were returned');hydrate(next,`callTool:${source}`);$('searchArea').classList.add('hidden');event(`refine:${source}:success`);
       }catch(error){if(!quiet)hideStatus();toast(error?.message||'Unable to update search',true);event(`refine:${source}:error`,{detail:String(error?.message||error)})}
       finally{state.pending=false;document.querySelectorAll('.pill').forEach(button=>button.disabled=false);if(pendingMoveSearch){pendingMoveSearch=false;MapController.refreshArea()}}

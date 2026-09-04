@@ -73,6 +73,36 @@ describe('vehicle image proxy', () => {
     expect(dataUrl).toBe('data:image/jpeg;base64,AQID');
   });
 
+  it('follows a safe HTTPS redirect from an image CDN', async () => {
+    const { fetchVehicleImageDataUrl } = await import('../src/app/vehicle-image.js');
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { location: 'https://cdn.example.com/car.jpg' },
+      }))
+      .mockResolvedValueOnce(new Response(
+        new Uint8Array([0xff, 0xd8, 0xff, 0x01]),
+        { status: 200, headers: { 'content-type': 'image/jpeg' } },
+      )) as typeof fetch;
+
+    const dataUrl = await fetchVehicleImageDataUrl('https://images.example.com/redirect');
+
+    expect(dataUrl).toBe('data:image/jpeg;base64,/9j/AQ==');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts image bytes served as application/octet-stream', async () => {
+    const { fetchVehicleImageDataUrl } = await import('../src/app/vehicle-image.js');
+    global.fetch = vi.fn(async () => new Response(
+      new Uint8Array([0xff, 0xd8, 0xff, 0x01]),
+      { status: 200, headers: { 'content-type': 'application/octet-stream' } },
+    )) as typeof fetch;
+
+    const dataUrl = await fetchVehicleImageDataUrl('https://images.example.com/car');
+
+    expect(dataUrl).toBe('data:image/jpeg;base64,/9j/AQ==');
+  });
+
   it('rejects unsigned requests', async () => {
     const { handleVehicleImage } = await import('../src/app/vehicle-image.js');
     const response = {

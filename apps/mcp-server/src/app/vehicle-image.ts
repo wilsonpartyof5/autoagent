@@ -7,6 +7,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_INLINE_IMAGE_BYTES = 256 * 1024;
 const IMAGE_TIMEOUT_MS = 8_000;
 const INLINE_IMAGE_TIMEOUT_MS = 2_500;
+const MAX_IMAGE_REDIRECTS = 3;
 
 function signature(source: string): string {
   return createHmac('sha256', Buffer.from(CONFIG.leadEncKey, 'base64'))
@@ -70,24 +71,52 @@ async function fetchVehicleImageBytes(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const upstream = await fetch(target, {
-      signal: controller.signal,
-      redirect: 'error',
-      headers: { Accept: 'image/*' },
-    });
+    let upstream: globalThis.Response | null = null;
+    for (let redirects = 0; redirects <= MAX_IMAGE_REDIRECTS; redirects += 1) {
+      upstream = await fetch(target, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: { Accept: 'image/*' },
+      });
+      if (upstream.status < 300 || upstream.status >= 400) break;
+      const location = upstream.headers.get('location');
+      if (!location || redirects === MAX_IMAGE_REDIRECTS) return null;
+      const redirected = new URL(location, target);
+      if (redirected.protocol !== 'https:' || privateIp(redirected.hostname)) {
+        return null;
+      }
+      target = authenticatedImageTarget(redirected.toString());
+    }
+    if (!upstream) return null;
     if (!upstream.ok) return null;
 
-    const contentType = upstream.headers.get('content-type') ?? '';
+    let contentType = upstream.headers.get('content-type') ?? '';
     const contentLength = Number(upstream.headers.get('content-length') ?? 0);
-    if (
-      !contentType.toLowerCase().startsWith('image/') ||
-      contentLength > maxBytes
-    ) {
-      return null;
-    }
+    if (contentLength > maxBytes) return null;
 
     const bytes = Buffer.from(await upstream.arrayBuffer());
     if (bytes.length > maxBytes) return null;
+    const type = contentType.toLowerCase();
+    if (!type.startsWith('image/')) {
+      if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        contentType = 'image/jpeg';
+      } else if (
+        bytes.length >= 8 &&
+        bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      ) {
+        contentType = 'image/png';
+      } else if (bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'))) {
+        contentType = 'image/gif';
+      } else if (
+        bytes.length >= 12 &&
+        bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+      ) {
+        contentType = 'image/webp';
+      } else {
+        return null;
+      }
+    }
     return { bytes, contentType };
   } catch {
     return null;

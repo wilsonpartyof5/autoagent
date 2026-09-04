@@ -25,6 +25,8 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('setInterval(()=>');
     expect(html).toContain("receive(window.openai?.toolOutput,'poll.output')");
     expect(html).toContain('function selfFetchVehicles');
+    expect(html).toContain('function cancelSelfFetch()');
+    expect(html).toContain('cancelSelfFetch();');
     expect(html).toContain("event('hydrate:empty'");
   });
 
@@ -121,6 +123,9 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('preserves the original filters through recovery and map searches', () => {
+    expect(html).toContain('originalQuery:{}');
+    expect(html).toContain('mergeDefined(state.originalQuery,baseOriginal)');
+    expect(html).toContain('captureHostSearchParams();');
     expect(html).toContain('if(resolved.maxPrice)params.maxPrice=resolved.maxPrice');
     expect(html).toContain('if(resolved.mileageMax)params.mileageMax=resolved.mileageMax');
     expect(html).toContain("state.query.maxPrice||''");
