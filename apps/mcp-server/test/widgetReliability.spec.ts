@@ -68,6 +68,8 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('const RAIL_CARD_LIMIT=8');
     expect(html).toContain('list.slice(0,state.cardLimit)');
     expect(html).toContain('See more inventory');
+    expect(html).toContain('inventoryProgress');
+    expect(html).toContain('Showing ${shown.toLocaleString()} of ${state.totalCount.toLocaleString()} · See all');
     expect(html).toContain('async function showMoreInventory()');
     expect(html).toContain("callSearch({pageOffset:state.all.length},'load-more',true)");
     expect(html).toContain("String(source).includes('load-more')");

@@ -45,6 +45,8 @@
     .cluster-pin span{display:none}
     .leaflet-div-icon{background:transparent!important;border:0!important}
     #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
+    #inventoryProgress{display:flex;justify-content:flex-end;max-width:1160px;margin:0 auto 6px;pointer-events:auto}
+    .inventory-progress-button{border:1px solid #ffffff40;background:#15171bf2;color:#fff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #0005}
     #featured{pointer-events:auto;margin:0 auto 8px;max-width:420px;touch-action:manipulation}
     #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;pointer-events:auto}
     #rail{pointer-events:auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:2px 0 6px;cursor:grab;min-width:0}
@@ -128,6 +130,7 @@
       #searchArea{top:12px;padding:8px 12px;font-size:12px;min-height:34px}
       .price-pin{padding:3px 6px;font-size:10px;border-radius:5px;background:#fff;color:#111;-webkit-text-fill-color:#111}
       #embeddedCards{position:relative;left:auto;right:auto;bottom:auto;z-index:5;padding:8px 10px 10px;background:transparent}
+      #inventoryProgress{margin-bottom:6px}
       #featured{display:none}
       .rail-nav{display:none}
       #railShell{grid-template-columns:minmax(0,1fr);gap:0}
@@ -190,6 +193,7 @@
         </div>
         <button id="searchArea" class="hidden">Search this area</button>
         <div id="embeddedCards">
+          <div id="inventoryProgress"></div>
           <div id="featured"></div>
           <div id="railShell">
             <button type="button" id="railPrev" class="rail-nav" aria-label="Previous vehicles">‹</button>
@@ -463,8 +467,10 @@
       const shown=Math.min(state.cardLimit,state.all.length);
       const hasMore=shown<state.totalCount;
       const moreCount=Math.max(0,state.totalCount-shown);
-      $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('')+(hasMore?`<button type="button" id="loadMoreButton" class="load-more-card">See more inventory<small>${moreCount.toLocaleString()} more vehicle${moreCount===1?'':'s'}</small></button>`:'');
-      $('list').innerHTML=state.visible.slice(0,state.cardLimit).map(v=>card(v,'list')).join('');
+      const moreLabel=`See more inventory<small>${moreCount.toLocaleString()} more vehicle${moreCount===1?'':'s'}</small>`;
+      $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('')+(hasMore?`<button type="button" class="load-more-card load-more-trigger">${moreLabel}</button>`:'');
+      $('list').innerHTML=state.visible.slice(0,state.cardLimit).map(v=>card(v,'list')).join('')+(hasMore?`<button type="button" class="load-more-card load-more-trigger">${moreLabel}</button>`:'');
+      $('inventoryProgress').innerHTML=hasMore?`<button type="button" class="inventory-progress-button load-more-trigger">Showing ${shown.toLocaleString()} of ${state.totalCount.toLocaleString()} · See all</button>`:`<span class="inventory-progress-button">${shown.toLocaleString()} vehicles</span>`;
       $('resultCount').textContent=`${state.totalCount.toLocaleString()} Vehicles`;
       $('resultContext').textContent=`Showing ${shown.toLocaleString()} of ${state.totalCount.toLocaleString()} · ${state.query.location||'Visible map area'}`;
       document.querySelectorAll('[data-filter]').forEach(button=>button.classList.toggle('active',Boolean(state.filters[button.dataset.filter])));
@@ -479,7 +485,7 @@
         state.cardLimit=state.all.length;
         renderAll();
       }
-      requestAnimationFrame(()=>{const button=$('loadMoreButton');if(button)button.scrollIntoView({behavior:'smooth',inline:'end',block:'nearest'})});
+      requestAnimationFrame(()=>{const button=$('rail')?.querySelector('.load-more-trigger');if(button)button.scrollIntoView({behavior:'smooth',inline:'end',block:'nearest'})});
       event('rail:show-more',{vehicleCount:state.all.length,detail:`total=${state.totalCount}`});
     }
     function selectVehicle(id,source='card',pan=false){
@@ -562,7 +568,7 @@
     bindRailInteractions();
     document.addEventListener('click',click=>{
       if(click.target.closest?.('.rail-nav'))return;
-      if(click.target.closest?.('#loadMoreButton')){showMoreInventory();return}
+      if(click.target.closest?.('.load-more-trigger')){showMoreInventory();return}
       const thumb=click.target.closest?.('.gallery-thumb');
       if(thumb&&typeof state.setDetailPhoto==='function'){state.setDetailPhoto(Number(thumb.dataset.index||0));return}
       const cardNode=click.target.closest?.('.vehicle-card');
