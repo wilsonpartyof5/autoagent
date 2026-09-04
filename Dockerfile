@@ -1,7 +1,14 @@
 # Railway production MCP server image
-# Trigger: widget v29 ChatGPT map UX (2026-08-14)
-FROM node:20-bullseye
-RUN apt-get update && apt-get install -y python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*
+# Trigger: harden apt against Debian mirror 404s (2026-09-04)
+FROM node:20-bookworm
+# node-gyp (better-sqlite3) needs python3 + a compiler, not pip.
+# Skip python3-pip so we do not pull python3-pkg-resources from flaky security mirrors.
+RUN set -eux; \
+    apt-get update -o Acquire::Retries=5; \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+      python3 \
+      build-essential; \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # Copy lockfile and package files for dependency layer caching
 # This allows Docker to cache the pnpm install step unless dependencies change
