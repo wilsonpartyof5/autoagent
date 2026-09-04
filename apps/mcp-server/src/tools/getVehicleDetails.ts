@@ -24,6 +24,9 @@ export async function getVehicleDetails(params: unknown) {
     'search_active_cars',
     {
       ...(parsed.data.vin ? { vin: parsed.data.vin } : {}),
+      // Search results can contain a valid duplicate/non-attributed listing.
+      // nodedup ensures a VIN lookup still returns those active records.
+      nodedup: true,
       rows: 1,
       fetch_all_photos: true,
       include_dealer_object: true,

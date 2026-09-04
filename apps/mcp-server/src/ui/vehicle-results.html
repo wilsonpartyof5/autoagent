@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v34">
+  <meta name="autoagent-widget-version" content="v35">
   <title>Drevvy Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -45,7 +45,7 @@
     .cluster-pin span{display:none}
     .leaflet-div-icon{background:transparent!important;border:0!important}
     #embeddedCards{position:absolute;z-index:750;left:12px;right:12px;bottom:12px;pointer-events:auto;touch-action:manipulation}
-    #featured{pointer-events:auto;margin:0 auto 10px;max-width:760px;touch-action:manipulation}
+    #featured{pointer-events:auto;margin:0 auto 8px;max-width:420px;touch-action:manipulation}
     #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;pointer-events:auto}
     #rail{pointer-events:auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:2px 0 6px;cursor:grab;min-width:0}
     #rail.dragging{cursor:grabbing;scroll-snap-type:none;scroll-behavior:auto}
@@ -61,6 +61,8 @@
     .vehicle-meta,.dealer{font-size:11px;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #featured .vehicle-card{grid-template-columns:120px 1fr;height:100px}#featured .vehicle-card img{width:120px;height:100px}
     #rail .vehicle-card{flex:0 0 calc(100% - 40px);touch-action:pan-x;cursor:inherit}
+    .load-more-card{flex:0 0 180px;min-height:92px;border:1px solid #ffffff40;border-radius:12px;background:#15171bf2;color:#fff;font-weight:800;cursor:pointer;padding:12px;scroll-snap-align:start}
+    .load-more-card small{display:block;margin-top:4px;color:var(--muted);font-weight:500}
     .list-card{grid-template-columns:108px 1fr}
     #status{position:absolute;z-index:900;inset:0;display:grid;place-items:center;background:#0d0f12d9;padding:24px;text-align:center}
     .status-card{max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}
@@ -156,7 +158,8 @@
     /* Desktop comfort */
     @media(min-width:721px){
       #featured{display:block}
-      #rail .vehicle-card{flex-basis:calc(100% - 40px)}
+      #rail .vehicle-card{flex-basis:340px}
+      #embeddedCards{left:16px;right:16px;bottom:10px}
       body.fullscreen #workspace{grid-template-columns:400px minmax(0,1fr)}
       #details .drawer-panel{max-width:820px;margin:24px auto;height:calc(100% - 48px);border-radius:18px;border:1px solid var(--line)}
       #details.drawer{padding:0 16px;background:#0e1013cc}
@@ -226,13 +229,13 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v34', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v35', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
     const $=id=>document.getElementById(id);
     const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    const state={all:[],visible:[],query:{},dealerSummary:[],selectedId:null,displayMode:'inline',sheetExpanded:false,pending:false,filters:{},flowId:instanceId};
+    const state={all:[],visible:[],query:{},dealerSummary:[],totalCount:0,cardLimit:RAIL_CARD_LIMIT,selectedId:null,displayMode:'inline',sheetExpanded:false,pending:false,filters:{},flowId:instanceId};
     let readySent=false,bridgeSubscribed=false,lastResults=null,toastTimer=null,lastReportedHeight=0;
     function hasLiveVehicles(results=lastResults){
       const vehicles=Array.isArray(results?.vehicles)?results.vehicles:Array.isArray(results)?results:[];
@@ -257,7 +260,11 @@
       const location=typeof merged.location==='string'&&merged.location.trim()?merged.location.trim():'';
       const condition=typeof merged.condition==='string'&&merged.condition.trim()?merged.condition.trim():'used';
       const radiusMiles=Number(merged.radiusMiles)||75;
-      return {make,model,location,condition,radiusMiles};
+      const maxPrice=Number(merged.maxPrice);
+      const mileageMax=Number(merged.mileageMax);
+      const bodyStyle=typeof merged.bodyStyle==='string'?merged.bodyStyle.trim():'';
+      const models=Array.isArray(merged.models)?merged.models.filter(value=>typeof value==='string'&&value.trim()).map(value=>value.trim()):[];
+      return {make,model,models,location,condition,radiusMiles,...(maxPrice>0?{maxPrice}:{}),...(mileageMax>0?{mileageMax}:{}),...(bodyStyle?{bodyStyle}:{})};
     }
 
     function reportIntrinsicHeight(reason='update'){
@@ -281,7 +288,11 @@
     let pendingSearchParams=null;let selfFetchAttempted=false;let selfFetchScheduled=false;let emptyResultSeen=false;let definitiveEmpty=false;
     function rememberSearchParams(results){
       const next=results?.searchParams||results?.query;
-      if(next&&typeof next==='object'){pendingSearchParams={...pendingSearchParams,...next};state.query={...state.query,...next}}
+      if(next&&typeof next==='object'){
+        const {pageOffset,...baseParams}=next;
+        pendingSearchParams={...pendingSearchParams,...baseParams};
+        state.query={...state.query,...baseParams};
+      }
     }
     function persistState(){
       const map=MapController.map;
@@ -306,6 +317,14 @@
       rememberSearchParams(results);
       const vehicles=Array.isArray(results.vehicles)?results.vehicles:Array.isArray(results)?results:[];
       if(!vehicles.length){
+        if(String(source).includes('load-more')){
+          state.totalCount=state.all.length;
+          state.cardLimit=state.all.length;
+          renderAll();
+          toast('All available inventory is loaded');
+          event('rail:load-more-complete',{vehicleCount:state.all.length});
+          return false;
+        }
         if(/map-move|search-area/.test(String(source))){
           toast('No vehicles in this area');
           event('hydrate:empty-area',{detail:`source=${source}`});
@@ -333,7 +352,18 @@
         return true;
       }
       definitiveEmpty=false;
-      lastResults=results;state.all=vehicles;state.visible=[...vehicles];state.query=results.searchParams||results.query||state.query;state.dealerSummary=results.dealerSummary||[];state.flowId=vehicles[0]?.flowId||state.flowId;state.selectedId=state.selectedId&&vehicles.some(v=>v.id===state.selectedId)?state.selectedId:vehicles[0].id;
+      const append=String(source).includes('load-more');
+      const merged=append?[...state.all]:[];
+      const seen=new Set(merged.map(vehicle=>vehicle.id));
+      vehicles.forEach(vehicle=>{if(!seen.has(vehicle.id)){seen.add(vehicle.id);merged.push(vehicle)}});
+      lastResults={...results,vehicles:merged};
+      state.all=merged;
+      state.visible=[...merged];
+      state.totalCount=Math.max(Number(results.totalCount)||0,merged.length);
+      if(!append)state.cardLimit=Math.min(RAIL_CARD_LIMIT,merged.length);
+      state.dealerSummary=results.dealerSummary||state.dealerSummary||[];
+      state.flowId=vehicles[0]?.flowId||state.flowId;
+      state.selectedId=state.selectedId&&merged.some(v=>v.id===state.selectedId)?state.selectedId:merged[0].id;
       hideStatus();closeDetails();renderAll();reportIntrinsicHeight('hydrate');MapController.render(!/map-move|search-area/.test(String(source)));persistState();event('hydrate:success',{detail:`source=${source}`,vehicleCount:vehicles.length});emitReady('hydrated');return true;
     }
     function receive(payload,source){const results=extractResults(payload);if(results&&results!==lastResults)hydrate(results,source)}
@@ -363,8 +393,10 @@
       };
       if(resolved.model)params.model=resolved.model;
       if(resolved.location)params.location=resolved.location;
-      const models=pendingSearchParams?.models||state.query?.models;
-      if(Array.isArray(models)&&models.length)params.models=models;
+      if(resolved.models.length)params.models=resolved.models;
+      if(resolved.maxPrice)params.maxPrice=resolved.maxPrice;
+      if(resolved.mileageMax)params.mileageMax=resolved.mileageMax;
+      if(resolved.bodyStyle)params.bodyStyle=resolved.bodyStyle;
       // Drop bodyStyle on recovery — invented body styles are a common cause of 0-hit first renders.
       selfFetchAttempted=true;state.pending=true;
       showStatus('Loading live vehicles','Refreshing inventory for the map…');
@@ -399,21 +431,22 @@
     window.addEventListener('openai:set_globals',message=>receive(message.detail,'set_globals.dom'));
     setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}},250);
 
-    const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>v.media?.photoUrls?.length?v.media.photoUrls:[image(v)].filter(Boolean);
+    const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>[image(v),...(v.media?.photoUrls||[])].filter((url,index,all)=>url&&all.indexOf(url)===index);
     const money=value=>value?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(value):'Call for price';
     const shortMoney=value=>value>=1000?`$${(value/1000).toFixed(value>=100000?0:1)}k`:money(value);
     const title=v=>[year(v),make(v),model(v),trim(v)].filter(Boolean).join(' ');
     const coord=v=>{const d=dealer(v),lat=Number(v.lat??d.latitude),lng=Number(v.lng??d.longitude);return Number.isFinite(lat)&&Number.isFinite(lng)?[lat,lng]:null};
-    function card(v,kind='list'){return `<article class="vehicle-card ${kind==='list'?'list-card':''} ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img src="${escapeHtml(image(v)||FALLBACK_IMAGE)}" alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-title">${escapeHtml(title(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`: 'New'}${v.condition?` · ${escapeHtml(v.condition)}`:''}</div><div class="dealer">${escapeHtml(dealer(v).name||v.dealerName||'Dealer')}</div></div></article>`}
+    function imageAttributes(v){const candidates=photos(v);return `src="${escapeHtml(candidates[0]||FALLBACK_IMAGE)}" data-images="${escapeHtml(JSON.stringify(candidates))}" data-image-index="0"`}
+    function card(v,kind='list'){return `<article class="vehicle-card ${kind==='list'?'list-card':''} ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img ${imageAttributes(v)} alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-title">${escapeHtml(title(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`: 'New'}${v.condition?` · ${escapeHtml(v.condition)}`:''}</div><div class="dealer">${escapeHtml(dealer(v).name||v.dealerName||'Dealer')}</div></div></article>`}
     function vehiclesForRail(){
       const list=[...(state.all.length?state.all:state.visible)];
-      if(!state.selectedId)return list.slice(0,RAIL_CARD_LIMIT);
+      if(!state.selectedId)return list.slice(0,state.cardLimit);
       const idx=list.findIndex(v=>v.id===state.selectedId);
       if(idx>0){
         const [selected]=list.splice(idx,1);
         list.unshift(selected);
       }
-      return list.slice(0,RAIL_CARD_LIMIT);
+      return list.slice(0,state.cardLimit);
     }
     function scrollRailToSelected(){
       const rail=$('rail');
@@ -426,12 +459,28 @@
     function renderAll(){
       const selected=state.all.find(v=>v.id===state.selectedId)||state.visible[0]||state.all[0];
       $('featured').innerHTML=selected?card(selected,'featured'):'';
-      $('rail').innerHTML=vehiclesForRail().map(v=>card(v,'rail')).join('');
-      $('list').innerHTML=state.visible.slice(0,RAIL_CARD_LIMIT).map(v=>card(v,'list')).join('');
-      $('resultCount').textContent=`${state.visible.length.toLocaleString()} Vehicles`;
-      $('resultContext').textContent=state.query.location||'Visible map area';
+      const railVehicles=vehiclesForRail();
+      const shown=Math.min(state.cardLimit,state.all.length);
+      const hasMore=shown<state.totalCount;
+      const moreCount=Math.max(0,state.totalCount-shown);
+      $('rail').innerHTML=railVehicles.map(v=>card(v,'rail')).join('')+(hasMore?`<button type="button" id="loadMoreButton" class="load-more-card">See more inventory<small>${moreCount.toLocaleString()} more vehicle${moreCount===1?'':'s'}</small></button>`:'');
+      $('list').innerHTML=state.visible.slice(0,state.cardLimit).map(v=>card(v,'list')).join('');
+      $('resultCount').textContent=`${state.totalCount.toLocaleString()} Vehicles`;
+      $('resultContext').textContent=`Showing ${shown.toLocaleString()} of ${state.totalCount.toLocaleString()} · ${state.query.location||'Visible map area'}`;
       document.querySelectorAll('[data-filter]').forEach(button=>button.classList.toggle('active',Boolean(state.filters[button.dataset.filter])));
       updateRailNav();
+    }
+    async function showMoreInventory(){
+      if(state.pending)return;
+      state.cardLimit=state.all.length;
+      renderAll();
+      if(state.all.length<state.totalCount){
+        await callSearch({pageOffset:state.all.length},'load-more',true);
+        state.cardLimit=state.all.length;
+        renderAll();
+      }
+      requestAnimationFrame(()=>{const button=$('loadMoreButton');if(button)button.scrollIntoView({behavior:'smooth',inline:'end',block:'nearest'})});
+      event('rail:show-more',{vehicleCount:state.all.length,detail:`total=${state.totalCount}`});
     }
     function selectVehicle(id,source='card',pan=false){
       if(!state.all.some(v=>v.id===id))return;
@@ -513,6 +562,7 @@
     bindRailInteractions();
     document.addEventListener('click',click=>{
       if(click.target.closest?.('.rail-nav'))return;
+      if(click.target.closest?.('#loadMoreButton')){showMoreInventory();return}
       const thumb=click.target.closest?.('.gallery-thumb');
       if(thumb&&typeof state.setDetailPhoto==='function'){state.setDetailPhoto(Number(thumb.dataset.index||0));return}
       const cardNode=click.target.closest?.('.vehicle-card');
@@ -691,7 +741,7 @@
         if(this.suppress||!this.userInteracted)return;
         if(typeof window.openai?.callTool!=='function')return;
         const args=this.boundsArgs();
-        const key=`${Number(args.latitude).toFixed(3)}|${Number(args.longitude).toFixed(3)}|${args.radiusMiles}`;
+        const key=`${Number(args.latitude).toFixed(3)}|${Number(args.longitude).toFixed(3)}|${args.radiusMiles}|${state.query.make||''}|${state.query.model||''}|${state.query.condition||''}|${state.query.maxPrice||''}|${state.query.bodyStyle||''}|${state.query.mileageMax||''}`;
         if(key===this.lastSearchKey)return;
         if(state.pending){pendingMoveSearch=true;return}
         this.lastSearchKey=key;
@@ -793,7 +843,21 @@
     const loadedImageHosts=new Set();let imageErrorCount=0;
     function isVehicleImageTarget(node){return node instanceof HTMLImageElement&&!node.closest('.leaflet-container')}
     document.addEventListener('load',load=>{if(!isVehicleImageTarget(load.target))return;const host=(()=>{try{return new URL(load.target.currentSrc||load.target.src).origin}catch{return'invalid'}})();if(!loadedImageHosts.has(host)){loadedImageHosts.add(host);event('image:loaded',{imageHost:host,detail:`host=${host}`})}},true);
-    document.addEventListener('error',error=>{if(!isVehicleImageTarget(error.target))return;const host=(()=>{try{return new URL(error.target.currentSrc||error.target.src).origin}catch{return'invalid'}})();if(imageErrorCount<20){imageErrorCount+=1;event('image:error',{imageHost:host,detail:`host=${host};count=${imageErrorCount}`})}if(error.target.src!==FALLBACK_IMAGE){error.target.src=FALLBACK_IMAGE}},true);
+    document.addEventListener('error',error=>{
+      if(!isVehicleImageTarget(error.target))return;
+      const host=(()=>{try{return new URL(error.target.currentSrc||error.target.src).origin}catch{return'invalid'}})();
+      if(imageErrorCount<20){imageErrorCount+=1;event('image:error',{imageHost:host,detail:`host=${host};count=${imageErrorCount}`})}
+      let candidates=[];
+      try{candidates=JSON.parse(error.target.dataset.images||'[]')}catch{}
+      const nextIndex=Number(error.target.dataset.imageIndex||0)+1;
+      if(nextIndex<candidates.length){
+        error.target.dataset.imageIndex=String(nextIndex);
+        error.target.src=candidates[nextIndex];
+        event('image:fallback',{detail:`index=${nextIndex}`});
+      }else if(error.target.src!==FALLBACK_IMAGE){
+        error.target.src=FALLBACK_IMAGE;
+      }
+    },true);
     window.addEventListener('error',error=>event('runtime:error',{detail:String(error.message||'unknown')}));
     window.addEventListener('unhandledrejection',error=>event('runtime:rejection',{detail:String(error.reason?.message||error.reason||'unknown')}));
 
@@ -818,7 +882,7 @@
     }
     const restored=window.openai?.widgetState;if(restored?.privateContent?.displayMode==='fullscreen')setDisplayMode('fullscreen',false);if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
     attachBridge();reportIntrinsicHeight('startup');receive(window.openai?.toolOutput,'initial.output');receive(window.openai?.toolResponseMetadata,'initial.meta');MapController.render(false);
-    setTimeout(()=>{if(!hasLiveVehicles()){showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}},2500);
+    setTimeout(()=>{if(!hasLiveVehicles()){captureHostSearchParams();receive(window.openai?.toolOutput,'startup.output');receive(window.openai?.toolResponseMetadata,'startup.meta');if(!hasLiveVehicles()){showStatus('Waiting for live vehicle data','ChatGPT is still preparing the map. Results will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}}},5000);
   </script>
 </body>
 </html>

@@ -7,8 +7,8 @@ import {
 
 describe('MarketCheck bridge arg mapping', () => {
   it('normalizes pickup/truck body styles and drops invented ones', () => {
-    expect(normalizeBodyType('Pickup')).toBe('Truck');
-    expect(normalizeBodyType('truck')).toBe('Truck');
+    expect(normalizeBodyType('Pickup')).toBe('Pickup');
+    expect(normalizeBodyType('truck')).toBe('Pickup');
     expect(normalizeBodyType('SUV')).toBe('SUV');
     expect(normalizeBodyType('F-150')).toBeUndefined();
     expect(normalizeBodyType('electric')).toBeUndefined();
@@ -56,5 +56,18 @@ describe('MarketCheck bridge arg mapping', () => {
     expect(args.city).toBe('Dallas');
     expect(args.state).toBe('TX');
     expect(args.price_range).toBe('0-30000');
+  });
+
+  it('passes the widget pagination offset to MarketCheck', () => {
+    const args = mapSearchParamsToBridgeArgs({
+      location: 'Charlotte, NC',
+      condition: 'used',
+      make: 'Ford',
+      model: 'F-150',
+      maxPrice: 48000,
+      pageOffset: 50,
+    } as any);
+    expect(args.start).toBe(50);
+    expect(args.price_range).toBe('0-48000');
   });
 });

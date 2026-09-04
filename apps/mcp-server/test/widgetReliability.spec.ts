@@ -15,8 +15,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v34"');
-    expect(html).toContain("VERSION='v34'");
+    expect(html).toContain('autoagent-widget-version" content="v35"');
+    expect(html).toContain("VERSION='v35'");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -63,15 +63,19 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('MapController.render(!/map-move|search-area/.test(String(source)))');
   });
 
-  it('hides mobile filter chips and keeps an 8-card rail with dense map pins', () => {
+  it('starts with 8 cards and lets shoppers progressively load the complete result set', () => {
     expect(html).toContain('.control-scroll{display:none}');
     expect(html).toContain('const RAIL_CARD_LIMIT=8');
-    expect(html).toContain('.slice(0,RAIL_CARD_LIMIT)');
+    expect(html).toContain('list.slice(0,state.cardLimit)');
+    expect(html).toContain('See more inventory');
+    expect(html).toContain('async function showMoreInventory()');
+    expect(html).toContain("callSearch({pageOffset:state.all.length},'load-more',true)");
+    expect(html).toContain("String(source).includes('load-more')");
     expect(html).toContain('if(fit)this.fit();this.renderMarkers()');
   });
 
   it('uses compact Zillow-like cards and high-contrast map pins', () => {
-    expect(html).toContain('#rail .vehicle-card{flex:0 0 calc(100% - 28px)');
+    expect(html).toContain('#rail .vehicle-card{flex-basis:340px}');
     expect(html).toContain('.rail-nav{display:none}');
     expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#fff;color:#111');
     expect(html).toContain('-webkit-text-fill-color:#111');
@@ -112,5 +116,18 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("event('image:loaded'");
     expect(html).toContain("event('image:error'");
     expect(html).toContain("event('map:bounds'");
+  });
+
+  it('preserves the original filters through recovery and map searches', () => {
+    expect(html).toContain('if(resolved.maxPrice)params.maxPrice=resolved.maxPrice');
+    expect(html).toContain('if(resolved.mileageMax)params.mileageMax=resolved.mileageMax');
+    expect(html).toContain("state.query.maxPrice||''");
+    expect(html).toContain("state.query.bodyStyle||''");
+  });
+
+  it('tries alternate vehicle photos before the final placeholder', () => {
+    expect(html).toContain('data-images=');
+    expect(html).toContain("event('image:fallback'");
+    expect(html).toContain('nextIndex<candidates.length');
   });
 });

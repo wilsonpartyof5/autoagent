@@ -62,7 +62,7 @@ describe('public MCP tool surface', () => {
 
   it('lists only the vehicle-results widget resource', () => {
     const uris = getAvailableResources().map((resource) => resource.uri);
-    expect(uris).toEqual(['ui://vehicle-results-v34.html']);
+    expect(uris).toEqual(['ui://vehicle-results-v35.html']);
     expect(uris).not.toContain('ui://ping.html');
     expect(uris).not.toContain('ui://micro.html');
   });

@@ -113,6 +113,8 @@ export const SearchParamsSchema = z.object({
   mileageMax: z.number().positive().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  /** Internal pagination offset used by the widget when the shopper asks to see more results. */
+  pageOffset: z.number().int().nonnegative().max(1000).optional(),
   mapBounds: z.object({
     north: z.number().min(-90).max(90),
     south: z.number().min(-90).max(90),

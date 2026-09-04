@@ -393,7 +393,8 @@ export function normalizeBodyType(bodyStyle?: string): string | undefined {
   if (!bodyStyle) return undefined;
   const raw = bodyStyle.trim().toLowerCase();
   if (!raw) return undefined;
-  if (/(pickup|pick-up|pick up|truck|crew cab|supercrew)/.test(raw)) return 'Truck';
+  // MarketCheck's canonical body_type facet is "Pickup"; "Truck" returns no matches.
+  if (/(pickup|pick-up|pick up|truck|crew cab|supercrew)/.test(raw)) return 'Pickup';
   if (/(suv|crossover|cuv)/.test(raw)) return 'SUV';
   if (/(sedan|saloon)/.test(raw)) return 'Sedan';
   if (/coupe/.test(raw)) return 'Coupe';
@@ -455,6 +456,7 @@ export function mapSearchParamsToBridgeArgs(searchParams: SearchParams): Record<
     ...(bodyType ? { body_type: bodyType } : {}),
     miles_range: searchParams.mileageMax ? `0-${Math.floor(searchParams.mileageMax)}` : undefined,
     rows: MAX_MAP_PINS,
+    start: searchParams.pageOffset ?? 0,
     fetch_all_photos: false,
     include_dealer_object: true,
     include_mc_dealership_object: true,

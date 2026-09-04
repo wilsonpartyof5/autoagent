@@ -11,7 +11,7 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v34';
+export const VEHICLE_WIDGET_VERSION = 'v35';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
@@ -164,6 +164,11 @@ const VEHICLE_SEARCH_INPUT_SCHEMA = {
       minimum: -180,
       maximum: 180,
       description: 'Optional map center longitude for Search this area',
+    },
+    pageOffset: {
+      type: 'number',
+      minimum: 0,
+      description: 'Internal pagination offset used by the widget to load more results',
     },
     mapBounds: {
       type: 'object',
