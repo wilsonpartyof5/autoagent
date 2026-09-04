@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { callMarketcheckMcpTool } from '../services/marketcheckMcpClient.js';
 import { normalizeMarketcheckSearchResult } from '../services/marketcheckMcpNormalizer.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
+import { findVehicleDetails } from '../lib/vehicleDetailCache.js';
 
 const InputSchema = z
   .object({
@@ -13,6 +14,46 @@ const InputSchema = z
   .refine((value) => value.vin, {
     message: 'vin is required for a current detail lookup',
   });
+
+function detailResult(
+  vehicle: Record<string, unknown>,
+  flowId: string,
+  source: 'marketcheck_mcp' | 'search_result_cache',
+  durationMs: number,
+) {
+  const identity =
+    (vehicle.baseIdentity as Record<string, unknown> | undefined) ?? {};
+  const vehicleId = typeof vehicle.id === 'string' ? vehicle.id : undefined;
+  const vin = typeof identity.vin === 'string' ? identity.vin : undefined;
+  console.log(JSON.stringify({
+    event: 'vehicle_detail_succeeded',
+    flowId,
+    provider: source,
+    listingId: vehicleId,
+    durationMs,
+  }));
+  recordFlowEvent({
+    flowId,
+    eventName: 'vehicle.detail_succeeded',
+    source: 'mcp-server',
+    provider: source,
+    toolName: source === 'marketcheck_mcp' ? 'search_active_cars' : 'search_result_cache',
+    vehicleId,
+    vin,
+    status: 'success',
+    durationMs,
+    payload: { fallback: source === 'search_result_cache' },
+  }).catch(() => {});
+  return {
+    success: true,
+    content: [{
+      type: 'text',
+      text: `Loaded details for ${identity.year ?? ''} ${identity.make ?? ''} ${identity.model ?? ''}.`.replace(/\s+/g, ' ').trim(),
+    }],
+    structuredContent: { vehicle, flowId },
+    _meta: { vehicle, flowId },
+  };
+}
 
 export async function getVehicleDetails(params: unknown) {
   const parsed = InputSchema.safeParse(params);
@@ -39,6 +80,8 @@ export async function getVehicleDetails(params: unknown) {
     flowId,
   );
   if (!call.success) {
+    const cached = findVehicleDetails(parsed.data);
+    if (cached) return detailResult(cached, flowId, 'search_result_cache', call.latencyMs);
     console.error(
       JSON.stringify({
         event: 'vehicle_detail_failed',
@@ -66,38 +109,10 @@ export async function getVehicleDetails(params: unknown) {
     normalized.vehicles.find((candidate) => candidate.id === parsed.data.listingId) ??
     normalized.vehicles[0];
   if (!vehicle) {
+    const cached = findVehicleDetails(parsed.data);
+    if (cached) return detailResult(cached, flowId, 'search_result_cache', call.latencyMs);
     return { success: false, error: 'Vehicle detail is no longer available.' };
   }
 
-  console.log(
-    JSON.stringify({
-      event: 'vehicle_detail_succeeded',
-      flowId,
-      provider: 'marketcheck_mcp',
-      listingId: vehicle.id,
-      durationMs: call.latencyMs,
-    }),
-  );
-  recordFlowEvent({
-    flowId,
-    eventName: 'vehicle.detail_succeeded',
-    source: 'mcp-server',
-    provider: 'marketcheck_mcp',
-    toolName: 'search_active_cars',
-    vehicleId: vehicle.id,
-    vin: vehicle.baseIdentity.vin,
-    status: 'success',
-    durationMs: call.latencyMs,
-  }).catch(() => {});
-  return {
-    success: true,
-    content: [
-      {
-        type: 'text',
-        text: `Loaded details for ${vehicle.baseIdentity.year} ${vehicle.baseIdentity.make} ${vehicle.baseIdentity.model}.`,
-      },
-    ],
-    structuredContent: { vehicle, flowId },
-    _meta: { vehicle, flowId },
-  };
+  return detailResult(vehicle as unknown as Record<string, unknown>, flowId, 'marketcheck_mcp', call.latencyMs);
 }

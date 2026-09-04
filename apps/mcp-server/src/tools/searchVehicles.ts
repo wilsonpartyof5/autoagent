@@ -18,6 +18,7 @@ import {
   decodeProxiedVehicleImageSource,
   fetchVehicleImageDataUrl,
 } from '../app/vehicle-image.js';
+import { rememberVehicleDetails } from '../lib/vehicleDetailCache.js';
 import {
   buildEmptyState,
   buildReadableSearchContent,
@@ -503,6 +504,7 @@ async function normalizeBridgeSearchResult(
     .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
   const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_MAP_PINS);
   const inlineStats = await inlineWidgetPrimaryPhotos(vehicles.slice(0, RAIL_CARD_LIMIT));
+  rememberVehicleDetails(vehicles);
   if (inlineStats.inlined || inlineStats.failed) {
     console.log(JSON.stringify({
       event: 'widget_images_inlined',
@@ -1179,6 +1181,7 @@ export async function searchVehicles(
         return compactVehicleForWidget(base);
       });
       const structuredContentVehicles = balanceVehiclesByDealer(compactVehicles, MAX_WIDGET_RESULTS);
+      rememberVehicleDetails(structuredContentVehicles);
 
     const toolResult = {
       success: true,
