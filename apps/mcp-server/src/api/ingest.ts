@@ -384,16 +384,11 @@ export function createIngestionRouter(): express.Router {
         duplicatesSkipped,
       });
 
-      const ingestionOptions: IngestionServiceOptions = {
-        provider: 'marketcheck',
-        dataSource: 'marketcheck-api',
-        dealerId,
-        // Deletions are only safe when scoped to a dealer.
-        deletionStrategy: dealerId ? 'mark_unavailable' : 'none',
-        timeoutMs: 30000,
-        batchSize: 100,
-        continueOnError: true,
-      };
+      const ingestionOptions = trustedIngestOptions(
+        'marketcheck',
+        { dataSource: 'marketcheck-api', deletionStrategy: 'mark_unavailable' },
+        dealerId ? { dealerId } : undefined,
+      );
 
       if (!dealerId) {
         logger.warn({
