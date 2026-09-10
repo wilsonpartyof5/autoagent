@@ -263,38 +263,51 @@ export async function createDealership(payload: {
     throw new Error('Not authenticated');
   }
 
-  // Create dealership
-  const { data: dealership, error: dealershipError } = await admin
-    .from('dealerships')
-    .insert({
-      name: payload.name,
-      marketcheck_dealer_id: payload.marketcheckDealerId ?? null,
-      marketcheck_zip: payload.marketcheckZip ?? null,
-      marketcheck_website_url: payload.marketcheckWebsiteUrl ?? null,
-      logo_url: payload.logoUrl ?? null,
-    })
-    .select()
-    .single();
+  const { data: rpcDealership, error: rpcError } = await supabase.rpc('create_own_dealership', {
+    p_name: payload.name,
+    p_marketcheck_dealer_id: payload.marketcheckDealerId ?? null,
+    p_marketcheck_zip: payload.marketcheckZip ?? null,
+    p_marketcheck_website_url: payload.marketcheckWebsiteUrl ?? null,
+    p_logo_url: payload.logoUrl ?? null,
+  });
 
-  if (dealershipError || !dealership) {
-    console.error('[dealerships] Failed to create dealership:', dealershipError);
-    throw new Error('Failed to create dealership');
-  }
+  let dealership = Array.isArray(rpcDealership) ? rpcDealership[0] : rpcDealership;
 
-  // Link user to dealership
-  const { error: membershipError } = await admin
-    .from('user_dealerships')
-    .insert({
+  // Function not applied yet: fall back to two writes with cleanup.
+  if (rpcError && (rpcError.code === '42883' || rpcError.message?.includes('create_own_dealership'))) {
+    const created = await admin
+      .from('dealerships')
+      .insert({
+        name: payload.name,
+        marketcheck_dealer_id: payload.marketcheckDealerId ?? null,
+        marketcheck_zip: payload.marketcheckZip ?? null,
+        marketcheck_website_url: payload.marketcheckWebsiteUrl ?? null,
+        logo_url: payload.logoUrl ?? null,
+      })
+      .select()
+      .single();
+
+    if (created.error || !created.data) {
+      console.error('[dealerships] Failed to create dealership:', created.error);
+      throw new Error('Failed to create dealership');
+    }
+
+    const { error: membershipError } = await admin.from('user_dealerships').insert({
       user_id: user.id,
-      dealership_id: dealership.id,
+      dealership_id: created.data.id,
       role: 'owner',
     });
 
-  if (membershipError) {
-    console.error('[dealerships] Failed to link user to dealership:', membershipError);
-    // Clean up dealership if membership creation fails
-    await supabase.from('dealerships').delete().eq('id', dealership.id);
-    throw new Error('Failed to link user to dealership');
+    if (membershipError) {
+      console.error('[dealerships] Failed to link user to dealership:', membershipError);
+      await admin.from('dealerships').delete().eq('id', created.data.id);
+      throw new Error('Failed to link user to dealership');
+    }
+
+    dealership = created.data;
+  } else if (rpcError || !dealership) {
+    console.error('[dealerships] Failed to create dealership:', rpcError);
+    throw new Error('Failed to create dealership');
   }
 
   // Set as active dealership if it's the first one
@@ -315,6 +328,41 @@ export async function createDealership(payload: {
   };
 }
 
+async function assertCanMutateDealership(dealershipId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const isPlatformAdmin = await isCurrentUserPlatformAdmin();
+  if (isPlatformAdmin) {
+    const { data } = await createAdminClient()
+      .from('dealerships')
+      .select('id')
+      .eq('id', dealershipId)
+      .maybeSingle();
+    if (!data) {
+      throw new Error('You do not have access to this dealership');
+    }
+    return;
+  }
+
+  const { data: membership, error } = await supabase
+    .from('user_dealerships')
+    .select('dealership_id')
+    .eq('user_id', user.id)
+    .eq('dealership_id', dealershipId)
+    .maybeSingle();
+
+  if (error || !membership) {
+    throw new Error('You do not have access to this dealership');
+  }
+}
+
 /**
  * Update an existing dealership
  */
@@ -328,7 +376,9 @@ export async function updateDealership(
     logoUrl?: string | null;
   },
 ): Promise<Dealership> {
-  const supabase = createAdminClient(); // use admin client to avoid RLS blocks
+  await assertCanMutateDealership(dealershipId);
+
+  const supabase = createAdminClient();
 
   // Update dealership
   const updateData: Record<string, unknown> = {

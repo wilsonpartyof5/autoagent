@@ -6,6 +6,7 @@ const REQUIRED_ENV = {
   LEAD_ENC_KEY: Buffer.alloc(32).toString('base64'),
   DASHBOARD_INGEST_URL: 'https://dashboard.example.com/api/ingest/lead',
   DASHBOARD_INGEST_TOKEN: 'test-token',
+  INGESTION_API_TOKEN: 'test-ingest-token',
 };
 
 describe('bridge env validation', () => {

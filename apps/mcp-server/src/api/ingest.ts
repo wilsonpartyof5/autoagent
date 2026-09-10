@@ -5,12 +5,14 @@
  */
 
 import express from 'express';
-import { ingestVehiclesFromProvider, type IngestionServiceOptions } from '../ingestion/service.js';
+import { ingestVehiclesFromProvider } from '../ingestion/service.js';
 import {
   SYNDICATION_MAX_ROWS,
   buildDealershipInventoryUrl,
 } from '../ingestion/marketcheckSyndication.js';
-import { authorizeIngestRequest, resolveDeletionStrategy } from '../lib/ingestAuth.js';
+import { authorizeIngestRequest } from '../lib/ingestAuth.js';
+import { parseFetchAndIngestBody, parseIngestVehiclesBody, trustedIngestOptions } from '../lib/ingestBody.js';
+import { CONFIG } from '../config/env.js';
 import pino from 'pino';
 
 const logger = (pino as any)();
@@ -28,7 +30,7 @@ export function createIngestionRouter(): express.Router {
   router.use((req, res, next) => {
     const auth = authorizeIngestRequest(
       { authorization: req.headers.authorization },
-      process.env.INGESTION_API_TOKEN,
+      CONFIG.ingestionApiToken,
     );
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
@@ -42,24 +44,24 @@ export function createIngestionRouter(): express.Router {
    * GET /v2/dealerships/inventory (24h cache allowed). Not live search.
    */
   router.post('/marketcheck/fetch-and-ingest', async (req, res) => {
+    const parsed = parseFetchAndIngestBody(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: parsed.error.issues.map((issue) => issue.message).join('; ') || 'Invalid request body',
+      });
+    }
+
     const {
       dealerId,
       source,
-      pageSize,
       page = 1,
-      // Safety rails: MarketCheck pagination behavior can be inconsistent.
-      // These caps prevent runaway loops and excessively large ingestions.
       maxPages = 10,
       maxVehicles = 5000,
-    } = req.body || {};
+    } = parsed.data;
 
-    const apiKey = process.env.MARKETCHECK_API_KEY;
+    const apiKey = CONFIG.marketcheckApiKey;
     if (!apiKey) {
       return res.status(500).json({ error: 'MARKETCHECK_API_KEY not configured' });
-    }
-
-    if (!dealerId && !source) {
-      return res.status(400).json({ error: 'dealerId or source is required' });
     }
 
     const baseUrl = (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
@@ -71,7 +73,6 @@ export function createIngestionRouter(): express.Router {
         dealerId,
         source,
         page,
-        pageSize,
         maxPages,
         maxVehicles,
       });
@@ -437,26 +438,19 @@ export function createIngestionRouter(): express.Router {
    */
   router.post('/marketcheck', async (req, res) => {
     try {
-      const { vehicles, options } = req.body;
-      
-      if (!Array.isArray(vehicles)) {
-        return res.status(400).json({ error: 'vehicles must be an array' });
+      const parsed = parseIngestVehiclesBody(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.issues.map((issue) => issue.message).join('; ') || 'Invalid request body',
+        });
       }
-      
-      const ingestionOptions: IngestionServiceOptions = {
-        provider: 'marketcheck',
-        dataSource: options?.dataSource || 'marketcheck-api',
-        timeoutMs: options?.timeoutMs || 30000,
-        batchSize: options?.batchSize || 100,
-        continueOnError: options?.continueOnError !== false,
-        ...options,
-        dealerId: options?.dealerId,
-        deletionStrategy: resolveDeletionStrategy(
-          options?.deletionStrategy || 'mark_unavailable',
-          options?.dealerId,
-          'mark_unavailable',
-        ),
-      };
+
+      const { vehicles, options } = parsed.data;
+      const ingestionOptions = trustedIngestOptions(
+        'marketcheck',
+        { dataSource: 'marketcheck-api', deletionStrategy: 'mark_unavailable' },
+        options,
+      );
       
       logger.info({
         event: 'ingestion_api_request',
@@ -496,26 +490,19 @@ export function createIngestionRouter(): express.Router {
    */
   router.post('/csv', async (req, res) => {
     try {
-      const { vehicles, options } = req.body;
-      
-      if (!Array.isArray(vehicles)) {
-        return res.status(400).json({ error: 'vehicles must be an array' });
+      const parsed = parseIngestVehiclesBody(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.issues.map((issue) => issue.message).join('; ') || 'Invalid request body',
+        });
       }
-      
-      const ingestionOptions: IngestionServiceOptions = {
-        provider: 'csv-import',
-        dataSource: options?.dataSource || 'csv-import',
-        timeoutMs: options?.timeoutMs || 30000,
-        batchSize: options?.batchSize || 100,
-        continueOnError: options?.continueOnError !== false,
-        ...options,
-        dealerId: options?.dealerId,
-        deletionStrategy: resolveDeletionStrategy(
-          options?.deletionStrategy || 'none',
-          options?.dealerId,
-          'none',
-        ),
-      };
+
+      const { vehicles, options } = parsed.data;
+      const ingestionOptions = trustedIngestOptions(
+        'csv-import',
+        { dataSource: 'csv-import', deletionStrategy: 'none' },
+        options,
+      );
       
       const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
       
@@ -539,77 +526,19 @@ export function createIngestionRouter(): express.Router {
    */
   router.post('/dealer-api', async (req, res) => {
     try {
-      const { vehicles, options } = req.body;
-      
-      if (!Array.isArray(vehicles)) {
-        return res.status(400).json({ error: 'vehicles must be an array' });
-      }
-      
-      const ingestionOptions: IngestionServiceOptions = {
-        provider: 'dealer-api',
-        dataSource: options?.dataSource || 'dealer-api',
-        timeoutMs: options?.timeoutMs || 30000,
-        batchSize: options?.batchSize || 100,
-        continueOnError: options?.continueOnError !== false,
-        ...options,
-        dealerId: options?.dealerId,
-        deletionStrategy: resolveDeletionStrategy(
-          options?.deletionStrategy || 'mark_unavailable',
-          options?.dealerId,
-          'mark_unavailable',
-        ),
-      };
-      
-      const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
-      
-      res.json(result);
-    } catch (error) {
-      logger.error({
-        event: 'ingestion_api_error',
-        provider: 'dealer-api',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Internal server error',
-      });
-    }
-  });
-  
-  /**
-   * POST /api/ingest/:provider
-   * Generic ingestion endpoint for any provider
-   */
-  router.post('/:provider', async (req, res) => {
-    try {
-      const { provider } = req.params;
-      const { vehicles, options } = req.body;
-      
-      if (!Array.isArray(vehicles)) {
-        return res.status(400).json({ error: 'vehicles must be an array' });
-      }
-      
-      const validProviders = ['marketcheck', 'csv-import', 'dealer-api', 'dealer-com', 'homenet', 'vauto'];
-      if (!validProviders.includes(provider)) {
-        return res.status(400).json({ 
-          error: `Invalid provider. Must be one of: ${validProviders.join(', ')}` 
+      const parsed = parseIngestVehiclesBody(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.issues.map((issue) => issue.message).join('; ') || 'Invalid request body',
         });
       }
-      
-      const ingestionOptions: IngestionServiceOptions = {
-        provider: provider as any,
-        dataSource: options?.dataSource || provider,
-        timeoutMs: options?.timeoutMs || 30000,
-        batchSize: options?.batchSize || 100,
-        continueOnError: options?.continueOnError !== false,
-        ...options,
-        dealerId: options?.dealerId,
-        deletionStrategy: resolveDeletionStrategy(
-          options?.deletionStrategy || 'mark_unavailable',
-          options?.dealerId,
-          'mark_unavailable',
-        ),
-      };
+
+      const { vehicles, options } = parsed.data;
+      const ingestionOptions = trustedIngestOptions(
+        'dealer-api',
+        { dataSource: 'dealer-api', deletionStrategy: 'mark_unavailable' },
+        options,
+      );
       
       const result = await ingestVehiclesFromProvider(vehicles, ingestionOptions);
       
@@ -617,7 +546,7 @@ export function createIngestionRouter(): express.Router {
     } catch (error) {
       logger.error({
         event: 'ingestion_api_error',
-        provider: req.params.provider,
+        provider: 'dealer-api',
         error: error instanceof Error ? error.message : String(error),
       });
       

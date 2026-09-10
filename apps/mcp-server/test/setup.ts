@@ -9,4 +9,5 @@ process.env.MARKETCHECK_BASE_URL = 'https://test-api.example.com';
 process.env.LEAD_ENC_KEY = Buffer.alloc(32).toString('base64');
 process.env.DASHBOARD_INGEST_URL = 'https://dashboard.example.com/api/ingest/lead';
 process.env.DASHBOARD_INGEST_TOKEN = 'test-token';
+process.env.INGESTION_API_TOKEN = 'test-ingest-token';
 process.env.PORT = '8787';

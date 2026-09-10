@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { syncMarketCheckInventory } from '@/app/app/setup/actions';
+import { fetchAndIngestMarketCheckInventory } from '@/lib/ingest/marketcheck';
 
+/**
+ * Trusted service sync. Not a user action — cron/automation must present
+ * DASHBOARD_INGEST_TOKEN. MarketCheck IDs come from the caller, not a browser.
+ */
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -23,30 +27,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { dealerId, zip, radiusMiles, condition } = body ?? {};
+    const { dealerId, source } = body ?? {};
 
     if (!dealerId || typeof dealerId !== 'string') {
       return NextResponse.json({ error: 'dealerId is required' }, { status: 400 });
     }
 
-    const normalizedCondition =
-      condition === 'new' || condition === 'used' || condition === 'all' ? condition : undefined;
-
-    let normalizedRadius: number | undefined;
-    if (radiusMiles !== undefined && radiusMiles !== null) {
-      const parsed =
-        typeof radiusMiles === 'number' ? radiusMiles : Number.parseFloat(radiusMiles);
-      if (Number.isNaN(parsed)) {
-        return NextResponse.json({ error: 'radiusMiles must be numeric' }, { status: 400 });
-      }
-      normalizedRadius = parsed;
-    }
-
-    const result = await syncMarketCheckInventory({
+    const result = await fetchAndIngestMarketCheckInventory({
       dealerId,
-      zip,
-      radiusMiles: normalizedRadius,
-      condition: normalizedCondition,
+      source: typeof source === 'string' ? source : undefined,
     });
 
     return NextResponse.json({

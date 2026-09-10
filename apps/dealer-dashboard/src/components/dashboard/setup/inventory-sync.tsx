@@ -12,13 +12,14 @@ const MARKETCHECK_NO_MATCH_MESSAGE =
   "We requested MarketCheck to map your website. Please try again in 24-48 hours.";
 
 type Props = {
+  dealershipId?: string | null;
   initialProvider?: InventoryProvider | null;
   initialDealerId?: string | null;
   initialZip?: string | null;
   initialDealershipName?: string | null;
 };
 
-export function InventorySyncForm({ initialProvider, initialDealerId, initialZip, initialDealershipName }: Props) {
+export function InventorySyncForm({ dealershipId, initialProvider, initialDealerId, initialZip, initialDealershipName }: Props) {
   const [provider, setProvider] = useState<InventoryProvider>(initialProvider ?? "marketcheck");
   const [dealerId, setDealerId] = useState(initialDealerId ?? "");
   const [zip, setZip] = useState(initialZip ?? "");
@@ -76,7 +77,7 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
       setIsLoadingRooftops(true);
       setRooftopError(null);
       try {
-        const fetchedRooftops = await fetchDealerRooftops(trimmedId);
+        const fetchedRooftops = dealershipId ? await fetchDealerRooftops(dealershipId) : [];
         setRooftops(fetchedRooftops);
         
         if (fetchedRooftops.length === 0) {
@@ -103,7 +104,7 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [dealerId, initialDealerId]);
+  }, [dealershipId, dealerId, initialDealerId]);
 
   const handleRooftopSelect = (rooftop: DealerRooftop) => {
     setSelectedRooftop(rooftop);
@@ -112,10 +113,10 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
   };
 
   const handleSync = () => {
-    if (!dealerId.trim()) {
+    if (!dealershipId) {
       setFeedback({
         variant: "error",
-        message: "Enter your MarketCheck dealer ID before syncing.",
+        message: "Save your dealership website in Settings before syncing.",
       });
       return;
     }
@@ -124,10 +125,7 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
       (async () => {
         try {
           const result = await syncMarketCheckInventory({
-            dealerId: dealerId.trim(),
-            zip: zip.trim() || undefined,
-            radiusMiles: radius,
-            condition,
+            dealershipId,
           });
 
           if (result?.status === "no_match") {
@@ -194,6 +192,7 @@ export function InventorySyncForm({ initialProvider, initialDealerId, initialZip
         {/* Conditional Content Based on Provider */}
         {provider === "marketcheck" && (
             <MarketCheckForm
+            dealershipId={dealershipId}
             dealerId={dealerId}
             setDealerId={setDealerId}
             zip={zip}
@@ -322,7 +321,9 @@ function MarketCheckForm({
   initialDealerId,
   dealershipName,
   setDealershipName,
+  dealershipId,
 }: {
+  dealershipId?: string | null;
   dealerId: string;
   setDealerId: (value: string) => void;
   zip: string;
@@ -364,7 +365,7 @@ function MarketCheckForm({
       setIsLoadingRooftops(true);
       setRooftopError(null);
       try {
-        const fetchedRooftops = await fetchDealerRooftops(trimmedId);
+        const fetchedRooftops = dealershipId ? await fetchDealerRooftops(dealershipId) : [];
         setRooftops(fetchedRooftops);
         
         if (fetchedRooftops.length === 0) {
@@ -391,7 +392,7 @@ function MarketCheckForm({
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [dealerId, initialDealerId, setRooftops, setSelectedRooftop, setZip, setShowManualZip, setIsLoadingRooftops, setRooftopError]);
+  }, [dealershipId, dealerId, initialDealerId, setRooftops, setSelectedRooftop, setZip, setShowManualZip, setIsLoadingRooftops, setRooftopError]);
 
   const handleRooftopSelect = (rooftop: DealerRooftop) => {
     setSelectedRooftop(rooftop);
@@ -400,10 +401,10 @@ function MarketCheckForm({
   };
 
   const handleSync = () => {
-    if (!dealerId.trim()) {
+    if (!dealershipId) {
       setFeedback({
         variant: "error",
-        message: "Enter your MarketCheck dealer ID before syncing.",
+        message: "Save your dealership website in Settings before syncing.",
       });
       return;
     }
@@ -419,11 +420,7 @@ function MarketCheckForm({
     startTransition(async () => {
       try {
         const result = await syncMarketCheckInventory({
-          dealerId: dealerId.trim(),
-          zip: zip.trim() || undefined,
-          radiusMiles: radius,
-          condition,
-          dealershipName: dealershipName.trim(),
+          dealershipId,
         });
 
         if (result?.status === "no_match") {

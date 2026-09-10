@@ -169,6 +169,9 @@ export const CONFIG = {
   // Required: Dashboard ingest configuration
   dashboardIngestUrl: validateDashboardIngestUrl(requireEnv('DASHBOARD_INGEST_URL')),
   dashboardIngestToken: requireEnv('DASHBOARD_INGEST_TOKEN'),
+
+  // Required: Privileged inventory ingest. Missing token prevents startup.
+  ingestionApiToken: requireEnv('INGESTION_API_TOKEN'),
   
   // Optional: OpenAI App configuration
   openaiAppName: optionalEnv('OPENAI_APP_NAME', 'Drevvy'),
@@ -261,6 +264,7 @@ function validateConfig(): void {
     );
     console.log(`   Dashboard Ingest URL: ${CONFIG.dashboardIngestUrl}`);
     console.log(`   Dashboard Ingest Token: ${CONFIG.dashboardIngestToken ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   Ingestion API Token: ${CONFIG.ingestionApiToken ? '✅ Set' : '❌ Missing'}`);
     console.log(`   Lead Encryption Key: ${CONFIG.leadEncKey ? '✅ Set' : '❌ Missing'}`);
     console.log(`   Diagnostics: ${CONFIG.diagnosticsEnabled ? 'Enabled' : 'Disabled'}`);
   }
