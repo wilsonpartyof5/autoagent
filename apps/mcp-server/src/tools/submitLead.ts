@@ -1,14 +1,13 @@
 import { z } from 'zod';
-import { nanoid } from 'nanoid';
 import pino from 'pino';
 import { encryptJson } from '../lib/crypto.js';
-import { insertLead } from '../data/db.js';
 import { forwardLead } from '../services/forwardLead.js';
-import { deliverLead } from '../services/deliverLead.js';
+import { processLeadDeliveryJobs } from '../services/leadDeliveryOutbox.js';
 import { trackEvent } from '../lib/analytics/tracking.js';
 import { generateRequestId } from '@autoagent/shared';
 import { verifySearchResult } from '../lib/searchResultToken.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
+import { acceptLeadSubmission } from '../lib/leadRateLimit.js';
 import { createHash } from 'crypto';
 
 const logger = (pino as any)();
@@ -45,7 +44,7 @@ const SubmitLeadSchema = z.object({
 
 
 export interface SubmitLeadContext {
-  // No PII - removed ipAddress and userAgent
+  ipAddress?: string;
 }
 
 /**
@@ -53,7 +52,7 @@ export interface SubmitLeadContext {
  */
 export async function submitLead(
   params: unknown,
-  _context?: SubmitLeadContext
+  context?: SubmitLeadContext
 ): Promise<{
   success: boolean;
   content?: Array<{ type: string; text: string }>;
@@ -67,8 +66,14 @@ export async function submitLead(
   };
   error?: string;
 }> {
-  void _context;
   try {
+    if (!acceptLeadSubmission(context?.ipAddress)) {
+      return {
+        success: false,
+        error: 'Too many quote requests. Please wait a few minutes and try again.',
+      };
+    }
+
     // Validate input schema
     const parseResult = SubmitLeadSchema.safeParse(params);
     if (!parseResult.success) {
@@ -202,13 +207,16 @@ export async function submitLead(
     const routingStatus = marketcheckSnapshot ? 'platform_inbox' : 'dealer_assigned';
     const flowId = marketcheckSnapshot?.flowId ?? generateRequestId();
 
-    // Generate lead ID
+    // Generate lead ID. Nationwide and UVS retries are idempotent.
     const leadId = marketcheckSnapshot
       ? `mc_${createHash('sha256')
           .update(`${marketcheckSnapshot.flowId}:${marketcheckSnapshot.listingId}`)
           .digest('base64url')
           .slice(0, 20)}`
-      : nanoid();
+      : `uvs_${createHash('sha256')
+          .update(`${uvsVin.toUpperCase()}:${resolvedDealerId}:${user.email.trim().toLowerCase()}`)
+          .digest('base64url')
+          .slice(0, 20)}`;
 
     // Encrypt the payload (user contact info only - no vehicle/dealer data)
     const payload = {
@@ -217,22 +225,7 @@ export async function submitLead(
     };
 
     const encPayload = await encryptJson(payload);
-    
-    // Store in database with UVS IDs and pricing snapshot
     const createdAt = Date.now();
-    insertLead({
-      id: leadId,
-      uvsVehicleId: vehicleId, // FK to uvs_vehicles.id
-      uvsDealerId: resolvedDealerId, // FK to uvs_vehicles.dealer_id
-      vehicleId, // Keep for backward compatibility
-      dealerId: resolvedDealerId, // Keep for backward compatibility
-      vin: uvsVin,
-      price: resolvedPrice,
-      currency: resolvedCurrency,
-      encPayload,
-      consent,
-      createdAt,
-    });
 
     const persisted = await forwardLead({
       leadId,
@@ -255,16 +248,12 @@ export async function submitLead(
       };
     }
 
-    // Deliver to dealer's CRM via ADF XML (fire-and-forget)
-    if (resolvedDealerId && !marketcheckSnapshot) {
-      deliverLead({
-        leadId,
-        dealerId: resolvedDealerId,
-        vehicleId,
-        vin: uvsVin,
-        encPayload,
-      }).catch(error => {
-        logger.error('Failed to deliver lead to CRM', { leadId, dealerId: resolvedDealerId, error: error.message });
+    if (!marketcheckSnapshot) {
+      processLeadDeliveryJobs().catch((error) => {
+        logger.error('Lead delivery outbox kick failed', {
+          leadId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
       });
     }
 

@@ -20,6 +20,7 @@ describe('bridge env validation', () => {
     delete process.env.MARKETCHECK_MCP_AUTH_TYPE;
     delete process.env.MARKETCHECK_MCP_BRIDGE_ENABLED;
     delete process.env.INVENTORY_SEARCH_PROVIDER;
+    delete process.env.SEARCH_RESULT_HMAC_KEY;
   });
 
   it('uses the official hosted MCP when MarketCheck is primary', async () => {
@@ -27,6 +28,20 @@ describe('bridge env validation', () => {
     const { CONFIG } = await import('../src/config/env.js');
     expect(CONFIG.inventorySearchProvider).toBe('marketcheck_mcp');
     expect(CONFIG.marketcheckMcpUrl).toBe('https://api.marketcheck.com/mcp');
+  });
+
+  it('reuses LEAD_ENC_KEY for search tokens when SEARCH_RESULT_HMAC_KEY is unset', async () => {
+    delete process.env.SEARCH_RESULT_HMAC_KEY;
+    const { CONFIG } = await import('../src/config/env.js');
+    expect(CONFIG.searchResultHmacKey).toBe(CONFIG.leadEncKey);
+  });
+
+  it('uses SEARCH_RESULT_HMAC_KEY when it is set', async () => {
+    const hmacKey = Buffer.alloc(32, 7).toString('base64');
+    process.env.SEARCH_RESULT_HMAC_KEY = hmacKey;
+    const { CONFIG } = await import('../src/config/env.js');
+    expect(CONFIG.searchResultHmacKey).toBe(hmacKey);
+    expect(CONFIG.searchResultHmacKey).not.toBe(CONFIG.leadEncKey);
   });
 
   it('allows an explicit UVS primary override', async () => {

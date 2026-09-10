@@ -15,16 +15,12 @@ vi.mock('../src/db/uvs-vehicles.js', () => ({
   getUVSVehicleByVIN: vi.fn(),
 }));
 
-vi.mock('../src/data/db.js', () => ({
-  insertLead: vi.fn(),
-}));
-
 vi.mock('../src/services/forwardLead.js', () => ({
   forwardLead: vi.fn(() => Promise.resolve(true)),
 }));
 
-vi.mock('../src/services/deliverLead.js', () => ({
-  deliverLead: vi.fn(() => Promise.resolve()),
+vi.mock('../src/services/leadDeliveryOutbox.js', () => ({
+  processLeadDeliveryJobs: vi.fn(() => Promise.resolve({ processed: 0, succeeded: 0, failed: 0 })),
 }));
 
 vi.mock('../src/lib/analytics/tracking.js', () => ({
@@ -36,10 +32,10 @@ vi.mock('../src/lib/crypto.js', () => ({
 }));
 
 import { getUVSVehicleById, getUVSVehicleByVIN } from '../src/db/uvs-vehicles.js';
-import { insertLead } from '../src/data/db.js';
 import { forwardLead } from '../src/services/forwardLead.js';
-import { deliverLead } from '../src/services/deliverLead.js';
+import { processLeadDeliveryJobs } from '../src/services/leadDeliveryOutbox.js';
 import { signSearchResult } from '../src/lib/searchResultToken.js';
+import { resetLeadRateLimitForTests } from '../src/lib/leadRateLimit.js';
 
 describe('submitLead (UVS-first)', () => {
   // Sample UVS vehicle for testing
@@ -69,6 +65,7 @@ describe('submitLead (UVS-first)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetLeadRateLimitForTests();
   });
 
   afterEach(() => {
@@ -111,18 +108,14 @@ describe('submitLead (UVS-first)', () => {
       expect(getUVSVehicleById).toHaveBeenCalledWith('mc-12345');
 
       // Verify lead was stored with UVS fields
-      expect(forwardLead).toHaveBeenCalled();
-      expect(insertLead).toHaveBeenCalledWith(
+      expect(forwardLead).toHaveBeenCalledWith(
         expect.objectContaining({
-          uvsVehicleId: 'mc-12345',
-          uvsDealerId: 'dealer-123',
           vehicleId: 'mc-12345',
           dealerId: 'dealer-123',
           vin: '1HGBH41JXMN109186',
-          price: 28500,
-          currency: 'USD',
         })
       );
+      expect(processLeadDeliveryJobs).toHaveBeenCalled();
     });
 
     it('fails when dashboard persist does not succeed', async () => {
@@ -167,9 +160,8 @@ describe('submitLead (UVS-first)', () => {
       expect(result.structuredContent?.dealerId).toBe('dealer-123');
 
       // Verify lead was stored with hydrated dealer info
-      expect(insertLead).toHaveBeenCalledWith(
+      expect(forwardLead).toHaveBeenCalledWith(
         expect.objectContaining({
-          uvsDealerId: 'dealer-123',
           dealerId: 'dealer-123',
         })
       );
@@ -207,9 +199,9 @@ describe('submitLead (UVS-first)', () => {
       // Should use UVS price (source of truth)
       expect(result.structuredContent?.price).toBe(29000);
 
-      expect(insertLead).toHaveBeenCalledWith(
+      expect(forwardLead).toHaveBeenCalledWith(
         expect.objectContaining({
-          price: 29000, // UVS price, not input price
+          dealerId: 'dealer-123',
         })
       );
     });
@@ -240,7 +232,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Vehicle not found in UVS inventory');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should fall back to VIN lookup when vehicleId lookup fails', async () => {
@@ -295,7 +287,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('VIN mismatch');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when vehicleId does not match UVS record', async () => {
@@ -321,7 +313,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Vehicle ID mismatch');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when dealerId does not match UVS record', async () => {
@@ -347,7 +339,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Dealer ID mismatch');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when dealerName does not match UVS record', async () => {
@@ -373,7 +365,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Dealer name mismatch');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when UVS vehicle has no VIN', async () => {
@@ -406,7 +398,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('does not have a VIN');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when UVS vehicle has no dealerId', async () => {
@@ -441,7 +433,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Dealer ID is required');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
   });
 
@@ -466,7 +458,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid input');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when vin is missing', async () => {
@@ -489,7 +481,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid input');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should hydrate dealerId when it is missing from a UVS lead', async () => {
@@ -532,7 +524,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid input');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject when consent is false', async () => {
@@ -558,7 +550,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Consent must be true');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
 
     it('should reject additional non-UVS fields (strict mode)', async () => {
@@ -584,7 +576,7 @@ describe('submitLead (UVS-first)', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid input');
-      expect(insertLead).not.toHaveBeenCalled();
+      expect(forwardLead).not.toHaveBeenCalled();
     });
   });
 
@@ -611,6 +603,51 @@ describe('submitLead (UVS-first)', () => {
       const result = await submitLead(params);
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('UVS idempotency and rate limits', () => {
+    const params = {
+      vehicleId: 'mc-12345',
+      vin: '1HGBH41JXMN109186',
+      dealerId: 'dealer-123',
+      dealerName: 'ABC Auto Sales',
+      pricing: { price: 28500, currency: 'USD' },
+      user: { name: 'John Doe', email: 'john.doe@example.com' },
+      consent: true,
+    };
+
+    it('reuses the same UVS lead id for the same vin, dealer, and email', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(mockUVSVehicle);
+
+      const first = await submitLead(params);
+      const second = await submitLead(params);
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(second.structuredContent?.leadId).toBe(first.structuredContent?.leadId);
+      expect(first.structuredContent?.leadId).toMatch(/^uvs_/);
+    });
+
+    it('rejects a sixth quote from the same shopper within 15 minutes', async () => {
+      vi.mocked(getUVSVehicleById).mockResolvedValue(mockUVSVehicle);
+      const ctx = { ipAddress: '203.0.113.10' };
+
+      for (let i = 0; i < 5; i += 1) {
+        const result = await submitLead({
+          ...params,
+          user: { ...params.user, email: `shopper${i}@example.com` },
+        }, ctx);
+        expect(result.success).toBe(true);
+      }
+
+      const blocked = await submitLead({
+        ...params,
+        user: { ...params.user, email: 'shopper5@example.com' },
+      }, ctx);
+      expect(blocked.success).toBe(false);
+      expect(blocked.error).toMatch(/too many quote requests/i);
+      expect(forwardLead).toHaveBeenCalledTimes(5);
     });
   });
 
@@ -665,7 +702,7 @@ describe('submitLead (UVS-first)', () => {
         flowId: 'flow-1',
         vehicleSnapshot: vehicle,
       }));
-      expect(deliverLead).not.toHaveBeenCalled();
+      expect(processLeadDeliveryJobs).not.toHaveBeenCalled();
     });
   });
 });

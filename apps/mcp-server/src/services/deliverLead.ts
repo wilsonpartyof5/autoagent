@@ -77,11 +77,41 @@ function getSupabaseClient() {
 /**
  * Fetch dealer delivery settings from Supabase
  */
-async function getDealerDeliverySettings(dealerId: string): Promise<DealerDeliverySettings | null> {
+async function getDealerDeliverySettings(
+  dealerId?: string,
+  dealershipId?: string,
+): Promise<DealerDeliverySettings | null> {
   try {
     const supabase = getSupabaseClient();
 
-    // Find user_id by dealer_id (assuming dealer_id is stored in profiles)
+    if (dealershipId) {
+      const { data: membership } = await supabase
+        .from('user_dealerships')
+        .select('user_id')
+        .eq('dealership_id', dealershipId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (membership?.user_id) {
+        const { data: byMember } = await supabase
+          .from('profiles')
+          .select('id, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email')
+          .eq('id', membership.user_id)
+          .maybeSingle();
+        if (byMember) {
+          return {
+            method: (byMember.lead_delivery_method as 'http' | 'email' | null) || null,
+            endpoint: byMember.lead_delivery_endpoint || null,
+            email: byMember.lead_delivery_email || null,
+          };
+        }
+      }
+    }
+
+    if (!dealerId) {
+      return null;
+    }
+
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('id, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email')
@@ -281,6 +311,7 @@ async function logDeliveryAttempt(log: DeliveryLog): Promise<void> {
 export async function deliverLead({
   leadId,
   dealerId,
+  dealershipId,
   vehicleId,
   vin,
   encPayload,
@@ -288,22 +319,23 @@ export async function deliverLead({
 }: {
   leadId: string;
   dealerId?: string;
+  dealershipId?: string;
   vehicleId: string;
   vin?: string;
   encPayload: string;
   userId?: string;
-}): Promise<void> {
-  if (!dealerId) {
+}): Promise<{ success: boolean; error?: string }> {
+  if (!dealerId && !dealershipId) {
     logger.warn('No dealer ID provided, skipping lead delivery', { leadId });
-    return;
+    return { success: true };
   }
 
   try {
     // Fetch dealer delivery settings
-    const settings = await getDealerDeliverySettings(dealerId);
+    const settings = await getDealerDeliverySettings(dealerId, dealershipId);
     if (!settings || !settings.method) {
       logger.info('Dealer has no delivery method configured', { dealerId, leadId });
-      return;
+      return { success: true };
     }
 
     // Decrypt lead payload
@@ -357,7 +389,7 @@ export async function deliverLead({
       deliveryResult = emailResult;
     } else {
       logger.error('Invalid delivery configuration', { dealerId, settings, leadId });
-      return;
+      return { success: false, error: 'Invalid delivery configuration' };
     }
 
     // Log delivery attempt
@@ -381,14 +413,16 @@ export async function deliverLead({
         method: settings.method,
         target: settings.method === 'http' ? settings.endpoint : settings.email,
       });
-    } else {
-      logger.error('Lead delivery failed', {
-        leadId,
-        dealerId,
-        method: settings.method,
-        error: deliveryResult.error,
-      });
+      return { success: true };
     }
+
+    logger.error('Lead delivery failed', {
+      leadId,
+      dealerId,
+      method: settings.method,
+      error: deliveryResult.error,
+    });
+    return { success: false, error: deliveryResult.error };
   } catch (error) {
     logger.error('Error delivering lead', {
       leadId,
@@ -412,6 +446,10 @@ export async function deliverLead({
     } catch (logError) {
       logger.error('Failed to log delivery error', { leadId, error: logError });
     }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 

@@ -196,6 +196,26 @@ app.get('/.well-known/openapi.yaml', (req, res) => {
 
 // UVS Ingestion API
 app.use('/api/ingest', createIngestionRouter());
+
+app.post('/api/internal/lead-delivery/process', async (req, res) => {
+  const expected =
+    process.env.INGESTION_API_TOKEN || process.env.DASHBOARD_INGEST_TOKEN || CONFIG.dashboardIngestToken;
+  const header = req.headers.authorization;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
+  const { tokensEqual } = await import('./lib/tokensEqual.js');
+  if (!expected || !tokensEqual(token, expected)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const { processLeadDeliveryJobs } = await import('./services/leadDeliveryOutbox.js');
+    const result = await processLeadDeliveryJobs(25);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Outbox processing failed',
+    });
+  }
+});
 app.options('/vehicle-image', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -671,6 +691,11 @@ server.listen(PORT, () => {
   console.log(`🔧 MCP endpoint: http://localhost:${PORT}/mcp`);
   console.log(`🎨 Widget: http://localhost:${PORT}/widget/vehicle-results`);
   startMarketcheckCanary();
+  import('./services/leadDeliveryOutbox.js')
+    .then(({ processLeadDeliveryJobs }) => processLeadDeliveryJobs())
+    .catch((error) => {
+      console.error('Lead delivery outbox startup kick failed', error);
+    });
 });
 
 // Set longer timeout for MCP requests (5 minutes)

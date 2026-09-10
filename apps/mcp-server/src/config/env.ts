@@ -165,6 +165,12 @@ export const CONFIG = {
   
   // Required: Lead encryption key (32 bytes, base64 encoded)
   leadEncKey: validateLeadEncKey(requireEnv('LEAD_ENC_KEY')),
+
+  // HMAC for signed search tokens. Separate from LEAD_ENC_KEY when set.
+  // Falls back to LEAD_ENC_KEY so existing deploys keep verifying tokens.
+  searchResultHmacKey: validateLeadEncKey(
+    process.env.SEARCH_RESULT_HMAC_KEY?.trim() || requireEnv('LEAD_ENC_KEY'),
+  ),
   
   // Required: Dashboard ingest configuration
   dashboardIngestUrl: validateDashboardIngestUrl(requireEnv('DASHBOARD_INGEST_URL')),

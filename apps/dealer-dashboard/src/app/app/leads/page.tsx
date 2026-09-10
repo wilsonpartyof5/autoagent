@@ -46,6 +46,7 @@ export default async function LeadsPage() {
     .select(`
       id,
       dealer_id,
+      dealership_id,
       vehicle_id,
       vin,
       enc_payload,
@@ -68,11 +69,14 @@ export default async function LeadsPage() {
     .order("created_at", { ascending: false })
     .limit(100);
 
-  // Filter by active dealership's MarketCheck dealer ID
-  if (activeDealership?.marketcheckDealerId) {
-    leadsQuery = leadsQuery.eq("dealer_id", activeDealership.marketcheckDealerId);
+  if (activeDealership?.id) {
+    const mcId = activeDealership.marketcheckDealerId;
+    leadsQuery = mcId
+      ? leadsQuery.or(
+          `dealership_id.eq.${activeDealership.id},and(dealership_id.is.null,dealer_id.eq.${mcId})`,
+        )
+      : leadsQuery.eq("dealership_id", activeDealership.id);
   } else if (activeDealership) {
-    // If dealership exists but no MarketCheck ID, show empty state
     leadsQuery = leadsQuery.eq("dealer_id", "__none__");
   }
 

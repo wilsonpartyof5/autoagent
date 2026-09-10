@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requirePlatformAdmin } from '@/lib/supabase/platform-admin';
+import { kickLeadDeliveryOutbox } from '@/lib/lead-delivery';
 
 export async function routePlatformLead(formData: FormData) {
   await requirePlatformAdmin();
@@ -27,6 +28,7 @@ export async function routePlatformLead(formData: FormData) {
     .from('leads')
     .update({
       dealer_id: dealership.marketcheck_dealer_id,
+      dealership_id: dealerId,
       routing_status: 'routed',
       routed_at: new Date().toISOString(),
       routed_by: user.id,
@@ -34,5 +36,21 @@ export async function routePlatformLead(formData: FormData) {
     .eq('id', leadId)
     .eq('routing_status', 'platform_inbox');
   if (error) throw new Error(error.message);
+
+  const { error: jobError } = await admin.from('lead_delivery_jobs').upsert(
+    {
+      lead_id: leadId,
+      dealership_id: dealerId,
+      dealer_id: dealership.marketcheck_dealer_id,
+      status: 'pending',
+      idempotency_key: `deliver:${leadId}`,
+    },
+    { onConflict: 'idempotency_key', ignoreDuplicates: true },
+  );
+  if (jobError) {
+    throw new Error('Lead was routed but delivery could not be queued');
+  }
+
+  kickLeadDeliveryOutbox().catch(() => {});
   revalidatePath('/app/admin/leads');
 }

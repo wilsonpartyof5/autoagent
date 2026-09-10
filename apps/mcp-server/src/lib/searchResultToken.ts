@@ -15,7 +15,7 @@ export type SearchResultSnapshot = {
 };
 
 function key(): Buffer {
-  return Buffer.from(CONFIG.leadEncKey, 'base64');
+  return Buffer.from(CONFIG.searchResultHmacKey, 'base64');
 }
 
 function encode(value: string): string {

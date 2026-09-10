@@ -8,6 +8,7 @@ vi.mock('../src/config/env.js', () => ({
     marketcheckMcpBridgeEnabled: true,
     inventorySearchProvider: 'marketcheck_mcp',
     leadEncKey: Buffer.alloc(32).toString('base64'),
+    searchResultHmacKey: Buffer.alloc(32).toString('base64'),
     widgetHost: 'https://example.com',
   },
 }));

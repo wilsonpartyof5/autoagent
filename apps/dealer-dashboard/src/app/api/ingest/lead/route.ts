@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { tokensEqual } from '@/lib/auth/tokens';
+import { kickLeadDeliveryOutbox } from '@/lib/lead-delivery';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient();
 
     let ownerUserId: string | null = null;
+    let dealershipId: string | null = null;
     if (dealerId) {
       const { data: dealership } = await admin
         .from('dealerships')
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (dealership?.id) {
+        dealershipId = dealership.id;
         const { data: membership } = await admin
           .from('user_dealerships')
           .select('user_id')
@@ -70,6 +73,7 @@ export async function POST(request: NextRequest) {
     const { error } = await admin.from('leads').upsert({
       id: leadId,
       dealer_id: dealerId ?? null,
+      dealership_id: dealershipId,
       vehicle_id: vehicleId,
       vin,
       enc_payload: encPayload,
@@ -92,6 +96,33 @@ export async function POST(request: NextRequest) {
         message: error.message,
       });
       return NextResponse.json({ error: 'Unable to persist lead' }, { status: 500 });
+    }
+
+    const shouldEnqueueDelivery = (routingStatus ?? 'dealer_assigned') !== 'platform_inbox';
+    if (shouldEnqueueDelivery) {
+      const { error: jobError } = await admin.from('lead_delivery_jobs').upsert(
+        {
+          lead_id: leadId,
+          dealership_id: dealershipId,
+          dealer_id: dealerId ?? null,
+          status: 'pending',
+          idempotency_key: `deliver:${leadId}`,
+        },
+        { onConflict: 'idempotency_key', ignoreDuplicates: true },
+      );
+      if (jobError) {
+        console.error('Lead delivery job enqueue failed', {
+          leadId,
+          message: jobError.message,
+        });
+      } else {
+        kickLeadDeliveryOutbox().catch((error) => {
+          console.error('Lead delivery outbox kick failed', {
+            leadId,
+            message: error instanceof Error ? error.message : 'Unknown error',
+          });
+        });
+      }
     }
 
     return NextResponse.json({ ok: true });
