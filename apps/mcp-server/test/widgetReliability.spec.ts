@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { VEHICLE_WIDGET_VERSION } from '../src/mcp-simple.js';
 
 describe('vehicle widget reliability contract', () => {
   const html = readFileSync(
@@ -15,8 +16,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v35"');
-    expect(html).toContain("VERSION='v35'");
+    expect(html).toContain(`autoagent-widget-version" content="${VEHICLE_WIDGET_VERSION}"`);
+    expect(html).toContain(`VERSION='${VEHICLE_WIDGET_VERSION}'`);
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {

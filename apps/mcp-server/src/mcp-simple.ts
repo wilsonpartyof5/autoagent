@@ -11,8 +11,9 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v35';
+export const VEHICLE_WIDGET_VERSION = 'v36';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
+const LEGACY_VEHICLE_WIDGET_MIN_VERSION = 3;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
   'https://unpkg.com',
@@ -44,6 +45,26 @@ export function getOpenAiWidgetCspMeta() {
       frame_domains: [],
     },
   };
+}
+
+/** ChatGPT caches widgets by URI; stamp the current template on every search result. */
+export function withVehicleWidgetMeta(meta: Record<string, unknown> = {}) {
+  return {
+    ...meta,
+    ui: { resourceUri: VEHICLE_RESULTS_RESOURCE_URI },
+    'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
+    ...getOpenAiWidgetCspMeta(),
+  };
+}
+
+export function legacyVehicleResultResourceUris(currentVersion = VEHICLE_WIDGET_VERSION): string[] {
+  const match = /^v(\d+)$/.exec(currentVersion);
+  const current = match ? Number(match[1]) : 0;
+  const uris = ['ui://vehicle-results.html'];
+  for (let n = LEGACY_VEHICLE_WIDGET_MIN_VERSION; n < current; n += 1) {
+    uris.push(`ui://vehicle-results-v${n}.html`);
+  }
+  return uris;
 }
 
 const VEHICLE_RESULTS_OUTPUT_SCHEMA = {
@@ -375,40 +396,12 @@ export function getAvailableResources() {
 
 export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
+  const vehicleResultsHtml = join(process.cwd(), 'src', 'ui', 'vehicle-results.html');
   const resources: Record<string, string> = {
-    [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v33.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v32.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v31.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v30.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v29.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v28.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v27.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v26.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v25.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v24.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v23.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v22.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v21.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v20.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v19.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v18.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v17.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v16.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v15.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v14.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v13.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v12.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v11.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v10.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v9.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v8.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v7.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v6.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v5.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v4.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results-v3.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
-    'ui://vehicle-results.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    [VEHICLE_RESULTS_RESOURCE_URI]: vehicleResultsHtml,
+    ...Object.fromEntries(
+      legacyVehicleResultResourceUris().map((legacyUri) => [legacyUri, vehicleResultsHtml]),
+    ),
     'ui://ping.html': join(process.cwd(), 'src', 'ui', 'ping.html'),
     'ui://micro.html': join(process.cwd(), 'src', 'ui', 'micro.html'),
   };
@@ -427,7 +420,9 @@ export function readMcpResource(uri: string) {
         _meta: {
           ui: {
             csp: getWidgetCsp(),
+            resourceUri: VEHICLE_RESULTS_RESOURCE_URI,
           },
+          'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI,
           'openai/widgetDescription': 'Interactive map and card-based vehicle inventory browser.',
           'openai/widgetPrefersBorder': true,
           ...getOpenAiWidgetCspMeta(),

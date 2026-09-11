@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   getAvailableResources,
   getAvailableTools,
+  legacyVehicleResultResourceUris,
+  readMcpResource,
   TOOL_HINT_JUSTIFICATIONS,
+  VEHICLE_RESULTS_RESOURCE_URI,
+  VEHICLE_WIDGET_VERSION,
 } from '../src/mcp-simple.js';
 
 const PUBLIC_TOOL_NAMES = [
@@ -35,6 +39,7 @@ describe('public MCP tool surface', () => {
     expect(tools['render-vehicle-results-v2']).toMatchObject({
       title: 'Search cars',
       annotations: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+      _meta: { 'openai/outputTemplate': VEHICLE_RESULTS_RESOURCE_URI },
     });
     expect(tools['render-vehicle-results-v2'].outputSchema).toBeDefined();
 
@@ -62,8 +67,21 @@ describe('public MCP tool surface', () => {
 
   it('lists only the vehicle-results widget resource', () => {
     const uris = getAvailableResources().map((resource) => resource.uri);
-    expect(uris).toEqual(['ui://vehicle-results-v35.html']);
+    expect(uris).toEqual([VEHICLE_RESULTS_RESOURCE_URI]);
+    expect(uris).toEqual([`ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`]);
     expect(uris).not.toContain('ui://ping.html');
     expect(uris).not.toContain('ui://micro.html');
+  });
+
+  it('serves current widget HTML for ChatGPT threads still requesting v34', () => {
+    expect(legacyVehicleResultResourceUris()).toContain('ui://vehicle-results-v34.html');
+    expect(legacyVehicleResultResourceUris()).toContain('ui://vehicle-results-v35.html');
+    expect(legacyVehicleResultResourceUris()).not.toContain(VEHICLE_RESULTS_RESOURCE_URI);
+
+    const legacy = readMcpResource('ui://vehicle-results-v34.html');
+    const html = legacy.contents[0]?.text ?? '';
+    expect(legacy.contents[0]?.uri).toBe('ui://vehicle-results-v34.html');
+    expect(html).toContain(`autoagent-widget-version" content="${VEHICLE_WIDGET_VERSION}"`);
+    expect(html).toContain(`VERSION='${VEHICLE_WIDGET_VERSION}'`);
   });
 });

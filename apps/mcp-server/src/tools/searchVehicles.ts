@@ -13,7 +13,7 @@ import { normalizeMarketcheckSearchResult } from '../services/marketcheckMcpNorm
 import { signSearchResult } from '../lib/searchResultToken.js';
 import { recordFlowEvent } from '../lib/flowTelemetry.js';
 import type { ToolContext } from '../mcp-simple.js';
-import { getOpenAiWidgetCspMeta } from '../mcp-simple.js';
+import { withVehicleWidgetMeta } from '../mcp-simple.js';
 import {
   decodeProxiedVehicleImageSource,
   fetchVehicleImageDataUrl,
@@ -548,10 +548,9 @@ async function normalizeBridgeSearchResult(
     structuredContent: {
       results: resultsPayload,
     },
-    _meta: {
+    _meta: withVehicleWidgetMeta({
       results: resultsPayload,
-      ...getOpenAiWidgetCspMeta(),
-    },
+    }),
     ...sourceInfo,
   };
 }
@@ -1015,9 +1014,9 @@ export async function searchVehicles(
           structuredContent: {
             results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo }
           },
-          _meta: {
+          _meta: withVehicleWidgetMeta({
             results: { vehicles: enrichedCachedVehicles, dealerSummary, totalCount: cachedResult.totalCount, searchParams, ...sourceInfo },
-          },
+          }),
           ...sourceInfo,
         },
       };
@@ -1200,7 +1199,7 @@ export async function searchVehicles(
             ...sourceInfo,
           } as unknown
         },
-        _meta: {
+        _meta: withVehicleWidgetMeta({
           results: {
             vehicles: structuredContentVehicles,
             dealerSummary,
@@ -1208,7 +1207,7 @@ export async function searchVehicles(
             searchParams,
             ...sourceInfo,
           },
-        },
+        }),
         ...sourceInfo,
       },
       error: undefined

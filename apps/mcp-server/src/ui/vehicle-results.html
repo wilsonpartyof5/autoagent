@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v35">
+  <meta name="autoagent-widget-version" content="v36">
   <title>Drevvy Vehicle Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -233,7 +233,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v35', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v36', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;

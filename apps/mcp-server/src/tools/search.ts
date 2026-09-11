@@ -1,6 +1,6 @@
 import { searchVehicles } from './searchVehicles.js';
 import { type SearchParams } from '@autoagent/shared';
-import type { ToolContext } from '../mcp-simple.js';
+import { withVehicleWidgetMeta, type ToolContext } from '../mcp-simple.js';
 
 /**
  * Natural-language search wrapper around searchVehicles.
@@ -160,7 +160,7 @@ export async function search(params: unknown, context?: ToolContext): Promise<{
         content,
         structuredContent,
         // Required so ChatGPT can hydrate the map widget when the host routes NL queries to `search`.
-        _meta: meta,
+        _meta: withVehicleWidgetMeta(meta),
       },
     };
   } catch (error) {
