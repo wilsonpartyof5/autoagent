@@ -17,14 +17,14 @@
     button,input{font:inherit} button{color:inherit}.hidden{display:none!important}
     #app{position:relative;width:100%;height:420px;min-height:380px;overflow:hidden;border:1px solid var(--line);border-radius:24px;background:var(--bg);display:flex;flex-direction:column}
     #workspace{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;padding:8px 10px 10px}
-    #resultsHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 2px 6px;flex:0 0 auto}
+    #resultsHeader{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 2px 8px;flex:0 0 auto}
     #resultCount{font-weight:750}.subtle{font-size:12px;color:var(--muted)}
     .control-scroll{display:none}
     .pill,.icon-btn,.primary-btn{border:1px solid #ffffff30;background:#15171bea;backdrop-filter:blur(12px);border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px #0004;min-height:40px}
     .pill:hover,.pill.active,.icon-btn:hover{border-color:#75a7ff;background:#173f78}.pill:disabled{opacity:.55;cursor:wait}
     .icon-btn{width:44px;height:44px;min-height:44px;padding:0;font-size:18px;flex:0 0 auto}
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
-    #inventoryProgress{display:flex;justify-content:flex-end;margin:0 0 6px;flex:0 0 auto}
+    #inventoryProgress{display:flex;justify-content:flex-end;margin:0;flex:1 1 auto;min-width:0}
     .inventory-progress-button{border:1px solid #ffffff40;background:#15171bf2;color:#fff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #0005}
     #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:minmax(0,1fr);gap:8px;align-items:stretch;min-height:0;flex:1 1 auto}
     #rail{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:0;cursor:grab;min-width:0;height:auto;min-height:0;align-items:stretch;align-self:stretch}
@@ -83,6 +83,7 @@
       #app{height:400px;min-height:360px;border-radius:16px}
       .label-full{display:none}.label-short{display:inline}
       .rail-nav{display:none}
+      #inventoryProgress{display:none}
       #railShell{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:0}
       #rail{gap:8px;padding:0;scroll-padding-inline:2px}
       #rail .vehicle-card,.load-more-card{flex:1 0 156px;max-width:200px;min-width:148px}
@@ -122,9 +123,9 @@
           <button class="pill" id="refineButton"><span class="label-full">Refine in ChatGPT</span><span class="label-short">Refine</span></button>
           <button class="pill" id="resetButton">Reset</button>
         </div>
+        <div id="inventoryProgress"></div>
         <button id="expandButton" class="icon-btn" aria-label="Open fullscreen results" title="Open fullscreen">↗</button>
       </header>
-      <div id="inventoryProgress"></div>
       <div id="railShell">
         <button type="button" id="railPrev" class="rail-nav" aria-label="Previous vehicles">‹</button>
         <div id="rail" tabindex="0" aria-label="Scrollable vehicle cards"></div>
