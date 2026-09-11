@@ -6,12 +6,10 @@ import { join } from 'path';
 import { CONFIG } from './config/env.js';
 
 const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
-export const VEHICLE_WIDGET_VERSION = 'v35';
+export const VEHICLE_WIDGET_VERSION = 'v36';
 export const VEHICLE_RESULTS_RESOURCE_URI = `ui://vehicle-results-${VEHICLE_WIDGET_VERSION}.html`;
 
 const STATIC_WIDGET_RESOURCE_DOMAINS = [
-  'https://unpkg.com',
-  'https://tile.openstreetmap.org',
   'https://vehicle-images.dealerinspire.com',
   'https://pictures.dealer.com',
   'https://d2v1gjawtegg5z.cloudfront.net',
@@ -228,7 +226,7 @@ export function getAvailableTools() {
       name: 'render-vehicle-results-v2',
       title: 'Search cars',
       description:
-        'Find cars for sale near a city. Call once with location, condition (new or used), and optional make, model, models[], max price, and mileage. If the user does not name a city, use the ChatGPT-provided user location when it is available. Omit bodyStyle unless the user asked for SUV, Sedan, Truck, or similar. Returns an interactive map and listing cards.',
+        'Find cars for sale near a city. Call once with location, condition (new or used), and optional make, model, models[], max price, and mileage. If the user does not name a city, use the ChatGPT-provided user location when it is available. Omit bodyStyle unless the user asked for SUV, Sedan, Truck, or similar. Returns a carousel of vehicle listing cards.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -367,6 +365,8 @@ export function readMcpResource(uri: string) {
   const [baseUri] = uri.split('?');
   const resources: Record<string, string> = {
     [VEHICLE_RESULTS_RESOURCE_URI]: join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v35.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
+    'ui://vehicle-results-v34.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v33.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v32.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
     'ui://vehicle-results-v31.html': join(process.cwd(), 'src', 'ui', 'vehicle-results.html'),
@@ -418,7 +418,7 @@ export function readMcpResource(uri: string) {
           ui: {
             csp: getWidgetCsp(),
           },
-          'openai/widgetDescription': 'Interactive map and card-based vehicle inventory browser.',
+          'openai/widgetDescription': 'Carousel of vehicle listing cards with photo, price, mileage, and distance.',
           'openai/widgetPrefersBorder': true,
           ...getOpenAiWidgetCspMeta(),
         },
