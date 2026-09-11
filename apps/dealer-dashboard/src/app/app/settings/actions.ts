@@ -10,6 +10,7 @@ import {
   updateDealership,
 } from '@/lib/supabase/dealerships';
 import { resyncInventory } from '@/app/app/setup/actions';
+import { assertSafeHttpsUrl } from '@/lib/safeHttpUrl';
 
 export async function updateMarketCheckSettings({
   websiteUrl,
@@ -143,6 +144,18 @@ export async function updateLeadDeliverySettings({
   endpoint?: string | null;
   email?: string | null;
 }) {
+  if (method === 'http') {
+    const trimmed = endpoint?.trim() ?? '';
+    if (!trimmed) {
+      throw new Error('Enter an HTTPS webhook URL.');
+    }
+    const safe = assertSafeHttpsUrl(trimmed);
+    if (!safe.ok) {
+      throw new Error(safe.error);
+    }
+    endpoint = safe.url.toString();
+  }
+
   try {
     await updateDealerProfile({
       leadDeliveryMethod: method,

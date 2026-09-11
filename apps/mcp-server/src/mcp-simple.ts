@@ -1,9 +1,4 @@
-import { searchVehicles } from './tools/searchVehicles.js';
 import { submitLead } from './tools/submitLead.js';
-import { compareVehicles } from './tools/compareVehicles.js';
-import { pingUi } from './tools/pingUi.js';
-import { pingMicroUi } from './tools/pingMicroUi.js';
-import { search } from './tools/search.js';
 import { renderVehicleResults } from './tools/renderVehicleResults.js';
 import { getVehicleDetails } from './tools/getVehicleDetails.js';
 import { readFileSync } from 'fs';
@@ -198,31 +193,26 @@ export type ToolContext = {
   };
 };
 
+export const PUBLIC_DISPATCH_TOOLS = [
+  'render-vehicle-results-v2',
+  'get-vehicle-details',
+  'submit-lead',
+] as const;
+
+export type PublicDispatchTool = (typeof PUBLIC_DISPATCH_TOOLS)[number];
+
 /**
- * Simple MCP tool handler for Express integration
+ * Only the three customer tools may be invoked by name.
+ * Hidden/legacy names used to stay callable for old ChatGPT threads; that is closed.
  */
 export async function handleMcpToolCall(toolName: string, args: unknown, context?: ToolContext) {
   switch (toolName) {
-    case 'search':
-      return await search(args, context);
-    case 'fetch':
-      throw new Error('The fetch tool is not available.');
-    case 'search-vehicles':
-      return await searchVehicles(args, context);
-    case 'render-vehicle-results':
-      return await renderVehicleResults(args, context);
     case 'render-vehicle-results-v2':
       return await renderVehicleResults(args, context);
     case 'submit-lead':
       return await submitLead(args, context);
     case 'get-vehicle-details':
       return await getVehicleDetails(args);
-    case 'compare-vehicles':
-      return await compareVehicles(args, context);
-    case 'ping-ui':
-      return await pingUi();
-    case 'ping-micro-ui':
-      return await pingMicroUi();
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -230,7 +220,7 @@ export async function handleMcpToolCall(toolName: string, args: unknown, context
 
 /**
  * Tools advertised on tools/list (imported by OpenAI Scan Tools).
- * Extra handlers in handleMcpToolCall stay callable for older ChatGPT threads.
+ * Dispatch matches this list — hidden names are rejected.
  */
 export function getAvailableTools() {
   return [

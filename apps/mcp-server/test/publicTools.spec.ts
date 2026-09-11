@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   getAvailableResources,
   getAvailableTools,
+  handleMcpToolCall,
+  PUBLIC_DISPATCH_TOOLS,
   TOOL_HINT_JUSTIFICATIONS,
 } from '../src/mcp-simple.js';
 
@@ -58,6 +60,14 @@ describe('public MCP tool surface', () => {
       expect(justifications.openWorldHint.length).toBeGreaterThan(10);
       expect(justifications.destructiveHint.length).toBeGreaterThan(10);
     }
+  });
+
+  it('dispatches only the three public tools and rejects hidden names', async () => {
+    expect([...PUBLIC_DISPATCH_TOOLS]).toEqual([...PUBLIC_TOOL_NAMES]);
+    for (const hidden of HIDDEN_TOOL_NAMES) {
+      await expect(handleMcpToolCall(hidden, {})).rejects.toThrow(/Unknown tool/);
+    }
+    await expect(handleMcpToolCall('render-vehicle-results', {})).rejects.toThrow(/Unknown tool/);
   });
 
   it('lists only the vehicle-results widget resource', () => {

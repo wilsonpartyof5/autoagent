@@ -5,7 +5,7 @@ export type IngestAuthResult =
   | { ok: false; status: number; error: string };
 
 /**
- * Fail closed: ingest is unavailable until INGESTION_API_TOKEN is set.
+ * Fail closed: CONFIG requires INGESTION_API_TOKEN at startup.
  * Query-string tokens are rejected so the secret cannot leak via logs or referrers.
  */
 export function authorizeIngestRequest(

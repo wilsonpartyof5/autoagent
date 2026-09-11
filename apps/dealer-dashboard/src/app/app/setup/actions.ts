@@ -10,143 +10,41 @@ import {
   type Dealership,
 } from '@/lib/supabase/dealerships';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { fetchAndIngestMarketCheckInventory } from '@/lib/ingest/marketcheck';
-import { pickInventoryDealerId } from '@autoagent/shared';
+import {
+  fetchAndIngestMarketCheckInventory,
+  fetchDealerRooftopsByDealerId,
+  lookupDealerIdByInventoryUrl,
+  normalizeInventoryUrlHost,
+  type DealerRooftop,
+} from '@/lib/ingest/inventory-service';
 
-const MARKETCHECK_DEFAULT_BASE = 'https://api.marketcheck.com';
-const MARKETCHECK_LOOKUP_TIMEOUT_MS = 8000;
+export type { DealerRooftop };
 
-type SyncInput = {
-  dealerId?: string | null;
-  zip?: string;
-  radiusMiles?: number;
-  condition?: 'all' | 'new' | 'used';
-  source?: string; // Optional source parameter for dealer inventory endpoint
-  dealershipName?: string; // Optional dealership name for creating/updating dealership
-};
-
-type DealerLookupResult =
-  | { status: 'found'; dealerId: string; dealerName?: string | null; numFound?: number }
-  | { status: 'no_match'; numFound?: number }
-  | { status: 'error'; message: string; statusCode?: number };
-
-function normalizeInventoryUrlHost(raw?: string | null): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  try {
-    const parsed = new URL(withProtocol);
-    const hostname = parsed.hostname.startsWith('www.') ? parsed.hostname.slice(4) : parsed.hostname;
-    return hostname.toLowerCase();
-  } catch {
-    return trimmed.replace(/^https?:\/\//i, '').replace(/^www\./i, '').toLowerCase();
+async function requireUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('Not authenticated');
   }
+  return user;
 }
 
-async function lookupDealerIdByInventoryUrl(inventoryUrl: string): Promise<DealerLookupResult> {
-  const apiKey = process.env.MARKETCHECK_API_KEY;
-  if (!apiKey) {
-    return { status: 'error', message: 'MarketCheck API key is not configured on the server.' };
+async function requireDealership(dealershipId?: string | null): Promise<Dealership> {
+  await requireUser();
+  const dealership = dealershipId
+    ? (await fetchUserDealerships()).find((row) => row.id === dealershipId) ?? null
+    : await getActiveDealership();
+
+  if (!dealership) {
+    throw new Error(
+      dealershipId
+        ? 'You do not have access to the selected dealership.'
+        : 'No active dealership found. Please set up a dealership first.',
+    );
   }
-
-  const baseUrl = (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    inventory_url: inventoryUrl,
-    rows: '50',
-  });
-
-  const url = `${baseUrl}/v2/dealerships/car?${params.toString()}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MARKETCHECK_LOOKUP_TIMEOUT_MS);
-  const startedAt = Date.now();
-
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if ([401, 403, 429].includes(response.status)) {
-      console.warn('[marketcheck_lookup] Request rejected or rate limited', {
-        status: response.status,
-        statusText: response.statusText,
-      });
-      return {
-        status: 'error',
-        statusCode: response.status,
-        message: 'MarketCheck lookup was rejected or rate limited. Please try again shortly.',
-      };
-    }
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      console.error('[marketcheck_lookup] Request failed', {
-        status: response.status,
-        statusText: response.statusText,
-        body: body?.slice(0, 500),
-      });
-      return {
-        status: 'error',
-        statusCode: response.status,
-        message: `MarketCheck lookup failed (${response.status}). Please try again.`,
-      };
-    }
-
-    const payload = await response.json();
-    const mcDealerships = Array.isArray(payload?.mc_dealerships) ? payload.mc_dealerships : [];
-    const numFound = typeof payload?.num_found === 'number' ? payload.num_found : mcDealerships.length;
-
-    if (numFound === 0 || mcDealerships.length === 0) {
-      console.warn('[marketcheck_lookup] No dealerships returned for URL', { inventoryUrl });
-      return { status: 'no_match', numFound: numFound ?? 0 };
-    }
-
-    const primary = mcDealerships[0];
-    const picked = pickInventoryDealerId(primary);
-
-    if (!picked) {
-      console.error('[marketcheck_lookup] Missing inventory dealer ID in response', {
-        inventoryUrl,
-        primary,
-      });
-      return { status: 'error', message: 'MarketCheck lookup returned a dealership without an ID.' };
-    }
-
-    console.log('[marketcheck_lookup] Dealer resolved from inventory URL', {
-      inventoryUrl,
-      dealerId: picked.inventoryDealerId,
-      websiteId: picked.websiteId,
-      marketcheckDealerId: picked.dealerId,
-      numFound,
-      durationMs: Date.now() - startedAt,
-    });
-
-    return {
-      status: 'found',
-      dealerId: picked.inventoryDealerId,
-      dealerName: picked.dealerName,
-      numFound,
-    };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.warn('[marketcheck_lookup] Lookup timed out', {
-        inventoryUrl,
-        timeoutMs: MARKETCHECK_LOOKUP_TIMEOUT_MS,
-      });
-      return { status: 'error', message: 'MarketCheck lookup timed out. Please try again.' };
-    }
-
-    console.error('[marketcheck_lookup] Lookup error', {
-      inventoryUrl,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'MarketCheck lookup failed unexpectedly.',
-    };
-  }
+  return dealership;
 }
 
 async function cacheDealerId({
@@ -182,31 +80,23 @@ async function cacheDealerId({
   await Promise.allSettled([profileUpdate, dealershipUpdate]);
 }
 
-async function resolveDealerIdForUser({
-  providedDealerId,
-  activeDealership,
-}: {
-  providedDealerId?: string | null;
-  activeDealership?: Dealership | null;
-}): Promise<
-  | { status: 'resolved'; dealerId: string; websiteUrl?: string | null }
+async function resolveStoredDealerId(activeDealership: Dealership): Promise<
   | { status: 'resolved'; dealerId: string; dealerName?: string | null; websiteUrl?: string | null }
   | { status: 'no_match'; message: string }
   | { status: 'error'; message: string }
 > {
-  const trimmedInput = providedDealerId?.trim();
-  if (trimmedInput) {
-    return { status: 'resolved', dealerId: trimmedInput };
-  }
-
-  const cachedDealerId = activeDealership?.marketcheckDealerId?.trim();
+  const cachedDealerId = activeDealership.marketcheckDealerId?.trim();
   if (cachedDealerId) {
-    return { status: 'resolved', dealerId: cachedDealerId, websiteUrl: activeDealership?.marketcheckWebsiteUrl };
+    return {
+      status: 'resolved',
+      dealerId: cachedDealerId,
+      websiteUrl: activeDealership.marketcheckWebsiteUrl,
+    };
   }
 
   const profile = await getDealerProfile();
   const websiteUrl = normalizeInventoryUrlHost(
-    activeDealership?.marketcheckWebsiteUrl ?? profile?.marketcheckWebsiteUrl ?? null,
+    activeDealership.marketcheckWebsiteUrl ?? profile?.marketcheckWebsiteUrl ?? null,
   );
 
   if (!websiteUrl) {
@@ -232,56 +122,31 @@ async function resolveDealerIdForUser({
   await cacheDealerId({
     dealerId: lookupResult.dealerId,
     websiteUrl,
-    dealershipId: activeDealership?.id ?? null,
+    dealershipId: activeDealership.id,
     dealerName: lookupResult.dealerName ?? null,
   });
 
-    return {
-      status: 'resolved',
-      dealerId: lookupResult.dealerId,
-      dealerName: lookupResult.dealerName ?? null,
-      websiteUrl,
-    };
+  return {
+    status: 'resolved',
+    dealerId: lookupResult.dealerId,
+    dealerName: lookupResult.dealerName ?? null,
+    websiteUrl,
+  };
 }
 
 /**
- * Re-sync inventory for the active dealership
- * Uses the dealership's stored MarketCheck dealer ID and settings
+ * Re-sync inventory for a Drevvy rooftop the caller is allowed to manage.
+ * MarketCheck identifiers are loaded server-side — never from the client.
  */
 export async function resyncInventory(selectedDealershipId?: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
+  const activeDealership = await requireDealership(selectedDealershipId);
 
-  // A setup page can target a rooftop other than the user's current global
-  // selection. Resolve the explicit rooftop through the authorized list so a
-  // sync can never silently run against a different dealer.
-  const activeDealership = selectedDealershipId
-    ? (await fetchUserDealerships()).find(
-        (dealership) => dealership.id === selectedDealershipId,
-      ) ?? null
-    : await getActiveDealership();
-  
-  if (!activeDealership) {
-    throw new Error(
-      selectedDealershipId
-        ? 'You do not have access to the selected dealership.'
-        : 'No active dealership found. Please set up a dealership first.',
-    );
-  }
-
-  const dealerResolution = await resolveDealerIdForUser({
-    providedDealerId: activeDealership.marketcheckDealerId,
-    activeDealership,
-  });
+  const dealerResolution = await resolveStoredDealerId(activeDealership);
 
   if (dealerResolution.status === 'no_match') {
     return {
       success: false,
-      status: 'no_match',
+      status: 'no_match' as const,
       fetched: 0,
       imported: 0,
       valid: 0,
@@ -294,61 +159,49 @@ export async function resyncInventory(selectedDealershipId?: string) {
     throw new Error(dealerResolution.message);
   }
 
-  const dealerId = dealerResolution.dealerId;
   const dealershipId = activeDealership.id;
-
-  // Persist the resolved dealer ID to the dealership row (admin client to avoid RLS issues)
-  const resolvedWebsite = 'websiteUrl' in dealerResolution ? dealerResolution.websiteUrl : undefined;
-  const resolvedDealerName = 'dealerName' in dealerResolution ? dealerResolution.dealerName : undefined;
+  const dealerId = dealerResolution.dealerId;
 
   try {
     await updateDealership(dealershipId, {
       marketcheckDealerId: dealerId,
-      ...(resolvedWebsite ? { marketcheckWebsiteUrl: resolvedWebsite } : {}),
-      ...(resolvedDealerName ? { name: resolvedDealerName } : {}),
+      ...(dealerResolution.websiteUrl
+        ? { marketcheckWebsiteUrl: dealerResolution.websiteUrl }
+        : {}),
+      ...(dealerResolution.dealerName ? { name: dealerResolution.dealerName } : {}),
     });
   } catch (err) {
     console.error('[resyncInventory] Failed to persist MarketCheck dealer ID', err);
     throw new Error('Failed to store MarketCheck dealer ID. Please try again.');
   }
 
-  // Re-fetch to ensure the ID is stored and only use the stored value going forward
   const admin = createAdminClient();
   const { data: persisted, error: persistedError } = await admin
     .from('dealerships')
-    .select('marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url')
+    .select('marketcheck_dealer_id, marketcheck_website_url')
     .eq('id', dealershipId)
     .maybeSingle();
 
-  if (persistedError) {
-    console.error('[resyncInventory] Failed to read persisted dealership', persistedError);
+  if (persistedError || !persisted?.marketcheck_dealer_id) {
     throw new Error('Failed to verify stored MarketCheck dealer ID.');
   }
 
-  if (!persisted?.marketcheck_dealer_id) {
-    console.error('[resyncInventory] Dealer ID missing after persist', { dealershipId, dealerId });
-    throw new Error('MarketCheck dealer ID was not stored. Please try again.');
-  }
-
-  const dealerIdToUse = persisted.marketcheck_dealer_id;
   const source =
     normalizeInventoryUrlHost(persisted.marketcheck_website_url) ||
     normalizeInventoryUrlHost(activeDealership.marketcheckWebsiteUrl) ||
-    normalizeInventoryUrlHost(resolvedWebsite) ||
+    normalizeInventoryUrlHost(dealerResolution.websiteUrl) ||
     undefined;
 
-  // Cars Dealer Inventory Syndication: stored ID + optional website hostname.
   const result = await fetchAndIngestMarketCheckInventory({
-    dealerId: dealerIdToUse,
+    dealerId: persisted.marketcheck_dealer_id,
     source: source ?? undefined,
   });
 
-  // Revalidate inventory page to show updated data
   revalidatePath('/app/inventory');
 
   return {
     success: true,
-    status: 'synced',
+    status: 'synced' as const,
     fetched: result.fetched,
     imported: result.imported,
     valid: result.valid,
@@ -358,171 +211,28 @@ export async function resyncInventory(selectedDealershipId?: string) {
 
 export { fetchAndIngestMarketCheckInventory };
 
-export type DealerRooftop = {
-  name: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  latitude?: number;
-  longitude?: number;
-  phone?: string;
-  website?: string;
-};
-
 /**
- * Fetch dealer rooftops/locations from MarketCheck
- * Extracts unique locations from dealer's active inventory listings
+ * Rooftop preview for a Drevvy dealership the caller belongs to.
  */
-export async function fetchDealerRooftops(dealerId: string): Promise<DealerRooftop[]> {
-  if (!dealerId) {
-    return [];
-  }
-
-  const apiKey = process.env.MARKETCHECK_API_KEY;
-  if (!apiKey) {
-    console.error('[rooftops] MarketCheck API key not configured');
-    return [];
-  }
-
-  const baseUrl = (process.env.MARKETCHECK_BASE_URL || MARKETCHECK_DEFAULT_BASE).replace(/\/$/, '');
-  
-  try {
-    const params = new URLSearchParams({
-      api_key: apiKey,
-      dealer_id: dealerId,
-      mc_website_id: dealerId,
-      rows: '50',
-      start: '0',
-    });
-    const url = `${baseUrl}/v2/dealerships/inventory?${params.toString()}`;
-    const response = await fetch(url, { cache: 'no-store' });
-    
-    if (!response.ok) {
-      console.error(`[rooftops] MarketCheck request failed (${response.status})`);
-      return [];
-    }
-
-    const payload = await response.json();
-    const listings = Array.isArray(payload.listings) ? payload.listings : [];
-
-    if (listings.length === 0) {
-      return [];
-    }
-
-    // Extract unique rooftops based on dealer location data
-    const rooftopsMap = new Map<string, DealerRooftop>();
-
-    listings.forEach((listing: any) => {
-      const dealer = listing.dealer || listing.mc_dealership;
-      if (!dealer || !dealer.zip) {
-        return;
-      }
-
-      // Use ZIP + city + state as unique key
-      const key = `${dealer.zip}-${dealer.city || ''}-${dealer.state || ''}`;
-      
-      if (!rooftopsMap.has(key)) {
-        const latitude = typeof dealer.latitude === 'string' 
-          ? parseFloat(dealer.latitude) 
-          : dealer.latitude;
-        const longitude = typeof dealer.longitude === 'string'
-          ? parseFloat(dealer.longitude)
-          : dealer.longitude;
-
-        rooftopsMap.set(key, {
-          name: dealer.name || 'Unknown Location',
-          address: dealer.street || dealer.address || '',
-          city: dealer.city || '',
-          state: dealer.state || '',
-          zip: dealer.zip,
-          latitude: latitude && !isNaN(latitude) ? latitude : undefined,
-          longitude: longitude && !isNaN(longitude) ? longitude : undefined,
-          phone: dealer.phone,
-          website: dealer.website,
-        });
-      }
-    });
-
-    return Array.from(rooftopsMap.values());
-  } catch (error) {
-    console.error('[rooftops] Error fetching dealer rooftops:', error);
-    return [];
-  }
+export async function fetchDealerRooftops(dealershipId: string): Promise<DealerRooftop[]> {
+  const dealership = await requireDealership(dealershipId);
+  const dealerId = dealership.marketcheckDealerId?.trim();
+  if (!dealerId) return [];
+  return fetchDealerRooftopsByDealerId(dealerId);
 }
 
-export async function syncMarketCheckInventory({
-  dealerId,
-  source,
-}: SyncInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error('Not authenticated');
+/**
+ * User-facing sync. Accepts only a Drevvy dealership UUID.
+ */
+export async function syncMarketCheckInventory({ dealershipId }: { dealershipId: string }) {
+  if (!dealershipId?.trim()) {
+    throw new Error('dealershipId is required');
   }
-  const activeDealership = await getActiveDealership();
-
-  const dealerResolution = await resolveDealerIdForUser({
-    providedDealerId: dealerId,
-    activeDealership,
-  });
-
-  if (dealerResolution.status === 'no_match') {
-    return {
-      status: 'no_match',
-      imported: 0,
-      fetched: 0,
-      valid: 0,
-      invalid: 0,
-      message: dealerResolution.message,
-    };
-  }
-
-  if (dealerResolution.status === 'error') {
-    throw new Error(dealerResolution.message);
-  }
-
-  const resolvedDealerId = dealerResolution.dealerId;
-  const sourceHost =
-    normalizeInventoryUrlHost(source) ||
-    normalizeInventoryUrlHost(
-      'websiteUrl' in dealerResolution ? dealerResolution.websiteUrl : null,
-    );
-
-  const result = await fetchAndIngestMarketCheckInventory({
-    dealerId: resolvedDealerId,
-    source: sourceHost ?? undefined,
-  });
-
-  try {
-    await updateDealerProfile({
-      dmsProvider: 'marketcheck',
-      inventoryConnected: result.imported > 0,
-    });
-  } catch (profileError) {
-    console.error('[syncMarketCheckInventory] Profile update failed:', profileError);
-  }
-
-  revalidatePath('/app/inventory');
-  revalidatePath('/app/setup');
-
-  return {
-    success: true,
-    status: 'synced',
-    imported: result.imported,
-    fetched: result.fetched,
-    valid: result.valid,
-    invalid: result.invalid,
-  };
+  return resyncInventory(dealershipId.trim());
 }
 
-
-/**
- * Set the inventory provider for the dealer
- */
 export async function setInventoryProvider(provider: InventoryProvider) {
+  await requireUser();
   try {
     await updateDealerProfile({
       dmsProvider: provider,

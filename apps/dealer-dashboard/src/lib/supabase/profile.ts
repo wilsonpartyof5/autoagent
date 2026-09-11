@@ -1,4 +1,5 @@
 import { createClient } from "./server";
+import { createAdminClient } from "./admin";
 
 export type InventoryProvider = 'marketcheck' | 'cdk' | 'vauto';
 export type PlatformRole = 'dealer_user' | 'platform_admin';
@@ -125,7 +126,9 @@ export async function updateDealerProfile(input: UpdateDealerProfileInput) {
     payload: { ...payload, id: payload.id, updated_at: payload.updated_at },
   });
 
-  const { data, error } = await supabase.from("profiles").upsert(payload, {
+  // Privileged columns are not client-writable. Update as this authenticated user via the admin client.
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("profiles").upsert(payload, {
     onConflict: "id",
   });
 
