@@ -71,9 +71,9 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('.vehicle-card{background:var(--panel);color:var(--text)');
     expect(html).toContain('display:flex;flex-direction:column');
     expect(html).toContain('.vehicle-card img{display:block;width:100%;flex:1 1 0;min-height:140px');
-    expect(html).toContain('#rail{display:flex;gap:10px;overflow-x:auto');
+    expect(html).toContain('#railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:minmax(0,1fr)');
     expect(html).toContain('align-items:stretch');
-    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%');
+    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:auto;align-self:stretch');
     expect(html).toContain('.rail-nav{display:none}');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
     expect(html).toContain('function distanceMiles(v)');
@@ -106,7 +106,7 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('function openCardFromUi(id,source');
     expect(html).toContain("openCardFromUi(cardNode.dataset.id,'card')");
     expect(html).toContain("document.addEventListener('pointerup'");
-    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%;touch-action:pan-x;cursor:pointer');
+    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:auto;align-self:stretch;touch-action:pan-x;cursor:pointer');
     expect(html).toContain("if(down.pointerType!=='mouse'||down.button!==0)return");
     expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
     expect(html).toContain('aria-label="Back to results"');

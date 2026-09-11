@@ -26,8 +26,8 @@
     .primary-btn{background:var(--blue);border-color:var(--blue);border-radius:10px;padding:11px 17px}.primary-btn:hover{background:var(--blue2)}
     #inventoryProgress{display:flex;justify-content:flex-end;margin:0 0 6px;flex:0 0 auto}
     .inventory-progress-button{border:1px solid #ffffff40;background:#15171bf2;color:#fff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #0005}
-    #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:stretch;min-height:0;flex:1 1 auto}
-    #rail{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:0;cursor:grab;min-width:0;height:100%;min-height:0;align-items:stretch}
+    #railShell{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:minmax(0,1fr);gap:8px;align-items:stretch;min-height:0;flex:1 1 auto}
+    #rail{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;padding:0;cursor:grab;min-width:0;height:auto;min-height:0;align-items:stretch;align-self:stretch}
     #rail.dragging{cursor:grabbing;scroll-snap-type:none;scroll-behavior:auto}
     #rail::-webkit-scrollbar,.gallery::-webkit-scrollbar,.control-scroll::-webkit-scrollbar{display:none}
     .rail-nav{width:44px;height:44px;border-radius:999px;border:1px solid #ffffff40;background:#15171bf2;backdrop-filter:blur(12px);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px #0005;touch-action:manipulation;align-self:center}
@@ -38,8 +38,8 @@
     .vehicle-card .copy{padding:10px 12px 12px;min-width:0;display:flex;flex-direction:column;gap:4px;flex:0 0 auto}
     .vehicle-price{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.15}
     .vehicle-meta,.vehicle-distance{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%;touch-action:pan-x;cursor:pointer}
-    .load-more-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%;min-height:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer;padding:16px;scroll-snap-align:start;display:flex;flex-direction:column;justify-content:center}
+    #rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:auto;align-self:stretch;touch-action:pan-x;cursor:pointer}
+    .load-more-card{flex:1 0 188px;max-width:240px;min-width:168px;height:auto;align-self:stretch;min-height:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer;padding:16px;scroll-snap-align:start;display:flex;flex-direction:column;justify-content:center}
     .load-more-card small{display:block;margin-top:4px;color:var(--muted);font-weight:500}
     #status{position:absolute;z-index:900;inset:0;display:grid;place-items:center;background:#0d0f12d9;padding:24px;text-align:center}
     .status-card{max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}
@@ -83,7 +83,7 @@
       #app{height:400px;min-height:360px;border-radius:16px}
       .label-full{display:none}.label-short{display:inline}
       .rail-nav{display:none}
-      #railShell{grid-template-columns:minmax(0,1fr);gap:0}
+      #railShell{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:0}
       #rail{gap:8px;padding:0;scroll-padding-inline:2px}
       #rail .vehicle-card,.load-more-card{flex:1 0 156px;max-width:200px;min-width:148px}
       #rail .vehicle-price{font-size:18px}
