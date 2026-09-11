@@ -45,4 +45,10 @@ describe('resolveDeletionStrategy', () => {
   it('keeps mark_unavailable when dealerId is present', () => {
     expect(resolveDeletionStrategy('mark_unavailable', '1038994')).toBe('mark_unavailable');
   });
+
+  it('keeps mark_unavailable when a rooftop UUID is the scope id', () => {
+    expect(
+      resolveDeletionStrategy('mark_unavailable', '11111111-1111-1111-1111-111111111111'),
+    ).toBe('mark_unavailable');
+  });
 });

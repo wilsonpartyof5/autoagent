@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { UnifiedVehicle } from '@autoagent/shared';
+import { applyRooftopVehicleFilter } from '@/lib/db/rooftop-vehicles';
 
 /**
  * Map UnifiedVehicle to database row format
@@ -320,6 +321,7 @@ export interface UVSVehicleSearchFilters {
   maxMiles?: number;
   trim?: string;
   dealerId?: string;
+  dealershipId?: string;
   dealerName?: string;
   availabilityStatus?: string;
   dataSource?: string;
@@ -372,7 +374,9 @@ export async function searchUVSVehicles(
     // Use JSONB query for nested trim field
     query = query.contains('uvs_data', { baseIdentity: { trim: filters.trim } });
   }
-  if (filters.dealerId) {
+  if (filters.dealershipId) {
+    query = applyRooftopVehicleFilter(query, filters.dealershipId, filters.dealerId);
+  } else if (filters.dealerId) {
     query = query.eq('dealer_id', filters.dealerId);
   }
   if (filters.dealerName) {

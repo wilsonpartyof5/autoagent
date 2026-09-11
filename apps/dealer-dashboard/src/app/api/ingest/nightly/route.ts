@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
         const result = await fetchAndIngestMarketCheckInventory({
           dealerId,
           source: dealership.marketcheck_website_url || undefined,
+          dealershipId: dealership.id,
         });
 
         results.push({

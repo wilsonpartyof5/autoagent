@@ -37,6 +37,7 @@ export async function syncMarketCheckInventoryUVS({ dealershipId }: { dealership
   const result = await fetchAndIngestMarketCheckInventory({
     dealerId,
     source: normalizeInventoryUrlHost(dealership.marketcheckWebsiteUrl) ?? undefined,
+    dealershipId,
   });
 
   revalidatePath('/app/inventory');

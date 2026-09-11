@@ -195,6 +195,7 @@ export async function resyncInventory(selectedDealershipId?: string) {
   const result = await fetchAndIngestMarketCheckInventory({
     dealerId: persisted.marketcheck_dealer_id,
     source: source ?? undefined,
+    dealershipId,
   });
 
   revalidatePath('/app/inventory');

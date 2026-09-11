@@ -27,15 +27,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { dealerId, source } = body ?? {};
+    const { dealerId, source, dealershipId } = body ?? {};
 
     if (!dealerId || typeof dealerId !== 'string') {
       return NextResponse.json({ error: 'dealerId is required' }, { status: 400 });
     }
 
+    if (dealershipId != null && typeof dealershipId !== 'string') {
+      return NextResponse.json({ error: 'dealershipId must be a string' }, { status: 400 });
+    }
+
     const result = await fetchAndIngestMarketCheckInventory({
       dealerId,
       source: typeof source === 'string' ? source : undefined,
+      dealershipId: typeof dealershipId === 'string' ? dealershipId : undefined,
     });
 
     return NextResponse.json({

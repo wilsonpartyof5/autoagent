@@ -1,6 +1,7 @@
 export type FetchAndIngestInput = {
   dealerId: string;
   source?: string;
+  dealershipId?: string;
 };
 
 export type FetchAndIngestResult = {
@@ -19,6 +20,7 @@ export type FetchAndIngestResult = {
 export async function fetchAndIngestMarketCheckInventory({
   dealerId,
   source,
+  dealershipId,
 }: FetchAndIngestInput): Promise<FetchAndIngestResult> {
   if (!dealerId && !source) {
     throw new Error('dealerId or source is required');
@@ -40,6 +42,7 @@ export async function fetchAndIngestMarketCheckInventory({
     console.log('[fetchAndIngestMarketCheckInventory] Calling MCP syndication ingest:', {
       url,
       dealerId,
+      dealershipId,
       source,
       endpoint: '/v2/dealerships/inventory',
     });
@@ -53,6 +56,7 @@ export async function fetchAndIngestMarketCheckInventory({
       body: JSON.stringify({
         dealerId,
         source,
+        ...(dealershipId ? { dealershipId } : {}),
       }),
     });
 
@@ -93,6 +97,7 @@ export async function fetchAndIngestMarketCheckInventory({
   } catch (error) {
     console.error('[fetchAndIngestMarketCheckInventory] Error:', {
       dealerId,
+      dealershipId,
       source,
       error: error instanceof Error ? error.message : String(error),
     });

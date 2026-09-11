@@ -54,6 +54,7 @@ export function createIngestionRouter(): express.Router {
     const {
       dealerId,
       source,
+      dealershipId,
       page = 1,
       maxPages = 10,
       maxVehicles = 5000,
@@ -71,6 +72,7 @@ export function createIngestionRouter(): express.Router {
         event: 'marketcheck_syndication_fetch_start',
         endpoint: '/v2/dealerships/inventory',
         dealerId,
+        dealershipId,
         source,
         page,
         maxPages,
@@ -387,10 +389,13 @@ export function createIngestionRouter(): express.Router {
       const ingestionOptions = trustedIngestOptions(
         'marketcheck',
         { dataSource: 'marketcheck-api', deletionStrategy: 'mark_unavailable' },
-        dealerId ? { dealerId } : undefined,
+        {
+          ...(dealerId ? { dealerId } : {}),
+          ...(dealershipId ? { dealershipId } : {}),
+        },
       );
 
-      if (!dealerId) {
+      if (!dealerId && !dealershipId) {
         logger.warn({
           event: 'marketcheck_ingest_deletions_disabled_missing_dealerId',
           source,

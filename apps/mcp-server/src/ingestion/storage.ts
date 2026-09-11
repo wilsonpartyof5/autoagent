@@ -12,6 +12,12 @@ import type { IngestionSummary } from './orchestrator.js';
 import pino from 'pino';
 import { CONFIG } from '../config/env.js';
 import { quarantineValidationFailure } from './quarantine.js';
+import {
+  assignStableVehicleIds,
+  existingVinIdMap,
+  normalizeVin,
+  rooftopVehicleOrFilter,
+} from './vehicleIdentity.js';
 
 const logger = (pino as any)();
 
@@ -47,10 +53,14 @@ function getSupabaseClient() {
  * Map UnifiedVehicle to database row format
  * Extracts key fields for indexing while preserving full UVS document
  */
-function mapUVSToRow(vehicle: UnifiedVehicle): Record<string, unknown> {
+function mapUVSToRow(
+  vehicle: UnifiedVehicle,
+  dealershipId?: string | null,
+): Record<string, unknown> {
   return {
     id: vehicle.id,
-    vin: vehicle.baseIdentity.vin ?? null,
+    vin: normalizeVin(vehicle.baseIdentity.vin),
+    dealership_id: dealershipId ?? null,
     year: vehicle.baseIdentity.year,
     make: vehicle.baseIdentity.make,
     model: vehicle.baseIdentity.model,
@@ -101,8 +111,26 @@ function mapUVSToRow(vehicle: UnifiedVehicle): Record<string, unknown> {
  * @param summary - Ingestion summary with results
  * @returns Storage summary with counts
  */
+async function resolveDealershipId(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  dealerId?: string,
+  dealershipId?: string,
+): Promise<string | null> {
+  if (dealershipId) return dealershipId;
+  if (!dealerId) return null;
+  const { data } = await supabase
+    .from('dealerships')
+    .select('id')
+    .eq('marketcheck_dealer_id', dealerId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
 export async function storeIngestedVehicles(
-  summary: IngestionSummary
+  summary: IngestionSummary,
+  identity?: { dealerId?: string; dealershipId?: string },
 ): Promise<{
   stored: number;
   failed: number;
@@ -155,7 +183,39 @@ export async function storeIngestedVehicles(
   }
   
   const supabase = getSupabaseClient();
-  const rows = validVehicles.map(mapUVSToRow);
+  const dealershipId = await resolveDealershipId(
+    supabase,
+    identity?.dealerId,
+    identity?.dealershipId,
+  );
+  const rows = validVehicles.map((vehicle) => mapUVSToRow(vehicle, dealershipId));
+
+  if (dealershipId) {
+    const vins = rows
+      .map((row) => row.vin as string | null)
+      .filter((vin): vin is string => Boolean(vin));
+    if (vins.length > 0) {
+      let existingQuery = supabase
+        .from('uvs_vehicles')
+        .select('id, vin, dealership_id')
+        .in('vin', vins);
+      existingQuery = identity?.dealerId
+        ? existingQuery.or(rooftopVehicleOrFilter(dealershipId, identity.dealerId))
+        : existingQuery.eq('dealership_id', dealershipId);
+      const { data: existing } = await existingQuery;
+      const remapped = assignStableVehicleIds(
+        rows.map((row) => ({
+          id: row.id as string,
+          vin: row.vin as string | null,
+        })),
+        existingVinIdMap(existing ?? []),
+      );
+      remapped.forEach((row, index) => {
+        rows[index].id = row.id;
+        rows[index].vin = row.vin;
+      });
+    }
+  }
   
   // Batch upsert in chunks to avoid payload limits
   const chunkSize = 1000;
@@ -282,7 +342,26 @@ export async function storeUVSVehicle(
     // Use validated data
     const validatedVehicle = validation.data;
     const supabase = getSupabaseClient();
-    const row = mapUVSToRow(validatedVehicle);
+    const dealershipId = await resolveDealershipId(
+      supabase,
+      validatedVehicle.location?.dealer?.dealerId,
+    );
+    const row = mapUVSToRow(validatedVehicle, dealershipId);
+    if (dealershipId && row.vin) {
+      const dealerId = validatedVehicle.location?.dealer?.dealerId;
+      let existingQuery = supabase
+        .from('uvs_vehicles')
+        .select('id, vin, dealership_id')
+        .eq('vin', row.vin as string);
+      existingQuery = dealerId
+        ? existingQuery.or(rooftopVehicleOrFilter(dealershipId, dealerId))
+        : existingQuery.eq('dealership_id', dealershipId);
+      const { data: existingRows } = await existingQuery;
+      const stableId = existingVinIdMap(existingRows ?? []).get(row.vin as string);
+      if (stableId) {
+        row.id = stableId;
+      }
+    }
     
     const { data, error } = await supabase
       .from('uvs_vehicles')

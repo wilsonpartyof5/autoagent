@@ -43,6 +43,37 @@ describe('ingest body validation', () => {
       dealerId: '1038994',
       deletionStrategy: 'mark_unavailable',
     });
+    expect(options).not.toHaveProperty('dealershipId');
     expect(options).not.toHaveProperty('trusted');
+  });
+
+  it('accepts a rooftop UUID on fetch-and-ingest', () => {
+    const parsed = parseFetchAndIngestBody({
+      dealerId: '1038994',
+      dealershipId: '11111111-1111-1111-1111-111111111111',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.dealershipId).toBe('11111111-1111-1111-1111-111111111111');
+    }
+  });
+
+  it('rejects a non-UUID dealershipId', () => {
+    expect(
+      parseFetchAndIngestBody({ dealerId: '1038994', dealershipId: 'not-a-uuid' }).success,
+    ).toBe(false);
+  });
+
+  it('copies dealershipId onto trusted ingest options when set', () => {
+    const options = trustedIngestOptions(
+      'marketcheck',
+      { dataSource: 'marketcheck-api', deletionStrategy: 'mark_unavailable' },
+      {
+        dealerId: '1038994',
+        dealershipId: '11111111-1111-1111-1111-111111111111',
+      },
+    );
+    expect(options.dealershipId).toBe('11111111-1111-1111-1111-111111111111');
+    expect(options.deletionStrategy).toBe('mark_unavailable');
   });
 });

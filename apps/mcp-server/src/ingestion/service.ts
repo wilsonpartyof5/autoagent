@@ -10,6 +10,7 @@
 
 import { ingestVehicles, type IngestionOptions, getValidVehicles, getInvalidVehicles } from './orchestrator.js';
 import { storeIngestedVehicles } from './storage.js';
+import { retiredVehicleIds, rooftopVehicleOrFilter } from './vehicleIdentity.js';
 import { createClient } from '@supabase/supabase-js';
 import { CONFIG } from '../config/env.js';
 import { resolveDeletionStrategy } from '../lib/ingestAuth.js';
@@ -59,6 +60,7 @@ export type DeletionStrategy =
 export interface IngestionServiceOptions extends IngestionOptions {
   deletionStrategy?: DeletionStrategy;
   dealerId?: string; // Optional: only process vehicles for this dealer
+  dealershipId?: string; // Drevvy rooftop UUID when known
   dataSource?: string; // Override dataSource in operational metadata
 }
 
@@ -120,7 +122,10 @@ export async function ingestVehiclesFromProvider(
     });
     
     // Step 2: Store valid vehicles in database
-    const storageResult = await storeIngestedVehicles(ingestionSummary);
+    const storageResult = await storeIngestedVehicles(ingestionSummary, {
+      dealerId: options.dealerId,
+      dealershipId: options.dealershipId,
+    });
     
     logger.info({
       event: 'ingestion_storage_complete',
@@ -201,14 +206,14 @@ async function handleDeletions(
 ): Promise<{ deleted: number; markedUnavailable: number }> {
   const deletionStrategy = resolveDeletionStrategy(
     options.deletionStrategy || 'none',
-    options.dealerId,
+    options.dealerId || options.dealershipId,
   );
   
   if (deletionStrategy === 'none') {
     return { deleted: 0, markedUnavailable: 0 };
   }
 
-  if (!options.dealerId?.trim()) {
+  if (!options.dealerId?.trim() && !options.dealershipId?.trim()) {
     logger.warn({
       event: 'deletion_refused_missing_dealerId',
       provider: options.provider,
@@ -220,16 +225,19 @@ async function handleDeletions(
   const supabase = getSupabaseClient();
   const dataSource = options.dataSource || options.provider;
   
-  // Find all vehicles from this provider that aren't in the new data
-  const newVehicleIds = new Set(newVehicles.map(v => v.id));
-  
   try {
-    // Get existing vehicles from this provider, always scoped to one dealer.
-    const query = supabase
+    // Get existing vehicles from this provider, scoped to one rooftop.
+    let query = supabase
       .from('uvs_vehicles')
-      .select('id, availability_status')
-      .eq('data_source', dataSource)
-      .eq('dealer_id', options.dealerId);
+      .select('id, vin, availability_status')
+      .eq('data_source', dataSource);
+    if (options.dealershipId) {
+      query = options.dealerId
+        ? query.or(rooftopVehicleOrFilter(options.dealershipId, options.dealerId))
+        : query.eq('dealership_id', options.dealershipId);
+    } else if (options.dealerId) {
+      query = query.eq('dealer_id', options.dealerId);
+    }
     
     const { data: existingVehicles, error } = await query;
     
@@ -241,11 +249,13 @@ async function handleDeletions(
       });
       return { deleted: 0, markedUnavailable: 0 };
     }
-    
-    // Find vehicles that need to be handled
-    const vehiclesToHandle = (existingVehicles || []).filter(
-      v => !newVehicleIds.has(v.id)
-    );
+
+    const incoming = newVehicles.map((vehicle) => ({
+      id: vehicle.id,
+      vin: vehicle.baseIdentity?.vin ?? null,
+    }));
+    const retireIds = new Set(retiredVehicleIds(existingVehicles || [], incoming));
+    const vehiclesToHandle = (existingVehicles || []).filter((vehicle) => retireIds.has(vehicle.id));
     
     if (vehiclesToHandle.length === 0) {
       return { deleted: 0, markedUnavailable: 0 };

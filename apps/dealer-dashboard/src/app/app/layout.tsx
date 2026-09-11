@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { getDealerProfile } from "@/lib/supabase/profile";
 import { fetchUserDealerships, getActiveDealership } from "@/lib/supabase/dealerships";
 import { createClient } from "@/lib/supabase/server";
+import { applyRooftopVehicleFilter } from "@/lib/db/rooftop-vehicles";
 
 export const metadata: Metadata = {
   title: "Dealer Dashboard | Drevvy",
@@ -57,24 +58,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     console.error('[app/layout] Failed to load active dealership:', error);
   }
 
-  // Check if there's actual inventory in uvs_vehicles table for the active dealership
-  // Only check if we have an active dealership with a dealer ID
-  // This ensures new users don't see inventory as synced
   try {
     const supabase = await createClient();
-    
-    // Only check inventory if we have an active dealership with a dealer ID
-    // If no active dealership or no dealer ID, assume no inventory (new user)
-    if (activeDealership?.marketcheckDealerId) {
-      const { count } = await supabase
-        .from('uvs_vehicles')
-        .select('*', { count: 'exact', head: true })
-        .eq('dealer_id', activeDealership.marketcheckDealerId)
-        .eq('availability_status', 'available');
-      
+
+    if (activeDealership?.id) {
+      const { count } = await applyRooftopVehicleFilter(
+        supabase
+          .from('uvs_vehicles')
+          .select('*', { count: 'exact', head: true })
+          .eq('availability_status', 'available'),
+        activeDealership.id,
+        activeDealership.marketcheckDealerId,
+      );
+
       hasInventory = (count ?? 0) > 0;
     } else {
-      // No active dealership or no dealer ID = new user, no inventory
       hasInventory = false;
     }
   } catch (error) {
