@@ -81,7 +81,41 @@ function enrichVehicleForStructuredContent(vehicle: UnifiedVehicle | Record<stri
   };
 }
 
-function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknown>): Record<string, unknown> {
+type GeoPoint = { latitude: number; longitude: number };
+
+function parseCoord(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function milesBetween(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function roundDistanceMiles(value: number): number {
+  return value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+}
+
+export function searchOrigin(searchParams?: SearchParams, context?: ToolContext): GeoPoint | undefined {
+  const latitude = parseCoord(searchParams?.latitude) ?? parseCoord(context?.userLocation?.latitude);
+  const longitude = parseCoord(searchParams?.longitude) ?? parseCoord(context?.userLocation?.longitude);
+  if (latitude === undefined || longitude === undefined) return undefined;
+  return { latitude, longitude };
+}
+
+function compactVehicleForWidget(
+  vehicle: UnifiedVehicle | Record<string, unknown>,
+  origin?: GeoPoint,
+): Record<string, unknown> {
   const enriched = enrichVehicleForStructuredContent(vehicle);
   const source = vehicle as Record<string, unknown>;
 
@@ -127,7 +161,17 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
   const dealerId = typeof dealer.dealerId === 'string' ? dealer.dealerId : undefined;
   const dealerCity = typeof dealer.city === 'string' ? dealer.city : undefined;
   const dealerState = typeof dealer.state === 'string' ? dealer.state : undefined;
-  const dealerDistanceMiles = typeof dealer.distanceMiles === 'number' ? dealer.distanceMiles : undefined;
+  let dealerDistanceMiles = typeof dealer.distanceMiles === 'number' && Number.isFinite(dealer.distanceMiles)
+    ? dealer.distanceMiles
+    : undefined;
+  if (
+    dealerDistanceMiles === undefined
+    && origin
+    && latitude !== undefined
+    && longitude !== undefined
+  ) {
+    dealerDistanceMiles = roundDistanceMiles(milesBetween(origin.latitude, origin.longitude, latitude, longitude));
+  }
   const searchResultToken = typeof source.searchResultToken === 'string' ? source.searchResultToken : undefined;
   const flowId = typeof source.flowId === 'string' ? source.flowId : undefined;
   const dealerDefined = (source.dealerDefined as Record<string, unknown> | undefined) ?? {};
@@ -148,6 +192,7 @@ function compactVehicleForWidget(vehicle: UnifiedVehicle | Record<string, unknow
     ...(latitude !== undefined && { lat: latitude }),
     ...(longitude !== undefined && { lng: longitude }),
     ...(dealerName && { dealerName }),
+    ...(dealerDistanceMiles !== undefined && { distanceMiles: dealerDistanceMiles }),
     ...(condition && { condition }),
     ...(searchResultToken && { searchResultToken }),
     ...(flowId && { flowId }),
@@ -474,6 +519,7 @@ async function normalizeBridgeSearchResult(
     relaxations?: SearchRelaxation[];
     emptyState?: SearchEmptyState;
     originalParams?: SearchParams;
+    origin?: GeoPoint;
   },
 ): Promise<SearchVehiclesData> {
   const bridge = upstreamResult as {
@@ -498,10 +544,10 @@ async function normalizeBridgeSearchResult(
     : typeof bridge.totalCount === 'number'
       ? bridge.totalCount
       : rawVehicles.length;
-  // Map gets a dense pin set; carousel photos stay limited to the first 8 cards.
+  // Carousel photos stay limited to the first 8 cards.
   const compactVehicles = rawVehicles
     .slice(0, MAX_MAP_PINS)
-    .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>));
+    .map((vehicle) => compactVehicleForWidget(vehicle as UnifiedVehicle | Record<string, unknown>, options?.origin));
   const vehicles = balanceVehiclesByDealer(compactVehicles, MAX_MAP_PINS);
   const inlineStats = await inlineWidgetPrimaryPhotos(vehicles.slice(0, RAIL_CARD_LIMIT));
   rememberVehicleDetails(vehicles);
@@ -909,6 +955,7 @@ export async function searchVehicles(
             relaxations,
             emptyState,
             originalParams,
+            origin: searchOrigin(searchParams, context),
           },
         );
         console.log(JSON.stringify({
@@ -992,9 +1039,9 @@ export async function searchVehicles(
       const runId = randomUUID();
       console.log(JSON.stringify({ evt:'diag.tool', runId, ts:Date.now() }));
 
-      // Enrich cached vehicles with map pin and featured card data
-      const compactCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle => 
-        compactVehicleForWidget(vehicle)
+      const origin = searchOrigin(searchParams, context);
+      const compactCachedVehicles = (cachedResult.vehicles as UnifiedVehicle[]).map(vehicle =>
+        compactVehicleForWidget(vehicle, origin)
       );
       const enrichedCachedVehicles = balanceVehiclesByDealer(compactCachedVehicles, MAX_WIDGET_RESULTS);
       const dealerSummary = buildDealerSummary(compactCachedVehicles);
@@ -1162,23 +1209,20 @@ export async function searchVehicles(
       normalizedAs: 'uvs',
     };
     
-      // Build structuredContent with enriched fields for map pins and featured cards
+      const origin = searchOrigin(searchParams, context);
       const compactVehicles = vehicles.map((vehicle, index) => {
-        // Add enriched metadata if available
         const enriched = enrichedMetadata[index];
         let base: UnifiedVehicle | Record<string, unknown> = vehicle;
-        
+
         if (enriched) {
-          // Safely add enriched metadata
           base = {
             ...vehicle,
             ...(enriched.sellerComments !== undefined && { sellerComments: enriched.sellerComments }),
             ...(enriched.optionPackages !== undefined && { optionPackages: enriched.optionPackages }),
           };
         }
-        
-        // Enrich with map pin and featured card data
-        return compactVehicleForWidget(base);
+
+        return compactVehicleForWidget(base, origin);
       });
       const structuredContentVehicles = balanceVehiclesByDealer(compactVehicles, MAX_WIDGET_RESULTS);
       rememberVehicleDetails(structuredContentVehicles);

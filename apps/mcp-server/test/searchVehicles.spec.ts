@@ -72,6 +72,39 @@ describe('searchVehicles', () => {
     expect((result.data?.structuredContent as any)?.results?.dataSource).toBe('uvs_db');
   });
 
+  it('copies dealer distanceMiles onto the compact widget vehicle', async () => {
+    searchUVSVehicles.mockResolvedValueOnce({
+      vehicles: [{
+        ...fixtureVehicle,
+        location: {
+          dealer: {
+            ...fixtureVehicle.location.dealer,
+            distanceMiles: 8.4,
+          },
+        },
+      }],
+      total: 1,
+      dealerSummary: [],
+    });
+    const { searchVehicles } = await import('../src/tools/searchVehicles.js');
+    const result = await searchVehicles({ location: 'Charlotte, NC', condition: 'used' });
+    expect(result.data?.vehicles?.[0]).toMatchObject({ distanceMiles: 8.4 });
+  });
+
+  it('computes haversine miles when MarketCheck dist is missing', async () => {
+    const { searchVehicles, milesBetween } = await import('../src/tools/searchVehicles.js');
+    const origin = { latitude: 35.2271, longitude: -80.8431 };
+    const expected = milesBetween(origin.latitude, origin.longitude, 35, -80);
+    const result = await searchVehicles({
+      location: 'Charlotte, NC',
+      condition: 'used',
+      latitude: origin.latitude,
+      longitude: origin.longitude,
+    });
+    const vehicle = result.data?.vehicles?.[0] as { distanceMiles?: number };
+    expect(vehicle.distanceMiles).toBeCloseTo(expected >= 10 ? Math.round(expected) : Math.round(expected * 10) / 10);
+  });
+
   it('caches repeated UVS searches', async () => {
     const { searchVehicles } = await import('../src/tools/searchVehicles.js');
     const params = { location: 'Charlotte, NC', condition: 'used' };

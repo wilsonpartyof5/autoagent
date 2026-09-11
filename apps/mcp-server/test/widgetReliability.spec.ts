@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { VEHICLE_WIDGET_VERSION } from '../src/mcp-simple.js';
 
 describe('vehicle widget reliability contract', () => {
   const html = readFileSync(
@@ -15,8 +16,19 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('uses a fresh widget resource version', () => {
-    expect(html).toContain('autoagent-widget-version" content="v35"');
-    expect(html).toContain("VERSION='v35'");
+    expect(html).toContain(`autoagent-widget-version" content="${VEHICLE_WIDGET_VERSION}"`);
+    expect(html).toContain(`VERSION='${VEHICLE_WIDGET_VERSION}'`);
+  });
+
+  it('does not load a map, Leaflet, or search-this-area chrome', () => {
+    expect(html).not.toContain('leaflet');
+    expect(html).not.toContain('openstreetmap');
+    expect(html).not.toContain('MapController');
+    expect(html).not.toContain('id="map"');
+    expect(html).not.toContain('id="searchArea"');
+    expect(html).not.toContain('.price-pin');
+    expect(html).not.toContain('.cluster-pin');
+    expect(html).not.toContain("callSearch(args,'map-move',true)");
   });
 
   it('uses one hydration controller and keeps attaching to a late bridge', () => {
@@ -36,33 +48,11 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('setWidgetState');
   });
 
-  it('reports intrinsic height and gates map bounds on real dimensions and user input', () => {
+  it('reports a compact carousel intrinsic height', () => {
     expect(html).toContain('notifyIntrinsicHeight(appHeight)');
     expect(html).toContain('new ResizeObserver');
-    expect(html).toContain('rect.width<240||rect.height<240');
-    expect(html).toContain('!this.userInteracted');
-    expect(html).toContain("event('map:bounds-skipped'");
-  });
-
-  it('clusters overlapping dealer pins and auto-refreshes inventory after map moves', () => {
-    expect(html).toContain('this.renderMarkers()');
-    expect(html).toContain('addClusterPin');
-    expect(html).toContain('addDealerGroup');
-    expect(html).toContain('const cell=zoom>=15?20:zoom>=13?28:36');
-    expect(html).not.toContain('pinOffset(index,count)');
-    expect(html).toContain('spiderOffset(index,count)');
-    expect(html).toContain('this.render(false)');
-    expect(html).toContain("callSearch(args,'map-move',true)");
-    expect(html).toContain("callSearch(MapController.boundsArgs(),'search-area')");
-    expect(html).toContain('markers:new Map()');
-  });
-
-  it('fits the initial map to about 10 miles around the search city or user location', () => {
-    expect(html).toContain('const DEFAULT_VIEW_MILES=10');
-    expect(html).toContain('cityCenterFromLocation');
-    expect(html).toContain("'charlotte, nc':[35.2271,-80.8431]");
-    expect(html).toContain('L.latLng(center).toBounds(DEFAULT_VIEW_MILES*1609.344*2)');
-    expect(html).toContain('MapController.render(!/map-move|search-area/.test(String(source)))');
+    expect(html).toContain('#app{position:relative;width:100%;height:300px;min-height:260px');
+    expect(html).toContain('Math.max(260,Math.ceil($(\'app\')?.getBoundingClientRect().height||300))');
   });
 
   it('starts with 8 cards and lets shoppers progressively load the complete result set', () => {
@@ -75,33 +65,28 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('async function showMoreInventory()');
     expect(html).toContain("callSearch({pageOffset:state.all.length},'load-more',true)");
     expect(html).toContain("String(source).includes('load-more')");
-    expect(html).toContain('if(fit)this.fit();this.renderMarkers()');
   });
 
-  it('uses compact Zillow-like cards and high-contrast map pins', () => {
+  it('renders compact cards with image, price, mileage, and distance', () => {
     expect(html).toContain('#rail .vehicle-card{flex-basis:340px}');
     expect(html).toContain('.rail-nav{display:none}');
-    expect(html).toContain('.price-pin{position:relative;transform:translate(-50%,-100%);background:#fff;color:#111');
-    expect(html).toContain('-webkit-text-fill-color:#111');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
-    expect(html).toContain('.cluster-pin{transform:translate(-50%,-50%);width:34px;height:34px');
-    expect(html).toContain('background:#fff;color:#111;-webkit-text-fill-color:#111;border:2px solid #111');
-  });
-
-  it('loads the tapped map pin into the carousel', () => {
-    expect(html).toContain("selectVehicle(vehicle.id,'pin')");
-    expect(html).toContain("selectVehicle(match.id,'cluster')");
+    expect(html).toContain('function distanceMiles(v)');
+    expect(html).toContain('v.distanceMiles??v.location?.dealer?.distanceMiles');
+    expect(html).toContain('mi away');
+    expect(html).toContain('${miles(v)?`${miles(v).toLocaleString()} mi`: \'New\'}${distanceLabel(v)}');
     expect(html).toContain('function vehiclesForRail()');
     expect(html).toContain('function scrollRailToSelected()');
-    expect(html).toContain("if(source==='pin'||source==='cluster')requestAnimationFrame(()=>scrollRailToSelected())");
     expect(html).toContain('list.unshift(selected)');
   });
 
-  it('opens card details in fullscreen so the VDP is not cramped over the inline map', () => {
+  it('opens card details in fullscreen', () => {
     expect(html).toContain('async function openCardDetails(id)');
     expect(html).toContain("if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true)");
     expect(html).toContain('openCardDetails(cardNode.dataset.id)');
     expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
+    expect(html).toContain('aria-label="Back to results"');
+    expect(html).toContain('>Results</button>');
     expect(html).not.toContain('position:sticky;bottom:0');
     expect(html).not.toContain('.vdp-footer-nav{flex-direction:column}');
   });
@@ -119,17 +104,17 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('if(message.source!==window.parent)return');
     expect(html).toContain("event('image:loaded'");
     expect(html).toContain("event('image:error'");
-    expect(html).toContain("event('map:bounds'");
+    expect(html).not.toContain("event('map:bounds'");
   });
 
-  it('preserves the original filters through recovery and map searches', () => {
+  it('preserves the original filters through recovery searches', () => {
     expect(html).toContain('originalQuery:{}');
     expect(html).toContain('mergeDefined(state.originalQuery,baseOriginal)');
     expect(html).toContain('captureHostSearchParams();');
     expect(html).toContain('if(resolved.maxPrice)params.maxPrice=resolved.maxPrice');
     expect(html).toContain('if(resolved.mileageMax)params.mileageMax=resolved.mileageMax');
-    expect(html).toContain("state.query.maxPrice||''");
-    expect(html).toContain("state.query.bodyStyle||''");
+    expect(html).toContain('...state.originalQuery,...state.query,...overrides');
+    expect(html).toContain('if(resolved.bodyStyle)params.bodyStyle=resolved.bodyStyle');
   });
 
   it('tries alternate vehicle photos before the final placeholder', () => {
