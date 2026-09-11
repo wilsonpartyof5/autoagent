@@ -51,8 +51,8 @@ describe('vehicle widget reliability contract', () => {
   it('reports a compact carousel intrinsic height', () => {
     expect(html).toContain('notifyIntrinsicHeight(appHeight)');
     expect(html).toContain('new ResizeObserver');
-    expect(html).toContain('#app{position:relative;width:100%;height:300px;min-height:260px');
-    expect(html).toContain('Math.max(260,Math.ceil($(\'app\')?.getBoundingClientRect().height||300))');
+    expect(html).toContain('#app{position:relative;width:100%;height:420px;min-height:380px');
+    expect(html).toContain('Math.max(380,Math.ceil($(\'app\')?.getBoundingClientRect().height||420))');
   });
 
   it('starts with 8 cards and lets shoppers progressively load the complete result set', () => {
@@ -67,17 +67,22 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("String(source).includes('load-more')");
   });
 
-  it('renders compact cards with image, price, mileage, and distance', () => {
-    expect(html).toContain('#rail .vehicle-card{flex-basis:340px}');
+  it('renders dark vertical cards with image, price, mileage, and distance', () => {
+    expect(html).toContain('.vehicle-card{background:var(--panel);color:var(--text)');
+    expect(html).toContain('display:flex;flex-direction:column');
+    expect(html).toContain('.vehicle-card img{display:block;width:100%;aspect-ratio:4/3');
+    expect(html).toContain('#rail .vehicle-card{flex-basis:188px}');
     expect(html).toContain('.rail-nav{display:none}');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
     expect(html).toContain('function distanceMiles(v)');
     expect(html).toContain('v.distanceMiles??v.location?.dealer?.distanceMiles');
     expect(html).toContain('mi away');
-    expect(html).toContain('${miles(v)?`${miles(v).toLocaleString()} mi`: \'New\'}${distanceLabel(v)}');
+    expect(html).toContain('class="vehicle-distance"');
+    expect(html).toContain('${miles(v)?`${miles(v).toLocaleString()} mi`:\'New\'}');
     expect(html).toContain('function vehiclesForRail()');
     expect(html).toContain('function scrollRailToSelected()');
     expect(html).toContain('list.unshift(selected)');
+    expect(html).not.toContain('background:#fff;color:#111');
   });
 
   it('opens card details in fullscreen', () => {
