@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { trackEvent } from '@/lib/analytics/tracking';
 import { getActiveDealership } from '@/lib/supabase/dealerships';
+import { vehicleBelongsToRooftop } from '@/lib/db/rooftop-vehicles';
 
 export async function updateVehicleLiveStatus(
   vehicleId: string,
@@ -18,14 +19,23 @@ export async function updateVehicleLiveStatus(
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Get UVS vehicle to update
+  const dealership = await getActiveDealership();
+  if (!dealership) {
+    return { success: false, error: 'No active dealership' };
+  }
+
   const { data: vehicleRow, error: fetchError } = await supabase
     .from('uvs_vehicles')
-    .select('id, uvs_data')
+    .select('id, uvs_data, dealership_id, dealer_id')
     .eq('id', vehicleId)
     .maybeSingle();
 
-  if (fetchError || !vehicleRow || !vehicleRow.uvs_data) {
+  if (
+    fetchError ||
+    !vehicleRow ||
+    !vehicleRow.uvs_data ||
+    !vehicleBelongsToRooftop(vehicleRow, dealership)
+  ) {
     return { success: false, error: 'Vehicle not found' };
   }
 
@@ -66,8 +76,6 @@ export async function updateVehicleLiveStatus(
     published_by: isLive ? user.id : null,
   };
 
-  // Track inventory status change event
-  const activeDealership = await getActiveDealership();
   const vin = existingVehicle.baseIdentity?.vin;
   
   trackEvent('dashboard.inventory.status_change', {
@@ -76,7 +84,7 @@ export async function updateVehicleLiveStatus(
     oldStatus: existingVehicle.availability?.isLive ? 'live' : 'not_live',
     newStatus: isLive ? 'live' : 'not_live',
   }, {
-    dealerId: activeDealership?.marketcheckDealerId || undefined,
+    dealerId: dealership.marketcheckDealerId || undefined,
     vehicleId,
     vin: vin || undefined,
   }).catch(() => {

@@ -81,9 +81,8 @@ export default async function InventoryPage({ searchParams }: Props) {
 
   // Get active dealership
   const activeDealership = await getActiveDealership();
-  const activeDealershipId = activeDealership?.id ?? null;
 
-  if (!activeDealershipId) {
+  if (!activeDealership) {
     // No active dealership - show empty state
     return (
       <section className="space-y-6">
@@ -106,8 +105,8 @@ export default async function InventoryPage({ searchParams }: Props) {
     offset: offset,
   };
 
-  // Limit to the active dealership's MarketCheck dealer ID if available
-  if (activeDealership?.marketcheckDealerId) {
+  uvsFilters.dealershipId = activeDealership.id;
+  if (activeDealership.marketcheckDealerId) {
     uvsFilters.dealerId = activeDealership.marketcheckDealerId;
   }
 

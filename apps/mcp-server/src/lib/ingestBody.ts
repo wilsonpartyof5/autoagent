@@ -12,6 +12,7 @@ const DeletionStrategySchema = z.enum([
 const TrustedIngestOptionsSchema = z
   .object({
     dealerId: z.string().min(1).optional(),
+    dealershipId: z.string().uuid().optional(),
     dataSource: z.string().min(1).optional(),
     timeoutMs: z.number().int().positive().max(120_000).optional(),
     batchSize: z.number().int().positive().max(1_000).optional(),
@@ -31,6 +32,7 @@ export const FetchAndIngestBodySchema = z
   .object({
     dealerId: z.string().min(1).optional(),
     source: z.string().min(1).optional(),
+    dealershipId: z.string().uuid().optional(),
     page: z.number().int().min(1).optional(),
     maxPages: z.number().int().min(1).max(50).optional(),
     maxVehicles: z.number().int().min(1).max(20_000).optional(),
@@ -57,6 +59,7 @@ export function trustedIngestOptions(
   options?: z.infer<typeof TrustedIngestOptionsSchema>,
 ): IngestionServiceOptions {
   const dealerId = options?.dealerId;
+  const dealershipId = options?.dealershipId;
   return {
     provider,
     dataSource: options?.dataSource || defaults.dataSource,
@@ -64,9 +67,10 @@ export function trustedIngestOptions(
     batchSize: options?.batchSize || 100,
     continueOnError: options?.continueOnError !== false,
     dealerId,
+    ...(dealershipId ? { dealershipId } : {}),
     deletionStrategy: resolveDeletionStrategy(
       options?.deletionStrategy || defaults.deletionStrategy,
-      dealerId,
+      dealerId || dealershipId,
       defaults.deletionStrategy,
     ),
   };

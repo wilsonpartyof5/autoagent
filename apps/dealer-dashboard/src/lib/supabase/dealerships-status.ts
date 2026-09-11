@@ -1,5 +1,5 @@
 import { createClient } from './server';
-import { getActiveDealershipId } from './dealerships';
+import { applyRooftopVehicleFilter } from '@/lib/db/rooftop-vehicles';
 
 export type DealershipStatus = {
   hasInventory: boolean;
@@ -24,14 +24,28 @@ export async function getDealershipStatus(dealershipId: string): Promise<Dealers
     };
   }
 
-  // Check UVS inventory count
-  const { count: inventoryCount, error: invError } = await supabase
-    .from('uvs_vehicles')
-    .select('*', { count: 'exact', head: true })
-    .eq('availability_status', 'available');
+  const { data: dealership } = await supabase
+    .from('dealerships')
+    .select('id, marketcheck_dealer_id')
+    .eq('id', dealershipId)
+    .maybeSingle();
 
-  // Note: uvs_vehicles doesn't have dealership_id, so we count all available vehicles
-  // If we need to scope by dealership, we'd need to add dealer_id filtering
+  if (!dealership) {
+    return {
+      hasInventory: false,
+      inventoryCount: 0,
+      hasLeadDelivery: false,
+    };
+  }
+
+  const { count: inventoryCount } = await applyRooftopVehicleFilter(
+    supabase
+      .from('uvs_vehicles')
+      .select('*', { count: 'exact', head: true })
+      .eq('availability_status', 'available'),
+    dealershipId,
+    dealership.marketcheck_dealer_id,
+  );
   const count = inventoryCount ?? 0;
   const hasInventory = count > 0;
 
