@@ -70,8 +70,10 @@ describe('vehicle widget reliability contract', () => {
   it('renders dark vertical cards with image, price, mileage, and distance', () => {
     expect(html).toContain('.vehicle-card{background:var(--panel);color:var(--text)');
     expect(html).toContain('display:flex;flex-direction:column');
-    expect(html).toContain('.vehicle-card img{display:block;width:100%;aspect-ratio:4/3');
-    expect(html).toContain('#rail .vehicle-card{flex-basis:188px}');
+    expect(html).toContain('.vehicle-card img{display:block;width:100%;flex:1 1 0;min-height:140px');
+    expect(html).toContain('#rail{display:flex;gap:10px;overflow-x:auto');
+    expect(html).toContain('align-items:stretch');
+    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%');
     expect(html).toContain('.rail-nav{display:none}');
     expect(html).toContain("class=\"copy\"><div class=\"vehicle-price\">");
     expect(html).toContain('function distanceMiles(v)');
@@ -85,6 +87,17 @@ describe('vehicle widget reliability contract', () => {
     expect(html).not.toContain('background:#fff;color:#111');
   });
 
+  it('opens a full-bleed VDP on both inline desktop and mobile', () => {
+    expect(html).toContain('#details.drawer{display:flex;flex-direction:column;padding:0;overflow:hidden;background:var(--bg)}');
+    expect(html).toContain('#details .drawer-panel{display:flex;flex-direction:column;width:100%;height:100%;max-width:none;margin:0;border-radius:0');
+    expect(html).not.toContain('#details .drawer-panel{max-width:820px;margin:24px auto');
+    expect(html).not.toContain('#details.drawer{padding:0 16px;background:#0e1013cc}');
+    expect(html).toContain('.hero-image{display:block;width:100%;aspect-ratio:16/10');
+    expect(html).toContain('body.fullscreen .hero-image{aspect-ratio:16/9}');
+    expect(html).toContain('#rail .vehicle-card,.load-more-card{flex:1 0 156px;max-width:200px;min-width:148px}');
+    expect(html).toContain('#rail .vehicle-card,.load-more-card{flex:1 0 200px;max-width:260px;min-width:180px}');
+  });
+
   it('opens card details immediately without waiting for host fullscreen', () => {
     expect(html).toContain('function openCardDetails(id)');
     expect(html).toContain('openDetails(id)');
@@ -93,7 +106,7 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('function openCardFromUi(id,source');
     expect(html).toContain("openCardFromUi(cardNode.dataset.id,'card')");
     expect(html).toContain("document.addEventListener('pointerup'");
-    expect(html).toContain('#rail .vehicle-card{flex:0 0 188px;touch-action:pan-x;cursor:pointer');
+    expect(html).toContain('#rail .vehicle-card{flex:1 0 188px;max-width:240px;min-width:168px;height:100%;touch-action:pan-x;cursor:pointer');
     expect(html).toContain("if(down.pointerType!=='mouse'||down.button!==0)return");
     expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
     expect(html).toContain('aria-label="Back to results"');
