@@ -85,10 +85,16 @@ describe('vehicle widget reliability contract', () => {
     expect(html).not.toContain('background:#fff;color:#111');
   });
 
-  it('opens card details in fullscreen', () => {
-    expect(html).toContain('async function openCardDetails(id)');
-    expect(html).toContain("if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true)");
-    expect(html).toContain('openCardDetails(cardNode.dataset.id)');
+  it('opens card details immediately without waiting for host fullscreen', () => {
+    expect(html).toContain('function openCardDetails(id)');
+    expect(html).toContain('openDetails(id)');
+    expect(html).toContain("if(state.displayMode!=='fullscreen')void setDisplayMode('fullscreen',true)");
+    expect(html).not.toContain("if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true)");
+    expect(html).toContain('function openCardFromUi(id,source');
+    expect(html).toContain("openCardFromUi(cardNode.dataset.id,'card')");
+    expect(html).toContain("document.addEventListener('pointerup'");
+    expect(html).toContain('#rail .vehicle-card{flex:0 0 188px;touch-action:pan-x;cursor:pointer');
+    expect(html).toContain("if(down.pointerType!=='mouse'||down.button!==0)return");
     expect(html).toContain('id="detailFooter" class="vdp-footer-nav"');
     expect(html).toContain('aria-label="Back to results"');
     expect(html).toContain('>Results</button>');
@@ -97,7 +103,8 @@ describe('vehicle widget reliability contract', () => {
   });
 
   it('keeps ChatGPT revisions on the current widget', () => {
-    expect(html).toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}");
+    expect(html).toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen')setDisplayMode('inline',false)");
+    expect(html).not.toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}");
     expect(html).toContain('hideStatus();closeDetails();renderAll()');
     expect(html).not.toContain('scrollToBottom:true');
     expect(html).toContain("callSearch({make:make(v),model:model(v)},'more-like')");

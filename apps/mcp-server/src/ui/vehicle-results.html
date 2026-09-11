@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v37">
+  <meta name="autoagent-widget-version" content="v38">
   <title>Drevvy Vehicle Results</title>
   <style>
     :root {
@@ -38,7 +38,7 @@
     .vehicle-card .copy{padding:10px 12px 12px;min-width:0;display:flex;flex-direction:column;gap:4px}
     .vehicle-price{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.15}
     .vehicle-meta,.vehicle-distance{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #rail .vehicle-card{flex:0 0 188px;touch-action:pan-x;cursor:inherit;height:auto}
+    #rail .vehicle-card{flex:0 0 188px;touch-action:pan-x;cursor:pointer;height:auto}
     .load-more-card{flex:0 0 188px;min-height:220px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer;padding:16px;scroll-snap-align:start;display:flex;flex-direction:column;justify-content:center}
     .load-more-card small{display:block;margin-top:4px;color:var(--muted);font-weight:500}
     #status{position:absolute;z-index:900;inset:0;display:grid;place-items:center;background:#0d0f12d9;padding:24px;text-align:center}
@@ -161,7 +161,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v37', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v38', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -366,7 +366,7 @@
     }
     window.addEventListener('message',message=>{if(message.source!==window.parent)return;receive(message.data,'postMessage')});
     window.addEventListener('openai:set_globals',message=>receive(message.detail,'set_globals.dom'));
-    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}},250);
+    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen')setDisplayMode('inline',false)},250);
 
     const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>[image(v),...(v.media?.photoUrls||[])].filter((url,index,all)=>url&&all.indexOf(url)===index);
     const money=value=>value?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(value):'Call for price';
@@ -383,7 +383,7 @@
       return `${rounded.toLocaleString()} mi away`;
     }
     function imageAttributes(v){const candidates=photos(v);return `src="${escapeHtml(candidates[0]||FALLBACK_IMAGE)}" data-images="${escapeHtml(JSON.stringify(candidates))}" data-image-index="0"`}
-    function card(v){const dist=distanceLabel(v);return `<article class="vehicle-card ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0"><img ${imageAttributes(v)} alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`:'New'}</div>${dist?`<div class="vehicle-distance">${dist}</div>`:''}</div></article>`}
+    function card(v){const dist=distanceLabel(v);return `<article class="vehicle-card ${v.id===state.selectedId?'active':''}" data-id="${escapeHtml(v.id)}" tabindex="0" role="button" aria-label="${escapeHtml(title(v))}"><img ${imageAttributes(v)} alt="${escapeHtml(title(v))}"><div class="copy"><div class="vehicle-price">${money(price(v))}</div><div class="vehicle-meta">${miles(v)?`${miles(v).toLocaleString()} mi`:'New'}</div>${dist?`<div class="vehicle-distance">${dist}</div>`:''}</div></article>`}
     function vehiclesForRail(){
       const list=[...(state.all.length?state.all:state.visible)];
       if(!state.selectedId)return list.slice(0,state.cardLimit);
@@ -434,7 +434,15 @@
       if(selected&&!state.visible.some(item=>item.id===id))state.visible=[selected,...state.visible];
       renderAll();persistState();event(`selection:${source}`,{detail:id});
     }
-    let railDrag=null;let suppressCardClick=false;
+    let railDrag=null;let suppressCardClick=false;let lastCardOpen={id:null,at:0};
+    function openCardFromUi(id,source='card'){
+      if(!id||suppressCardClick||railDrag?.moved)return;
+      const now=performance.now();
+      if(lastCardOpen.id===id&&now-lastCardOpen.at<400)return;
+      lastCardOpen={id,at:now};
+      selectVehicle(id,source);
+      openCardDetails(id);
+    }
     function updateRailNav(){
       const rail=$('rail'),prev=$('railPrev'),next=$('railNext');
       if(!rail||!prev||!next)return;
@@ -461,16 +469,18 @@
         updateRailNav();
       },{passive:false});
       rail.addEventListener('pointerdown',down=>{
-        if(down.pointerType==='mouse'&&down.button!==0)return;
+        if(down.pointerType!=='mouse'||down.button!==0)return;
         railDrag={pointerId:down.pointerId,startX:down.clientX,startScroll:rail.scrollLeft,moved:false};
-        rail.classList.add('dragging');
-        try{rail.setPointerCapture(down.pointerId)}catch{}
       });
       rail.addEventListener('pointermove',move=>{
         if(!railDrag||railDrag.pointerId!==move.pointerId)return;
         const dx=move.clientX-railDrag.startX;
-        if(Math.abs(dx)>8)railDrag.moved=true;
-        if(!railDrag.moved)return;
+        if(Math.abs(dx)<=12)return;
+        if(!railDrag.moved){
+          railDrag.moved=true;
+          rail.classList.add('dragging');
+          try{rail.setPointerCapture(move.pointerId)}catch{}
+        }
         rail.scrollLeft=railDrag.startScroll-dx;
         move.preventDefault();
         updateRailNav();
@@ -492,12 +502,15 @@
       const thumb=click.target.closest?.('.gallery-thumb');
       if(thumb&&typeof state.setDetailPhoto==='function'){state.setDetailPhoto(Number(thumb.dataset.index||0));return}
       const cardNode=click.target.closest?.('.vehicle-card');
-      if(cardNode){
-        if(suppressCardClick||railDrag?.moved)return;
-        selectVehicle(cardNode.dataset.id,'card');openCardDetails(cardNode.dataset.id);
-      }
+      if(cardNode)openCardFromUi(cardNode.dataset.id,'card');
     });
-    document.addEventListener('keydown',key=>{const cardNode=key.target.closest?.('.vehicle-card');if(cardNode&&(key.key==='Enter'||key.key===' ')){key.preventDefault();selectVehicle(cardNode.dataset.id,'keyboard');openCardDetails(cardNode.dataset.id)}});
+    document.addEventListener('pointerup',up=>{
+      if(up.pointerType==='mouse'&&up.button!==0)return;
+      if(up.target.closest?.('#details')||up.target.closest?.('.rail-nav')||up.target.closest?.('.load-more-trigger'))return;
+      const cardNode=up.target.closest?.('.vehicle-card');
+      if(cardNode)openCardFromUi(cardNode.dataset.id,'card');
+    });
+    document.addEventListener('keydown',key=>{const cardNode=key.target.closest?.('.vehicle-card');if(cardNode&&(key.key==='Enter'||key.key===' ')){key.preventDefault();openCardFromUi(cardNode.dataset.id,'keyboard')}});
 
     async function callSearch(overrides,source,quiet=false){
       if(state.pending)return;
@@ -529,9 +542,9 @@
     $('expandButton').addEventListener('click',()=>setDisplayMode('fullscreen',true));
 
     function spec(label,value){return value?`<div class="spec"><label>${escapeHtml(label)}</label><strong>${escapeHtml(value)}</strong></div>`:''}
-    async function openCardDetails(id){
-      if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true);
+    function openCardDetails(id){
       openDetails(id);
+      if(state.displayMode!=='fullscreen')void setDisplayMode('fullscreen',true);
     }
     function openDetails(id){
       const v=state.all.find(item=>item.id===id);if(!v)return;selectVehicle(id,'detail');
