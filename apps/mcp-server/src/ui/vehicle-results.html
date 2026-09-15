@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="autoagent-widget-version" content="v39">
+  <meta name="autoagent-widget-version" content="v40">
   <title>Drevvy Vehicle Results</title>
   <style>
     :root {
@@ -124,7 +124,6 @@
           <button class="pill" id="resetButton">Reset</button>
         </div>
         <div id="inventoryProgress"></div>
-        <button id="expandButton" class="icon-btn" aria-label="Open fullscreen results" title="Open fullscreen">↗</button>
       </header>
       <div id="railShell">
         <button type="button" id="railPrev" class="rail-nav" aria-label="Previous vehicles">‹</button>
@@ -162,7 +161,7 @@
     </section>
   </main>
   <script type="module">
-    const VERSION='v39', HOST='https://autoagentmcp-server-production.up.railway.app';
+    const VERSION='v40', HOST='https://autoagentmcp-server-production.up.railway.app';
     const RAIL_CARD_LIMIT=8;
     const FALLBACK_IMAGE='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="100%" height="100%" fill="#292c31"/><text x="50%" y="50%" fill="#a1a8b3" font-family="Arial" font-size="22" text-anchor="middle">Vehicle image unavailable</text></svg>');
     const instanceId=`widget_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
@@ -367,7 +366,7 @@
     }
     window.addEventListener('message',message=>{if(message.source!==window.parent)return;receive(message.data,'postMessage')});
     window.addEventListener('openai:set_globals',message=>receive(message.detail,'set_globals.dom'));
-    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen')setDisplayMode('inline',false)},250);
+    setInterval(()=>{attachBridge();reportIntrinsicHeight('bridge-poll');if(!lastResults&&!definitiveEmpty){receive(window.openai?.toolOutput,'poll.output');receive(window.openai?.toolResponseMetadata,'poll.meta')}const hostMode=window.openai?.displayMode;if(hostMode==='fullscreen'&&state.displayMode!=='fullscreen')setDisplayMode('fullscreen',false);if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}},250);
 
     const year=v=>v.baseIdentity?.year??v.year??'';const make=v=>v.baseIdentity?.make??v.make??'';const model=v=>v.baseIdentity?.model??v.model??'';const trim=v=>v.baseIdentity?.trim??v.trim??'';const vin=v=>v.baseIdentity?.vin??v.vin??'';const price=v=>Number(v.pricing?.price??v.price??0);const miles=v=>Number(v.coreSpecs?.miles??v.miles??0);const dealer=v=>v.location?.dealer??{};const image=v=>v.media?.primaryPhotoUrl||v.media?.photoUrls?.[0]||v.photoUrl||v.image||'';const photos=v=>[image(v),...(v.media?.photoUrls||[])].filter((url,index,all)=>url&&all.indexOf(url)===index);
     const money=value=>value?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(value):'Call for price';
@@ -531,7 +530,7 @@
     $('refineButton').addEventListener('click',async()=>{persistState();try{if(typeof window.openai?.sendFollowUpMessage==='function'){await window.openai.sendFollowUpMessage({prompt:`Help me refine my vehicle search near ${state.query.location||'this area'}. Current filters: ${JSON.stringify(state.filters)}. Ask what I want to change, then update the results.`});event('refine:follow-up:sent')}else{toast('Use Ask ChatGPT below to refine this search.');event('refine:follow-up:fallback')}}catch(error){toast(error.message||'Use Ask ChatGPT below to refine this search.');event('refine:follow-up:fallback')}});
 
     async function setDisplayMode(mode,requestHost=true){
-      state.displayMode=mode;document.body.classList.toggle('fullscreen',mode==='fullscreen');$('expandButton').classList.toggle('hidden',mode==='fullscreen');persistState();event(`display:${mode}`);
+      state.displayMode=mode;document.body.classList.toggle('fullscreen',mode==='fullscreen');persistState();event(`display:${mode}`);
       if(requestHost&&typeof window.openai?.requestDisplayMode==='function'){try{await window.openai.requestDisplayMode({mode});event(`display:${mode}:accepted`)}catch{event(`display:${mode}:fallback`)}}
       reportIntrinsicHeight('display');
     }
@@ -540,12 +539,10 @@
       if(state.displayMode!=='inline')setDisplayMode('inline',true);
       event(`nav:results:${source}`);
     }
-    $('expandButton').addEventListener('click',()=>setDisplayMode('fullscreen',true));
 
     function spec(label,value){return value?`<div class="spec"><label>${escapeHtml(label)}</label><strong>${escapeHtml(value)}</strong></div>`:''}
     function openCardDetails(id){
       openDetails(id);
-      if(state.displayMode!=='fullscreen')void setDisplayMode('fullscreen',true);
     }
     function openDetails(id){
       const v=state.all.find(item=>item.id===id);if(!v)return;selectVehicle(id,'detail');
@@ -590,10 +587,10 @@
       event('vehicle:detail',{detail:id});
     }
     function closeDetails(){$('details').classList.add('hidden');state.setDetailPhoto=null;event('nav:close-details')}
-    $('detailClose').onclick=()=>{closeDetails();event('nav:close:vdp-x')};
+    $('detailClose').onclick=()=>returnToResults('vdp-x');
     $('detailBack').onclick=()=>returnToResults('vdp-back');
     $('detailMapButton').onclick=()=>returnToResults('vdp-footer');
-    $('detailCardsButton').onclick=()=>{closeDetails();if(state.displayMode==='inline')setDisplayMode('fullscreen',true);event('nav:cards:vdp-footer')};
+    $('detailCardsButton').onclick=()=>returnToResults('vdp-cards');
     function openLead(v){state.leadVehicle=v;$('leadError').classList.add('hidden');$('leadModal').classList.remove('hidden');event('lead:start',{detail:v.id})}
     $('leadClose').onclick=()=>$('leadModal').classList.add('hidden');
     $('leadForm').addEventListener('submit',async submit=>{submit.preventDefault();const v=state.leadVehicle,d=dealer(v),button=$('leadSubmit');button.disabled=true;button.textContent='Submitting…';try{const result=await window.openai.callTool('submit-lead',{vehicleId:v.id,vin:vin(v),dealerId:d.dealerId,dealerName:d.name,pricing:{price:price(v),currency:v.pricing?.currency||'USD'},user:{name:$('leadName').value,email:$('leadEmail').value,phone:$('leadPhone').value||undefined,preferredTime:$('leadTime').value||undefined},consent:$('leadConsent').checked,searchResultToken:v.searchResultToken});if(result?.error)throw new Error(result.error.message||'Lead submission failed');toast('Request submitted. We’ll confirm with the dealer.');$('leadModal').classList.add('hidden');event('lead:submitted',{detail:v.id})}catch(error){const node=$('leadError');node.textContent=error?.message||'Unable to submit request';node.style.cssText='display:block;background:#7f1d1d;padding:10px;border-radius:8px';node.classList.remove('hidden');event('lead:error',{detail:String(error?.message||error)})}finally{button.disabled=false;button.textContent='Submit request'}});
@@ -627,7 +624,7 @@
       });
       resizeObserver.observe($('app'));
     }
-    const restored=window.openai?.widgetState;if(restored?.privateContent?.displayMode==='fullscreen')setDisplayMode('fullscreen',false);if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
+    const restored=window.openai?.widgetState;if(restored?.modelContent?.selectedVehicleId)state.selectedId=restored.modelContent.selectedVehicleId;
     attachBridge();reportIntrinsicHeight('startup');receive(window.openai?.toolOutput,'initial.output');receive(window.openai?.toolResponseMetadata,'initial.meta');
     setTimeout(()=>{if(!hasLiveVehicles()){captureHostSearchParams();receive(window.openai?.toolOutput,'startup.output');receive(window.openai?.toolResponseMetadata,'startup.meta');if(!hasLiveVehicles()){showStatus('Waiting for live vehicle data','ChatGPT is still preparing results. Cards will appear automatically when ready.');scheduleSelfFetch('startup-timeout')}}},5000);
   </script>

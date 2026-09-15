@@ -42,10 +42,12 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain("event('hydrate:empty'");
   });
 
-  it('supports fullscreen, native follow-ups, and persistent widget state', () => {
+  it('supports native follow-ups, persistent widget state, and host display-mode sync', () => {
     expect(html).toContain("requestDisplayMode({mode})");
     expect(html).toContain('sendFollowUpMessage');
     expect(html).toContain('setWidgetState');
+    expect(html).not.toContain('id="expandButton"');
+    expect(html).not.toContain('Open fullscreen results');
   });
 
   it('reports a compact carousel intrinsic height', () => {
@@ -98,10 +100,10 @@ describe('vehicle widget reliability contract', () => {
     expect(html).toContain('#rail .vehicle-card,.load-more-card{flex:1 0 200px;max-width:260px;min-width:180px}');
   });
 
-  it('opens card details immediately without waiting for host fullscreen', () => {
+  it('opens card details in the current iframe without requesting fullscreen', () => {
     expect(html).toContain('function openCardDetails(id)');
     expect(html).toContain('openDetails(id)');
-    expect(html).toContain("if(state.displayMode!=='fullscreen')void setDisplayMode('fullscreen',true)");
+    expect(html).not.toContain("if(state.displayMode!=='fullscreen')void setDisplayMode('fullscreen',true)");
     expect(html).not.toContain("if(state.displayMode!=='fullscreen')await setDisplayMode('fullscreen',true)");
     expect(html).toContain('function openCardFromUi(id,source');
     expect(html).toContain("openCardFromUi(cardNode.dataset.id,'card')");
@@ -115,9 +117,19 @@ describe('vehicle widget reliability contract', () => {
     expect(html).not.toContain('.vdp-footer-nav{flex-direction:column}');
   });
 
+  it('returns from the VDP to the carousel on Back, X, and host collapse', () => {
+    expect(html).toContain("$('detailClose').onclick=()=>returnToResults('vdp-x')");
+    expect(html).toContain("$('detailBack').onclick=()=>returnToResults('vdp-back')");
+    expect(html).toContain("$('detailMapButton').onclick=()=>returnToResults('vdp-footer')");
+    expect(html).toContain("$('detailCardsButton').onclick=()=>returnToResults('vdp-cards')");
+    expect(html).toContain("if(state.displayMode!=='inline')setDisplayMode('inline',true)");
+    expect(html).not.toContain("$('detailClose').onclick=()=>{closeDetails();event('nav:close:vdp-x')}");
+    expect(html).not.toContain("if(state.displayMode==='inline')setDisplayMode('fullscreen',true);event('nav:cards:vdp-footer')");
+  });
+
   it('keeps ChatGPT revisions on the current widget', () => {
-    expect(html).toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen')setDisplayMode('inline',false)");
-    expect(html).not.toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}");
+    expect(html).toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen'){closeDetails();setDisplayMode('inline',false)}");
+    expect(html).not.toContain("if(hostMode==='inline'&&state.displayMode==='fullscreen')setDisplayMode('inline',false)");
     expect(html).toContain('hideStatus();closeDetails();renderAll()');
     expect(html).not.toContain('scrollToBottom:true');
     expect(html).toContain("callSearch({make:make(v),model:model(v)},'more-like')");
