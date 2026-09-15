@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:dealer-mobile": "tsx --test src/lib/dealer-mobile/*.test.ts",
     "clean": "rm -rf .next",
     "worker:analytics-refresh": "tsx src/workers/analytics-refresh-worker.ts"
   },
