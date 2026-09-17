@@ -5,9 +5,9 @@ import { SupabaseClient } from '@supabase/supabase-js';
  * 
  * Detects suspicious prelinked dealership state for newly created users.
  * This prevents cross-tenant data leakage by blocking onboarding when:
- * - User has dealership memberships they shouldn't have
- * - User has MarketCheck dealer ID set in profile (should be set during onboarding)
- * - User has active dealership preference before completing onboarding
+ * - A membership predates the user's profile
+ * - A MarketCheck dealer ID exists without a dealership membership
+ * - The active dealership preference is not one of the user's memberships
  * 
  * @param supabase - Supabase client (can be regular or admin)
  * @param userId - User ID to check
@@ -72,23 +72,45 @@ export async function checkOnboardingIntegrity(
       return { isValid: true }; // Fail open
     }
 
-    // Suspicious state detection for NEW accounts only
-    const hasMemberships = memberships && memberships.length > 0;
+    // Memberships created after the profile can be legitimate onboarding or
+    // invite-backed state. There is no creator column to prove provenance, so
+    // creation time is the strongest signal available for older memberships.
+    const profileCreatedAt = new Date(profile.created_at).getTime();
+    const suspiciousMemberships = (memberships ?? []).filter((membership) => {
+      const membershipCreatedAt = new Date(membership.created_at).getTime();
+      return (
+        !Number.isFinite(membershipCreatedAt) ||
+        membershipCreatedAt < profileCreatedAt
+      );
+    });
+    const dealershipIds = new Set(
+      (memberships ?? []).map((membership) => membership.dealership_id),
+    );
     const hasMarketCheckId = Boolean(profile.marketcheck_dealer_id);
     const hasActivePreference = Boolean(preferences?.active_dealership_id);
+    const hasOrphanedMarketCheckId = hasMarketCheckId && dealershipIds.size === 0;
+    const hasUnlinkedActivePreference =
+      hasActivePreference &&
+      !dealershipIds.has(preferences?.active_dealership_id);
 
-    // A brand new account should NOT have any of these set
-    if (hasMemberships || hasMarketCheckId || hasActivePreference) {
+    if (
+      suspiciousMemberships.length > 0 ||
+      hasOrphanedMarketCheckId ||
+      hasUnlinkedActivePreference
+    ) {
       const errorMessage =
         'Your account setup appears incomplete. Please contact support for assistance.';
       
       const details = {
         userId,
         accountAgeMinutes: Math.round(accountAgeMinutes * 10) / 10,
-        hasMemberships,
+        hasMemberships: dealershipIds.size > 0,
         hasMarketCheckId,
         hasActivePreference,
         membershipCount: memberships?.length ?? 0,
+        suspiciousMembershipCount: suspiciousMemberships.length,
+        hasOrphanedMarketCheckId,
+        hasUnlinkedActivePreference,
         onboardingCompleted: profile.onboarding_completed,
       };
 

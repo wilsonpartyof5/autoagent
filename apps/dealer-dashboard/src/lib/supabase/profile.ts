@@ -2,11 +2,16 @@ import { createClient } from "./server";
 
 export type InventoryProvider = 'marketcheck' | 'cdk' | 'vauto';
 export type PlatformRole = 'dealer_user' | 'platform_admin';
+export type OnboardingStep = 1 | 2 | 3;
 
 export type DealerProfile = {
+  fullName?: string | null;
+  onboardingStep: OnboardingStep;
   onboardingCompleted: boolean;
+  onboardingCompletedAt?: string | null;
   inventoryConnected: boolean;
   billingActive: boolean;
+  billingSkippedAt?: string | null;
   platformRole: PlatformRole;
   dmsProvider?: InventoryProvider | null;
   marketcheckDealerId?: string | null;
@@ -30,7 +35,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "onboarding_completed, inventory_connected, billing_active, platform_role, dms_provider, marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
+      "full_name, onboarding_step, onboarding_completed, onboarding_completed_at, inventory_connected, billing_active, billing_skipped_at, platform_role, dms_provider, marketcheck_dealer_id, marketcheck_zip, marketcheck_website_url, lead_delivery_method, lead_delivery_endpoint, lead_delivery_email",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -38,6 +43,7 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
   if (error) {
     console.error("[profiles] failed to load profile", error);
     return {
+      onboardingStep: 1,
       onboardingCompleted: false,
       inventoryConnected: false,
       billingActive: false,
@@ -46,9 +52,13 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
   }
 
   return {
+    fullName: data?.full_name ?? null,
+    onboardingStep: toOnboardingStep(data?.onboarding_step),
     onboardingCompleted: Boolean(data?.onboarding_completed),
+    onboardingCompletedAt: data?.onboarding_completed_at ?? null,
     inventoryConnected: Boolean(data?.inventory_connected),
     billingActive: Boolean(data?.billing_active),
+    billingSkippedAt: data?.billing_skipped_at ?? null,
     platformRole: data?.platform_role === 'platform_admin' ? 'platform_admin' : 'dealer_user',
     dmsProvider: data?.dms_provider ?? null,
     marketcheckDealerId: data?.marketcheck_dealer_id ?? null,
@@ -61,9 +71,13 @@ export async function getDealerProfile(): Promise<DealerProfile | null> {
 }
 
 type UpdateDealerProfileInput = {
+  fullName?: string | null;
+  onboardingStep?: OnboardingStep;
   onboardingCompleted?: boolean;
+  onboardingCompletedAt?: string | null;
   inventoryConnected?: boolean;
   billingActive?: boolean;
+  billingSkippedAt?: string | null;
   dmsProvider?: InventoryProvider | null;
   marketcheckDealerId?: string | null;
   marketcheckZip?: string | null;
@@ -88,14 +102,26 @@ export async function updateDealerProfile(input: UpdateDealerProfileInput) {
     updated_at: new Date().toISOString(),
   };
 
+  if (input.fullName !== undefined) {
+    payload["full_name"] = input.fullName;
+  }
+  if (input.onboardingStep !== undefined) {
+    payload["onboarding_step"] = input.onboardingStep;
+  }
   if (input.onboardingCompleted !== undefined) {
     payload["onboarding_completed"] = input.onboardingCompleted;
+  }
+  if (input.onboardingCompletedAt !== undefined) {
+    payload["onboarding_completed_at"] = input.onboardingCompletedAt;
   }
   if (input.inventoryConnected !== undefined) {
     payload["inventory_connected"] = input.inventoryConnected;
   }
   if (input.billingActive !== undefined) {
     payload["billing_active"] = input.billingActive;
+  }
+  if (input.billingSkippedAt !== undefined) {
+    payload["billing_skipped_at"] = input.billingSkippedAt;
   }
   if (input.dmsProvider !== undefined) {
     payload["dms_provider"] = input.dmsProvider;
@@ -160,4 +186,8 @@ export async function updateDealerProfile(input: UpdateDealerProfileInput) {
     });
     throw new Error("Unable to update dealer profile. Please try again.");
   }
+}
+
+function toOnboardingStep(value: unknown): OnboardingStep {
+  return value === 2 || value === 3 ? value : 1;
 }
