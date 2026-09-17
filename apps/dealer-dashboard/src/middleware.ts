@@ -15,8 +15,9 @@ export async function middleware(request: NextRequest) {
   // Ensure analytics session cookie exists (for session persistence)
   let sessionId = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionId) {
-    sessionId = generateSessionId();
-    response.cookies.set(SESSION_COOKIE_NAME, sessionId, {
+    const newSessionId = generateSessionId();
+    sessionId = newSessionId;
+    response.cookies.set(SESSION_COOKIE_NAME, newSessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -53,15 +54,46 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect /app/** routes
-  if (request.nextUrl.pathname.startsWith('/app')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/auth', request.url))
+  const pathname = request.nextUrl.pathname
+  const isAuthCallback = pathname.startsWith('/auth/callback')
+  const isAuthPage = pathname === '/auth'
+  const isAppRoute = pathname.startsWith('/app')
+  const isOnboardingRoute = pathname.startsWith('/onboarding')
+
+  // The callback route must receive PKCE and OTP parameters before any auth redirect.
+  if (isAuthCallback) {
+    return response
+  }
+
+  if (!user && (isAppRoute || isOnboardingRoute)) {
+    return redirectWithCookies(new URL('/auth', request.url), response)
+  }
+
+  let isPlatformAdmin = false
+  let onboardingCompleted = false
+  let onboardingStep = 1
+
+  if (user) {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('onboarding_completed, onboarding_step, platform_role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profileError) {
+      console.error('[middleware] Failed to load onboarding profile:', profileError)
     }
 
+    isPlatformAdmin = profile?.platform_role === 'platform_admin'
+    onboardingCompleted = Boolean(profile?.onboarding_completed)
+    onboardingStep =
+      profile?.onboarding_step === 2 || profile?.onboarding_step === 3
+        ? profile.onboarding_step
+        : 1
+  }
+
+  if (user && !isPlatformAdmin && (isAppRoute || isOnboardingRoute)) {
     // Onboarding integrity check: Detect suspicious prelinked state for new users
-    // This prevents cross-tenant data leakage by blocking onboarding when a new user
-    // already has dealership memberships or MarketCheck IDs they shouldn't have.
     try {
       const { checkOnboardingIntegrity } = await import('@/lib/supabase/integrity-check');
       const integrityResult = await checkOnboardingIntegrity(supabase, user.id);
@@ -83,7 +115,7 @@ export async function middleware(request: NextRequest) {
         // Sign out user to prevent any potential access
         await supabase.auth.signOut();
         
-        return NextResponse.redirect(authUrl);
+        return redirectWithCookies(authUrl, response);
       }
     } catch (error) {
       // Log but don't block on integrity check errors (fail open for UX)
@@ -91,8 +123,18 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (user && !isPlatformAdmin && isAppRoute && !onboardingCompleted) {
+    const onboardingUrl = new URL('/onboarding', request.url)
+    onboardingUrl.searchParams.set('step', String(onboardingStep))
+    return redirectWithCookies(onboardingUrl, response)
+  }
+
+  if (user && !isPlatformAdmin && isOnboardingRoute && onboardingCompleted) {
+    return redirectWithCookies(new URL('/app/leads', request.url), response)
+  }
+
   // Track dashboard login when user accesses /app/** routes
-  if (request.nextUrl.pathname.startsWith('/app') && user) {
+  if (isAppRoute && user) {
     // Track login event asynchronously (don't block request)
     (async () => {
       try {
@@ -123,14 +165,21 @@ export async function middleware(request: NextRequest) {
     })();
   }
 
-  // Redirect authenticated users away from /auth
-  if (request.nextUrl.pathname === '/auth' && user) {
-    return NextResponse.redirect(new URL('/app/setup', request.url))
+  // All dealer sign-ins resolve through onboarding; middleware then applies completion state.
+  if (isAuthPage && user) {
+    const destination = isPlatformAdmin ? '/app/leads' : '/onboarding'
+    return redirectWithCookies(new URL(destination, request.url), response)
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/app/:path*', '/auth', '/auth/:path*'],
+  matcher: ['/app/:path*', '/auth', '/auth/:path*', '/onboarding/:path*'],
+}
+
+function redirectWithCookies(url: URL, response: NextResponse) {
+  const redirectResponse = NextResponse.redirect(url)
+  response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie))
+  return redirectResponse
 }

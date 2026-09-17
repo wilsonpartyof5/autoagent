@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,10 @@ function AuthForm() {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
   const searchParams = useSearchParams();
   
   // Check for integrity check error from middleware redirect
@@ -23,11 +25,14 @@ function AuthForm() {
     const messageParam = searchParams.get('message');
     
     if (errorParam === 'integrity_check_failed' && messageParam) {
-      setError(
-        `${messageParam} Please contact support at support@autoagent.com for assistance.`
-      );
+      setError(`${messageParam} Please contact support for assistance.`);
+    } else if (errorParam === 'confirmation_failed') {
+      setError('That confirmation link is invalid or has expired. Please request a new email.');
     }
   }, [searchParams]);
+
+  const getEmailRedirectTo = () =>
+    `${window.location.origin}/auth/callback?next=/onboarding`;
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,16 +53,27 @@ function AuthForm() {
         const { error: signUpError, data } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: getEmailRedirectTo(),
+          },
         });
 
         if (signUpError) {
           throw new Error(signUpError.message || 'Sign up failed. Please try again.');
         }
 
-        // After sign up, redirect to setup
-        window.location.href = '/app/setup';
+        if (!data.session) {
+          setConfirmationEmail(email);
+          setConfirmationMessage(
+            'Check your inbox and confirm your email before signing in.',
+          );
+          setLoading(false);
+          return;
+        }
+
+        window.location.href = '/onboarding';
       } else {
-        const { error: signInError, data } = await supabase.auth.signInWithPassword({
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
@@ -66,9 +82,8 @@ function AuthForm() {
           throw new Error(signInError.message || 'Invalid email or password. Please try again.');
         }
 
-        // After sign in, redirect based on onboarding status
-        // Use window.location for full page reload to ensure session is set
-        window.location.href = '/app/inventory';
+        // Middleware resolves whether onboarding is already complete.
+        window.location.href = '/onboarding';
       }
     } catch (err: unknown) {
       // Extract error message from various error types
@@ -90,17 +105,89 @@ function AuthForm() {
     }
   };
 
+  const handleResendConfirmation = async () => {
+    if (!confirmationEmail) {
+      return;
+    }
+
+    setResending(true);
+    setError(null);
+    setConfirmationMessage(null);
+
+    const supabase = createClient();
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: confirmationEmail,
+      options: {
+        emailRedirectTo: getEmailRedirectTo(),
+      },
+    });
+
+    if (resendError) {
+      setError(resendError.message);
+    } else {
+      setConfirmationMessage('A new confirmation email is on its way.');
+    }
+    setResending(false);
+  };
+
+  if (confirmationEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">Confirm your email</CardTitle>
+            <CardDescription>
+              We sent a Drevvy confirmation link to {confirmationEmail}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {confirmationMessage && (
+              <div className="rounded-md bg-primary/10 p-3 text-sm text-foreground">
+                {confirmationMessage}
+              </div>
+            )}
+            {error && (
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={resending}
+              onClick={handleResendConfirmation}
+            >
+              {resending ? 'Sending...' : 'Resend confirmation email'}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-primary hover:underline"
+              onClick={() => {
+                setConfirmationEmail(null);
+                setConfirmationMessage(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">
-            {isSignUp ? 'Create Account' : 'Sign In'}
+            {isSignUp ? 'Create your Drevvy account' : 'Welcome to Drevvy'}
           </CardTitle>
           <CardDescription>
             {isSignUp
-              ? 'Create your AutoAgent dealer account'
-              : 'Sign in to your AutoAgent account'}
+              ? 'Start connecting your dealership to AI-powered shoppers.'
+              : 'Sign in to manage your dealership leads and inventory.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -140,7 +227,7 @@ function AuthForm() {
               </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+              {loading ? 'Loading...' : isSignUp ? 'Create account' : 'Sign in'}
             </Button>
             <div className="text-center text-sm">
               <button

@@ -1,242 +1,134 @@
-'use client';
-
-import React, { useState } from 'react';
-import { Shield, Database, Users, CreditCard, CheckCircle2 } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Building2, CreditCard, Database } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  getDealerProfile,
+  type OnboardingStep,
+} from '@/lib/supabase/profile';
+import { createClient } from '@/lib/supabase/server';
 
 const steps = [
   {
-    id: 1,
-    title: 'Connect Your Inventory',
+    id: 1 as const,
+    title: 'Dealership details',
+    description: 'Tell Drevvy about your dealership.',
+    icon: Building2,
+  },
+  {
+    id: 2 as const,
+    title: 'Connect inventory',
+    description: 'Choose the inventory source Drevvy should use.',
     icon: Database,
-    description: 'Choose how you\'d like to manage your vehicle listings'
   },
   {
-    id: 2,
-    title: 'Add Team Members',
-    icon: Users,
-    description: 'Invite your sales team to manage leads together'
-  },
-  {
-    id: 3,
-    title: 'Set Up Billing',
+    id: 3 as const,
+    title: 'Billing and launch',
+    description: 'Review billing and prepare your account to go live.',
     icon: CreditCard,
-    description: 'Add your payment method to activate your account'
   },
-  {
-    id: 4,
-    title: 'Activation Confirmation',
-    icon: CheckCircle2,
-    description: 'You\'re all set!'
-  }
 ];
 
-export default function OnboardingPage() {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState({
-    dmsProvider: ''
-  });
-  
-  const progressPercentage = (currentStep / 4) * 100;
-  
-  const handleNext = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      // Handle final activation
-      console.log('Account activated!');
-    }
-  };
-  
-  const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
+export const dynamic = 'force-dynamic';
 
-  const handleDmsProviderChange = (value: string) => {
-    setFormData(prev => ({ ...prev, dmsProvider: value }));
-  };
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const dmsOptions = [
-    { value: 'cdk', label: 'CDK Global' },
-    { value: 'dealertrack', label: 'Dealertrack DMS' },
-    { value: 'reynolds', label: 'Reynolds & Reynolds' },
-    { value: 'automate', label: 'Automate' },
-    { value: 'csv', label: 'CSV Upload' },
-    { value: 'manual', label: 'I\'ll add vehicles manually' }
-  ];
+  if (!user) {
+    redirect('/auth');
+  }
 
-  const renderStepContent = () => {
-    if (currentStep === 1) {
-      return (
-        <div className="space-y-6">
-          {/* DMS Provider Select */}
-          <div>
-            <Select value={formData.dmsProvider} onValueChange={handleDmsProviderChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select your DMS provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {dmsOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-2">
-              You can configure API integration later in Settings
-            </p>
-          </div>
+  const profile = await getDealerProfile();
 
-          {/* Conditional CSV Upload Zone */}
-          {formData.dmsProvider === 'csv' && (
-            <div className="rounded-lg border-2 border-dashed border-border p-8 text-center space-y-4">
-              <Database className="h-12 w-12 text-muted-foreground mx-auto" />
-              <div>
-                <p className="text-sm font-medium">Upload your vehicle inventory</p>
-                <p className="text-xs text-muted-foreground">
-                  Drag and drop your CSV file here, or click to browse
-                </p>
-              </div>
-              <Button variant="outline">Browse Files</Button>
-            </div>
-          )}
+  if (
+    profile?.platformRole === 'platform_admin' ||
+    profile?.onboardingCompleted
+  ) {
+    redirect('/app/leads');
+  }
 
-          {/* Conditional Integration Info */}
-          {formData.dmsProvider && 
-           formData.dmsProvider !== 'csv' && 
-           formData.dmsProvider !== 'manual' && (
-            <div className="rounded-lg bg-secondary/10 border border-secondary/20 p-4 text-sm">
-              <p className="font-medium mb-1">
-                Next Step: After completing onboarding, you'll be able to connect your {dmsOptions.find(opt => opt.value === formData.dmsProvider)?.label} system in Settings → API & Integrations.
-              </p>
-            </div>
-          )}
-
-          {/* Privacy Notice */}
-          <div className="rounded-lg bg-muted/30 border p-4 text-sm">
-            <p className="text-muted-foreground">
-              Data Privacy: All inventory data is encrypted at rest and in transit. We only sync vehicle information, not customer data.
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Placeholder for other steps
-    return (
-      <div className="min-h-[200px] flex items-center justify-center border-2 border-dashed border-border rounded-lg">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-2">
-            Step {currentStep} Content
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Detailed form content will be implemented here
-          </p>
-        </div>
-      </div>
-    );
-  };
+  const currentStep: OnboardingStep = profile?.onboardingStep ?? 1;
+  const activeStep = steps[currentStep - 1];
 
   return (
-    <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-6">
-      <div className="max-w-3xl w-full">
-        {/* Header Hero */}
-        <div className="text-center mb-8 animate-fade-in">
-          <Shield className="h-12 w-12 text-primary mx-auto mb-4" />
-          <h1 className="text-4xl font-bold text-white text-center mb-2">
-            AutoAgent
-          </h1>
-          <p className="text-xl text-muted-foreground text-center">
-            Smarter leads. Lower costs.
+    <main className="min-h-screen bg-gradient-dark px-6 py-12">
+      <div className="mx-auto w-full max-w-3xl space-y-8">
+        <header className="space-y-2 text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+            Drevvy dealer onboarding
           </p>
-        </div>
+          <h1 className="text-4xl font-bold text-white">
+            {profile?.fullName ? `Welcome, ${profile.fullName}` : 'Welcome to Drevvy'}
+          </h1>
+          <p className="text-muted-foreground">
+            Complete these three steps to prepare your dealership account.
+          </p>
+        </header>
 
-        {/* Progress Bar */}
-        <div className="mb-8 animate-fade-in delay-100">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-muted-foreground">
-              Step {currentStep} of 4
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Step {currentStep} of {steps.length}
             </span>
-            <span className="text-sm font-medium text-primary">
-              {Math.round(progressPercentage)}%
+            <span className="font-medium text-primary">
+              {Math.round((currentStep / steps.length) * 100)}%
             </span>
           </div>
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-primary transition-all duration-300 ease-out"
-              style={{ width: `${progressPercentage}%` }}
+          <div className="h-2 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full bg-primary"
+              style={{ width: `${(currentStep / steps.length) * 100}%` }}
             />
           </div>
         </div>
 
-        {/* Step Indicators */}
-        <div className="flex justify-between mb-8 animate-fade-in delay-200">
+        <ol className="grid gap-3 sm:grid-cols-3">
           {steps.map((step) => {
             const Icon = step.icon;
-            const isActive = currentStep >= step.id;
-            const isCurrent = currentStep === step.id;
-            
+            const isCurrent = step.id === currentStep;
+            const isReached = step.id <= currentStep;
+
             return (
-              <div key={step.id} className="flex flex-col items-center flex-1">
-                <div className={`
-                  h-12 w-12 rounded-full border-2 flex items-center justify-center mb-2 transition-all duration-200
-                  ${isActive 
-                    ? 'border-primary bg-primary text-primary-foreground' 
-                    : 'border-muted bg-background text-muted-foreground'
-                  }
-                `}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <span className={`
-                  text-xs font-medium text-center px-2
-                  ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}
-                `}>
-                  {step.title}
-                </span>
-              </div>
+              <li
+                key={step.id}
+                className={`rounded-lg border p-4 ${
+                  isCurrent
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border bg-card'
+                }`}
+              >
+                <Icon
+                  className={`mb-3 h-5 w-5 ${
+                    isReached ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                />
+                <p className="text-sm font-medium">{step.title}</p>
+              </li>
             );
           })}
-        </div>
+        </ol>
 
-        {/* Content Card */}
-        <Card className="card-elevated animate-slide-up">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-2xl font-bold">
-              {steps[currentStep - 1].title}
-            </CardTitle>
-            <p className="text-base text-muted-foreground">
-              {steps[currentStep - 1].description}
+            <CardTitle>{activeStep.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {activeStep.description}
             </p>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {renderStepContent()}
-
-            {/* Navigation Buttons */}
-            <div className="flex gap-3 mt-8 pt-6 border-t">
-              {currentStep > 1 && (
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={handleBack}
-                >
-                  Back
-                </Button>
-              )}
-              <Button 
-                className="w-full sm:w-auto flex-1 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
-                onClick={handleNext}
-              >
-                {currentStep === 4 ? 'Activate Account' : 'Continue'}
-              </Button>
+          <CardContent>
+            <div className="flex min-h-48 items-center justify-center rounded-lg border-2 border-dashed border-border p-8 text-center">
+              <div className="space-y-2">
+                <p className="font-medium">Step {currentStep} is ready for its form.</p>
+                <p className="text-sm text-muted-foreground">
+                  The detailed fields and actions will be added in the next phase.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }
