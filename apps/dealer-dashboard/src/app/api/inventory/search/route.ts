@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  searchActiveCarsMcp as searchLiveInventory,
   boundsToRadiusMiles,
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { searchCanonicalInventory } from '@/lib/inventory/canonical-search';
 
 /**
  * POST /api/inventory/search
@@ -352,13 +352,14 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Perform live search
     // -----------------------------------------------------------------------
-    const searchResult = await searchLiveInventory({
+    const searchResult = await searchCanonicalInventory({
       latitude: searchCenter.latitude,
       longitude: searchCenter.longitude,
       radiusMiles,
       filters,
       rows: limit,
       start,
+      source: 'consumer_ios',
     });
 
     // -----------------------------------------------------------------------
@@ -412,6 +413,7 @@ export async function POST(request: NextRequest) {
           hasNextPage,
           hasPreviousPage,
         },
+        coverage: searchResult.coverage,
       },
     });
   } catch (error) {

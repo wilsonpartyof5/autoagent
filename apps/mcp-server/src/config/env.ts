@@ -158,6 +158,7 @@ export const CONFIG = {
     'INVENTORY_SEARCH_PROVIDER',
     'marketcheck_mcp'
   ) as 'marketcheck_mcp' | 'uvs',
+  inventoryMode: optionalEnv('INVENTORY_MODE', '') as 'hybrid' | 'uvs_preferred' | 'uvs_only' | '',
   marketcheckMcpUrl: optionalEnv('MARKETCHECK_MCP_URL', 'https://api.marketcheck.com/mcp'),
   marketcheckMcpAuthType: optionalEnv('MARKETCHECK_MCP_AUTH_TYPE', 'bearer') as 'none' | 'bearer' | 'x-api-key',
   marketcheckMcpAuthToken: optionalEnv('MARKETCHECK_MCP_AUTH_TOKEN', ''),
@@ -216,6 +217,13 @@ function validateConfig(): void {
     throw new Error(
       `❌ INVENTORY_SEARCH_PROVIDER must be one of: marketcheck_mcp, uvs\n` +
         `   Received: ${CONFIG.inventorySearchProvider}`
+    );
+  }
+
+  if (CONFIG.inventoryMode && !['hybrid', 'uvs_preferred', 'uvs_only'].includes(CONFIG.inventoryMode)) {
+    throw new Error(
+      `❌ INVENTORY_MODE must be one of: hybrid, uvs_preferred, uvs_only\n` +
+        `   Received: ${CONFIG.inventoryMode}`
     );
   }
 

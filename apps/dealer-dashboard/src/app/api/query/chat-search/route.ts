@@ -15,12 +15,12 @@ import {
 } from '@/lib/query/resolve-canonical-filters';
 
 import {
-  searchActiveCarsMcp,
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
   type LiveVehicle,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { searchCanonicalInventory } from '@/lib/inventory/canonical-search';
 
 /**
  * POST /api/query/chat-search
@@ -107,6 +107,13 @@ interface ChatSearchResponseData {
   apiCompatibleFilters: ApiCompatibleFilters;
   /** MarketCheck-validated canonical values actually sent to the search API. */
   canonicalFilters: CanonicalFilters;
+  coverage?: {
+    inventoryMode: string;
+    uvsCount: number;
+    marketcheckCount: number;
+    dedupedCount: number;
+    drevvyDealerCount: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -393,15 +400,16 @@ export async function POST(request: NextRequest) {
   if (canonicalFilters.powertrainType) searchFilters.powertrainType = canonicalFilters.powertrainType;
   if (canonicalFilters.exteriorColor) searchFilters.exteriorColor = canonicalFilters.exteriorColor;
 
-  let searchResult: Awaited<ReturnType<typeof searchActiveCarsMcp>>;
+  let searchResult: Awaited<ReturnType<typeof searchCanonicalInventory>>;
   try {
-    searchResult = await searchActiveCarsMcp({
+    searchResult = await searchCanonicalInventory({
       latitude: center.latitude,
       longitude: center.longitude,
       radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
       filters: searchFilters,
       rows: 25,
       start: 0,
+      source: 'consumer_ios',
     });
   } catch (error) {
     if (error instanceof MarketCheckQuotaError) {
@@ -512,6 +520,7 @@ export async function POST(request: NextRequest) {
     ...(location && { location }),
     apiCompatibleFilters: mergedFilters,
     canonicalFilters,
+    coverage: searchResult.coverage,
   };
 
   return NextResponse.json({ success: true, data: responseData });

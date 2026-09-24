@@ -199,6 +199,8 @@ export interface LiveVehicle {
   thumbnailUrl?: string;
   primaryPhotoUrl?: string;
   photoUrls?: string[];
+  dealerId?: string;
+  daysOnMarket?: number;
   location: {
     latitude: number;
     longitude: number;
@@ -343,6 +345,8 @@ function normalizeListing(listing: MCListing): LiveVehicle | null {
     thumbnailUrl: withApiKey(thumbnailPhoto),
     primaryPhotoUrl: withApiKey(galleryPhotos[0] ?? thumbnailPhoto),
     photoUrls: galleryPhotos.length > 0 ? galleryPhotos.map(withApiKey).filter((u): u is string => !!u) : undefined,
+    dealerId: listing.dealer?.id !== undefined && listing.dealer?.id !== null ? String(listing.dealer.id) : undefined,
+    daysOnMarket: typeof listing.dom === 'number' ? listing.dom : undefined,
     location: {
       latitude: lat,
       longitude: lng,
