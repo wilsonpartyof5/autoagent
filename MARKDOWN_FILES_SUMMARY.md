@@ -1,6 +1,6 @@
 # Drevvy Markdown Files Summary
 
-This document provides a comprehensive summary of all 72 markdown files in the Drevvy project, organized by category.
+This document provides a comprehensive summary of all 76 markdown files in the Drevvy project, organized by category.
 
 ---
 
@@ -83,6 +83,37 @@ This document provides a comprehensive summary of all 72 markdown files in the D
 - Operations & support references
 - History & change tracking
 - Suggested workflow for new agents
+
+### `docs/DREVVY_CURRENT_ARCHITECTURE.md`
+**Purpose**: Phase 0 map of the systems already in the repo  
+**Key Content**:
+- Consumer iOS app at `apps/autogentic`, dealer iOS app at `apps/drevvy-dealer`, ChatGPT manifest at `apps/autoagent-app`
+- Dealer dashboard on Vercel and MCP server on Railway
+- UVS (`uvs_vehicles`) versus MarketCheck search, and the two separate search stacks
+- Auth, ADF leads, existing analytics tables, and AutoAgent naming classification
+
+### `docs/DREVVY_GAP_ANALYSIS.md`
+**Purpose**: PRD requirements marked existing, partial, or missing  
+**Key Content**:
+- What the consumer shell, inventory, and dealer app already cover
+- Missing negotiation case, shopper alias, messaging, offers, and approvals
+- Legacy ADF lead path kept separate from the future agent inbox
+
+### `docs/DREVVY_DATA_PLATFORM_NORTH_STAR.md`
+**Purpose**: Permanent data-platform constraint, not a build checklist  
+**Key Content**:
+- Supabase as transactional truth; ClickHouse, object event lake, and a search index as later projections
+- Shared event envelope and the split between product events and domain events
+- Mapping onto current `analytics_events` and `app_events`
+- Privacy rules for analytics and the per-phase planning checklist
+
+### `docs/DREVVY_IMPLEMENTATION_PLAN.md`
+**Purpose**: Build order after the Phase 0 audit  
+**Key Content**:
+- Canonical search and consumer auth before the negotiation domain and consumer UI
+- Domain model for NegotiationCase, policy, market context, messages, and offers
+- Per-phase North Star checklist
+- Explicit stop before ClickHouse, queues, an event lake, or a search cluster
 
 ### `docs/overview.md`
 **Purpose**: System overview and architecture deep dive  
@@ -5799,9 +5830,9 @@ This document provides a comprehensive summary of all 72 markdown files in the D
 
 ## 📊 Summary Statistics
 
-- **Total Markdown Files**: 72
+- **Total Markdown Files**: 76
 - **Root-Level Files**: 4
-- **Core Documentation**: 7
+- **Core Documentation**: 11
 - **API Documentation**: 4
 - **Deployment Documentation**: 13
 - **Testing Documentation**: 10
@@ -5833,6 +5864,10 @@ This document provides a comprehensive summary of all 72 markdown files in the D
 
 ### Understanding the System
 - `docs/overview.md` - System architecture
+- `docs/DREVVY_CURRENT_ARCHITECTURE.md` - Current apps, routes, and tables
+- `docs/DREVVY_GAP_ANALYSIS.md` - PRD gap map
+- `docs/DREVVY_DATA_PLATFORM_NORTH_STAR.md` - Future data platform constraint
+- `docs/DREVVY_IMPLEMENTATION_PLAN.md` - Phase order after the audit
 - `docs/api.md` - API reference
 - `CHANGELOG.md` - Version history
 
@@ -5859,6 +5894,6 @@ This document provides a comprehensive summary of all 72 markdown files in the D
 
 ---
 
-**Last Updated**: 2026-07-17  
-**Total Files Analyzed**: 72
+**Last Updated**: 2026-09-24  
+**Total Files Analyzed**: 76
 
