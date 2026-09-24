@@ -46,3 +46,4 @@ export * from './analytics-validators.js';
 // Export unified tracking core
 export { validateRequiredIds, prepareEventForInsert, REQUIRED_IDS } from './analytics-tracking-core.js';
 export * from './analytics-tracking-core.js';
+export * from './canonical-search.js';

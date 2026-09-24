@@ -28,6 +28,7 @@ import {
   type SearchEmptyState,
   type SearchRelaxation,
 } from './searchRelaxation.js';
+import { currentInventoryMode, mergeMarketcheckWithUvs, rankFetchedVehicles, uvsCoverageIsSufficient } from './canonicalInventory.js';
 
 // Removed createMockVehicles - no longer needed, DB provides real data
 
@@ -665,7 +666,20 @@ export async function searchVehicles(
     // Use single requestId for entire request to maintain correlation
     const requestId = generateRequestId(); // Used as sessionId for request correlation - reused for all events in this request
 
-    if (CONFIG.inventorySearchProvider === 'marketcheck_mcp') {
+    const inventoryMode = currentInventoryMode();
+    let uvsPreferredCovered = false;
+    if (inventoryMode === 'uvs_preferred') {
+      try {
+        uvsPreferredCovered = await uvsCoverageIsSufficient(searchParams, searchOrigin(searchParams, context));
+      } catch (error) {
+        console.warn(JSON.stringify({
+          event: 'canonical_search_uvs_coverage_failed',
+          message: error instanceof Error ? error.message : 'unknown',
+        }));
+      }
+    }
+
+    if (inventoryMode !== 'uvs_only' && !uvsPreferredCovered) {
       const runId = randomUUID();
       const relaxations: SearchRelaxation[] = [];
       const models = requestedModels(searchParams);
@@ -939,6 +953,35 @@ export async function searchVehicles(
           inventoryProvider: 'marketcheck',
           normalizedAs: 'uvs',
         };
+        let rankedVehicles = signedVehicles;
+        try {
+          const merged = await mergeMarketcheckWithUvs({
+            marketcheck: signedVehicles,
+            searchParams,
+            origin: searchOrigin(searchParams, context),
+            limit: Math.max(signedVehicles.length, 24),
+            sessionId: runId,
+          });
+          if (merged.vehicles.length) {
+            const signedById = new Map(signedVehicles.map((vehicle) => [vehicle.id, vehicle]));
+            rankedVehicles = merged.vehicles.map((vehicle) => signedById.get(vehicle.id) ?? {
+              ...vehicle,
+              flowId: runId,
+              detailLoaded: true,
+            });
+          }
+          console.log(JSON.stringify({
+            event: 'canonical_search_ranked',
+            flowId: runId,
+            ...merged.stats,
+          }));
+        } catch (error) {
+          console.warn(JSON.stringify({
+            event: 'canonical_search_rank_failed',
+            flowId: runId,
+            message: error instanceof Error ? error.message : 'unknown',
+          }));
+        }
         const emptyState = marketcheck.totalCount === 0
           ? buildEmptyState({
               originalParams,
@@ -947,7 +990,7 @@ export async function searchVehicles(
             })
           : undefined;
         const normalized = await normalizeBridgeSearchResult(
-          { vehicles: signedVehicles, totalCount: marketcheck.totalCount },
+          { vehicles: rankedVehicles, totalCount: Math.max(marketcheck.totalCount, rankedVehicles.length) },
           searchParams,
           runId,
           sourceInfo,
@@ -1107,6 +1150,22 @@ export async function searchVehicles(
       }));
 
       vehicles = dbResult.vehicles;
+      try {
+        const ranked = await rankFetchedVehicles({
+          uvs: dbResult.vehicles,
+          marketcheck: [],
+          searchParams,
+          origin: searchOrigin(searchParams, context),
+          limit: Math.min(dbResult.vehicles.length, 50),
+          sessionId: requestId,
+        });
+        if (ranked.vehicles.length) vehicles = ranked.vehicles;
+      } catch (error) {
+        console.warn(JSON.stringify({
+          event: 'canonical_search_rank_failed',
+          message: error instanceof Error ? error.message : 'unknown',
+        }));
+      }
       totalCount = dbResult.total;
       dealerSummary = dbResult.dealerSummary;
       
