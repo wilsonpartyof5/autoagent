@@ -47,3 +47,4 @@ export * from './analytics-validators.js';
 export { validateRequiredIds, prepareEventForInsert, REQUIRED_IDS } from './analytics-tracking-core.js';
 export * from './analytics-tracking-core.js';
 export * from './canonical-search.js';
+export * from './negotiation.js';
