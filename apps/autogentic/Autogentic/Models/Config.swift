@@ -5,6 +5,7 @@ enum Config {
   static let inventoryDetailBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/inventory/detail"
   static let queryParseBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/query/parse"
   static let chatSearchBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/query/chat-search"
+  static let consumerAuthBaseURL = URL(string: "https://autoagent-dealer-dashboard.vercel.app/api/consumer")!
   
   static var inventoryApiKey: String? {
     // Try Bundle.main.infoDictionary first (includes generated Info.plist and build settings)
