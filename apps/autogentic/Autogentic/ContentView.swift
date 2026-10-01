@@ -423,38 +423,45 @@ private struct ProfileSheetView: View {
   }
 }
 
-// MARK: - Chat Mode Toggle
+// MARK: - Chat Mode Toggle (Segmented Control)
 
 private struct ChatModeToggle: View {
   @Binding var selectedMode: ChatMode
+  @Namespace private var animation
   
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 0) {
       ForEach(ChatMode.allCases) { mode in
         Button {
           withAnimation(.easeInOut(duration: 0.2)) {
             selectedMode = mode
           }
         } label: {
-          HStack(spacing: 6) {
+          HStack(spacing: 5) {
             Image(systemName: mode.icon)
-              .font(.system(size: 13, weight: .semibold))
+              .font(.system(size: 12, weight: .semibold))
             Text(mode.rawValue)
-              .font(.system(size: 14, weight: .semibold))
+              .font(.system(size: 13, weight: .semibold))
           }
-          .foregroundStyle(selectedMode == mode ? .black : .white)
-          .padding(.horizontal, 14)
+          .foregroundStyle(selectedMode == mode ? .black : Color.white.opacity(0.6))
+          .padding(.horizontal, 16)
           .padding(.vertical, 8)
-          .background(
-            Capsule()
-              .fill(selectedMode == mode ? Color.white : Color.white.opacity(0.12))
-          )
+          .background {
+            if selectedMode == mode {
+              Capsule()
+                .fill(Color.white)
+                .matchedGeometryEffect(id: "modeIndicator", in: animation)
+            }
+          }
         }
         .buttonStyle(.plain)
       }
-      
-      Spacer()
     }
+    .padding(3)
+    .background(
+      Capsule()
+        .fill(Color.white.opacity(0.1))
+    )
   }
 }
 
