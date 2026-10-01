@@ -4,47 +4,51 @@ struct Deal: Identifiable, Codable, Equatable {
   let id: String
   let listingId: String
   let status: DealStatus
-  let vehicleSnapshot: DealVehicleSnapshot
+  let outreachLockedUntilPaid: Bool
+  let vehicle: VehicleSnapshot
   let createdAt: String
   let updatedAt: String
   
   enum DealStatus: String, Codable {
-    case pending = "pending"
-    case quoted = "quoted"
+    case interested = "interested"
+    case negotiating = "negotiating"
     case accepted = "accepted"
-    case declined = "declined"
-    case expired = "expired"
-    case cancelled = "cancelled"
+    case closed = "closed"
     
     var displayName: String {
       switch self {
-      case .pending: return "Getting Price"
-      case .quoted: return "Quote Ready"
-      case .accepted: return "Accepted"
-      case .declined: return "Declined"
-      case .expired: return "Expired"
-      case .cancelled: return "Cancelled"
+      case .interested: return "Finding Best Price"
+      case .negotiating: return "Negotiating"
+      case .accepted: return "Deal Accepted"
+      case .closed: return "Closed"
       }
     }
     
     var isActive: Bool {
       switch self {
-      case .pending, .quoted: return true
-      default: return false
+      case .interested, .negotiating: return true
+      case .accepted, .closed: return false
       }
     }
   }
 }
 
-struct DealVehicleSnapshot: Codable, Equatable {
+struct VehicleSnapshot: Codable, Equatable {
   let year: Int
   let make: String
   let model: String
-  let trim: String?
   let price: Int
-  let mileage: Int
-  let condition: String
-  let color: String?
+  let trim: String?
+  let msrp: Int?
+  let miles: Int?
+  let condition: String?
+  let vin: String?
+  let bodyType: String?
+  let city: String?
+  let state: String?
+  let latitude: Double?
+  let longitude: Double?
+  let daysOnMarket: Int?
   let thumbnailUrl: String?
   
   var fullTitle: String {
@@ -61,9 +65,44 @@ struct DealVehicleSnapshot: Codable, Equatable {
     formatter.maximumFractionDigits = 0
     return formatter.string(from: NSNumber(value: price)) ?? "$\(price)"
   }
+  
+  var formattedMiles: String? {
+    guard let miles = miles else { return nil }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    return formatter.string(from: NSNumber(value: miles)).map { "\($0) mi" }
+  }
+  
+  var location: String? {
+    switch (city, state) {
+    case let (c?, s?): return "\(c), \(s)"
+    case let (c?, nil): return c
+    case let (nil, s?): return s
+    default: return nil
+    }
+  }
 }
 
 struct CreateDealRequest: Encodable {
   let listingId: String
-  let vehicleSnapshot: DealVehicleSnapshot
+  let vehicle: CreateVehicleSnapshot
+}
+
+struct CreateVehicleSnapshot: Encodable {
+  let year: Int
+  let make: String
+  let model: String
+  let price: Int
+  let trim: String?
+  let msrp: Int?
+  let miles: Int?
+  let condition: String?
+  let vin: String?
+  let bodyType: String?
+  let city: String?
+  let state: String?
+  let latitude: Double?
+  let longitude: Double?
+  let daysOnMarket: Int?
+  let thumbnailUrl: String?
 }

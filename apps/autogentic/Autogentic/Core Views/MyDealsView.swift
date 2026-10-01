@@ -68,7 +68,7 @@ private struct DealRow: View {
   var body: some View {
     HStack(spacing: 12) {
       // Thumbnail
-      if let urlStr = deal.vehicleSnapshot.thumbnailUrl, let url = URL(string: urlStr) {
+      if let urlStr = deal.vehicle.thumbnailUrl, let url = URL(string: urlStr) {
         AsyncImage(url: url) { phase in
           switch phase {
           case .success(let image):
@@ -88,12 +88,12 @@ private struct DealRow: View {
       
       // Vehicle info
       VStack(alignment: .leading, spacing: 4) {
-        Text(deal.vehicleSnapshot.fullTitle)
+        Text(deal.vehicle.fullTitle)
           .font(.system(size: 14, weight: .semibold))
           .foregroundStyle(.white)
           .lineLimit(1)
         
-        Text(deal.vehicleSnapshot.formattedPrice)
+        Text(deal.vehicle.formattedPrice)
           .font(.system(size: 13))
           .foregroundStyle(Color.white.opacity(0.7))
       }
@@ -141,13 +141,13 @@ private struct DealRow: View {
   
   private var statusColor: Color {
     switch deal.status {
-    case .pending:
+    case .interested:
       return .orange
-    case .quoted:
+    case .negotiating:
       return .blue
     case .accepted:
       return .green
-    case .declined, .expired, .cancelled:
+    case .closed:
       return .gray
     }
   }

@@ -19,12 +19,12 @@ struct DealConfirmationSheet: View {
       
       if let deal = deal {
         VStack(spacing: 8) {
-          Text(deal.vehicleSnapshot.fullTitle)
+          Text(deal.vehicle.fullTitle)
             .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
           
-          Text(deal.vehicleSnapshot.formattedPrice)
+          Text(deal.vehicle.formattedPrice)
             .font(.system(size: 16))
             .foregroundStyle(Color.white.opacity(0.7))
         }

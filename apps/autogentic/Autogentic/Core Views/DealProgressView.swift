@@ -5,7 +5,6 @@ struct DealProgressView: View {
   let deal: Deal
   
   // Placeholder stats — will come from backend later
-  private let msrp: Int? = nil
   private let askingPrice: Int? = nil
   private let negotiatedPrice: Int? = nil
   private let callsCount: Int = 0
@@ -57,7 +56,7 @@ struct DealProgressView: View {
   private var vehicleHeader: some View {
     HStack(spacing: 14) {
       // Thumbnail
-      if let urlStr = deal.vehicleSnapshot.thumbnailUrl, let url = URL(string: urlStr) {
+      if let urlStr = deal.vehicle.thumbnailUrl, let url = URL(string: urlStr) {
         AsyncImage(url: url) { phase in
           switch phase {
           case .success(let image):
@@ -76,20 +75,22 @@ struct DealProgressView: View {
       }
       
       VStack(alignment: .leading, spacing: 6) {
-        Text(deal.vehicleSnapshot.fullTitle)
+        Text(deal.vehicle.fullTitle)
           .font(.system(size: 17, weight: .semibold))
           .foregroundStyle(.white)
           .lineLimit(2)
         
-        if let color = deal.vehicleSnapshot.color {
-          Text(color.capitalized)
+        if let location = deal.vehicle.location {
+          Text(location)
             .font(.system(size: 14))
             .foregroundStyle(Color.white.opacity(0.6))
         }
         
-        Text("\(deal.vehicleSnapshot.mileage.formatted()) miles")
-          .font(.system(size: 14))
-          .foregroundStyle(Color.white.opacity(0.6))
+        if let milesText = deal.vehicle.formattedMiles {
+          Text(milesText)
+            .font(.system(size: 14))
+            .foregroundStyle(Color.white.opacity(0.6))
+        }
       }
       
       Spacer()
@@ -142,8 +143,8 @@ struct DealProgressView: View {
         .foregroundStyle(.white)
       
       VStack(spacing: 12) {
-        priceRow(label: "MSRP", value: msrp)
-        priceRow(label: "Asking Price", value: askingPrice ?? deal.vehicleSnapshot.price)
+        priceRow(label: "MSRP", value: deal.vehicle.msrp)
+        priceRow(label: "Asking Price", value: askingPrice ?? deal.vehicle.price)
         
         Divider()
           .background(Color.white.opacity(0.1))
@@ -245,10 +246,10 @@ struct DealProgressView: View {
   
   private var statusColor: Color {
     switch deal.status {
-    case .pending: return .orange
-    case .quoted: return .blue
+    case .interested: return .orange
+    case .negotiating: return .blue
     case .accepted: return .green
-    case .declined, .expired, .cancelled: return .gray
+    case .closed: return .gray
     }
   }
   

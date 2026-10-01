@@ -252,7 +252,7 @@ private struct SidebarDealRow: View {
   var body: some View {
     HStack(spacing: 10) {
       // Thumbnail
-      if let urlStr = deal.vehicleSnapshot.thumbnailUrl, let url = URL(string: urlStr) {
+      if let urlStr = deal.vehicle.thumbnailUrl, let url = URL(string: urlStr) {
         AsyncImage(url: url) { phase in
           switch phase {
           case .success(let image):
@@ -271,7 +271,7 @@ private struct SidebarDealRow: View {
       }
       
       VStack(alignment: .leading, spacing: 2) {
-        Text("\(deal.vehicleSnapshot.year) \(deal.vehicleSnapshot.make)")
+        Text("\(deal.vehicle.year) \(deal.vehicle.make)")
           .font(.system(size: 14, weight: .medium))
           .foregroundStyle(.white)
           .lineLimit(1)
@@ -312,10 +312,10 @@ private struct SidebarDealRow: View {
   
   private var statusColor: Color {
     switch deal.status {
-    case .pending: return .orange
-    case .quoted: return .blue
+    case .interested: return .orange
+    case .negotiating: return .blue
     case .accepted: return .green
-    default: return .gray
+    case .closed: return .gray
     }
   }
 }

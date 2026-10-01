@@ -23,8 +23,6 @@ enum DealServiceError: Error, LocalizedError {
   }
 }
 
-// TODO: Align endpoint paths with backend deals PR once merged.
-// Expected routes: POST /api/consumer/deals (create), GET /api/consumer/deals (list), GET /api/consumer/deals/[id] (get one)
 enum DealService {
   
   private static var baseURL: URL {
@@ -38,19 +36,26 @@ enum DealService {
     vehicle: Vehicle,
     accessToken: String
   ) async throws -> Deal {
-    let snapshot = DealVehicleSnapshot(
+    let snapshot = CreateVehicleSnapshot(
       year: vehicle.year,
       make: vehicle.make,
       model: vehicle.model,
-      trim: vehicle.trim,
       price: vehicle.price,
-      mileage: vehicle.mileage,
+      trim: vehicle.trim,
+      msrp: vehicle.msrp,
+      miles: vehicle.mileage,
       condition: vehicle.condition,
-      color: vehicle.color,
+      vin: vehicle.vin,
+      bodyType: vehicle.bodyType,
+      city: vehicle.dealerCity,
+      state: vehicle.dealerState,
+      latitude: vehicle.latitude,
+      longitude: vehicle.longitude,
+      daysOnMarket: nil,
       thumbnailUrl: vehicle.thumbnailUrl
     )
     
-    let requestBody = CreateDealRequest(listingId: listingId, vehicleSnapshot: snapshot)
+    let requestBody = CreateDealRequest(listingId: listingId, vehicle: snapshot)
     
     var request = URLRequest(url: baseURL)
     request.httpMethod = "POST"
