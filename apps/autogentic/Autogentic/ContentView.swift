@@ -44,8 +44,10 @@ struct ContentView: View {
         .opacity(selectedTab == .chat ? 1 : 0.12)
         .allowsHitTesting(selectedTab == .chat)
 
-        // Placeholder tab overlays
-        if selectedTab != .chat {
+        if selectedTab == .profile {
+          ProfileView()
+            .transition(.opacity)
+        } else if selectedTab != .chat {
           PlaceholderTabView(title: selectedTab.rawValue)
             .transition(.opacity)
         }
