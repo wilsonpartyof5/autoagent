@@ -4,6 +4,7 @@ struct VehicleDetailView: View {
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var auth: ConsumerAuthStore
   @EnvironmentObject private var deals: DealsStore
+  @EnvironmentObject private var subscription: SubscriptionStore
   
   let vehicle: Vehicle
   var chatVM: ChatViewModel?
@@ -16,6 +17,8 @@ struct VehicleDetailView: View {
   @State private var detailError: String? = nil
   @State private var showSignInPrompt: Bool = false
   @State private var showDealConfirmation: Bool = false
+  @State private var showPaywall: Bool = false
+  @State private var showAgentLimit: Bool = false
   
   private var availableImages: [String] {
     // Prefer enriched photo list from detail endpoint (more photos)
@@ -266,7 +269,7 @@ struct VehicleDetailView: View {
   private var ctaButtons: some View {
     VStack(spacing: 12) {
       Button {
-        handleGetBestPrice()
+        handlePrimaryCTA()
       } label: {
         HStack(spacing: 8) {
           if deals.isLoading {
@@ -274,7 +277,7 @@ struct VehicleDetailView: View {
               .tint(.black)
               .scaleEffect(0.8)
           }
-          Text("Get Best Price")
+          Text(primaryCTALabel)
             .font(.system(size: 17, weight: .semibold))
         }
         .foregroundStyle(.black)
@@ -304,7 +307,6 @@ struct VehicleDetailView: View {
     .alert("Sign in Required", isPresented: $showSignInPrompt) {
       Button("Sign In") {
         dismiss()
-        // Navigation to Profile handled by parent
       }
       Button("Cancel", role: .cancel) { }
     } message: {
@@ -316,14 +318,46 @@ struct VehicleDetailView: View {
         deals.clearLastCreatedDeal()
       })
     }
+    .sheet(isPresented: $showPaywall) {
+      PaywallSheet(onSubscribe: {
+        // After subscribing, automatically add to agent
+        Task {
+          let success = await deals.createDeal(listingId: vehicle.id, vehicle: vehicle)
+          if success {
+            showDealConfirmation = true
+          }
+        }
+      })
+    }
+    .sheet(isPresented: $showAgentLimit) {
+      AgentLimitSheet()
+    }
   }
   
-  private func handleGetBestPrice() {
+  private var primaryCTALabel: String {
+    subscription.hasActiveAgentSubscription ? "Add to Agent" : "Get Best Price"
+  }
+  
+  private func handlePrimaryCTA() {
+    // Step 1: Must be signed in
     guard auth.isSignedIn else {
       showSignInPrompt = true
       return
     }
     
+    // Step 2: If not subscribed, show paywall
+    guard subscription.hasActiveAgentSubscription else {
+      showPaywall = true
+      return
+    }
+    
+    // Step 3: If subscribed, check agent capacity (max 10 deals)
+    if deals.deals.count >= SubscriptionStore.dealsPerAgent {
+      showAgentLimit = true
+      return
+    }
+    
+    // Step 4: Create the deal
     Task {
       let success = await deals.createDeal(listingId: vehicle.id, vehicle: vehicle)
       if success {
@@ -448,7 +482,7 @@ struct VehicleDetailView: View {
   private var bottomCTA: some View {
     VStack(spacing: 12) {
       Button {
-        handleGetBestPrice()
+        handlePrimaryCTA()
       } label: {
         HStack(spacing: 8) {
           if deals.isLoading {
@@ -456,7 +490,7 @@ struct VehicleDetailView: View {
               .tint(.black)
               .scaleEffect(0.8)
           }
-          Text("Get Best Price")
+          Text(primaryCTALabel)
             .font(.system(size: 17, weight: .semibold))
         }
         .foregroundStyle(.black)

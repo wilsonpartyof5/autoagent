@@ -1,41 +1,23 @@
 import SwiftUI
 
 struct ContentView: View {
-  enum SidebarTab: String, CaseIterable, Identifiable {
-    case chat = "Chat"
-    case marketScan = "Market Scan"
-    case savedVehicles = "Saved Vehicles"
-    case myDeals = "My Deals"
-    case profile = "Profile"
-    
-    var id: String { rawValue }
-
-    var systemImage: String {
-      switch self {
-      case .chat: return "message.fill"
-      case .marketScan: return "sparkle.magnifyingglass"
-      case .savedVehicles: return "bookmark.fill"
-      case .myDeals: return "briefcase.fill"
-      case .profile: return "person.crop.circle"
-      }
-    }
-  }
+  @EnvironmentObject private var deals: DealsStore
+  @EnvironmentObject private var subscription: SubscriptionStore
 
   @StateObject private var chatVM = ChatViewModel(preload: true)
   @StateObject private var mapVM = MapViewModel()
   @StateObject private var inventoryVM = InventoryViewModel()
 
-  @State private var selectedTab: SidebarTab = .chat
   @State private var isSidebarOpen: Bool = false
   @State private var isMapExpanded: Bool = false
   @State private var chatMode: ChatMode = .ask
-
   @State private var draftText: String = ""
+  @State private var selectedDealForProgress: Deal? = nil
 
   var body: some View {
     NavigationStack {
       ZStack(alignment: .bottom) {
-        // Non-negotiable base: ChatView is always present.
+        // Non-negotiable base: ChatView is always present (chat-first shell)
         ChatView(
           messages: $chatVM.messages,
           mapVM: mapVM,
@@ -47,17 +29,6 @@ struct ContentView: View {
         )
         .onAppear {
           chatVM.setMapViewModel(mapVM)
-        }
-        .opacity(selectedTab == .chat ? 1 : 0.12)
-        .allowsHitTesting(selectedTab == .chat)
-
-        // Tab overlays — Profile has real content, others are placeholders
-        if selectedTab == .profile {
-          ProfileView()
-            .transition(.opacity)
-        } else if selectedTab != .chat {
-          PlaceholderTabView(title: selectedTab.rawValue)
-            .transition(.opacity)
         }
 
         if isSidebarOpen {
@@ -116,47 +87,141 @@ struct ContentView: View {
         }
 
         ToolbarItem(placement: .principal) {
-          Text(selectedTab.rawValue)
+          Text("Drevvy")
             .font(.system(size: 17, weight: .semibold))
             .foregroundStyle(.white)
         }
+      }
+      .sheet(item: $selectedDealForProgress) { deal in
+        DealProgressView(deal: deal)
       }
     }
   }
 
   private var sidebar: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    SidebarView(
+      deals: deals.deals,
+      onDealTap: { deal in
+        withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen = false }
+        selectedDealForProgress = deal
+      },
+      onClose: {
+        withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen = false }
+      }
+    )
+  }
+}
+
+// MARK: - Sidebar View
+
+private struct SidebarView: View {
+  @EnvironmentObject private var auth: ConsumerAuthStore
+  @EnvironmentObject private var subscription: SubscriptionStore
+  
+  let deals: [Deal]
+  let onDealTap: (Deal) -> Void
+  let onClose: () -> Void
+  
+  @State private var showProfile: Bool = false
+  
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header
       HStack {
         Text("Drevvy")
           .font(.system(size: 20, weight: .bold))
           .foregroundStyle(.white)
         Spacer()
-      }
-      .padding(.bottom, 8)
-
-      ForEach(SidebarTab.allCases) { tab in
+        
+        // Dev toggle for subscription (remove in production)
+        #if DEBUG
         Button {
-          selectedTab = tab
-          withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen = false }
+          subscription.toggleSubscription()
         } label: {
-          HStack(spacing: 10) {
-            Image(systemName: tab.systemImage)
-              .frame(width: 22)
-            Text(tab.rawValue)
-              .font(.system(size: 16, weight: .semibold))
-            Spacer()
-          }
-          .foregroundStyle(.white)
-          .padding(.vertical, 10)
-          .padding(.horizontal, 12)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(selectedTab == tab ? Color.white.opacity(0.12) : Color.clear)
-          )
+          Image(systemName: subscription.hasActiveAgentSubscription ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 14))
+            .foregroundStyle(subscription.hasActiveAgentSubscription ? .green : Color.white.opacity(0.5))
         }
-        .buttonStyle(.plain)
+        #endif
       }
-
+      .padding(.bottom, 16)
+      
+      // Deals in Progress section
+      VStack(alignment: .leading, spacing: 12) {
+        HStack {
+          Image(systemName: "briefcase.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(Color.white.opacity(0.6))
+          Text("Deals in Progress")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.6))
+          
+          Spacer()
+          
+          if subscription.hasActiveAgentSubscription {
+            Text("\(deals.count)/\(SubscriptionStore.dealsPerAgent)")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(Color.white.opacity(0.5))
+          }
+        }
+        
+        if deals.isEmpty {
+          Text("No active deals")
+            .font(.system(size: 14))
+            .foregroundStyle(Color.white.opacity(0.4))
+            .padding(.vertical, 8)
+        } else {
+          ForEach(deals.prefix(10)) { deal in
+            Button {
+              onDealTap(deal)
+            } label: {
+              SidebarDealRow(deal: deal)
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
+      
+      Divider()
+        .background(Color.white.opacity(0.1))
+        .padding(.vertical, 16)
+      
+      // Profile button
+      Button {
+        showProfile = true
+      } label: {
+        HStack(spacing: 10) {
+          Image(systemName: auth.isSignedIn ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle")
+            .font(.system(size: 18))
+            .foregroundStyle(auth.isSignedIn ? .green : Color.white.opacity(0.6))
+          
+          VStack(alignment: .leading, spacing: 2) {
+            Text(auth.isSignedIn ? "Profile" : "Sign In")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(.white)
+            
+            if auth.isSignedIn {
+              Text(subscription.hasActiveAgentSubscription ? "Subscribed" : "Free")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.white.opacity(0.5))
+            }
+          }
+          
+          Spacer()
+          
+          Image(systemName: "chevron.right")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.4))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+        )
+      }
+      .buttonStyle(.plain)
+      
       Spacer()
     }
     .padding(.top, 16)
@@ -175,27 +240,109 @@ struct ContentView: View {
       alignment: .trailing
     )
     .frame(maxWidth: .infinity, alignment: .leading)
+    .sheet(isPresented: $showProfile) {
+      ProfileSheetView()
+    }
   }
 }
 
-private struct PlaceholderTabView: View {
-  let title: String
-
+private struct SidebarDealRow: View {
+  let deal: Deal
+  
   var body: some View {
-    VStack(spacing: 14) {
+    HStack(spacing: 10) {
+      // Thumbnail
+      if let urlStr = deal.vehicleSnapshot.thumbnailUrl, let url = URL(string: urlStr) {
+        AsyncImage(url: url) { phase in
+          switch phase {
+          case .success(let image):
+            image
+              .resizable()
+              .aspectRatio(contentMode: .fill)
+              .frame(width: 40, height: 40)
+              .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+          default:
+            placeholderImage
+          }
+        }
+        .frame(width: 40, height: 40)
+      } else {
+        placeholderImage
+      }
+      
+      VStack(alignment: .leading, spacing: 2) {
+        Text("\(deal.vehicleSnapshot.year) \(deal.vehicleSnapshot.make)")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(.white)
+          .lineLimit(1)
+        
+        HStack(spacing: 4) {
+          Circle()
+            .fill(statusColor)
+            .frame(width: 6, height: 6)
+          Text(deal.status.displayName)
+            .font(.system(size: 11))
+            .foregroundStyle(Color.white.opacity(0.6))
+        }
+      }
+      
       Spacer()
-      Text(title)
-        .font(.system(size: 26, weight: .bold))
-        .foregroundStyle(.white)
-
-      Text("Step 0 placeholder")
-        .font(.system(size: 15))
-        .foregroundStyle(Color.white.opacity(0.7))
-
-      Spacer()
+      
+      Image(systemName: "chevron.right")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(Color.white.opacity(0.3))
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color.black.opacity(0.92))
+    .padding(8)
+    .background(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .fill(Color.white.opacity(0.04))
+    )
+  }
+  
+  private var placeholderImage: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: 6, style: .continuous)
+        .fill(Color(white: 0.15))
+      Image(systemName: "car.fill")
+        .font(.system(size: 14))
+        .foregroundStyle(Color.white.opacity(0.3))
+    }
+    .frame(width: 40, height: 40)
+  }
+  
+  private var statusColor: Color {
+    switch deal.status {
+    case .pending: return .orange
+    case .quoted: return .blue
+    case .accepted: return .green
+    default: return .gray
+    }
+  }
+}
+
+// Profile as a sheet (accessible from sidebar)
+private struct ProfileSheetView: View {
+  @Environment(\.dismiss) private var dismiss
+  
+  var body: some View {
+    NavigationStack {
+      ProfileView()
+        .toolbar {
+          ToolbarItem(placement: .topBarTrailing) {
+            Button {
+              dismiss()
+            } label: {
+              Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+            }
+          }
+        }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct AutogenticApp: App {
   @StateObject private var auth = ConsumerAuthStore()
   @StateObject private var deals: DealsStore
+  @StateObject private var subscription = SubscriptionStore()
 
   init() {
     let authStore = ConsumerAuthStore()
@@ -16,6 +17,7 @@ struct AutogenticApp: App {
       ContentView()
         .environmentObject(auth)
         .environmentObject(deals)
+        .environmentObject(subscription)
         .preferredColorScheme(.dark)
     }
   }
