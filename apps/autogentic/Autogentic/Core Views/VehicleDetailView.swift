@@ -2,14 +2,20 @@ import SwiftUI
 
 struct VehicleDetailView: View {
   @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var auth: ConsumerAuthStore
+  @EnvironmentObject private var deals: DealsStore
+  
   let vehicle: Vehicle
   var chatVM: ChatViewModel?
+  
   @State private var currentImageIndex: Int = 0
   @State private var searchText: String = ""
   @State private var keyboardHeight: CGFloat = 0
   @State private var detail: VehicleDetailData? = nil
   @State private var isLoadingDetail: Bool = false
   @State private var detailError: String? = nil
+  @State private var showSignInPrompt: Bool = false
+  @State private var showDealConfirmation: Bool = false
   
   private var availableImages: [String] {
     // Prefer enriched photo list from detail endpoint (more photos)
@@ -260,18 +266,26 @@ struct VehicleDetailView: View {
   private var ctaButtons: some View {
     VStack(spacing: 12) {
       Button {
-        // Get price action — Drevvy handles dealer contact privately
+        handleGetBestPrice()
       } label: {
-        Text("Get Best Price")
-          .font(.system(size: 17, weight: .semibold))
-          .foregroundStyle(.black)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 14)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(.white)
-          )
+        HStack(spacing: 8) {
+          if deals.isLoading {
+            ProgressView()
+              .tint(.black)
+              .scaleEffect(0.8)
+          }
+          Text("Get Best Price")
+            .font(.system(size: 17, weight: .semibold))
+        }
+        .foregroundStyle(.black)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.white)
+        )
       }
+      .disabled(deals.isLoading)
       
       Button {
         // Schedule test drive action
@@ -285,6 +299,35 @@ struct VehicleDetailView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
               .stroke(.white, lineWidth: 2)
           )
+      }
+    }
+    .alert("Sign in Required", isPresented: $showSignInPrompt) {
+      Button("Sign In") {
+        dismiss()
+        // Navigation to Profile handled by parent
+      }
+      Button("Cancel", role: .cancel) { }
+    } message: {
+      Text("Sign in with Apple to get the best out-the-door price on this vehicle.")
+    }
+    .sheet(isPresented: $showDealConfirmation) {
+      DealConfirmationSheet(deal: deals.lastCreatedDeal, onDismiss: {
+        showDealConfirmation = false
+        deals.clearLastCreatedDeal()
+      })
+    }
+  }
+  
+  private func handleGetBestPrice() {
+    guard auth.isSignedIn else {
+      showSignInPrompt = true
+      return
+    }
+    
+    Task {
+      let success = await deals.createDeal(listingId: vehicle.id, vehicle: vehicle)
+      if success {
+        showDealConfirmation = true
       }
     }
   }
@@ -405,18 +448,26 @@ struct VehicleDetailView: View {
   private var bottomCTA: some View {
     VStack(spacing: 12) {
       Button {
-        // Get price action — Drevvy handles dealer contact privately
+        handleGetBestPrice()
       } label: {
-        Text("Get Best Price")
-          .font(.system(size: 17, weight: .semibold))
-          .foregroundStyle(.black)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 14)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(.white)
-          )
+        HStack(spacing: 8) {
+          if deals.isLoading {
+            ProgressView()
+              .tint(.black)
+              .scaleEffect(0.8)
+          }
+          Text("Get Best Price")
+            .font(.system(size: 17, weight: .semibold))
+        }
+        .foregroundStyle(.black)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.white)
+        )
       }
+      .disabled(deals.isLoading)
 
       Button {
         // Schedule test drive action
