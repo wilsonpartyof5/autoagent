@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct ConsumerSession: Codable, Equatable {
   var accessToken: String
@@ -32,11 +33,6 @@ final class ConsumerAuthStore: ObservableObject {
     session = KeychainSessionStore.load()
   }
   
-  func restoreSessionIfNeeded() async {
-    guard session != nil else { return }
-    await loadProfile()
-  }
-
   func restoreSessionIfNeeded() async {
     guard session != nil else { return }
     await loadProfile()
