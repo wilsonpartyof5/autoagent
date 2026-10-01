@@ -1,16 +1,27 @@
 import Foundation
 
 enum Config {
-  static let inventoryBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/inventory/search"
-  static let inventoryDetailBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/inventory/detail"
-  static let queryParseBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/query/parse"
-  static let chatSearchBaseURL = "https://autoagent-dealer-dashboard.vercel.app/api/query/chat-search"
-  static let consumerAuthBaseURL = URL(string: "https://autoagent-dealer-dashboard.vercel.app/api/consumer")!
+  private static let defaultBaseHost = "https://autoagent-dealer-dashboard.vercel.app"
   
-  // TODO: Backend SIWA endpoints being salvaged from PR #39 (cursor/drevvy-phase-2-consumer-auth-17ff).
-  // Endpoints: POST /api/consumer/auth/apple, POST /api/consumer/auth/refresh, 
+  private static var baseHost: String {
+    if let override = Bundle.main.infoDictionary?["API_BASE_HOST"] as? String, !override.isEmpty {
+      return override
+    }
+    if let override = ProcessInfo.processInfo.environment["API_BASE_HOST"], !override.isEmpty {
+      return override
+    }
+    return defaultBaseHost
+  }
+  
+  static var inventoryBaseURL: String { "\(baseHost)/api/inventory/search" }
+  static var inventoryDetailBaseURL: String { "\(baseHost)/api/inventory/detail" }
+  static var queryParseBaseURL: String { "\(baseHost)/api/query/parse" }
+  static var chatSearchBaseURL: String { "\(baseHost)/api/query/chat-search" }
+  
+  // Consumer auth endpoints (PR #43: cursor/drevvy-shopper-siwa-17ff)
+  // POST /api/consumer/auth/apple, POST /api/consumer/auth/refresh,
   // POST /api/consumer/auth/signout, GET /api/consumer/profile
-  static let consumerAuthBaseURL = URL(string: "https://autoagent-dealer-dashboard.vercel.app/api/consumer")!
+  static var consumerAuthBaseURL: URL { URL(string: "\(baseHost)/api/consumer")! }
   
   static var inventoryApiKey: String? {
     // Try Bundle.main.infoDictionary first (includes generated Info.plist and build settings)

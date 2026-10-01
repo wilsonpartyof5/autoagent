@@ -31,6 +31,11 @@ final class ConsumerAuthStore: ObservableObject {
   init() {
     session = KeychainSessionStore.load()
   }
+  
+  func restoreSessionIfNeeded() async {
+    guard session != nil else { return }
+    await loadProfile()
+  }
 
   func restoreSessionIfNeeded() async {
     guard session != nil else { return }
