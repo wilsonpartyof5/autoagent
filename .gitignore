@@ -30,6 +30,9 @@ DerivedData/
 *.dSYM.zip
 *.dSYM
 
+# iOS local secrets (gitignored, for simulator development)
+apps/autogentic/**/LocalSecrets.plist
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

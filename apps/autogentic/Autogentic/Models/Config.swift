@@ -24,13 +24,13 @@ enum Config {
   static var consumerAuthBaseURL: URL { URL(string: "\(baseHost)/api/consumer")! }
   
   static var inventoryApiKey: String? {
-    // Try Bundle.main.infoDictionary first (includes generated Info.plist and build settings)
+    // 1. Try Bundle.main.infoDictionary (includes generated Info.plist and build settings)
     if let apiKey = Bundle.main.infoDictionary?["INVENTORY_SEARCH_API_KEY"] as? String,
        !apiKey.isEmpty {
       return apiKey
     }
     
-    // Try Info.plist file (if custom file exists)
+    // 2. Try Info.plist file (if custom file exists)
     if let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
        let plist = NSDictionary(contentsOfFile: path),
        let apiKey = plist["INVENTORY_SEARCH_API_KEY"] as? String,
@@ -38,15 +38,23 @@ enum Config {
       return apiKey
     }
     
-    // Fallback: Check environment variable (for development/debugging)
+    // 3. Try LocalSecrets.plist (gitignored, for simulator development)
+    if let path = Bundle.main.path(forResource: "LocalSecrets", ofType: "plist"),
+       let plist = NSDictionary(contentsOfFile: path),
+       let apiKey = plist["INVENTORY_SEARCH_API_KEY"] as? String,
+       !apiKey.isEmpty {
+      return apiKey
+    }
+    
+    // 4. Fallback: Check environment variable (for development/debugging)
     if let apiKey = ProcessInfo.processInfo.environment["INVENTORY_SEARCH_API_KEY"],
        !apiKey.isEmpty {
       return apiKey
     }
     
-    // Set INVENTORY_SEARCH_API_KEY in Info.plist / Xcode build settings / env.
-    // Do not hardcode secrets in source control.
-    print("⚠️ WARNING: INVENTORY_SEARCH_API_KEY not found in Info.plist, build settings, or environment.")
+    // Set INVENTORY_SEARCH_API_KEY in LocalSecrets.plist, Info.plist, Xcode build settings, or env.
+    // Do not commit secrets to source control.
+    print("⚠️ WARNING: INVENTORY_SEARCH_API_KEY not found. See LocalSecrets.plist.example.")
     return nil
   }
   
