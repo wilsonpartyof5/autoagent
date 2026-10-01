@@ -53,26 +53,52 @@ struct ChatView: View {
 
     return Group {
       if !hasUserMessage {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
+          // Mode icon
+          Image(systemName: chatMode.icon)
+            .font(.system(size: 36))
+            .foregroundStyle(chatMode == .ask ? .yellow : .blue)
+          
           // Primary title based on mode
-          Text(chatMode == .ask ? "Let's find your perfect car." : "Find the right car, faster.")
-            .font(.system(size: 22, weight: .semibold))
+          Text(chatMode == .ask ? "Not sure what you want yet?" : "Ready to find your car")
+            .font(.system(size: 24, weight: .bold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
           
           // Secondary headline based on mode
           Text(chatMode == .ask
-               ? "Tell me what matters to you — budget, style, features — and I'll help narrow it down."
-               : "We'll scan nearby inventory to find your next vehicle.")
+               ? "Ask me about SUVs vs trucks, budgets, features — I'll help you narrow it down. No inventory search here, just guidance."
+               : "Tell me what you're looking for and I'll search real listings nearby.")
             .font(.system(size: 15))
             .foregroundStyle(Color.white.opacity(0.70))
             .multilineTextAlignment(.center)
-            .padding(.horizontal, 40)
+            .padding(.horizontal, 32)
+          
+          // Example prompts
+          VStack(spacing: 10) {
+            if chatMode == .ask {
+              examplePrompt("What's the best SUV for a family of 5?")
+              examplePrompt("Should I get a hybrid or full electric?")
+              examplePrompt("What should I budget for a reliable truck?")
+            } else {
+              examplePrompt("Find 2025 F-150s near me")
+              examplePrompt("Black SUVs under $40k within 50 miles")
+              examplePrompt("Used Tacomas in Charlotte NC")
+            }
+          }
+          .padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        .padding(.vertical, 48)
       }
     }
+  }
+  
+  private func examplePrompt(_ text: String) -> some View {
+    Text(text)
+      .font(.system(size: 14))
+      .foregroundStyle(Color.white.opacity(0.5))
+      .italic()
   }
 }
 

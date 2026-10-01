@@ -9,16 +9,16 @@ enum ChatMode: String, CaseIterable, Identifiable {
     var description: String {
         switch self {
         case .ask:
-            return "Help me figure out what I want"
+            return "Research & guidance"
         case .shop:
-            return "Search inventory for a specific car"
+            return "Search real inventory"
         }
     }
     
     var icon: String {
         switch self {
         case .ask:
-            return "questionmark.bubble.fill"
+            return "lightbulb.fill"
         case .shop:
             return "magnifyingglass"
         }
@@ -27,9 +27,9 @@ enum ChatMode: String, CaseIterable, Identifiable {
     var placeholder: String {
         switch self {
         case .ask:
-            return "What kind of car are you looking for?"
+            return "Ask me which car fits your needs..."
         case .shop:
-            return "Search for any vehicle..."
+            return "Find 2025 F-150s near me..."
         }
     }
 }
