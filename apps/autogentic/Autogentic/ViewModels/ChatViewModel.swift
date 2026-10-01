@@ -26,19 +26,85 @@ final class ChatViewModel: ObservableObject {
     self.mapViewModel = viewModel
   }
 
-  func send(text: String) {
+  func send(text: String, mode: ChatMode = .shop) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
 
     #if DEBUG
-    debugLog("CHAT", "userQuery=\"\(trimmed)\"")
+    debugLog("CHAT", "userQuery=\"\(trimmed)\" mode=\(mode.rawValue)")
     FunnelLogger.shared.querySubmitted(trimmed)
     #endif
 
+    messages.append(.user(trimmed))
+
+    if mode == .ask {
+      handleAskMode(query: trimmed)
+    } else {
+      handleShopMode(query: trimmed)
+    }
+  }
+
+  private func handleAskMode(query: String) {
+    let lowered = query.lowercased()
+    
+    // Check if user is ready to transition to Shop mode
+    let shopTriggers = ["shop", "search", "find", "show me", "look for", "buy", "purchase"]
+    let hasSpecificVehicle = lowered.contains("f-150") || lowered.contains("f150") ||
+                             lowered.contains("camry") || lowered.contains("civic") ||
+                             lowered.contains("mustang") || lowered.contains("corvette") ||
+                             lowered.contains("rav4") || lowered.contains("accord") ||
+                             lowered.contains("model") // Tesla Model
+    
+    let isShopIntent = shopTriggers.contains { lowered.contains($0) } && hasSpecificVehicle
+    
+    if isShopIntent {
+      messages.append(.assistant("Ready to search inventory! Switch to **Shop** mode and I'll find available listings for you."))
+    } else {
+      // Ask mode: provide guidance without inventory search
+      let response = generateAskResponse(for: query)
+      messages.append(.assistant(response))
+    }
+  }
+  
+  private func generateAskResponse(for query: String) -> String {
+    let lowered = query.lowercased()
+    
+    if lowered.contains("suv") || lowered.contains("crossover") {
+      return "SUVs and crossovers are great for versatility. Are you looking for a compact option like a RAV4 or CR-V, or something larger like a Tahoe or Expedition? Also, what's your budget range?"
+    }
+    
+    if lowered.contains("truck") || lowered.contains("pickup") {
+      return "Trucks range from light-duty like the Ford Maverick to heavy-duty like the F-250. Do you need it primarily for towing, hauling, or daily driving? And what's your budget?"
+    }
+    
+    if lowered.contains("electric") || lowered.contains("ev") || lowered.contains("hybrid") {
+      return "Great choice for fuel efficiency! Are you looking for a full electric vehicle, plug-in hybrid, or standard hybrid? Do you have home charging available?"
+    }
+    
+    if lowered.contains("family") || lowered.contains("kids") || lowered.contains("safe") {
+      return "Safety and space are key for families. Minivans like the Pacifica or Sienna excel here, or mid-size SUVs like the Highlander and Pilot. What's your budget, and how many passengers do you typically carry?"
+    }
+    
+    if lowered.contains("budget") || lowered.contains("cheap") || lowered.contains("affordable") || lowered.contains("under") {
+      return "I can help find great value options. What type of vehicle are you interested in — sedan, SUV, truck? And is there a specific price range you're targeting?"
+    }
+    
+    if lowered.contains("luxury") || lowered.contains("premium") {
+      return "Luxury vehicles offer refined comfort and features. Are you drawn to European brands like BMW, Mercedes, or Audi, or domestic luxury like Lincoln or Cadillac? Sedan or SUV?"
+    }
+    
+    if lowered.contains("sporty") || lowered.contains("fast") || lowered.contains("performance") {
+      return "For performance, options range from hot hatches like the Golf R to muscle cars like the Mustang and sports cars like the Corvette. What's your budget, and is this a daily driver or weekend car?"
+    }
+    
+    // General/unknown query
+    return "I'd love to help you find the right car. Tell me more about what you need — things like your budget, whether you prefer sedan/SUV/truck, and what features matter most to you."
+  }
+
+  private func handleShopMode(query: String) {
     // Block unfiltered map-pan fetches while the chat search is in flight
     mapViewModel?.isParsingQuery = true
 
-    messages.append(.user(trimmed))
     messages.append(.assistant("Searching nearby inventory..."))
     messages.append(.tool(.map))
 
@@ -47,7 +113,7 @@ final class ChatViewModel: ObservableObject {
     #endif
 
     Task { @MainActor in
-      await fetchWithChatSearch(query: trimmed)
+      await fetchWithChatSearch(query: query)
     }
   }
 

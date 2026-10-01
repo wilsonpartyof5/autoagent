@@ -7,7 +7,7 @@ struct ContentView: View {
     case savedVehicles = "Saved Vehicles"
     case myDeals = "My Deals"
     case profile = "Profile"
-
+    
     var id: String { rawValue }
 
     var systemImage: String {
@@ -28,6 +28,7 @@ struct ContentView: View {
   @State private var selectedTab: SidebarTab = .chat
   @State private var isSidebarOpen: Bool = false
   @State private var isMapExpanded: Bool = false
+  @State private var chatMode: ChatMode = .ask
 
   @State private var draftText: String = ""
 
@@ -35,9 +36,15 @@ struct ContentView: View {
     NavigationStack {
       ZStack(alignment: .bottom) {
         // Non-negotiable base: ChatView is always present.
-        ChatView(messages: $chatVM.messages, mapVM: mapVM, chatVM: chatVM, onMapExpand: {
-          isMapExpanded = true
-        })
+        ChatView(
+          messages: $chatVM.messages,
+          mapVM: mapVM,
+          chatVM: chatVM,
+          chatMode: $chatMode,
+          onMapExpand: {
+            isMapExpanded = true
+          }
+        )
         .onAppear {
           chatVM.setMapViewModel(mapVM)
         }
@@ -65,25 +72,34 @@ struct ContentView: View {
       // safeAreaInset pins the bar at the bottom and lets iOS move it above the
       // keyboard automatically — same system animation, no manual tracking needed.
       .safeAreaInset(edge: .bottom, spacing: 0) {
-        InputBarView(
-          text: $draftText,
-          placeholder: "Search for any vehicle...",
-          onSend: {
-            let query = draftText
-            chatVM.send(text: query)
+        VStack(spacing: 0) {
+          // Ask/Shop mode toggle
+          ChatModeToggle(selectedMode: $chatMode)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+          
+          InputBarView(
+            text: $draftText,
+            placeholder: chatMode.placeholder,
+            onSend: {
+              let query = draftText
+              chatVM.send(text: query, mode: chatMode)
 
-            if query.lowercased().contains("black") ||
-              query.lowercased().contains("white") || query.lowercased().contains("red") ||
-              query.lowercased().contains("blue") || query.lowercased().contains("under") ||
-              query.lowercased().contains("below") || query.lowercased().contains("$") {
-              mapVM.applyQuery(query)
+              if chatMode == .shop {
+                if query.lowercased().contains("black") ||
+                  query.lowercased().contains("white") || query.lowercased().contains("red") ||
+                  query.lowercased().contains("blue") || query.lowercased().contains("under") ||
+                  query.lowercased().contains("below") || query.lowercased().contains("$") {
+                  mapVM.applyQuery(query)
+                }
+              }
+
+              draftText = ""
             }
-
-            draftText = ""
-          }
-        )
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
+          )
+          .padding(.horizontal, 12)
+          .padding(.bottom, 12)
+        }
         .background(Color.black)
       }
       .background(Color.black.ignoresSafeArea())
@@ -179,6 +195,41 @@ private struct PlaceholderTabView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black.opacity(0.92))
+  }
+}
+
+// MARK: - Chat Mode Toggle
+
+private struct ChatModeToggle: View {
+  @Binding var selectedMode: ChatMode
+  
+  var body: some View {
+    HStack(spacing: 8) {
+      ForEach(ChatMode.allCases) { mode in
+        Button {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            selectedMode = mode
+          }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: mode.icon)
+              .font(.system(size: 13, weight: .semibold))
+            Text(mode.rawValue)
+              .font(.system(size: 14, weight: .semibold))
+          }
+          .foregroundStyle(selectedMode == mode ? .black : .white)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 8)
+          .background(
+            Capsule()
+              .fill(selectedMode == mode ? Color.white : Color.white.opacity(0.12))
+          )
+        }
+        .buttonStyle(.plain)
+      }
+      
+      Spacer()
+    }
   }
 }
 

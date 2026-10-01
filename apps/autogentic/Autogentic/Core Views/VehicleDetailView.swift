@@ -260,9 +260,9 @@ struct VehicleDetailView: View {
   private var ctaButtons: some View {
     VStack(spacing: 12) {
       Button {
-        // Contact dealer action
+        // Get price action — Drevvy handles dealer contact privately
       } label: {
-        Text("Contact Dealer")
+        Text("Get Best Price")
           .font(.system(size: 17, weight: .semibold))
           .foregroundStyle(.black)
           .frame(maxWidth: .infinity)
@@ -372,35 +372,24 @@ struct VehicleDetailView: View {
   }
   
   private var dealerInfo: some View {
+    // Dealer info hidden for MVP monetization (Drevvy contacts dealers privately)
     VStack(alignment: .leading, spacing: 16) {
-      Text("About the dealership")
+      Text("How it works")
         .font(.system(size: 22, weight: .bold))
         .foregroundStyle(.white)
       
       VStack(alignment: .leading, spacing: 12) {
-        Text(vehicle.dealerName)
-          .font(.system(size: 18, weight: .bold))
-          .foregroundStyle(.white)
-        
-        if vehicle.dealerCity != nil || vehicle.dealerState != nil {
-          HStack(spacing: 4) {
-            Image(systemName: "mappin.circle.fill")
+        HStack(spacing: 12) {
+          Image(systemName: "hand.thumbsup.fill")
+            .font(.system(size: 24))
+            .foregroundStyle(Color.orange.opacity(0.9))
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Drevvy negotiates for you")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(.white)
+            Text("We contact the seller privately to get you the best out-the-door price.")
               .font(.system(size: 14))
-              .foregroundStyle(Color.white.opacity(0.6))
-            
-            if let city = vehicle.dealerCity, let state = vehicle.dealerState {
-              Text("\(city), \(state)")
-                .font(.system(size: 15))
-                .foregroundStyle(Color.white.opacity(0.8))
-            } else if let city = vehicle.dealerCity {
-              Text(city)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.white.opacity(0.8))
-            } else if let state = vehicle.dealerState {
-              Text(state)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.white.opacity(0.8))
-            }
+              .foregroundStyle(Color.white.opacity(0.7))
           }
         }
       }
@@ -416,9 +405,9 @@ struct VehicleDetailView: View {
   private var bottomCTA: some View {
     VStack(spacing: 12) {
       Button {
-        // Contact dealer action
+        // Get price action — Drevvy handles dealer contact privately
       } label: {
-        Text("Contact Dealer")
+        Text("Get Best Price")
           .font(.system(size: 17, weight: .semibold))
           .foregroundStyle(.black)
           .frame(maxWidth: .infinity)
@@ -518,56 +507,48 @@ struct VehicleDetailView: View {
 
   @ViewBuilder
   private var enrichedDealerSection: some View {
-    if let loc = detail?.location {
+    // Dealer info hidden for MVP monetization (Drevvy contacts dealers privately)
+    // Show "How it works" section instead
+    VStack(alignment: .leading, spacing: 16) {
+      Text("How it works")
+        .font(.system(size: 22, weight: .bold))
+        .foregroundStyle(.white)
+
       VStack(alignment: .leading, spacing: 16) {
-        Text("About the dealership")
-          .font(.system(size: 22, weight: .bold))
-          .foregroundStyle(.white)
-
-        VStack(alignment: .leading, spacing: 12) {
-          Text(loc.dealerName)
-            .font(.system(size: 18, weight: .bold))
-            .foregroundStyle(.white)
-
-          if let city = loc.dealerCity, let state = loc.dealerState {
-            Label("\(city), \(state)", systemImage: "mappin.circle.fill")
-              .font(.system(size: 15))
-              .foregroundStyle(Color.white.opacity(0.8))
-          }
-
-          if let address = loc.dealerAddress {
-            Label(address, systemImage: "building.2.fill")
+        HStack(spacing: 12) {
+          Image(systemName: "hand.thumbsup.fill")
+            .font(.system(size: 24))
+            .foregroundStyle(Color.orange.opacity(0.9))
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Drevvy negotiates for you")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(.white)
+            Text("We contact the seller privately to get you the best out-the-door price.")
               .font(.system(size: 14))
               .foregroundStyle(Color.white.opacity(0.7))
           }
-
-          if let phone = loc.dealerPhone {
-            Label(phone, systemImage: "phone.fill")
-              .font(.system(size: 15))
-              .foregroundStyle(Color.white.opacity(0.8))
-          }
-
-          if let rating = loc.dealerRating, let reviews = loc.dealerReviewCount {
-            HStack(spacing: 4) {
-              Image(systemName: "star.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.yellow)
-              Text(String(format: "%.1f", rating))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-              Text("(\(reviews.value) reviews)")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.white.opacity(0.6))
-            }
+        }
+        
+        HStack(spacing: 12) {
+          Image(systemName: "dollarsign.circle.fill")
+            .font(.system(size: 24))
+            .foregroundStyle(Color.green.opacity(0.9))
+          VStack(alignment: .leading, spacing: 4) {
+            Text("No hidden fees")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(.white)
+            Text("Get a transparent out-the-door quote with no surprises.")
+              .font(.system(size: 14))
+              .foregroundStyle(Color.white.opacity(0.7))
           }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(white: 0.08))
-        )
       }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .fill(Color(white: 0.08))
+      )
     }
   }
 

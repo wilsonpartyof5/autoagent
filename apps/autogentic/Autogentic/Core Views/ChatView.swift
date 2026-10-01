@@ -4,6 +4,7 @@ struct ChatView: View {
   @Binding var messages: [Message]
   @ObservedObject var mapVM: MapViewModel
   @ObservedObject var chatVM: ChatViewModel
+  @Binding var chatMode: ChatMode
   var onMapExpand: (() -> Void)? = nil
 
   var body: some View {
@@ -53,14 +54,16 @@ struct ChatView: View {
     return Group {
       if !hasUserMessage {
         VStack(spacing: 16) {
-          // Primary title
-          Text("Find the right car, faster.")
+          // Primary title based on mode
+          Text(chatMode == .ask ? "Let's find your perfect car." : "Find the right car, faster.")
             .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
           
-          // Secondary headline
-          Text("We'll scan nearby inventory to find your next vehicle.")
+          // Secondary headline based on mode
+          Text(chatMode == .ask
+               ? "Tell me what matters to you — budget, style, features — and I'll help narrow it down."
+               : "We'll scan nearby inventory to find your next vehicle.")
             .font(.system(size: 15))
             .foregroundStyle(Color.white.opacity(0.70))
             .multilineTextAlignment(.center)
