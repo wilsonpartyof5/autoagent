@@ -15,6 +15,8 @@ struct ConsumerSession: Codable, Equatable {
 struct ConsumerProfile: Decodable, Equatable {
   var consumerUserId: String
   var status: String?
+  var createdAt: String?
+  var updatedAt: String?
 }
 
 @MainActor
@@ -24,13 +26,21 @@ final class ConsumerAuthStore: ObservableObject {
   @Published private(set) var isWorking = false
   @Published var message: String?
 
+  var isSignedIn: Bool { session != nil }
+
   init() {
     session = KeychainSessionStore.load()
+  }
+
+  func restoreSessionIfNeeded() async {
+    guard session != nil else { return }
+    await loadProfile()
   }
 
   func signIn(identityToken: String, nonce: String) async {
     isWorking = true
     message = nil
+    profile = nil
     defer { isWorking = false }
     do {
       let session = try await requestSession(
@@ -38,8 +48,11 @@ final class ConsumerAuthStore: ObservableObject {
         body: ["identityToken": identityToken, "nonce": nonce]
       )
       store(session)
+      message = nil
       await loadProfile()
     } catch {
+      session = nil
+      KeychainSessionStore.delete()
       message = error.localizedDescription
     }
   }
@@ -52,6 +65,11 @@ final class ConsumerAuthStore: ObservableObject {
         body: ["refreshToken": current.refreshToken]
       )
       store(refreshed)
+    } catch let error as ConsumerAuthFailure where error.isUnauthorized {
+      session = nil
+      profile = nil
+      KeychainSessionStore.delete()
+      message = "Your session has expired. Please sign in again."
     } catch {
       message = error.localizedDescription
     }
@@ -59,7 +77,10 @@ final class ConsumerAuthStore: ObservableObject {
 
   func loadProfile() async {
     await refreshIfNeeded()
-    guard let current = session else { return }
+    guard let current = session else {
+      profile = nil
+      return
+    }
     do {
       var request = URLRequest(url: endpoint("profile"))
       request.httpMethod = "GET"
@@ -68,6 +89,11 @@ final class ConsumerAuthStore: ObservableObject {
       try throwIfNeeded(data: data, response: response)
       let decoded = try JSONDecoder().decode(ProfileEnvelope.self, from: data)
       profile = decoded.data
+    } catch let error as ConsumerAuthFailure where error.isUnauthorized {
+      session = nil
+      profile = nil
+      KeychainSessionStore.delete()
+      message = "Your session has expired. Please sign in again."
     } catch {
       message = error.localizedDescription
     }
@@ -116,12 +142,18 @@ final class ConsumerAuthStore: ObservableObject {
   }
 
   private func throwIfNeeded(data: Data, response: URLResponse) throws {
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-      let message = (try? JSONDecoder().decode(ErrorEnvelope.self, from: data))?.error.message
-      throw ConsumerAuthFailure(message: message ?? "Drevvy could not finish sign-in.")
+    guard let http = response as? HTTPURLResponse else {
+      throw ConsumerAuthFailure(message: "Network error. Please try again.", statusCode: nil)
+    }
+    guard (200..<300).contains(http.statusCode) else {
+      let errorEnvelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data)
+      let message = errorEnvelope?.error.message ?? "Drevvy could not finish sign-in."
+      throw ConsumerAuthFailure(message: message, statusCode: http.statusCode)
     }
   }
 }
+
+// MARK: - Response Envelopes
 
 private struct SessionEnvelope: Decodable {
   struct DataBody: Decodable {
@@ -144,5 +176,11 @@ private struct ErrorEnvelope: Decodable {
 
 private struct ConsumerAuthFailure: LocalizedError {
   let message: String
+  let statusCode: Int?
+  
   var errorDescription: String? { message }
+  
+  var isUnauthorized: Bool {
+    statusCode == 401 || statusCode == 403
+  }
 }

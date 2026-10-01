@@ -51,6 +51,7 @@ struct ContentView: View {
         .opacity(selectedTab == .chat ? 1 : 0.12)
         .allowsHitTesting(selectedTab == .chat)
 
+        // Tab overlays — Profile has real content, others are placeholders
         if selectedTab == .profile {
           ProfileView()
             .transition(.opacity)
