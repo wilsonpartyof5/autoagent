@@ -29,9 +29,22 @@
 		0402336B2EF9C67A00889C1A /* AutogenticUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AutogenticUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		04023380AAAA000000000001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 040233532EF9C67700889C1A /* Autogentic */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		040233562EF9C67700889C1A /* Autogentic */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				04023380AAAA000000000001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 			path = Autogentic;
 			sourceTree = "<group>";
 		};
