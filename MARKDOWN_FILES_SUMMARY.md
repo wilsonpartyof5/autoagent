@@ -1,6 +1,6 @@
 # Drevvy Markdown Files Summary
 
-This document provides a comprehensive summary of all 72 markdown files in the Drevvy project, organized by category.
+This document provides a comprehensive summary of all 76 markdown files in the Drevvy project, organized by category.
 
 ---
 
@@ -73,6 +73,35 @@ This document provides a comprehensive summary of all 72 markdown files in the D
 ---
 
 ## 🗂️ Core Documentation Hub
+
+### `docs/DREVVY_IMPLEMENTATION_PLAN.md`
+**Purpose**: Shopper-only build order after the 2026-10-01 product pivot
+**Key Content**:
+- Cancels old Phase 4–6 (in-app dealer messaging, dealer-thread UI, DealerAPI)
+- Ask and Shop modes, MarketCheck search, hidden dealer identity
+- Salvage notes for draft pull requests #37–#40
+- Schema sketch for cases, offers, decisions, and outreach jobs
+- Next coding step is shopper auth, not SMS
+
+### `docs/DREVVY_CURRENT_ARCHITECTURE.md`
+**Purpose**: Map of the repo with dealer iOS deferred for the MVP
+**Key Content**:
+- Autogentic is the shopper app
+- Dashboard remains an API host, not a dealer inbox
+- MarketCheck search paths and the shared inventory key
+
+### `docs/DREVVY_GAP_ANALYSIS.md`
+**Purpose**: Gaps for the shopper-only Ask/Shop and paid outreach product
+**Key Content**:
+- Dealer-app gaps are deferred
+- Missing shopper auth on main, hidden dealer identity, paid cases, and journey analytics
+
+### `docs/DREVVY_DATA_PLATFORM_NORTH_STAR.md`
+**Purpose**: Data constraints that stay in force after the product pivot
+**Key Content**:
+- Supabase remains the live database
+- Events must carry stable ids and omit contact fields
+- ClickHouse, a queue, and a search cluster are not MVP work
 
 ### `docs/README.md`
 **Purpose**: Documentation hub and navigation guide  
