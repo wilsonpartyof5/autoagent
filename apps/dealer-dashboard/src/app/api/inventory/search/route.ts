@@ -6,6 +6,7 @@ import {
   MarketCheckRateLimitError,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
  * POST /api/inventory/search
@@ -29,6 +30,10 @@ import {
  *     "pagination": { "page": 1, "limit": 25, "total": 232, "totalPages": 10, "hasNextPage": true, "hasPreviousPage": false }
  *   }
  * }
+ *
+ * Shopper responses pass through redactShopperDealerIdentity. Price, vehicle
+ * identity, photos, city/state, and coordinates stay. dealerName is empty.
+ * Dealer contact fields are omitted.
  */
 
 // -------------------------------------------------------------------------
@@ -92,6 +97,7 @@ interface VehicleResponse {
   location: {
     latitude: number;
     longitude: number;
+    /** Always empty in the shopper response. */
     dealerName: string;
     dealerCity?: string;
     dealerState?: string;
@@ -400,20 +406,22 @@ export async function POST(request: NextRequest) {
       totalMs,
     }));
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        vehicles,
-        pagination: {
-          page,
-          limit,
-          total: cappedTotal,
-          totalPages,
-          hasNextPage,
-          hasPreviousPage,
+    return NextResponse.json(
+      redactShopperDealerIdentity({
+        success: true,
+        data: {
+          vehicles,
+          pagination: {
+            page,
+            limit,
+            total: cappedTotal,
+            totalPages,
+            hasNextPage,
+            hasPreviousPage,
+          },
         },
-      },
-    });
+      }),
+    );
   } catch (error) {
     const totalMs = Date.now() - reqStart;
 

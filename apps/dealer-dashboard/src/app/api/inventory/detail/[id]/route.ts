@@ -4,6 +4,7 @@ import {
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
 } from '@/lib/marketcheck/mcp-adapter';
+import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
  * GET /api/inventory/detail/[id]
@@ -19,8 +20,9 @@ import {
  * Path param:  [id] — MarketCheck listing ID (from /api/inventory/search)
  * Query param: vin  — optional VIN hint to improve MCP enrichment accuracy
  *
- * Response shape is identical to the previous REST-backed route so mobile
- * clients require no changes.
+ * Shopper JSON passes through redactShopperDealerIdentity. Price, specs,
+ * photos, city/state, coordinates, and days on market stay. dealerName is
+ * an empty string. Phone, website, street address, and sales staff are omitted.
  */
 
 // -------------------------------------------------------------------------
@@ -85,7 +87,7 @@ export async function GET(
     const latencyMs = Date.now() - reqStart;
     console.log(JSON.stringify({ event: 'mc_mcp_detail_served', listingId, partial: detail.partial, latencyMs }));
 
-    return NextResponse.json({ success: true, data: detail });
+    return NextResponse.json(redactShopperDealerIdentity({ success: true, data: detail }));
   } catch (error) {
     const latencyMs = Date.now() - reqStart;
 

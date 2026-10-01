@@ -21,6 +21,7 @@ import {
   type LiveVehicle,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
  * POST /api/query/chat-search
@@ -47,6 +48,10 @@ import {
  *     "apiCompatibleFilters": { "bodyType": "SUV", "maxPrice": 25000 }
  *   }
  * }
+ *
+ * The success payload passes through redactShopperDealerIdentity. Vehicle
+ * price, identity, photos, city/state, and coordinates stay. dealerName is
+ * empty, and the assistant message is scrubbed for dealer contact details.
  */
 
 // ---------------------------------------------------------------------------
@@ -89,6 +94,7 @@ interface VehiclePayload {
   location: {
     latitude: number;
     longitude: number;
+    /** Always empty in the shopper response. */
     dealerName: string;
     dealerCity?: string;
     dealerState?: string;
@@ -196,6 +202,7 @@ The user just submitted a vehicle search. Given the search context and actual re
 Rules:
 - Be conversational and specific — use real numbers from the results
 - Do NOT invent specs, features, or prices not in the results
+- Do NOT mention dealership names, salespeople, phone numbers, email addresses, or dealer websites
 - Keep it to 1–2 sentences max
 - If 0 results: suggest broadening search criteria (budget, radius, or body type)`;
 
@@ -514,5 +521,5 @@ export async function POST(request: NextRequest) {
     canonicalFilters,
   };
 
-  return NextResponse.json({ success: true, data: responseData });
+  return NextResponse.json(redactShopperDealerIdentity({ success: true, data: responseData }));
 }
