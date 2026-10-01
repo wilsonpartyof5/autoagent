@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import MapKit
+import CoreLocation
 
 @MainActor
 final class ChatViewModel: ObservableObject {
@@ -9,6 +10,9 @@ final class ChatViewModel: ObservableObject {
   
   // Reference to MapViewModel for triggering API fetches
   var mapViewModel: MapViewModel?
+  
+  // Reference to LocationManager for device GPS
+  var locationManager: LocationManager?
 
   // Continuity context — stored after every successful search and sent with the next query
   private var lastCanonicalFilters: ChatSearchApiFilters?
@@ -24,6 +28,11 @@ final class ChatViewModel: ObservableObject {
   
   func setMapViewModel(_ viewModel: MapViewModel) {
     self.mapViewModel = viewModel
+  }
+  
+  func setLocationManager(_ manager: LocationManager) {
+    self.locationManager = manager
+    manager.requestPermissionIfNeeded()
   }
 
   func send(text: String, mode: ChatMode = .shop) {
@@ -129,9 +138,16 @@ final class ChatViewModel: ObservableObject {
 
     isSearching = true
 
-    // Use map center as device-location fallback for the backend
-    let userLocation = mapVM.currentRegion.map {
-      CLLocationCoordinate2D(latitude: $0.center.latitude, longitude: $0.center.longitude)
+    // Priority: device GPS → map center fallback
+    let userLocation: CLLocationCoordinate2D?
+    if let locMgr = locationManager, locMgr.hasLocationPermission {
+      userLocation = await locMgr.getLocationOrNil()
+        ?? locMgr.currentLocation
+        ?? mapVM.currentRegion.map { CLLocationCoordinate2D(latitude: $0.center.latitude, longitude: $0.center.longitude) }
+    } else {
+      userLocation = mapVM.currentRegion.map {
+        CLLocationCoordinate2D(latitude: $0.center.latitude, longitude: $0.center.longitude)
+      }
     }
 
     #if DEBUG

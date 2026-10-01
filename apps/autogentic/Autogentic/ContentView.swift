@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
   @EnvironmentObject private var deals: DealsStore
   @EnvironmentObject private var subscription: SubscriptionStore
+  @EnvironmentObject private var locationManager: LocationManager
 
   @StateObject private var chatVM = ChatViewModel(preload: true)
   @StateObject private var mapVM = MapViewModel()
@@ -29,6 +30,7 @@ struct ContentView: View {
         )
         .onAppear {
           chatVM.setMapViewModel(mapVM)
+          chatVM.setLocationManager(locationManager)
         }
 
         if isSidebarOpen {
@@ -117,6 +119,7 @@ struct ContentView: View {
 private struct SidebarView: View {
   @EnvironmentObject private var auth: ConsumerAuthStore
   @EnvironmentObject private var subscription: SubscriptionStore
+  @EnvironmentObject private var locationManager: LocationManager
   
   let deals: [Deal]
   let onDealTap: (Deal) -> Void
@@ -186,6 +189,13 @@ private struct SidebarView: View {
         .background(Color.white.opacity(0.1))
         .padding(.vertical, 16)
       
+      // Location status row
+      locationStatusRow
+      
+      Divider()
+        .background(Color.white.opacity(0.1))
+        .padding(.vertical, 16)
+      
       // Profile button
       Button {
         showProfile = true
@@ -242,6 +252,73 @@ private struct SidebarView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .sheet(isPresented: $showProfile) {
       ProfileSheetView()
+    }
+  }
+  
+  private var locationStatusRow: some View {
+    HStack(spacing: 10) {
+      Image(systemName: locationIcon)
+        .font(.system(size: 16))
+        .foregroundStyle(locationColor)
+      
+      VStack(alignment: .leading, spacing: 2) {
+        Text(locationTitle)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(.white)
+        
+        Text(locationSubtitle)
+          .font(.system(size: 12))
+          .foregroundStyle(Color.white.opacity(0.5))
+      }
+      
+      Spacer()
+      
+      if locationManager.status == .denied {
+        Button {
+          if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+          }
+        } label: {
+          Text("Settings")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.blue)
+        }
+      }
+    }
+    .padding(.vertical, 8)
+  }
+  
+  private var locationIcon: String {
+    switch locationManager.status {
+    case .authorized: return "location.fill"
+    case .denied, .restricted: return "location.slash"
+    case .notDetermined: return "location"
+    }
+  }
+  
+  private var locationColor: Color {
+    switch locationManager.status {
+    case .authorized: return .green
+    case .denied, .restricted: return .orange
+    case .notDetermined: return Color.white.opacity(0.6)
+    }
+  }
+  
+  private var locationTitle: String {
+    switch locationManager.status {
+    case .authorized: return "Location On"
+    case .denied: return "Location Off"
+    case .restricted: return "Location Restricted"
+    case .notDetermined: return "Location"
+    }
+  }
+  
+  private var locationSubtitle: String {
+    switch locationManager.status {
+    case .authorized: return "Finding vehicles near you"
+    case .denied: return "Use city/ZIP in searches"
+    case .restricted: return "Use city/ZIP in searches"
+    case .notDetermined: return "Enable for nearby results"
     }
   }
 }

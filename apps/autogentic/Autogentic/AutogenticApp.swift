@@ -5,6 +5,7 @@ struct AutogenticApp: App {
   @StateObject private var auth = ConsumerAuthStore()
   @StateObject private var deals: DealsStore
   @StateObject private var subscription = SubscriptionStore()
+  @StateObject private var locationManager = LocationManager()
 
   init() {
     let authStore = ConsumerAuthStore()
@@ -18,6 +19,7 @@ struct AutogenticApp: App {
         .environmentObject(auth)
         .environmentObject(deals)
         .environmentObject(subscription)
+        .environmentObject(locationManager)
         .preferredColorScheme(.dark)
     }
   }
