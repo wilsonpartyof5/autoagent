@@ -11,11 +11,18 @@ struct AutogenticApp: App {
     let authStore = ConsumerAuthStore()
     _auth = StateObject(wrappedValue: authStore)
     _deals = StateObject(wrappedValue: DealsStore(authStore: authStore))
+    
+    // Configure tab bar appearance for dark mode
+    let tabBarAppearance = UITabBarAppearance()
+    tabBarAppearance.configureWithOpaqueBackground()
+    tabBarAppearance.backgroundColor = UIColor.black
+    UITabBar.appearance().standardAppearance = tabBarAppearance
+    UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
   }
 
   var body: some Scene {
     WindowGroup {
-      ContentView()
+      MainTabView()
         .environmentObject(auth)
         .environmentObject(deals)
         .environmentObject(subscription)
