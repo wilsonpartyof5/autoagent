@@ -1,6 +1,6 @@
 # Drevvy Markdown Files Summary
 
-This document provides a comprehensive summary of all 76 markdown files in the Drevvy project, organized by category.
+This document provides a comprehensive summary of all 77 markdown files in the Drevvy project, organized by category.
 
 ---
 
@@ -73,6 +73,14 @@ This document provides a comprehensive summary of all 76 markdown files in the D
 ---
 
 ## 🗂️ Core Documentation Hub
+
+### `docs/drevvy/USER_JOURNEY.md`
+**Purpose**: Front-to-back shopper journey for the $97 outreach MVP
+**Key Content**:
+- Download through onboarding, Ask, Shop, paywall, agent outreach, and buy handoff
+- What the shopper sees versus what admin sees at each step
+- Funnel event names for `app_events` and where MarketCheck data is used
+- Sign in with Apple is postponed and not required for the demo
 
 ### `docs/DREVVY_IMPLEMENTATION_PLAN.md`
 **Purpose**: Shopper-only build order after the 2026-10-01 product pivot

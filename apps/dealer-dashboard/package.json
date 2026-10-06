@@ -12,6 +12,7 @@
     "test:dealer-mobile": "tsx --test src/lib/dealer-mobile/*.test.ts",
     "test:shopper": "tsx --test src/lib/shopper/*.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
+    "test:admin": "tsx --test src/lib/admin/*.test.ts",
     "clean": "rm -rf .next",
     "worker:analytics-refresh": "tsx src/workers/analytics-refresh-worker.ts"
   },

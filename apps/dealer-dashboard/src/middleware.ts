@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { generateSessionId } from '@autoagent/shared'
+import { adminPreviewEnabled, isAllowlistedAdmin, safeAdminNextPath } from '@/lib/admin/access'
 
 const SESSION_COOKIE_NAME = 'aa_session_id';
 const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
@@ -27,9 +28,15 @@ export async function middleware(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const adminPath = request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/api/admin')
+
+  if (adminPath && adminPreviewEnabled()) {
+    return response
+  }
 
   // If Supabase env vars are missing (e.g., marketing-only environments), skip auth middleware.
   if (!supabaseUrl || !supabaseAnonKey) {
+    if (adminPath) return new NextResponse(null, { status: 404 })
     console.warn('Supabase env vars missing in middleware; skipping auth guard.')
     return response
   }
@@ -52,6 +59,17 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  if (adminPath) {
+    if (!user || !isAllowlistedAdmin(user.email)) {
+      if (!user && request.nextUrl.pathname.startsWith('/admin')) {
+        const authUrl = new URL('/auth', request.url)
+        authUrl.searchParams.set('next', request.nextUrl.pathname)
+        return NextResponse.redirect(authUrl)
+      }
+      return new NextResponse(null, { status: 404 })
+    }
+  }
 
   // Protect /app/** routes
   if (request.nextUrl.pathname.startsWith('/app')) {
@@ -125,12 +143,13 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from /auth
   if (request.nextUrl.pathname === '/auth' && user) {
-    return NextResponse.redirect(new URL('/app/setup', request.url))
+    const nextPath = safeAdminNextPath(request.nextUrl.searchParams.get('next'))
+    return NextResponse.redirect(new URL(nextPath ?? '/app/setup', request.url))
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/app/:path*', '/auth', '/auth/:path*'],
+  matcher: ['/app/:path*', '/auth', '/auth/:path*', '/admin', '/admin/:path*', '/api/admin/:path*'],
 }

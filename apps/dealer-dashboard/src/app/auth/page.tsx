@@ -68,7 +68,11 @@ function AuthForm() {
 
         // After sign in, redirect based on onboarding status
         // Use window.location for full page reload to ensure session is set
-        window.location.href = '/app/inventory';
+        const nextPath = searchParams.get('next');
+        const adminNext = nextPath && nextPath.startsWith('/admin') && !nextPath.startsWith('//') && !nextPath.includes('://')
+          ? nextPath
+          : null;
+        window.location.href = adminNext ?? '/app/inventory';
       }
     } catch (err: unknown) {
       // Extract error message from various error types
