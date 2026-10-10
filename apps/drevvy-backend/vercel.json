@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd ../.. && npx -y pnpm@8.15.0 --filter @drevvy/backend build",
+  "outputDirectory": ".next",
+  "installCommand": "cd ../.. && npx -y pnpm@8.15.0 install --filter @drevvy/backend... --no-frozen-lockfile",
+  "framework": "nextjs",
+  "crons": []
+}
