@@ -1,10 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:drevvy_app/main.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
 
 void main() {
+  group('DrevvyApp Tests', () {
+    testWidgets('DrevvyApp renders with tab bar', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: DrevvyApp()),
+      );
+
+      // Pump multiple frames to allow async operations to settle
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+
+      // Verify tab bar is present with all three tabs
+      // "Shop" appears twice (screen + tab), "Deals" and "Profile" only in tab bar
+      expect(find.text('Shop'), findsWidgets);
+      expect(find.text('Deals'), findsOneWidget);
+      expect(find.text('Profile'), findsOneWidget);
+    });
+  });
+
   group('Theme Tests', () {
     testWidgets('Light theme renders correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
