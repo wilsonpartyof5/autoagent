@@ -34,10 +34,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck backend
-        run: pnpm --filter @autoagent/dealer-dashboard typecheck
+        run: pnpm --filter @drevvy/backend typecheck
 
       - name: Test shopper APIs
-        run: pnpm --filter @autoagent/dealer-dashboard test:shopper && pnpm --filter @autoagent/dealer-dashboard test:shopper-deals
+        run: pnpm --filter @drevvy/backend test:shopper && pnpm --filter @drevvy/backend test:shopper-deals
 
       - name: Build backend
-        run: pnpm --filter @autoagent/dealer-dashboard build
+        run: pnpm --filter @drevvy/backend build

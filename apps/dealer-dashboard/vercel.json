@@ -1,7 +1,0 @@
-{
-  "buildCommand": "cd ../.. && npx -y pnpm@8.15.0 --filter @autoagent/dealer-dashboard build",
-  "outputDirectory": ".next",
-  "installCommand": "cd ../.. && npx -y pnpm@8.15.0 install --filter @autoagent/dealer-dashboard... --no-frozen-lockfile",
-  "framework": "nextjs",
-  "crons": []
-}

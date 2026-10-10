@@ -8,7 +8,7 @@
 **Root Cause**: `MARKETCHECK_API_KEY` was missing from `apps/dealer-dashboard/.env.local`
 
 **Solution Applied**:
-1. Added `MARKETCHECK_API_KEY=MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX` to `apps/dealer-dashboard/.env.local`
+1. Added `MARKETCHECK_API_KEY` to the local env file (value not stored in this doc)
 2. Restarted dealer dashboard dev server
 3. Verified server health check passing
 
