@@ -1,3 +1,0 @@
-# Railway rebuild trigger - 2026-09-04
-Build triggered at: 2026-09-04 17:06:00 UTC
-Reason: Dockerfile apt install no longer depends on python3-pkg-resources

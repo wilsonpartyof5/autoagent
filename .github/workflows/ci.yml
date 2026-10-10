@@ -4,7 +4,6 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
 
 jobs:
   build:
@@ -34,15 +33,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm --filter @autoagent/shared build && pnpm --filter @autoagent/mcp-server build
+      - name: Build shared types
+        run: pnpm --filter @autoagent/shared build
 
-      - name: Type check
-        run: pnpm --filter @autoagent/shared typecheck && pnpm --filter @autoagent/mcp-server typecheck
+      - name: Typecheck backend
+        run: pnpm --filter @autoagent/dealer-dashboard typecheck
 
-      - name: Lint
-        if: github.event_name == 'pull_request'
-        run: pnpm --filter @autoagent/mcp-server lint
+      - name: Test shopper APIs
+        run: pnpm --filter @autoagent/dealer-dashboard test:shopper && pnpm --filter @autoagent/dealer-dashboard test:shopper-deals
 
-      - name: Test
-        run: pnpm --filter @autoagent/mcp-server test
+      - name: Build backend
+        run: pnpm --filter @autoagent/dealer-dashboard build
