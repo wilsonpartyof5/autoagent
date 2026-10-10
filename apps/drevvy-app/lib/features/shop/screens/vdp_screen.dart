@@ -8,9 +8,10 @@ import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/market_price_bar.dart';
+import '../widgets/new_car_market_card.dart';
 import '../widgets/add_to_drevvy_sheet.dart';
 
-/// Screens 12, 13, 16: VDP (Vehicle Detail Page)
+/// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants
 class VdpScreen extends StatefulWidget {
   const VdpScreen({super.key, required this.listingId});
 
@@ -196,18 +197,20 @@ class _VdpScreenState extends State<VdpScreen> {
                       
                       const SizedBox(height: DrevvySpace.s6),
                       
-                      // Market price bar
-                      MarketPriceBar(
-                        listing: listing,
-                        market: market,
-                      ),
+                      // Market card: different for new vs used cars (per spec §10.6)
+                      if (listing.isNew)
+                        NewCarMarketCard(listing: listing, market: market)
+                      else
+                        MarketPriceBar(listing: listing, market: market),
                       
                       const SizedBox(height: DrevvySpace.s6),
                       
-                      // Market tiles
-                      _MarketTiles(listing: listing, market: market),
+                      // Market tiles (used cars only)
+                      if (!listing.isNew)
+                        _MarketTiles(listing: listing, market: market),
                       
-                      const SizedBox(height: DrevvySpace.s6),
+                      if (!listing.isNew)
+                        const SizedBox(height: DrevvySpace.s6),
                       
                       // Key specs (per audit: no cargo, no LATCH)
                       Text('Key specs', style: text.title),

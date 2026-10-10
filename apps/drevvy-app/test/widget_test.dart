@@ -1,30 +1,97 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:drevvy_app/main.dart';
+import 'package:drevvy_app/core/theme/drevvy_theme.dart';
+import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('Theme Tests', () {
+    testWidgets('Light theme renders correctly', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: const Scaffold(body: Text('Test')),
+        ),
+      );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      expect(find.text('Test'), findsOneWidget);
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    testWidgets('Dark theme renders correctly', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.dark),
+          home: const Scaffold(body: Text('Test')),
+        ),
+      );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+      expect(find.text('Test'), findsOneWidget);
+    });
+  });
+
+  group('StatusChip Tests', () {
+    testWidgets('All deal statuses render', (WidgetTester tester) async {
+      for (final status in DealStatus.values) {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: drevvyTheme(Brightness.light),
+            home: Scaffold(body: StatusChip(status)),
+          ),
+        );
+
+        expect(find.text(status.label), findsOneWidget);
+      }
+    });
+
+    testWidgets('noLongerListed status shows correct label', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: Scaffold(body: StatusChip(DealStatus.noLongerListed)),
+        ),
+      );
+
+      expect(find.text('No longer listed'), findsOneWidget);
+    });
+  });
+
+  group('GlassCard Tests', () {
+    testWidgets('GlassCard renders child', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: Scaffold(
+            body: GlassCard(
+              child: Text('Card Content'),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Card Content'), findsOneWidget);
+    });
+  });
+
+  group('Token Tests', () {
+    test('DealStatus enum has correct values', () {
+      expect(DealStatus.values.length, 8);
+      expect(DealStatus.noLongerListed.label, 'No longer listed');
+      expect(DealStatus.offerReceived.progressStep, 3);
+      expect(DealStatus.noLongerListed.isEnded, true);
+      expect(DealStatus.reachingOut.isEnded, false);
+    });
+
+    test('Light palette has all chip colors', () {
+      for (final status in DealStatus.values) {
+        expect(DrevvyPaletteLight.chips.containsKey(status), true);
+      }
+    });
+
+    test('Dark palette has all chip colors', () {
+      for (final status in DealStatus.values) {
+        expect(DrevvyPaletteDark.chips.containsKey(status), true);
+      }
+    });
   });
 }

@@ -481,6 +481,41 @@ class DemoRepository {
         interiorColor: 'Black',
       ),
     ),
+    // New car listing for screen 44
+    const Listing(
+      id: 'listing_007',
+      vin: '5TFBY5F13NX123456',
+      stockNo: 'N55555',
+      price: 48990,
+      msrp: 52500,
+      miles: 0,
+      build: ListingBuild(
+        year: 2025,
+        make: 'Toyota',
+        model: 'Tacoma',
+        trim: 'TRD Off-Road',
+        bodyType: 'Truck',
+        drivetrain: '4WD',
+        powertrainType: 'Gas',
+        engine: '2.4L Turbo',
+        cityMpg: 20,
+        highwayMpg: 24,
+        seatingCapacity: 5,
+      ),
+      media: ListingMedia(
+        photoLinks: ['assets/images/tacoma.jpg'],
+      ),
+      dist: 15,
+      domActive: 12,
+      inventoryType: 'new',
+      extra: ListingExtra(
+        highValueFeatures: ['TRD Off-Road Package', 'Multi-Terrain Select', 'Panoramic View Monitor'],
+      ),
+      colors: ListingColors(
+        exteriorColor: 'Solar Octane',
+        interiorColor: 'Black',
+      ),
+    ),
   ];
 
   List<Deal> get _demoDealsList => [
