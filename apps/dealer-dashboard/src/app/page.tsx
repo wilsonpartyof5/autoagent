@@ -1,23 +1,21 @@
-import { Header } from '@/components/marketing/header';
-import { Hero } from '@/components/marketing/hero';
-import { Features } from '@/components/marketing/features';
-import { Benefits } from '@/components/marketing/benefits';
-import { FinalCTA } from '@/components/marketing/final-cta';
-import { Footer } from '@/components/marketing/footer';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <Header />
-      <main>
-        <Hero />
-        <Features />
-        <Benefits />
-        <FinalCTA />
-      </main>
-      <Footer />
-    </div>
+    <main className="min-h-screen flex items-center justify-center bg-background p-8">
+      <div className="max-w-md space-y-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Drevvy</h1>
+        <p className="text-muted-foreground">
+          Shoppers use the Autogentic app. The agent negotiates an out-the-door price and keeps the store hidden.
+        </p>
+        <p>
+          <Link href="/admin" className="underline underline-offset-4">
+            Operator sign-in
+          </Link>
+        </p>
+      </div>
+    </main>
   );
 }
