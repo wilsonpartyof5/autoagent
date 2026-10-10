@@ -5,8 +5,21 @@ AI car-buying assistant for shoppers. Built with Flutter (iOS + Android + Web).
 ## Requirements
 
 - Flutter 3.47.7+ / Dart 3.13.5+
-- iOS: Xcode 15+ with Swift Package Manager (no CocoaPods)
+- iOS: Xcode 15+ with Swift Package Manager (no CocoaPods required)
 - Android: Android Studio with SDK 33+
+
+## iOS Build Notes (Swift Package Manager)
+
+This project uses Swift Package Manager instead of CocoaPods:
+- No `Podfile` or `Pods/` directory
+- Flutter plugins are resolved via `XCLocalSwiftPackageReference`
+- All dependencies are pure Dart (no native CocoaPods pods)
+- Build command: `flutter build ios --no-codesign`
+
+If you see CocoaPods errors, ensure:
+1. Delete any `Podfile` or `Pods/` directory if present
+2. Run `flutter clean && flutter pub get`
+3. Open `ios/Runner.xcworkspace` in Xcode (not `.xcodeproj`)
 
 ## Setup
 
@@ -119,16 +132,17 @@ final text = context.drevvyText;
 - Profile (41)
 - Error screen (43)
 
-### Placeholder / Not Built Yet
-- Add to Drevvy sheet (18) - built
-- Notification pre-prompt (19) - placeholder
-- Ask Drevvy deal sheet (29) - placeholder  
-- Location pickup pre-prompt (34) - placeholder
-- Trade-in/financing sheet (35) - placeholder
-- Did you buy outcome (38) - placeholder
-- Remove sheets (39-40) - placeholder
-- Offline banner (42) - placeholder
-- New-car VDP (44) - not built
+### All Screens Complete
+All 44 screens are now built:
+- Add to Drevvy sheet (18)
+- Notification pre-prompt (19) - `NotificationPrepromptSheet`
+- Ask Drevvy deal sheet (29) - `AskDrevvySheet`
+- Location pickup pre-prompt (34) - `LocationPickupSheet`
+- Trade-in/financing sheet (35) - `TradeInFinancingSheet`
+- Did you buy outcome (38) - `OutcomeSheet`
+- Remove sheets (39-40) - `RemoveSheet`
+- Offline banner (42) - `OfflineBanner`
+- New-car VDP (44) - `NewCarMarketCard`
 
 ## License
 
