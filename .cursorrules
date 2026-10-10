@@ -1,20 +1,3 @@
-# Cursor Rules for Drevvy
+# Drevvy
 
-## Markdown Documentation
-
-When creating new markdown files, run the documentation updater to keep the summary current:
-
-```bash
-pnpm update-docs
-```
-
-Or use watch mode to automatically update:
-
-```bash
-pnpm watch-docs
-```
-
-This will automatically analyze and add new markdown files to `MARKDOWN_FILES_SUMMARY.md`.
-
-See `scripts/README_MARKDOWN_UPDATER.md` for details.
-
+This repo is the shopper iOS app (`apps/autogentic`) and the Next.js backend (`apps/drevvy-backend`, package `@drevvy/backend`). Do not restore the ChatGPT MCP server, the dealer portal, or the markdown-summary updater. Do not rename the Vercel project `autoagent-dealer-dashboard`.
