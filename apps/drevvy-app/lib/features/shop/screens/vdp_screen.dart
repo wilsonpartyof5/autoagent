@@ -10,6 +10,7 @@ import '../../../data/repositories/demo_repository.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
 import '../widgets/add_to_drevvy_sheet.dart';
+import '../widgets/paywall_sheet.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants
 class VdpScreen extends StatefulWidget {
@@ -61,6 +62,24 @@ class _VdpScreenState extends State<VdpScreen> {
             Navigator.pop(context);
             context.go('/deals');
           }
+        },
+      ),
+    );
+  }
+
+  void _showPaywallSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PaywallSheet(
+        listing: _listing!,
+        onSubscribe: () {
+          Navigator.pop(context);
+          context.push('/paywall');
+        },
+        onRestore: () {
+          Navigator.pop(context);
         },
       ),
     );
@@ -272,7 +291,7 @@ class _VdpScreenState extends State<VdpScreen> {
             child: _StickyCta(
               listing: listing,
               user: user,
-              onTap: isPro ? _showAddSheet : () => context.push('/paywall'),
+              onTap: isPro ? _showAddSheet : _showPaywallSheet,
             ),
           ),
         ],

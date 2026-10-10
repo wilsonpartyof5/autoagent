@@ -8,6 +8,9 @@ import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../widgets/location_pickup_sheet.dart';
+import '../widgets/trade_in_financing_sheet.dart';
+import '../widgets/left_dealership_sheet.dart';
 
 /// Screen 33: Official offer with dealer reveal
 class OfficialOfferScreen extends StatefulWidget {
@@ -40,6 +43,61 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
 
   String _formatPrice(int price) {
     return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
+  }
+
+  Future<void> _showLocationPickupSheet() async {
+    final dealer = _deal?.dealer;
+    if (dealer == null) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LocationPickupSheet(
+        dealerName: dealer.name,
+        onAllow: () {
+          Navigator.pop(context);
+          // TODO: Request location permission
+        },
+        onNotNow: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  Future<void> _showTradeInFinancingSheet() async {
+    final user = await _repo.getCurrentUser();
+    if (!mounted || user.prefs == null) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => TradeInFinancingSheet(
+        userPrefs: user.prefs!,
+        onYes: () {
+          Navigator.pop(context);
+          // TODO: Continue with trade-in/financing flow
+        },
+        onNoThanks: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  void _showLeftDealershipSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LeftDealershipSheet(
+        deal: _deal!,
+        onBought: () {
+          Navigator.pop(context);
+          context.push('/deal/${_deal!.id}/done');
+        },
+        onStillLooking: () => Navigator.pop(context),
+        onDismiss: () => Navigator.pop(context),
+      ),
+    );
   }
 
   @override
@@ -263,6 +321,29 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
                             ),
                           ],
                         ),
+                      ),
+                      
+                      // Demo actions for sheets
+                      const SizedBox(height: DrevvySpace.s4),
+                      Text('Demo actions', style: text.label.copyWith(color: colors.muted)),
+                      const SizedBox(height: DrevvySpace.s2),
+                      Wrap(
+                        spacing: DrevvySpace.s2,
+                        runSpacing: DrevvySpace.s2,
+                        children: [
+                          TextButton(
+                            onPressed: _showLocationPickupSheet,
+                            child: const Text('Pickup check'),
+                          ),
+                          TextButton(
+                            onPressed: _showTradeInFinancingSheet,
+                            child: const Text('Trade-in'),
+                          ),
+                          TextButton(
+                            onPressed: _showLeftDealershipSheet,
+                            child: const Text('Left dealer'),
+                          ),
+                        ],
                       ),
                       
                       SizedBox(height: 120 + bottomPadding),

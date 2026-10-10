@@ -8,6 +8,9 @@ import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../widgets/ask_drevvy_sheet.dart';
+import '../widgets/outcome_sheet.dart';
+import '../widgets/remove_sheet.dart';
 
 /// Screens 27-32: Deal detail with offer card, breakdown, and actions
 class DealDetailScreen extends StatefulWidget {
@@ -55,6 +58,53 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
   Future<void> _keepGoing() async {
     await _repo.keepGoing(_deal!.id);
     await _loadData();
+  }
+
+  void _showAskDrevvySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AskDrevvySheet(deal: _deal!),
+    );
+  }
+
+  Future<void> _showOutcomeSheet() async {
+    if (!mounted) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => OutcomeSheet(
+        deal: _deal!,
+        onSubmit: (outcome) {
+          Navigator.pop(context);
+          // TODO: Handle outcome submission
+        },
+      ),
+    );
+  }
+
+  Future<void> _showRemoveSheet() async {
+    final user = await _repo.getCurrentUser();
+    if (!mounted) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => RemoveSheet(
+        deal: _deal!,
+        user: user,
+        onRemove: () async {
+          Navigator.pop(context);
+          await _repo.removeDeal(_deal!.id);
+          if (mounted) context.pop();
+        },
+        onKeep: () => Navigator.pop(context),
+      ),
+    );
   }
 
   @override
@@ -113,9 +163,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                 actions: [
                   // Ask Drevvy button
                   TextButton.icon(
-                    onPressed: () {
-                      // TODO: Open Ask Drevvy sheet
-                    },
+                    onPressed: _showAskDrevvySheet,
                     icon: Icon(LucideIcons.messageCircle, size: 18),
                     label: const Text('Ask'),
                     style: TextButton.styleFrom(
@@ -203,6 +251,25 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                       
                       // Communications summary
                       _CommunicationsSummary(comms: deal.comms),
+                      
+                      // Demo actions for sheets
+                      const SizedBox(height: DrevvySpace.s4),
+                      Text('Demo actions', style: text.label.copyWith(color: colors.muted)),
+                      const SizedBox(height: DrevvySpace.s2),
+                      Wrap(
+                        spacing: DrevvySpace.s2,
+                        runSpacing: DrevvySpace.s2,
+                        children: [
+                          TextButton(
+                            onPressed: _showOutcomeSheet,
+                            child: const Text('Did you buy?'),
+                          ),
+                          TextButton(
+                            onPressed: _showRemoveSheet,
+                            child: const Text('Remove'),
+                          ),
+                        ],
+                      ),
                       
                       // Space for sticky CTA
                       SizedBox(height: showActions ? 160 + bottomPadding : 80),
