@@ -7,6 +7,7 @@ import {
   type ShopperDealRow,
 } from './deals';
 
+// Lifecycle columns stay off this query until 20261011_deal_lifecycle.sql is applied.
 const COLUMNS = 'id, consumer_user_id, listing_id, status, outreach_locked_until_paid, vehicle_snapshot, created_at, updated_at';
 
 type DealTableRow = {
@@ -78,6 +79,29 @@ export function supabaseShopperDealRepository(): ShopperDealRepository {
         .maybeSingle();
       if (error) throw storageError(error.message);
       return data ? toRow(data as DealTableRow) : null;
+    },
+
+    async close(consumerUserId, dealId) {
+      const admin = createAdminClient();
+      const { data, error } = await admin
+        .from('shopper_deals')
+        .update({ status: 'closed' })
+        .eq('consumer_user_id', consumerUserId)
+        .eq('id', dealId)
+        .neq('status', 'closed')
+        .select(COLUMNS)
+        .maybeSingle();
+      if (error) throw storageError(error.message);
+      if (data) return toRow(data as DealTableRow);
+
+      const existing = await admin
+        .from('shopper_deals')
+        .select(COLUMNS)
+        .eq('consumer_user_id', consumerUserId)
+        .eq('id', dealId)
+        .maybeSingle();
+      if (existing.error) throw storageError(existing.error.message);
+      return existing.data ? toRow(existing.data as DealTableRow) : null;
     },
   };
 }

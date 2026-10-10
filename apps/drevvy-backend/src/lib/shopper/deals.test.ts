@@ -89,6 +89,15 @@ function memoryRepo(): ShopperDealRepository & { rows: ShopperDealRow[] } {
     async get(consumerUserId, dealId) {
       return rows.find((row) => row.consumerUserId === consumerUserId && row.id === dealId) ?? null;
     },
+    async close(consumerUserId, dealId) {
+      const row = rows.find((item) => item.consumerUserId === consumerUserId && item.id === dealId);
+      if (!row) return null;
+      if (row.status !== 'closed') {
+        row.status = 'closed';
+        row.updatedAt = '2026-10-01T16:30:00.000Z';
+      }
+      return row;
+    },
   };
 }
 
@@ -233,6 +242,11 @@ test('deal routes require a shopper session', () => {
   for (const route of [
     '../../app/api/consumer/deals/route.ts',
     '../../app/api/consumer/deals/[id]/route.ts',
+    '../../app/api/consumer/deals/[id]/similar/route.ts',
+    '../../app/api/consumer/deals/[id]/offer-forwarded/route.ts',
+    '../../app/api/consumer/deals/[id]/geofence-exit/route.ts',
+    '../../app/api/consumer/deals/[id]/outcome/route.ts',
+    '../../app/api/consumer/deals/[id]/location/route.ts',
   ]) {
     const source = readFileSync(join(here, route), 'utf8');
     assert.match(source, /requireShopperAuth\(/);

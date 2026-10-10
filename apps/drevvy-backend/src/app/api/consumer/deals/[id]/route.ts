@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getShopperDeal, shopperDealErrorResponse } from '@/lib/shopper/deals';
-import { supabaseShopperDealRepository } from '@/lib/shopper/deal-store';
+import { getShopperCar, removeShopperCar, shopperDeps } from '@/lib/shopper/deal-actions';
+import { shopperDealErrorResponse } from '@/lib/shopper/deals';
 import { requireShopperAuth } from '@/lib/shopper/session';
 
 /**
  * GET /api/consumer/deals/[id]
+ * DELETE /api/consumer/deals/[id]
  *
  * Returns one deal owned by the signed-in shopper. Another shopper's deal
- * is not found. Dealer identity is not included.
+ * is not found. Dealer identity is not included. `visit` is included only
+ * after the official offer is forwarded. DELETE removes the car from the
+ * shopper's list and refunds the monthly slot only inside the 30-minute
+ * window before any outreach.
  */
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
@@ -18,14 +24,28 @@ export async function GET(
   try {
     const auth = await requireShopperAuth(request);
     const { id } = await params;
-    const data = await getShopperDeal(supabaseShopperDealRepository(), auth.userId, id);
-    if (!data) {
-      return NextResponse.json(
-        { success: false, error: { code: 'not_found', message: 'Deal not found.' } },
-        { status: 404 },
-      );
-    }
+    const deps = await shopperDeps(auth.userId);
+    const data = await getShopperCar(auth.userId, id, deps);
     return NextResponse.json({ success: true, data });
+  } catch (error) {
+    return shopperDealErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requireShopperAuth(request);
+    const { id } = await params;
+    const deps = await shopperDeps(auth.userId);
+    const result = await removeShopperCar(auth.userId, id, deps);
+    return NextResponse.json({
+      success: true,
+      data: { id: result.id, removedAt: result.removedAt, refunded: result.refunded },
+      quota: result.quota,
+    });
   } catch (error) {
     return shopperDealErrorResponse(error);
   }
