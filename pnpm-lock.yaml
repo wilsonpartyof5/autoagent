@@ -24,7 +24,7 @@ importers:
         specifier: ^5.3.0
         version: 5.9.3
 
-  apps/backend:
+  apps/drevvy-backend:
     dependencies:
       '@radix-ui/react-select':
         specifier: ^2.2.2

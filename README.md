@@ -7,7 +7,7 @@ The git repo is still `autoagent`. The Vercel project is still `autoagent-dealer
 ## What is in the repo
 
 - `apps/autogentic` — SwiftUI shopper app, until a Flutter app replaces it
-- `apps/backend` — package `@drevvy/backend`. Shopper APIs, operator sign-in, and the admin allowlist
+- `apps/drevvy-backend` — package `@drevvy/backend`. Shopper APIs, operator sign-in, and the admin allowlist
 - `supabase/migrations` — schema history. Do not apply these as part of a cleanup. Dealer tables stay until a later, separate migration
 - `docs/drevvy` — product plan and the shopper journey notes that land with the admin console
 - `docs/marketcheck` — MarketCheck reference notes
@@ -24,7 +24,7 @@ These paths stay stable:
 - `GET /api/inventory/usage`
 - `/api/consumer/*`
 
-Search calls MarketCheck's hosted MCP from `apps/backend/src/lib/marketcheck`. It does not use a ChatGPT server.
+Search calls MarketCheck's hosted MCP from `apps/drevvy-backend/src/lib/marketcheck`. It does not use a ChatGPT server.
 
 ## Local setup
 
@@ -32,7 +32,7 @@ Node.js 20 and pnpm 8.
 
 ```bash
 pnpm install
-cp apps/backend/.env.example apps/backend/.env.local
+cp apps/drevvy-backend/.env.example apps/drevvy-backend/.env.local
 pnpm --filter @drevvy/backend dev
 ```
 
@@ -47,4 +47,4 @@ pnpm --filter @drevvy/backend build
 
 ## Vercel
 
-Root Directory must be `apps/backend` after the rename is merged. Install and build commands are in `apps/backend/vercel.json`. Crons are empty.
+Root Directory must be `apps/drevvy-backend` after the rename is merged. Install and build commands are in `apps/drevvy-backend/vercel.json`. Crons are empty.

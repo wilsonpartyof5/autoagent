@@ -11,7 +11,7 @@ Drevvy’s near-term product is the shopper iOS app and the API that serves it.
 | Surface | Near-term role |
 | --- | --- |
 | [apps/autogentic](../../apps/autogentic) | The shopper app. Ask and Shop chat. This is the product until Flutter replaces it. |
-| [apps/backend](../../apps/backend) | Next.js API on Vercel project `autoagent-dealer-dashboard`. Shopper routes and the operator console. |
+| [apps/drevvy-backend](../../apps/drevvy-backend) | Next.js API on Vercel project `autoagent-dealer-dashboard`. Shopper routes and the operator console. |
 
 Dealer identity stays on the server. Shopper cards, the map, and vehicle details show price and hide dealer name and contact fields. Outreach to dealers is a later SMS, email, and voice job. It is not an in-app dealer thread and it is not ADF.
 
@@ -20,7 +20,7 @@ Dealer identity stays on the server. Shopper cards, the map, and vehicle details
 | Path | Role |
 | --- | --- |
 | [apps/autogentic](../../apps/autogentic) | Shopper SwiftUI app. Xcode project `Autogentic.xcodeproj`. In-app title is Drevvy. |
-| [apps/backend](../../apps/backend) | Package `@drevvy/backend`. Shopper HTTP API, `/auth`, and the admin allowlist gate. |
+| [apps/drevvy-backend](../../apps/drevvy-backend) | Package `@drevvy/backend`. Shopper HTTP API, `/auth`, and the admin allowlist gate. |
 | [supabase/migrations](../../supabase/migrations) | Postgres history. Do not apply new files from a cleanup. Dealer tables stay until a later migration. |
 | [docs/marketcheck](../marketcheck) | MarketCheck notes kept as reference. |
 | [docs/drevvy](.) | Product plan, gap analysis, north star, iOS plan, and this file. |
@@ -38,7 +38,7 @@ Autogentic iOS
   /api/consumer/*
         |
         v
-apps/backend on Vercel (autoagent-dealer-dashboard.vercel.app)
+apps/drevvy-backend on Vercel (autoagent-dealer-dashboard.vercel.app)
         |
         +--> MarketCheck hosted MCP (api.marketcheck.com/mcp)
         +--> Supabase (consumer_profiles, shopper_deals, app_sessions, app_events)
@@ -70,4 +70,4 @@ The dealer portal code is gone. Tables such as `dealerships`, `leads`, and `uvs_
 
 ## Naming
 
-The git repo and the Vercel project are still `autoagent` / `autoagent-dealer-dashboard`. The shopper-facing name is Drevvy. The iOS app keeps calling `https://autoagent-dealer-dashboard.vercel.app`. Do not rename that project. The Next.js package is `@drevvy/backend` and the directory is `apps/backend`. Set the Vercel Root Directory to `apps/backend` when this rename is deployed.
+The git repo and the Vercel project are still `autoagent` / `autoagent-dealer-dashboard`. The shopper-facing name is Drevvy. The iOS app keeps calling `https://autoagent-dealer-dashboard.vercel.app`. Do not rename that project. The Next.js package is `@drevvy/backend` and the directory is `apps/drevvy-backend`. Set the Vercel Root Directory to `apps/drevvy-backend` when this rename is deployed.

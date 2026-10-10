@@ -6,7 +6,7 @@ The product plan is [DREVVY_IMPLEMENTATION_PLAN.md](DREVVY_IMPLEMENTATION_PLAN.m
 
 ## MVP application layer
 
-Near term, the only shopper product is Autogentic. The API lives in `apps/backend`. The dealer iOS app and the dealer portal are not in this repo.
+Near term, the only shopper product is Autogentic. The API lives in `apps/drevvy-backend`. The dealer iOS app and the dealer portal are not in this repo.
 
 ```text
 Shopper iOS (Ask + Shop)
@@ -19,7 +19,7 @@ Drevvy API (Vercel now, Railway for long jobs later)
         └── Later: SMS, email, ElevenLabs voice
 ```
 
-Shop search calls MarketCheck's hosted MCP from `apps/backend`. There is no ChatGPT server in this repo. Dealer surfaces can return in a later product. They are not required for the first paid outreach.
+Shop search calls MarketCheck's hosted MCP from `apps/drevvy-backend`. There is no ChatGPT server in this repo. Dealer surfaces can return in a later product. They are not required for the first paid outreach.
 
 ## What stays true
 

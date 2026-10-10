@@ -17,7 +17,7 @@ The shopper uses a chat with two modes:
 
 The shopper pays Drevvy to contact dealers and get the best out-the-door price. Outreach is SMS, email, and some voice (ElevenLabs), using negotiation rules for line items, comps, and days on the lot. This MVP does not send ADF or CRM lead email.
 
-The dealer iOS app and the dealer portal are removed. [apps/backend](../../apps/backend) hosts the shopper APIs and the operator console. It is not a dealer inbox.
+The dealer iOS app and the dealer portal are removed. [apps/drevvy-backend](../../apps/drevvy-backend) hosts the shopper APIs and the operator console. It is not a dealer inbox.
 
 ## Cancelled
 
