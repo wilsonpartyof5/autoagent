@@ -1,7 +1,7 @@
 {
   "name": "@autoagent/dealer-dashboard",
   "version": "1.0.0",
-  "description": "Dealer dashboard for Drevvy",
+  "description": "Drevvy shopper API and operator console",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -9,11 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:dealer-mobile": "tsx --test src/lib/dealer-mobile/*.test.ts",
-    "test:shopper": "tsx --test src/lib/shopper/*.test.ts",
+    "test:shopper": "tsx --test src/lib/shopper/*.test.ts src/lib/consumer/*.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
-    "clean": "rm -rf .next",
-    "worker:analytics-refresh": "tsx src/workers/analytics-refresh-worker.ts"
+    "clean": "rm -rf .next"
   },
   "next": {
     "lint": {
@@ -21,12 +19,10 @@
     }
   },
   "dependencies": {
-    "@autoagent/shared": "workspace:^",
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-slot": "^1.2.3",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.77.0",
-    "@types/libsodium-wrappers": "^0.7.11",
     "@types/node": "^20.10.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
@@ -37,7 +33,6 @@
     "clsx": "^2.1.1",
     "eslint": "^8.55.0",
     "eslint-config-next": "^15.5.9",
-    "libsodium-wrappers": "^0.7.11",
     "lucide-react": "^0.548.0",
     "next": "^15.5.9",
     "openai": "^4.104.0",
@@ -46,8 +41,7 @@
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.18",
-    "typescript": "^5.3.0",
-    "zod": "^3.22.4"
+    "typescript": "^5.3.0"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",

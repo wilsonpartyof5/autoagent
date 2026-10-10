@@ -3,8 +3,8 @@ import React from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Drevvy - AI-Powered Car Discovery for Dealers',
-  description: 'Put your inventory where AI shoppers are looking. Appear in ChatGPT searches instantly and capture high-intent buyers before they visit competitor sites.',
+  title: 'Drevvy',
+  description: 'Shopper API and operator console for out-the-door price negotiation.',
 };
 
 export default function RootLayout({
