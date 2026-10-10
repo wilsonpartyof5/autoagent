@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 const links = [
   { href: '/admin', label: 'Shoppers' },
   { href: '/admin/analytics', label: 'Analytics' },
+  { href: '/admin/outreach', label: 'Outreach' },
 ];
 
 export function AdminShell({
