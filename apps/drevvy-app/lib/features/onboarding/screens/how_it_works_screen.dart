@@ -87,7 +87,7 @@ class HowItWorksScreen extends StatelessWidget {
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
                     itemCount: _steps.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: DrevvySpace.s4),
+                    separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s4),
                     itemBuilder: (context, index) {
                       final step = _steps[index];
                       return _StepCard(

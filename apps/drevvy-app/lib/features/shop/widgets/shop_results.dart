@@ -83,7 +83,7 @@ class ShopResults extends StatelessWidget {
         vertical: DrevvySpace.s4,
       ),
       itemCount: listings!.length,
-      separatorBuilder: (_, __) => const SizedBox(height: DrevvySpace.s3),
+      separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s3),
       itemBuilder: (context, index) {
         final listing = listings![index];
         return InventoryCard(

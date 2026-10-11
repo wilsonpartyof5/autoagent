@@ -17,7 +17,7 @@ class CreateAccountScreen extends StatefulWidget {
 class _CreateAccountScreenState extends State<CreateAccountScreen> {
   final _firstNameController = TextEditingController();
   final _emailController = TextEditingController();
-  bool _isLoading = false;
+  bool _isLoading = false; // ignore: prefer_final_fields - state var
 
   @override
   void dispose() {

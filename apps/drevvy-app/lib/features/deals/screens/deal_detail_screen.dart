@@ -100,7 +100,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
         onRemove: () async {
           Navigator.pop(context);
           await _repo.removeDeal(_deal!.id);
-          if (mounted) context.pop();
+          if (mounted && context.mounted) context.pop();
         },
         onKeep: () => Navigator.pop(context),
       ),

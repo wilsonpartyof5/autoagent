@@ -58,7 +58,7 @@ class _VdpScreenState extends State<VdpScreen> {
         user: _user!,
         onAdd: (maxOtd) async {
           await _repo.addDeal(_listing!, maxOtd: maxOtd);
-          if (mounted) {
+          if (mounted && context.mounted) {
             Navigator.pop(context);
             context.go('/deals');
           }

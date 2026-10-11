@@ -517,7 +517,7 @@ class _ProfileRow {
                   style: text.body.copyWith(color: colors.ink),
                 ),
               ),
-              if (trailing != null) trailing!,
+              ?trailing,
               const SizedBox(width: DrevvySpace.s2),
               Icon(
                 LucideIcons.chevronRight,

@@ -58,7 +58,7 @@ class InventoryCard extends StatelessWidget {
                       width: 96,
                       height: 70,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _BrokenImage(),
+                      errorBuilder: (_, _, _) => _BrokenImage(),
                     )
                   : _BrokenImage(),
             ),
