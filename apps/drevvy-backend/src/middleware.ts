@@ -11,7 +11,24 @@ function generateSessionId(): string {
   return `sess_${timestamp}_${random}`
 }
 
+function isAdminHost(host: string): boolean {
+  return host.startsWith('admin.') || host.includes('admin.')
+}
+
+function isPublicHost(host: string): boolean {
+  const normalized = host.replace(/:\d+$/, '').toLowerCase()
+  return (
+    normalized === 'www.drevvy.com' ||
+    normalized === 'drevvy.com' ||
+    normalized === 'localhost' ||
+    normalized.endsWith('.vercel.app')
+  )
+}
+
 export async function middleware(request: NextRequest) {
+  const host = request.headers.get('host') || ''
+  const pathname = request.nextUrl.pathname
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -32,7 +49,6 @@ export async function middleware(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const pathname = request.nextUrl.pathname
   const adminPath = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
 
   if (adminPath && adminPreviewEnabled()) {
@@ -83,9 +99,14 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (pathname === '/auth' && user) {
-    const nextPath = safeAdminNextPath(request.nextUrl.searchParams.get('next'))
-    return NextResponse.redirect(new URL(nextPath ?? '/admin', request.url))
+  if (pathname === '/auth') {
+    if (isPublicHost(host) && !isAdminHost(host)) {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
+    if (user) {
+      const nextPath = safeAdminNextPath(request.nextUrl.searchParams.get('next'))
+      return NextResponse.redirect(new URL(nextPath ?? '/admin', request.url))
+    }
   }
 
   return response
