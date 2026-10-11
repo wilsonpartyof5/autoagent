@@ -93,12 +93,17 @@ void main() {
   });
 
   group('Token Tests', () {
-    test('DealStatus enum has correct values', () {
-      expect(DealStatus.values.length, 8);
+    test('DealStatus enum has correct values (v1.6: 10 statuses)', () {
+      expect(DealStatus.values.length, 10);
       expect(DealStatus.noLongerListed.label, 'No longer listed');
       expect(DealStatus.offerReceived.progressStep, 3);
       expect(DealStatus.noLongerListed.isEnded, true);
       expect(DealStatus.reachingOut.isEnded, false);
+      // v1.6 new statuses
+      expect(DealStatus.watchingForDrops.label, 'Watching for drops');
+      expect(DealStatus.changedAfterAccepted.label, 'Offer changed');
+      expect(DealStatus.changedAfterAccepted.hasChangedOffer, true);
+      expect(DealStatus.accepted.canWithdraw, true);
     });
 
     test('Light palette has all chip colors', () {

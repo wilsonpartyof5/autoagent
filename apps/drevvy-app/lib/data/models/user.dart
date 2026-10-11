@@ -103,17 +103,56 @@ class UserPrefs extends Equatable {
   List<Object?> get props => [budgetOtd, bodyTypes, tradeIn, payment];
 }
 
+/// v1.6: Five notification category switches + hide-prices toggle
 class NotificationPrefs extends Equatable {
   const NotificationPrefs({
     this.enabled = false,
     this.hidePricesOnLockScreen = false,
+    this.newOffers = true,
+    this.priceDrops = true,
+    this.addOnsRemoved = true,
+    this.dealerResponses = true,
+    this.reminders = true,
   });
 
   final bool enabled;
   final bool hidePricesOnLockScreen;
+  final bool newOffers;
+  final bool priceDrops;
+  final bool addOnsRemoved;
+  final bool dealerResponses;
+  final bool reminders;
+
+  NotificationPrefs copyWith({
+    bool? enabled,
+    bool? hidePricesOnLockScreen,
+    bool? newOffers,
+    bool? priceDrops,
+    bool? addOnsRemoved,
+    bool? dealerResponses,
+    bool? reminders,
+  }) {
+    return NotificationPrefs(
+      enabled: enabled ?? this.enabled,
+      hidePricesOnLockScreen: hidePricesOnLockScreen ?? this.hidePricesOnLockScreen,
+      newOffers: newOffers ?? this.newOffers,
+      priceDrops: priceDrops ?? this.priceDrops,
+      addOnsRemoved: addOnsRemoved ?? this.addOnsRemoved,
+      dealerResponses: dealerResponses ?? this.dealerResponses,
+      reminders: reminders ?? this.reminders,
+    );
+  }
 
   @override
-  List<Object?> get props => [enabled, hidePricesOnLockScreen];
+  List<Object?> get props => [
+        enabled,
+        hidePricesOnLockScreen,
+        newOffers,
+        priceDrops,
+        addOnsRemoved,
+        dealerResponses,
+        reminders,
+      ];
 }
 
 enum LocationState { notAsked, granted, denied, zipFallback }

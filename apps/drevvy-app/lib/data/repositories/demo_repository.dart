@@ -783,6 +783,89 @@ class DemoRepository {
       listing: _demoListings[5],
       comms: const DealComms(emails: 5, texts: 3, calls: 2),
     ),
+    
+    // v1.6: Watching for drops
+    Deal(
+      id: 'deal_007',
+      listingId: 'listing_005',
+      letter: 'G',
+      status: DealStatus.watchingForDrops,
+      listedAtStart: 38900,
+      addedAt: DateTime.now().subtract(const Duration(days: 4)),
+      firstContactAt: DateTime.now().subtract(const Duration(days: 4)),
+      listing: _demoListings[4],
+      marketContext: const MarketContext(
+        fairVehiclePrice: 37500,
+        fairOtd: 41000,
+        lowPrice: 35000,
+        medianPrice: 38000,
+        highPrice: 42000,
+        comparablesCount: 6,
+        daysListedMedian: 28,
+      ),
+      comms: const DealComms(emails: 3, texts: 1, calls: 0),
+    ),
+    
+    // v1.6: Changed after accepted
+    Deal(
+      id: 'deal_008',
+      listingId: 'listing_002',
+      letter: 'H',
+      status: DealStatus.changedAfterAccepted,
+      listedAtStart: 31490,
+      addedAt: DateTime.now().subtract(const Duration(days: 5)),
+      firstContactAt: DateTime.now().subtract(const Duration(days: 5)),
+      listing: _demoListings[1],
+      marketContext: const MarketContext(
+        fairVehiclePrice: 32000,
+        fairOtd: 35500,
+        lowPrice: 29500,
+        medianPrice: 32200,
+        highPrice: 35000,
+        comparablesCount: 11,
+        daysListedMedian: 42,
+      ),
+      offers: [
+        Offer(
+          id: 'offer_008_1',
+          receivedAt: DateTime.now().subtract(const Duration(days: 3)),
+          otd: 34200,
+          vehiclePrice: 30500,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 30500),
+            OfferLine(key: 'Doc fee', amount: 399),
+            OfferLine(key: 'Title & registration', amount: 275),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 1906),
+          ],
+        ),
+      ],
+      acceptedOffer: Offer(
+        id: 'offer_008_1',
+        receivedAt: DateTime.now().subtract(const Duration(days: 3)),
+        otd: 34200,
+        vehiclePrice: 30500,
+        lines: const [
+          OfferLine(key: 'Vehicle price', amount: 30500),
+          OfferLine(key: 'Doc fee', amount: 399),
+          OfferLine(key: 'Title & registration', amount: 275),
+          OfferLine(key: 'Sales tax (6.25%)', amount: 1906),
+        ],
+      ),
+      changedOffer: Offer(
+        id: 'offer_008_2',
+        receivedAt: DateTime.now().subtract(const Duration(hours: 6)),
+        otd: 35400,
+        vehiclePrice: 31200,
+        lines: const [
+          OfferLine(key: 'Vehicle price', amount: 31200),
+          OfferLine(key: 'Doc fee', amount: 499),
+          OfferLine(key: 'Title & registration', amount: 275),
+          OfferLine(key: 'Sales tax (6.25%)', amount: 1950),
+          OfferLine(key: 'Market adjustment', amount: 500),
+        ],
+      ),
+      comms: const DealComms(emails: 6, texts: 3, calls: 1),
+    ),
   ];
 }
 

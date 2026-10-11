@@ -21,6 +21,9 @@ class Deal extends Equatable {
     this.dealer,
     this.officialOffer,
     this.outcome,
+    this.acceptedOffer,
+    this.changedOffer,
+    this.tryOnceMoreUsed = false,
   });
 
   final String id;
@@ -39,8 +42,14 @@ class Deal extends Equatable {
   final RevealedDealer? dealer;
   final OfficialOffer? officialOffer;
   final DealOutcome? outcome;
+  final Offer? acceptedOffer;
+  final Offer? changedOffer;
+  final bool tryOnceMoreUsed;
 
   Offer? get latestOffer => offers.isNotEmpty ? offers.last : null;
+  
+  /// v1.6: Check if "Try once more" option is still available
+  bool get canTryOnceMore => !tryOnceMoreUsed;
   
   int? get currentOtd => latestOffer?.otd;
   
@@ -84,6 +93,9 @@ class Deal extends Equatable {
     OfficialOffer? officialOffer,
     DealOutcome? outcome,
     DateTime? firstContactAt,
+    Offer? acceptedOffer,
+    Offer? changedOffer,
+    bool? tryOnceMoreUsed,
   }) {
     return Deal(
       id: id,
@@ -102,6 +114,9 @@ class Deal extends Equatable {
       dealer: dealer ?? this.dealer,
       officialOffer: officialOffer ?? this.officialOffer,
       outcome: outcome ?? this.outcome,
+      acceptedOffer: acceptedOffer ?? this.acceptedOffer,
+      changedOffer: changedOffer ?? this.changedOffer,
+      tryOnceMoreUsed: tryOnceMoreUsed ?? this.tryOnceMoreUsed,
     );
   }
 }
