@@ -25,6 +25,9 @@ export const LEGAL = {
   /** Privacy-specific contact email */
   PRIVACY_EMAIL: 'privacy@drevvy.com',
 
+  /** Opt-out requests email */
+  OPTOUT_EMAIL: 'optout@drevvy.com',
+
   /** Website URL */
   WEBSITE_URL: 'https://www.drevvy.com',
 

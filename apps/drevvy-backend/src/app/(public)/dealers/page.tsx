@@ -80,6 +80,27 @@ export default function DealersPage() {
               </p>
             </section>
 
+            <section className="bg-muted/50 p-6 rounded-xl">
+              <h2 className="text-2xl font-semibold mb-4">AI Caller and Call Recording Notice</h2>
+              <p className="text-muted-foreground mb-4">
+                <strong>Our caller is an AI.</strong> When Drevvy calls your dealership, the call is made by an
+                AI-powered voice agent, not a human. If you ask whether you&apos;re speaking with an AI, our agent
+                will confirm that it is.
+              </p>
+              <p className="text-muted-foreground mb-4">
+                <strong>Calls may be recorded.</strong> For quality assurance, training, dispute resolution, and
+                compliance purposes, phone calls from Drevvy may be recorded. By continuing a conversation with
+                our agent, you acknowledge this recording.
+              </p>
+              <p className="text-muted-foreground">
+                If you have questions about our AI or recording practices, contact us at{' '}
+                <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="text-primary hover:underline">
+                  {LEGAL.SUPPORT_EMAIL}
+                </a>
+                .
+              </p>
+            </section>
+
             <section>
               <h2 className="text-2xl font-semibold mb-4">What We Ask For</h2>
               <p className="text-muted-foreground mb-4">
@@ -144,24 +165,33 @@ export default function DealersPage() {
               <p className="text-muted-foreground mb-4">
                 If you&apos;d prefer not to receive inquiries from Drevvy, you have several options:
               </p>
-              <ul className="list-disc pl-6 text-muted-foreground space-y-2">
+
+              <h3 className="text-lg font-medium mt-6 mb-3">Individual Opt-Out</h3>
+              <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
                 <li>
                   <strong>Text STOP:</strong> Reply STOP to any text message from our system
                 </li>
                 <li>
-                  <strong>Email us:</strong> Send a request to{' '}
-                  <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="text-primary hover:underline">
-                    {LEGAL.SUPPORT_EMAIL}
-                  </a>{' '}
-                  with your dealership name and contact information
-                </li>
-                <li>
-                  <strong>Let us know during a call:</strong> Tell our agent you&apos;d like to be removed from
-                  future outreach
+                  <strong>Tell our agent:</strong> During a call, say you&apos;d like to be removed
                 </li>
               </ul>
-              <p className="text-muted-foreground mt-4">
-                We will remove your dealership from our outreach list within 48 hours of receiving your request.
+
+              <h3 className="text-lg font-medium mt-6 mb-3">Opt Out Your Entire Dealership</h3>
+              <p className="text-muted-foreground mb-4">
+                To remove your entire dealership from all Drevvy outreach (email, phone, and text), email us at:
+              </p>
+              <p className="text-muted-foreground mb-4">
+                <a href={`mailto:${LEGAL.OPTOUT_EMAIL}`} className="text-primary hover:underline font-medium">
+                  {LEGAL.OPTOUT_EMAIL}
+                </a>
+              </p>
+              <p className="text-muted-foreground mb-4">
+                Include your dealership name, address, and the phone numbers/email addresses you want removed.
+                We will process your request within 48 hours.
+              </p>
+              <p className="text-muted-foreground">
+                Once opted out, your dealership will not receive any future inquiries from Drevvy unless you
+                contact us to opt back in.
               </p>
             </section>
 

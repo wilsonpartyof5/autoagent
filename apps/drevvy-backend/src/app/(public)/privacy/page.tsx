@@ -102,7 +102,7 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-semibold mb-4">AI Processing</h2>
+              <h2 className="text-2xl font-semibold mb-4">AI Processing and Third-Party AI Services</h2>
               <p className="text-muted-foreground mb-4">
                 Drevvy uses artificial intelligence to contact dealers and gather pricing information on your
                 behalf. Our AI systems:
@@ -116,6 +116,34 @@ export default function PrivacyPage() {
                 These communications are conducted using your first name only. Your phone number, email address,
                 and home address are never shared with dealers unless you explicitly choose to contact them
                 directly.
+              </p>
+              <p className="text-muted-foreground mt-4">
+                We use OpenAI&apos;s API to power certain AI features, including natural language processing for
+                dealer communications and summarization of pricing information. When using these features, your
+                first name, vehicle preferences, and inquiry details may be processed by OpenAI. OpenAI&apos;s
+                processing is governed by their{' '}
+                <a
+                  href="https://openai.com/policies/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                . We do not share your email address, phone number, or home address with OpenAI.
+              </p>
+            </section>
+
+            <section className="bg-muted/50 p-6 rounded-xl">
+              <h2 className="text-2xl font-semibold mb-4">Call Recording Notice</h2>
+              <p className="text-muted-foreground mb-4">
+                When our AI agent makes phone calls to dealerships on your behalf, those calls may be recorded
+                for quality assurance, training, dispute resolution, and compliance purposes.
+              </p>
+              <p className="text-muted-foreground">
+                Recordings are stored securely and retained only as long as necessary for these purposes. Call
+                recordings are not shared with third parties except as required by law or as necessary to
+                resolve disputes.
               </p>
             </section>
 
@@ -167,6 +195,10 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   <strong>Supabase:</strong> For secure data storage and authentication
+                </li>
+                <li>
+                  <strong>OpenAI:</strong> For AI-powered natural language processing (see AI Processing section
+                  above)
                 </li>
                 <li>
                   <strong>Analytics providers:</strong> To understand App usage and improve our services
@@ -252,10 +284,16 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-2xl font-semibold mb-4">Security</h2>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground mb-4">
                 We implement appropriate technical and organizational measures to protect your personal
                 information against unauthorized access, alteration, disclosure, or destruction. However, no
                 method of transmission over the Internet or electronic storage is 100% secure.
+              </p>
+              <p className="text-muted-foreground">
+                <strong>FTC Safeguards Rule:</strong> To the extent Drevvy handles nonpublic personal information
+                related to consumer vehicle financing, we maintain an information security program designed to
+                comply with the FTC Safeguards Rule (16 CFR Part 314), including administrative, technical, and
+                physical safeguards appropriate to our size and complexity.
               </p>
             </section>
 
@@ -273,16 +311,31 @@ export default function PrivacyPage() {
               <p className="text-muted-foreground mb-4">
                 If you have any questions about this Privacy Policy, please contact us:
               </p>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground mb-4">
                 {LEGAL.ENTITY_NAME}
                 <br />
                 {LEGAL.BUSINESS_ADDRESS}
-                <br />
-                Email:{' '}
-                <a href={`mailto:${LEGAL.PRIVACY_EMAIL}`} className="text-primary hover:underline">
-                  {LEGAL.PRIVACY_EMAIL}
-                </a>
               </p>
+              <ul className="list-none text-muted-foreground space-y-2">
+                <li>
+                  <strong>General support:</strong>{' '}
+                  <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.SUPPORT_EMAIL}
+                  </a>
+                </li>
+                <li>
+                  <strong>Privacy inquiries:</strong>{' '}
+                  <a href={`mailto:${LEGAL.PRIVACY_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.PRIVACY_EMAIL}
+                  </a>
+                </li>
+                <li>
+                  <strong>Opt-out requests:</strong>{' '}
+                  <a href={`mailto:${LEGAL.OPTOUT_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.OPTOUT_EMAIL}
+                  </a>
+                </li>
+              </ul>
             </section>
           </div>
         </div>

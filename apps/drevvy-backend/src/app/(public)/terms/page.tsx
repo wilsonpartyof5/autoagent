@@ -69,10 +69,32 @@ export default function TermsPage() {
                 <li>Identify as acting on your behalf using your first name</li>
                 <li>Request itemized out-the-door pricing, including all taxes, fees, and add-ons</li>
                 <li>Receive and compile responses for your review</li>
+                <li>Record phone calls for quality assurance, training, and compliance purposes</li>
               </ul>
               <p className="text-muted-foreground mt-4">
                 You understand that our agent communicates with dealerships as your representative and that
                 dealerships may respond with pricing information based on this representation.
+              </p>
+            </section>
+
+            <section className="bg-muted/50 p-6 rounded-xl">
+              <h2 className="text-2xl font-semibold mb-4">AI and Call Recording Disclosure</h2>
+              <p className="text-muted-foreground mb-4">
+                Drevvy uses artificial intelligence, including services provided by OpenAI, to power our agent&apos;s
+                communications with dealerships. When our AI agent makes phone calls on your behalf:
+              </p>
+              <ul className="list-disc pl-6 text-muted-foreground space-y-2">
+                <li>The caller is an AI system, not a human</li>
+                <li>If asked, the AI will identify itself as an AI</li>
+                <li>Calls may be recorded for quality assurance, training, dispute resolution, and compliance</li>
+              </ul>
+              <p className="text-muted-foreground mt-4">
+                By using our service, you acknowledge and consent to this AI-powered outreach on your behalf.
+                For more information about how we use AI, see our{' '}
+                <Link href="/privacy" className="text-primary hover:underline">
+                  Privacy Policy
+                </Link>
+                .
               </p>
             </section>
 
@@ -316,16 +338,31 @@ export default function TermsPage() {
               <p className="text-muted-foreground mb-4">
                 If you have any questions about these Terms, please contact us:
               </p>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground mb-4">
                 {LEGAL.ENTITY_NAME}
                 <br />
                 {LEGAL.BUSINESS_ADDRESS}
-                <br />
-                Email:{' '}
-                <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="text-primary hover:underline">
-                  {LEGAL.SUPPORT_EMAIL}
-                </a>
               </p>
+              <ul className="list-none text-muted-foreground space-y-2">
+                <li>
+                  <strong>General support:</strong>{' '}
+                  <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.SUPPORT_EMAIL}
+                  </a>
+                </li>
+                <li>
+                  <strong>Privacy inquiries:</strong>{' '}
+                  <a href={`mailto:${LEGAL.PRIVACY_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.PRIVACY_EMAIL}
+                  </a>
+                </li>
+                <li>
+                  <strong>Opt-out requests:</strong>{' '}
+                  <a href={`mailto:${LEGAL.OPTOUT_EMAIL}`} className="text-primary hover:underline">
+                    {LEGAL.OPTOUT_EMAIL}
+                  </a>
+                </li>
+              </ul>
             </section>
           </div>
         </div>
