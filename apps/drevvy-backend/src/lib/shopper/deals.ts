@@ -58,6 +58,7 @@ export interface ShopperDealRepository {
   insert(deal: NewShopperDeal): Promise<ShopperDealRow>;
   list(consumerUserId: string): Promise<ShopperDealRow[]>;
   get(consumerUserId: string, dealId: string): Promise<ShopperDealRow | null>;
+  close(consumerUserId: string, dealId: string): Promise<ShopperDealRow | null>;
 }
 
 export class ShopperDealError extends Error {
@@ -110,6 +111,10 @@ const DEALER_IDENTITY_KEYS = new Set([
 ]);
 
 const LISTING_ID = /^[A-Za-z0-9_-]{4,64}$/;
+
+export function isShopperListingId(value: unknown): value is string {
+  return typeof value === 'string' && LISTING_ID.test(value);
+}
 
 export function readCreateDealInput(body: unknown): { listingId: unknown; vehicle: unknown } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -201,7 +206,7 @@ export function shopperDealErrorResponse(error: unknown): NextResponse {
 }
 
 function parseListingId(value: unknown): string {
-  if (typeof value !== 'string' || !LISTING_ID.test(value)) {
+  if (!isShopperListingId(value)) {
     throw new ShopperDealError('A MarketCheck listing id is required.', 400, 'invalid_listing');
   }
   return value;

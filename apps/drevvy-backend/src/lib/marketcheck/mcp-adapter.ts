@@ -161,6 +161,7 @@ interface MCCarHistory {
 export interface LiveSearchFilters {
   make?: string;
   model?: string;
+  trim?: string;
   year?: number;
   minYear?: number;
   maxYear?: number;
@@ -403,6 +404,7 @@ function buildSearchArgs(params: LiveSearchParams, rows: number, start: number):
   else if (f.condition === 'certified') args.car_type = 'cpo';
   if (f.make) args.make = f.make;
   if (f.model) args.model = f.model;
+  if (f.trim) args.trim = f.trim;
   if (f.year) {
     args.year = f.year;
   } else if (f.minYear || f.maxYear) {
