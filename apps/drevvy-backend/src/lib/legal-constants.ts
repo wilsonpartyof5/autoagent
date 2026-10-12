@@ -14,7 +14,7 @@ export const LEGAL = {
   BUSINESS_ADDRESS: '[BUSINESS ADDRESS]',
 
   /** Effective date for privacy policy and terms of service */
-  EFFECTIVE_DATE: '[EFFECTIVE DATE]',
+  EFFECTIVE_DATE: 'October 12, 2026',
 
   /** Support email */
   SUPPORT_EMAIL: 'support@drevvy.com',

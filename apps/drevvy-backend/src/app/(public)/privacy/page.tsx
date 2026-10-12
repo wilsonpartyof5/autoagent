@@ -102,6 +102,24 @@ export default function PrivacyPage() {
             </section>
 
             <section>
+              <h2 className="text-2xl font-semibold mb-4">Aggregated Market Insights</h2>
+              <p className="text-muted-foreground mb-4">
+                Drevvy creates de-identified, aggregated market insights from activity in the App. These
+                insights may include trends such as search demand, price and fee patterns, and dealer response
+                times, grouped by area and vehicle type. We may share or sell these aggregated insights to
+                dealerships and partners.
+              </p>
+              <p className="text-muted-foreground mb-4">
+                These insights never include names, contact information, or anything that could identify an
+                individual shopper. We also never include third-party listing data in these insights.
+              </p>
+              <p className="text-muted-foreground">
+                Analytics providers process App usage data on our behalf to help us understand usage patterns
+                and improve our services.
+              </p>
+            </section>
+
+            <section>
               <h2 className="text-2xl font-semibold mb-4">AI Processing and Third-Party AI Services</h2>
               <p className="text-muted-foreground mb-4">
                 Drevvy uses artificial intelligence to contact dealers and gather pricing information on your
@@ -249,7 +267,7 @@ export default function PrivacyPage() {
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
                 <li>Know what personal information we collect about you</li>
                 <li>Request deletion of your personal information</li>
-                <li>Opt out of the &quot;sale&quot; or &quot;sharing&quot; of your personal information (we do not sell your data)</li>
+                <li>Opt out of the &quot;sale&quot; or &quot;sharing&quot; of your personal information (we only share de-identified, aggregated insights that cannot identify you)</li>
                 <li>Not be discriminated against for exercising your rights</li>
                 <li>Correct inaccurate personal information</li>
                 <li>Limit the use of sensitive personal information</li>
