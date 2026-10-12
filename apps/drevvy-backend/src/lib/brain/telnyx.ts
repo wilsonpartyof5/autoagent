@@ -72,7 +72,14 @@ export type TelnyxEventType =
   | 'call.recording.saved'
   | 'message.sent'
   | 'message.finalized'
-  | 'message.received';
+  | 'message.received'
+  | 'email.delivered'
+  | 'email.bounced'
+  | 'email.opened'
+  | 'email.clicked'
+  | 'email.spam_reported'
+  | 'email.unsubscribed'
+  | 'email.received';
 
 export type TelnyxCallPayload = {
   data: {
@@ -126,7 +133,34 @@ export type TelnyxMessagingPayload = {
   };
 };
 
-export type TelnyxPayload = TelnyxCallPayload | TelnyxMessagingPayload;
+export type TelnyxEmailPayload = {
+  data: {
+    id: string;
+    event_type: TelnyxEventType;
+    occurred_at: string;
+    record_type: 'event';
+    payload: {
+      id: string;
+      direction: 'inbound' | 'outbound';
+      from?: string;
+      to?: string[];
+      cc?: string[];
+      subject?: string;
+      body?: { plain?: string; html?: string };
+      client_state?: string;
+      status?: string;
+      bounce_type?: string;
+      bounce_reason?: string;
+      errors?: Array<{ code: string; title: string; detail?: string }>;
+    };
+  };
+  meta?: {
+    attempt?: number;
+    delivered_to?: string;
+  };
+};
+
+export type TelnyxPayload = TelnyxCallPayload | TelnyxMessagingPayload | TelnyxEmailPayload;
 
 export function parseClientState(base64: string | undefined): { dealId?: string; dealerId?: string; touchpoint?: string; variant?: string } {
   if (!base64) return {};
@@ -147,6 +181,7 @@ export function parseClientState(base64: string | undefined): { dealId?: string;
 export function mapTelnyxEventToChannel(eventType: string): 'call' | 'sms' | 'email' | 'voicemail' | null {
   if (eventType.startsWith('call.')) return 'call';
   if (eventType.startsWith('message.')) return 'sms';
+  if (eventType.startsWith('email.')) return 'email';
   return null;
 }
 
@@ -172,6 +207,29 @@ export function mapTelnyxEventToStatus(payload: TelnyxPayload): { status: string
     }
     const toStatus = msgPayload.to?.[0]?.status;
     return { status: toStatus ?? 'delivered', errorCode: null, errorDetail: null };
+  }
+  if (eventType === 'email.bounced') {
+    const emailPayload = (payload.data.payload as TelnyxEmailPayload['data']['payload']);
+    return {
+      status: 'bounced',
+      errorCode: emailPayload.bounce_type ?? 'bounce',
+      errorDetail: emailPayload.bounce_reason ?? null,
+    };
+  }
+  if (eventType === 'email.spam_reported') {
+    return { status: 'spam_reported', errorCode: 'spam', errorDetail: null };
+  }
+  if (eventType.startsWith('email.')) {
+    const emailPayload = (payload.data.payload as TelnyxEmailPayload['data']['payload']);
+    const errors = emailPayload.errors;
+    if (errors && errors.length > 0) {
+      return {
+        status: 'failed',
+        errorCode: errors[0].code,
+        errorDetail: errors[0].detail ?? errors[0].title,
+      };
+    }
+    return { status: eventType.split('.').pop() ?? null, errorCode: null, errorDetail: null };
   }
   return { status: eventType.split('.').pop() ?? null, errorCode: null, errorDetail: null };
 }

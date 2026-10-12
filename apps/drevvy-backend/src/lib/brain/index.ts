@@ -52,8 +52,16 @@ export {
   runGuardrails,
   checkOtdThreshold,
   computeOtdThreshold,
+  applyPlaybookRules,
+  getAiDisclosure,
+  getPriceFirstResponse,
   type GuardrailInput,
   type GuardrailResult,
+  type PlaybookDecision,
 } from './guardrails';
+
+export {
+  type TelnyxEmailPayload,
+} from './telnyx';
 
 export { runReplyDecision, type ReplyDecisionInput, type ReplyDecisionResult } from './reply-decision';
