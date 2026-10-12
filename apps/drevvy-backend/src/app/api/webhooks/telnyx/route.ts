@@ -6,12 +6,14 @@ import {
   parseClientState,
   mapTelnyxEventToChannel,
   mapTelnyxEventToStatus,
+  stripHtml,
   type TelnyxPayload,
   type TelnyxCallPayload,
   type TelnyxMessagingPayload,
   type TelnyxEmailPayload,
 } from '@/lib/brain/telnyx';
 import { insertBrainVendorEvent, type BrainVendorEvent } from '@/lib/brain/repository';
+import { recordEmailOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +81,16 @@ export async function POST(request: NextRequest) {
     const emailPayload = payload.data.payload as TelnyxEmailPayload['data']['payload'];
     direction = emailPayload.direction ?? null;
     clientState = parseClientState(emailPayload.client_state);
-    transcript = emailPayload.body?.plain ?? emailPayload.body?.html ?? null;
+    const rawTranscript = emailPayload.body?.plain ?? emailPayload.body?.html ?? null;
+    transcript = rawTranscript ? stripHtml(rawTranscript) : null;
+
+    if (eventType === 'email.unsubscribed' || eventType === 'email.spam_reported') {
+      const fromEmail = emailPayload.from;
+      if (fromEmail) {
+        const reason: EmailOptoutReason = eventType === 'email.unsubscribed' ? 'unsubscribed' : 'spam_reported';
+        await recordEmailOptout(supabase, fromEmail, reason, vendorEventId);
+      }
+    }
   }
 
   const event: BrainVendorEvent = {
@@ -117,13 +128,9 @@ function sanitizePayloadForStorage(payload: TelnyxPayload): Record<string, unkno
   const data = sanitized.data as Record<string, unknown> | undefined;
   if (data?.payload) {
     const innerPayload = data.payload as Record<string, unknown>;
-    delete innerPayload.listing_id;
-    delete innerPayload.listing_url;
-    delete innerPayload.dealer_name;
-    delete innerPayload.dealer_address;
-    delete innerPayload.dealer_phone;
-    delete innerPayload.marketcheck_id;
-    delete innerPayload.vehicle_details;
+    delete innerPayload.client_state;
+    delete innerPayload.sip_headers;
+    delete innerPayload.custom_headers;
   }
   return sanitized;
 }

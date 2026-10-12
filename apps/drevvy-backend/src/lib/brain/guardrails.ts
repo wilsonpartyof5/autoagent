@@ -13,10 +13,13 @@
  * 8. Request itemization when price isn't itemized
  * 9. "Price first, then we're happy to set that up" for come-in/call-me requests
  * 10. Honest AI disclosure ("I'm Drevvy's AI, working for {first}")
- * 11. Escalate when fair OTD is unknown
+ * 11. Escalate (block counter) when fair OTD is unknown
+ * 12. Never use the phrase "automated assistant"
  */
 
 import { PUSHBACK_THRESHOLD } from './config';
+
+export const CALL_OPENER = "Hi, this is Drevvy calling for {first}. Quick heads-up, this call is recorded.";
 
 export type GuardrailInput = {
   action: string | null;
@@ -40,6 +43,8 @@ export type GuardrailResult = {
     maxPushbacks: boolean;
     otdThreshold: boolean;
     noShopperContactInfo: boolean;
+    noAutomatedAssistant: boolean;
+    fairOtdKnownForCounter: boolean;
   };
 };
 
@@ -61,6 +66,8 @@ const SHOPPER_CONTACT_PATTERNS = [
   /\bsurname\b/i,
   /\bfamily\s*name\b/i,
 ];
+
+const AUTOMATED_ASSISTANT_PATTERN = /\bautomated\s+assistant\b/i;
 
 export function runGuardrails(input: GuardrailInput): GuardrailResult {
   const violations: string[] = [];
@@ -91,6 +98,16 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
     violations.push('shopper_contact_info_leaked');
   }
 
+  const noAutomatedAssistant = checkNoAutomatedAssistant(draft);
+  if (!noAutomatedAssistant) {
+    violations.push('automated_assistant_phrase');
+  }
+
+  const fairOtdKnownForCounter = checkFairOtdKnownForCounter(input.action, input.fairOtd);
+  if (!fairOtdKnownForCounter) {
+    violations.push('fair_otd_unknown_for_counter');
+  }
+
   return {
     blocked: violations.length > 0,
     violations,
@@ -100,6 +117,8 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
       maxPushbacks,
       otdThreshold,
       noShopperContactInfo,
+      noAutomatedAssistant,
+      fairOtdKnownForCounter,
     },
   };
 }
@@ -133,7 +152,8 @@ export function checkOtdThreshold(
   currentOfferOtd: number | null,
 ): boolean {
   if (action !== 'counter') return true;
-  if (fairOtd === null || currentOfferOtd === null) return true;
+  if (currentOfferOtd === null) return true;
+  if (fairOtd === null) return true;
 
   const absoluteThreshold = PUSHBACK_THRESHOLD.absoluteDollars;
   const percentThreshold = fairOtd * PUSHBACK_THRESHOLD.percentOfFair;
@@ -141,6 +161,16 @@ export function checkOtdThreshold(
 
   const difference = currentOfferOtd - fairOtd;
   return difference >= threshold;
+}
+
+function checkNoAutomatedAssistant(draft: string): boolean {
+  if (!draft) return true;
+  return !AUTOMATED_ASSISTANT_PATTERN.test(draft);
+}
+
+function checkFairOtdKnownForCounter(action: string | null, fairOtd: number | null): boolean {
+  if (action !== 'counter') return true;
+  return fairOtd !== null;
 }
 
 function checkNoShopperContactInfo(draft: string, shopperFirst: string): boolean {

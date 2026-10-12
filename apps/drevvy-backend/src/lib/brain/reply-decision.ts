@@ -7,7 +7,14 @@ import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { BRAIN_CONFIG, SHADOW_MODE } from './config';
-import { type GuardrailResult, runGuardrails } from './guardrails';
+import {
+  type GuardrailResult,
+  runGuardrails,
+  applyPlaybookRules,
+  getAiDisclosure,
+  getPriceFirstResponse,
+  type PlaybookDecision,
+} from './guardrails';
 import { insertBrainRun, updateBrainRun, getApprovedLessons } from './repository';
 
 export type ReplyDecisionInput = {
@@ -24,6 +31,7 @@ export type ReplyDecisionInput = {
     pushbackCount: number;
     hasOptedInToText: boolean;
     hasTextedBefore: boolean;
+    isItemized: boolean;
   };
 };
 
@@ -33,6 +41,8 @@ export type ReplyDecisionResult = {
   action: string | null;
   draft: string | null;
   guardrailResult: GuardrailResult;
+  playbookDecision: PlaybookDecision | null;
+  aiDisclosure: string;
   shadowMode: boolean;
   reasoning: string;
 };
@@ -87,8 +97,179 @@ export async function runReplyDecision(
   }
 
   const runId = runResult.id;
+  const aiDisclosure = getAiDisclosure(input.dealContext.shopperFirst);
 
   try {
+    const playbookDecision = applyPlaybookRules({
+      fairOtd: input.dealContext.fairOtd,
+      currentOfferOtd: input.dealContext.currentOfferOtd,
+      isItemized: input.dealContext.isItemized,
+      dealerMessage: input.dealerMessage,
+      shopperFirst: input.dealContext.shopperFirst,
+    });
+
+    if (playbookDecision.action === 'escalate_to_human') {
+      const guardrailResult = runGuardrails({
+        action: null,
+        draft: null,
+        dealerState: input.dealerState,
+        channel: input.channel,
+        hasOptedInToText: input.dealContext.hasOptedInToText,
+        hasTextedBefore: input.dealContext.hasTextedBefore,
+        fairOtd: input.dealContext.fairOtd,
+        currentOfferOtd: input.dealContext.currentOfferOtd,
+        pushbackCount: input.dealContext.pushbackCount,
+        shopperFirst: input.dealContext.shopperFirst,
+      });
+
+      const result: ReplyDecisionResult = {
+        runId,
+        decision: 'escalate',
+        action: null,
+        draft: null,
+        guardrailResult,
+        playbookDecision,
+        aiDisclosure,
+        shadowMode: SHADOW_MODE,
+        reasoning: playbookDecision.reason,
+      };
+
+      await updateBrainRun(supabase, runId, {
+        status: 'ok',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        output: result,
+        guardrail_hits: null,
+        finished_at: new Date().toISOString(),
+      });
+
+      return result;
+    }
+
+    if (playbookDecision.action === 'price_first_response') {
+      const draft = getPriceFirstResponse();
+      const guardrailResult = runGuardrails({
+        action: 'clarify',
+        draft,
+        dealerState: input.dealerState,
+        channel: input.channel,
+        hasOptedInToText: input.dealContext.hasOptedInToText,
+        hasTextedBefore: input.dealContext.hasTextedBefore,
+        fairOtd: input.dealContext.fairOtd,
+        currentOfferOtd: input.dealContext.currentOfferOtd,
+        pushbackCount: input.dealContext.pushbackCount,
+        shopperFirst: input.dealContext.shopperFirst,
+      });
+
+      const result: ReplyDecisionResult = {
+        runId,
+        decision: guardrailResult.blocked ? 'skip' : 'respond',
+        action: guardrailResult.blocked ? null : 'clarify',
+        draft: guardrailResult.blocked ? null : draft,
+        guardrailResult,
+        playbookDecision,
+        aiDisclosure,
+        shadowMode: SHADOW_MODE,
+        reasoning: guardrailResult.blocked
+          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
+          : playbookDecision.reason,
+      };
+
+      await updateBrainRun(supabase, runId, {
+        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        output: result,
+        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
+        finished_at: new Date().toISOString(),
+      });
+
+      return result;
+    }
+
+    if (playbookDecision.action === 'present_to_shopper') {
+      const guardrailResult = runGuardrails({
+        action: 'accept',
+        draft: null,
+        dealerState: input.dealerState,
+        channel: input.channel,
+        hasOptedInToText: input.dealContext.hasOptedInToText,
+        hasTextedBefore: input.dealContext.hasTextedBefore,
+        fairOtd: input.dealContext.fairOtd,
+        currentOfferOtd: input.dealContext.currentOfferOtd,
+        pushbackCount: input.dealContext.pushbackCount,
+        shopperFirst: input.dealContext.shopperFirst,
+      });
+
+      const result: ReplyDecisionResult = {
+        runId,
+        decision: 'respond',
+        action: 'accept',
+        draft: null,
+        guardrailResult,
+        playbookDecision,
+        aiDisclosure,
+        shadowMode: SHADOW_MODE,
+        reasoning: playbookDecision.reason,
+      };
+
+      await updateBrainRun(supabase, runId, {
+        status: 'ok',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        output: result,
+        guardrail_hits: null,
+        finished_at: new Date().toISOString(),
+      });
+
+      return result;
+    }
+
+    if (playbookDecision.action === 'request_itemization') {
+      const draft = 'Could you please provide an itemized breakdown of the price?';
+      const guardrailResult = runGuardrails({
+        action: 'clarify',
+        draft,
+        dealerState: input.dealerState,
+        channel: input.channel,
+        hasOptedInToText: input.dealContext.hasOptedInToText,
+        hasTextedBefore: input.dealContext.hasTextedBefore,
+        fairOtd: input.dealContext.fairOtd,
+        currentOfferOtd: input.dealContext.currentOfferOtd,
+        pushbackCount: input.dealContext.pushbackCount,
+        shopperFirst: input.dealContext.shopperFirst,
+      });
+
+      const result: ReplyDecisionResult = {
+        runId,
+        decision: guardrailResult.blocked ? 'skip' : 'respond',
+        action: guardrailResult.blocked ? null : 'clarify',
+        draft: guardrailResult.blocked ? null : draft,
+        guardrailResult,
+        playbookDecision,
+        aiDisclosure,
+        shadowMode: SHADOW_MODE,
+        reasoning: guardrailResult.blocked
+          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
+          : playbookDecision.reason,
+      };
+
+      await updateBrainRun(supabase, runId, {
+        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        output: result,
+        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
+        finished_at: new Date().toISOString(),
+      });
+
+      return result;
+    }
+
     const lessons = await getApprovedLessons(supabase, {
       dealer_type: undefined,
     });
@@ -106,6 +287,7 @@ export async function runReplyDecision(
 - Opted in to text: ${input.dealContext.hasOptedInToText}
 - Has texted before: ${input.dealContext.hasTextedBefore}
 - Dealer state: ${input.dealerState ?? 'unknown'}
+- AI disclosure to include: ${aiDisclosure}
 ${lessonsContext}
 
 Dealer message (via ${input.channel}):
@@ -156,6 +338,8 @@ ${input.dealerMessage}`;
       action: guardrailResult.blocked ? null : (parsed.action ?? null),
       draft: guardrailResult.blocked ? null : (parsed.draft ?? null),
       guardrailResult,
+      playbookDecision,
+      aiDisclosure,
       shadowMode: SHADOW_MODE,
       reasoning: guardrailResult.blocked
         ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`

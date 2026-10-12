@@ -87,13 +87,10 @@ function sanitizePayloadForStorage(payload: ElevenLabsPostCallPayload): Record<s
     const clientData = metadata.conversation_initiation_client_data as Record<string, unknown>;
     const dynamicVars = clientData.dynamic_variables as Record<string, unknown> | undefined;
     if (dynamicVars) {
-      delete dynamicVars.listing_id;
+      delete dynamicVars.marketcheck_listing;
+      delete dynamicVars.marketcheck_dealer;
       delete dynamicVars.listing_url;
-      delete dynamicVars.dealer_name;
-      delete dynamicVars.dealer_address;
-      delete dynamicVars.dealer_phone;
-      delete dynamicVars.marketcheck_id;
-      delete dynamicVars.vehicle_details;
+      delete dynamicVars.dealer_website;
     }
   }
   return sanitized;

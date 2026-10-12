@@ -8,6 +8,7 @@ import {
   applyPlaybookRules,
   getAiDisclosure,
   getPriceFirstResponse,
+  CALL_OPENER,
   type GuardrailInput,
 } from './guardrails';
 
@@ -418,5 +419,128 @@ describe('getPriceFirstResponse', () => {
     const response = getPriceFirstResponse();
     assert.ok(response.includes('Price first'));
     assert.ok(response.includes('happy to set that up'));
+  });
+});
+
+describe('CALL_OPENER', () => {
+  it('includes recording disclosure', () => {
+    assert.ok(CALL_OPENER.includes('recorded'));
+  });
+
+  it('includes placeholder for first name', () => {
+    assert.ok(CALL_OPENER.includes('{first}'));
+  });
+
+  it('introduces Drevvy', () => {
+    assert.ok(CALL_OPENER.includes('Drevvy'));
+  });
+});
+
+describe('no automated assistant rule', () => {
+  const baseInput: GuardrailInput = {
+    action: 'respond',
+    draft: 'Thank you for the offer.',
+    dealerState: 'SC',
+    channel: 'email',
+    hasOptedInToText: true,
+    hasTextedBefore: true,
+    fairOtd: 30000,
+    currentOfferOtd: 31000,
+    pushbackCount: 0,
+    shopperFirst: 'Maya',
+  };
+
+  it('blocks drafts containing "automated assistant"', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'Hello, I am an automated assistant here to help you.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('automated_assistant_phrase'));
+  });
+
+  it('blocks case-insensitive variations', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'This is an AUTOMATED ASSISTANT responding to your message.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('automated_assistant_phrase'));
+  });
+
+  it('allows drafts without the phrase', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: "I'm Drevvy's AI, working for Maya.",
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.noAutomatedAssistant, true);
+  });
+
+  it('allows similar phrases that are not exact match', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'Our automated system is helping to process your request.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.noAutomatedAssistant, true);
+  });
+});
+
+describe('fair OTD known for counter rule', () => {
+  const baseInput: GuardrailInput = {
+    action: 'respond',
+    draft: 'Thank you for the offer.',
+    dealerState: 'SC',
+    channel: 'email',
+    hasOptedInToText: true,
+    hasTextedBefore: true,
+    fairOtd: 30000,
+    currentOfferOtd: 31000,
+    pushbackCount: 0,
+    shopperFirst: 'Maya',
+  };
+
+  it('blocks counter when fair OTD is null', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      action: 'counter',
+      fairOtd: null,
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('fair_otd_unknown_for_counter'));
+  });
+
+  it('allows counter when fair OTD is known', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      action: 'counter',
+      fairOtd: 30000,
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.fairOtdKnownForCounter, true);
+  });
+
+  it('allows non-counter actions when fair OTD is null', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      action: 'accept',
+      fairOtd: null,
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.fairOtdKnownForCounter, true);
+  });
+
+  it('allows clarify action when fair OTD is null', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      action: 'clarify',
+      fairOtd: null,
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.fairOtdKnownForCounter, true);
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPrivateKey, createPublicKey, sign } from 'crypto';
 
-import { verifyTelnyxSignature, parseClientState, mapTelnyxEventToChannel, mapTelnyxEventToStatus } from './telnyx';
+import { verifyTelnyxSignature, parseClientState, mapTelnyxEventToChannel, mapTelnyxEventToStatus, stripHtml } from './telnyx';
 
 describe('verifyTelnyxSignature', () => {
   let privateKey: ReturnType<typeof createPrivateKey>;
@@ -202,5 +202,80 @@ describe('mapTelnyxEventToStatus', () => {
     const result = mapTelnyxEventToStatus(payload);
     assert.equal(result.status, 'delivered');
     assert.equal(result.errorCode, null);
+  });
+});
+
+describe('stripHtml', () => {
+  it('removes HTML tags', () => {
+    const html = '<p>Hello <strong>World</strong></p>';
+    const result = stripHtml(html);
+    assert.equal(result, 'Hello World');
+  });
+
+  it('removes style tags and their contents', () => {
+    const html = '<style>body { color: red; }</style><p>Content</p>';
+    const result = stripHtml(html);
+    assert.equal(result, 'Content');
+  });
+
+  it('removes script tags and their contents', () => {
+    const html = '<script>alert("test");</script><p>Safe content</p>';
+    const result = stripHtml(html);
+    assert.equal(result, 'Safe content');
+  });
+
+  it('decodes HTML entities', () => {
+    const html = 'Tom &amp; Jerry &lt;3 &gt; 2 &quot;quoted&quot; it&#39;s';
+    const result = stripHtml(html);
+    assert.equal(result, "Tom & Jerry <3 > 2 \"quoted\" it's");
+  });
+
+  it('converts nbsp to space', () => {
+    const html = 'Hello&nbsp;World';
+    const result = stripHtml(html);
+    assert.equal(result, 'Hello World');
+  });
+
+  it('normalizes whitespace', () => {
+    const html = '<p>Hello</p>   \n\n   <p>World</p>';
+    const result = stripHtml(html);
+    assert.equal(result, 'Hello World');
+  });
+
+  it('handles empty input', () => {
+    const result = stripHtml('');
+    assert.equal(result, '');
+  });
+
+  it('handles plain text without HTML', () => {
+    const text = 'Just plain text';
+    const result = stripHtml(text);
+    assert.equal(result, 'Just plain text');
+  });
+
+  it('handles complex email HTML', () => {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>body { font-family: Arial; }</style>
+        </head>
+        <body>
+          <div style="padding: 20px;">
+            <p>Hi there,</p>
+            <p>Here is your <strong>quote</strong>:</p>
+            <table>
+              <tr><td>Price:</td><td>$30,000</td></tr>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
+    const result = stripHtml(html);
+    assert.ok(result.includes('Hi there'));
+    assert.ok(result.includes('quote'));
+    assert.ok(result.includes('$30,000'));
+    assert.ok(!result.includes('<'));
+    assert.ok(!result.includes('font-family'));
   });
 });

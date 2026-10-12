@@ -9,6 +9,7 @@ export {
   parseClientState,
   mapTelnyxEventToChannel,
   mapTelnyxEventToStatus,
+  stripHtml,
   type TelnyxSignatureResult,
   type TelnyxPayload,
   type TelnyxEventType,
@@ -65,3 +66,11 @@ export {
 } from './telnyx';
 
 export { runReplyDecision, type ReplyDecisionInput, type ReplyDecisionResult } from './reply-decision';
+
+export {
+  recordEmailOptout,
+  isEmailOptedOut,
+  getEmailOptout,
+  type EmailOptout,
+  type EmailOptoutReason,
+} from './email-optout';
