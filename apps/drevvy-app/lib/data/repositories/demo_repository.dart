@@ -202,14 +202,85 @@ class DemoRepository {
 
   // ============== CHAT ==============
 
-  ChatThread _chatThread = const ChatThread(
+  ChatThread _chatThread = ChatThread(
     id: 'chat_main',
     mode: ChatMode.ask,
+    createdAt: DateTime.now(),
   );
+
+  List<ChatThread> _chatHistory = [];
 
   Future<ChatThread> getChatThread() async {
     return _delay(_chatThread);
   }
+
+  /// Get chat history for the drawer (v1.6.1)
+  /// Deal-scoped chats are excluded per spec §6.13
+  Future<List<ChatThread>> getChatHistory() async {
+    if (_chatHistory.isEmpty) {
+      _chatHistory = _demoChatHistory;
+    }
+    return _delay(_chatHistory);
+  }
+
+  static final _demoChatHistory = [
+    ChatThread(
+      id: 'chat_001',
+      mode: ChatMode.ask,
+      title: 'RAV4 Hybrid under \$35k',
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
+      messages: [
+        ChatMessage(
+          id: 'msg_001',
+          role: MessageRole.user,
+          contentType: MessageContentType.text,
+          text: 'What are the best RAV4 Hybrids under \$35k near me?',
+          timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+        ),
+      ],
+    ),
+    ChatThread(
+      id: 'chat_002',
+      mode: ChatMode.shop,
+      title: 'SUV search',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      updatedAt: DateTime.now().subtract(const Duration(days: 1)),
+      sourcesCount: 24,
+    ),
+    ChatThread(
+      id: 'chat_003',
+      mode: ChatMode.ask,
+      title: 'Honda CR-V vs Toyota RAV4',
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
+      updatedAt: DateTime.now().subtract(const Duration(days: 3)),
+      messages: [
+        ChatMessage(
+          id: 'msg_003',
+          role: MessageRole.user,
+          contentType: MessageContentType.text,
+          text: 'Should I get a Honda CR-V or Toyota RAV4 for my family?',
+          timestamp: DateTime.now().subtract(const Duration(days: 3)),
+        ),
+      ],
+    ),
+    ChatThread(
+      id: 'chat_004',
+      mode: ChatMode.ask,
+      title: 'Fair price for Mazda CX-50',
+      createdAt: DateTime.now().subtract(const Duration(days: 8)),
+      updatedAt: DateTime.now().subtract(const Duration(days: 8)),
+      messages: [
+        ChatMessage(
+          id: 'msg_004',
+          role: MessageRole.user,
+          contentType: MessageContentType.text,
+          text: 'Is \$29,950 fair for a 2024 Mazda CX-50 with 28k miles?',
+          timestamp: DateTime.now().subtract(const Duration(days: 8)),
+        ),
+      ],
+    ),
+  ];
 
   Future<ChatThread> sendMessage(String text) async {
     final userMsg = ChatMessage(
@@ -889,4 +960,181 @@ class DealStats {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${months[resetsOn.month - 1]} ${resetsOn.day}';
   }
+}
+
+// ============== SEARCH PROFILE (v1.6.1) ==============
+
+extension DemoRepositorySearchProfile on DemoRepository {
+  static SearchProfile _searchProfile = SearchProfile(
+    userId: 'user_demo_001',
+    personalize: true,
+    items: [
+      MemoryItem(
+        id: 'mem_001',
+        kind: MemoryKind.budget,
+        value: 40000,
+        source: MemorySource.onboarding,
+        updatedAt: DateTime.now().subtract(const Duration(days: 30)),
+      ),
+      MemoryItem(
+        id: 'mem_002',
+        kind: MemoryKind.bodyTypes,
+        value: ['SUV', 'Sedan'],
+        source: MemorySource.inferred,
+        updatedAt: DateTime.now().subtract(const Duration(days: 7)),
+        lastUsedAt: DateTime.now().subtract(const Duration(hours: 2)),
+      ),
+      MemoryItem(
+        id: 'mem_003',
+        kind: MemoryKind.makes,
+        value: ['Toyota', 'Honda', 'Mazda'],
+        source: MemorySource.inferred,
+        updatedAt: DateTime.now().subtract(const Duration(days: 14)),
+      ),
+      MemoryItem(
+        id: 'mem_004',
+        kind: MemoryKind.fuel,
+        value: ['Hybrid', 'Gas'],
+        source: MemorySource.inferred,
+        updatedAt: DateTime.now().subtract(const Duration(days: 5)),
+      ),
+      MemoryItem(
+        id: 'mem_005',
+        kind: MemoryKind.location,
+        value: {'zip': '94105', 'radius': 50},
+        source: MemorySource.explicit,
+        updatedAt: DateTime.now().subtract(const Duration(days: 30)),
+      ),
+    ],
+    searches: [
+      SavedSearch(
+        id: 'search_001',
+        filters: SearchFilters(
+          makes: ['Toyota'],
+          models: ['RAV4'],
+          priceMax: 35000,
+          zip: '94105',
+          radiusMi: 30,
+        ),
+        lastRunAt: DateTime.now().subtract(const Duration(hours: 2)),
+        runCount: 5,
+      ),
+      SavedSearch(
+        id: 'search_002',
+        filters: SearchFilters(
+          makes: ['Honda'],
+          models: ['CR-V'],
+          bodyTypes: ['SUV'],
+          priceMax: 40000,
+          zip: '94105',
+          radiusMi: 50,
+        ),
+        lastRunAt: DateTime.now().subtract(const Duration(days: 3)),
+        runCount: 2,
+      ),
+    ],
+  );
+
+  Future<SearchProfile> getSearchProfile() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _searchProfile;
+  }
+
+  Future<SearchProfile> updateSearchProfile(SearchProfile profile) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    _searchProfile = profile;
+    return _searchProfile;
+  }
+
+  Future<void> deleteMemoryItem(String itemId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    _searchProfile = _searchProfile.copyWith(
+      items: _searchProfile.items.where((i) => i.id != itemId).toList(),
+    );
+  }
+
+  Future<void> clearHistory() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    _searchProfile = SearchProfile(
+      userId: _searchProfile.userId,
+      personalize: _searchProfile.personalize,
+      items: _searchProfile.items.where((i) => i.source == MemorySource.explicit).toList(),
+      searches: [],
+      viewed: [],
+    );
+  }
+
+  Future<List<StarterCard>> getStarters() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
+      return _genericStarters;
+    }
+    
+    final starters = <StarterCard>[];
+    
+    // Back to search - last saved search
+    if (_searchProfile.searches.isNotEmpty) {
+      final lastSearch = _searchProfile.searches.first;
+      starters.add(StarterCard(
+        kind: StarterKind.backToSearch,
+        kicker: 'BACK TO YOUR SEARCH',
+        title: lastSearch.displayTitle,
+        action: StarterAction(mode: 'shop', filters: lastSearch.filters),
+      ));
+    }
+    
+    // Price drops
+    starters.add(const StarterCard(
+      kind: StarterKind.priceDrops,
+      kicker: 'PRICE DROPS',
+      title: '3 price drops on cars like ones you viewed',
+      action: StarterAction(mode: 'shop'),
+    ));
+    
+    // New listings
+    starters.add(const StarterCard(
+      kind: StarterKind.newListings,
+      kicker: 'NEW LISTINGS',
+      title: '5 new CR-V Hybrids within 30 mi',
+      action: StarterAction(mode: 'shop'),
+    ));
+    
+    // Fair price
+    starters.add(const StarterCard(
+      kind: StarterKind.fairPrice,
+      kicker: 'FAIR PRICE',
+      title: 'Is \$32,995 fair for the RAV4 you viewed?',
+      action: StarterAction(mode: 'ask', prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?'),
+    ));
+    
+    return starters.take(4).toList();
+  }
+
+  static const _genericStarters = [
+    StarterCard(
+      kind: StarterKind.generic,
+      kicker: 'ASK DREVVY',
+      title: 'Which hybrid SUV fits a family of four?',
+      action: StarterAction(mode: 'ask', prompt: 'Which hybrid SUV fits a family of four?'),
+    ),
+    StarterCard(
+      kind: StarterKind.generic,
+      kicker: 'FAIR PRICE',
+      title: 'Is \$33k fair for a 2024 RAV4 Hybrid?',
+      action: StarterAction(mode: 'ask', prompt: 'Is \$33k fair for a 2024 RAV4 Hybrid?'),
+    ),
+    StarterCard(
+      kind: StarterKind.generic,
+      kicker: 'DEALER FEES',
+      title: 'Which dealer fees should I never pay?',
+      action: StarterAction(mode: 'ask', prompt: 'Which dealer fees should I never pay?'),
+    ),
+    StarterCard(
+      kind: StarterKind.generic,
+      kicker: 'SHOP',
+      title: 'Find EVs under \$35k near me',
+      action: StarterAction(mode: 'shop', prompt: 'EVs under \$35k'),
+    ),
+  ];
 }

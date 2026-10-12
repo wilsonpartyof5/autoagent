@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
+import 'package:drevvy_app/data/models/chat.dart';
 
 void main() {
   group('DrevvyApp Tests', () {
@@ -22,6 +23,17 @@ void main() {
       expect(find.text('Shop'), findsWidgets);
       expect(find.text('Deals'), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
+    });
+
+    testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: DrevvyApp()),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+
+      // Shop tab should be active - Ask|Shop toggle visible
+      expect(find.text('Ask'), findsOneWidget);
     });
   });
 

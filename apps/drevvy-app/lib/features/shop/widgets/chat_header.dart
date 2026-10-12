@@ -4,19 +4,21 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
 
+/// Shop header per spec §6.5a (v1.6.1):
+/// - Left: hamburger (44pt) opens history drawer
+/// - Center: Ask | Shop toggle
+/// - Right: empty 44pt spacer (compose icon removed)
 class ChatHeader extends StatelessWidget {
   const ChatHeader({
     super.key,
     required this.mode,
     required this.onModeChanged,
     this.onMenuTap,
-    this.onComposeTap,
   });
 
   final ChatMode mode;
   final ValueChanged<ChatMode> onModeChanged;
   final VoidCallback? onMenuTap;
-  final VoidCallback? onComposeTap;
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +34,15 @@ class ChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(LucideIcons.menu, color: colors.ink),
-            onPressed: onMenuTap,
+          // Hamburger opens chat history drawer
+          Semantics(
+            label: 'Chat history',
+            button: true,
+            child: IconButton(
+              icon: Icon(LucideIcons.menu, color: colors.ink),
+              onPressed: onMenuTap,
+              tooltip: 'Chat history',
+            ),
           ),
           
           const Spacer(),
@@ -46,10 +54,8 @@ class ChatHeader extends StatelessWidget {
           
           const Spacer(),
           
-          IconButton(
-            icon: Icon(LucideIcons.squarePen, color: colors.ink),
-            onPressed: onComposeTap,
-          ),
+          // Empty spacer to keep toggle centered (compose icon removed per spec)
+          const SizedBox(width: DrevvySpace.minTap),
         ],
       ),
     );

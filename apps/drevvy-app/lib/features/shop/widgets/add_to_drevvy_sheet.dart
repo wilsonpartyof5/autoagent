@@ -29,6 +29,7 @@ class AddToDrevvySheet extends StatefulWidget {
 class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
   final _maxOtdController = TextEditingController();
   bool _isLoading = false;
+  bool _showConfirmation = false;
 
   String _formatPrice(int price) {
     return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
@@ -50,6 +51,14 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
   Future<void> _handleAdd() async {
     setState(() => _isLoading = true);
     final maxOtd = int.tryParse(_maxOtdController.text.replaceAll(',', ''));
+    
+    // Show confirmation briefly before navigating
+    setState(() {
+      _isLoading = false;
+      _showConfirmation = true;
+    });
+    
+    await Future.delayed(const Duration(milliseconds: 1500));
     await widget.onAdd(maxOtd);
   }
 
@@ -86,7 +95,9 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
           
           Padding(
             padding: const EdgeInsets.all(DrevvySpace.gutter),
-            child: Column(
+            child: _showConfirmation
+                ? _ConfirmationView(listing: listing)
+                : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Car row
@@ -175,7 +186,7 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                 
                 // CTA
                 DrevvyPrimaryButton(
-                  label: 'Find my best price',
+                  label: 'Unlock my price',
                   onPressed: _isLoading ? null : _handleAdd,
                   isLoading: _isLoading,
                 ),
@@ -196,6 +207,68 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
           SizedBox(height: bottomPadding),
         ],
       ),
+    );
+  }
+}
+
+/// Confirmation view shown after tapping "Unlock my price"
+class _ConfirmationView extends StatelessWidget {
+  const _ConfirmationView({required this.listing});
+
+  final Listing listing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: DrevvySpace.s8),
+        
+        // Success orb
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            gradient: DrevvyColors.brandGradient,
+            shape: BoxShape.circle,
+            boxShadow: colors.elevBrand,
+          ),
+          child: const Icon(
+            LucideIcons.check,
+            color: Colors.white,
+            size: 36,
+          ),
+        ),
+        
+        const SizedBox(height: DrevvySpace.s6),
+        
+        Text(
+          "Drevvy's on it.",
+          style: text.headline,
+          textAlign: TextAlign.center,
+        ),
+        
+        const SizedBox(height: DrevvySpace.s2),
+        
+        Text(
+          'Your price is coming.',
+          style: text.body.copyWith(color: colors.muted),
+          textAlign: TextAlign.center,
+        ),
+        
+        const SizedBox(height: DrevvySpace.s3),
+        
+        Text(
+          listing.shortTitle,
+          style: text.callout.copyWith(color: colors.muted),
+          textAlign: TextAlign.center,
+        ),
+        
+        const SizedBox(height: DrevvySpace.s8),
+      ],
     );
   }
 }

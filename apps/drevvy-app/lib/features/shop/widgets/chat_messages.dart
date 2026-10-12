@@ -4,17 +4,20 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
 
+/// Chat messages view with "Using your past searches" chip per spec §6.14 (v1.6.1)
 class ChatMessages extends StatelessWidget {
   const ChatMessages({
     super.key,
     required this.thread,
     required this.isLoading,
     required this.onShopTap,
+    this.onMemoryChipTap,
   });
 
   final ChatThread thread;
   final bool isLoading;
   final ValueChanged<String> onShopTap;
+  final VoidCallback? onMemoryChipTap;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +41,8 @@ class ChatMessages extends StatelessWidget {
         return _AgentMessage(
           text: message.text ?? '',
           sourcesCount: thread.sourcesCount,
+          usedMemory: message.usedMemory,
+          onMemoryChipTap: onMemoryChipTap,
         );
       },
     );
@@ -88,42 +93,82 @@ class _AgentMessage extends StatelessWidget {
   const _AgentMessage({
     required this.text,
     this.sourcesCount,
+    this.usedMemory = false,
+    this.onMemoryChipTap,
   });
 
   final String text;
   final int? sourcesCount;
+  final bool usedMemory;
+  final VoidCallback? onMemoryChipTap;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.drevvy;
     final textStyles = context.drevvyText;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: DrevvySpace.s4),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              gradient: DrevvyColors.brandGradient,
-              borderRadius: BorderRadius.circular(DrevvyRadius.xs),
+          // "Using your past searches" chip (v1.6.1) - above agent message
+          if (usedMemory) ...[
+            GestureDetector(
+              onTap: onMemoryChipTap,
+              child: Container(
+                height: DrevvySpace.minTap,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                margin: const EdgeInsets.only(left: 42, bottom: DrevvySpace.s2),
+                decoration: BoxDecoration(
+                  color: colors.lilacTint,
+                  borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.history, color: colors.violet, size: 16),
+                    const SizedBox(width: DrevvySpace.s2),
+                    Text(
+                      'Using your past searches',
+                      style: textStyles.label.copyWith(
+                        color: colors.violet,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: const Icon(LucideIcons.sparkles, color: Colors.white, size: 16),
-          ),
-          const SizedBox(width: DrevvySpace.s3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, style: textStyles.body),
-                if (sourcesCount != null) ...[
-                  const SizedBox(height: DrevvySpace.s3),
-                  _SourceRow(count: sourcesCount!),
-                ],
-              ],
-            ),
+          ],
+          
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Avatar
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  gradient: DrevvyColors.brandGradient,
+                  borderRadius: BorderRadius.circular(DrevvyRadius.xs),
+                ),
+                child: const Icon(LucideIcons.sparkles, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: DrevvySpace.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(text, style: textStyles.body),
+                    if (sourcesCount != null) ...[
+                      const SizedBox(height: DrevvySpace.s3),
+                      _SourceRow(count: sourcesCount!),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

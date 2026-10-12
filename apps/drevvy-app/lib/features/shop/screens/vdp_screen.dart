@@ -453,7 +453,7 @@ class _HowDrevvyWorks extends StatelessWidget {
         children: [
           Text('How Drevvy works for you', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
-          _Step(number: '1', text: 'You tap "Get Best Price"'),
+          _Step(number: '1', text: 'You tap "Unlock my price"'),
           _Step(number: '2', text: 'Drevvy asks the dealer for an itemized out-the-door price'),
           _Step(number: '3', text: 'You review each offer and decide'),
         ],
@@ -586,7 +586,7 @@ class _StickyCta extends StatelessWidget {
               ),
               const Spacer(),
               DrevvyButton(
-                label: isPro ? 'Add to Drevvy' : 'Get Best Price',
+                label: isPro ? 'Add to Drevvy' : 'Unlock my price',
                 icon: isPro ? LucideIcons.plus : null,
                 onPressed: onTap,
               ),
