@@ -10,6 +10,7 @@ struct VehicleDetailView: View {
   @State private var detail: VehicleDetailData? = nil
   @State private var isLoadingDetail: Bool = false
   @State private var detailError: String? = nil
+  @State private var showUnlockConfirmation: Bool = false
   
   private var availableImages: [String] {
     // Prefer enriched photo list from detail endpoint (more photos)
@@ -260,17 +261,28 @@ struct VehicleDetailView: View {
   private var ctaButtons: some View {
     VStack(spacing: 12) {
       Button {
-        // Contact dealer action
+        showUnlockConfirmation = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
       } label: {
-        Text("Contact Dealer")
-          .font(.system(size: 17, weight: .semibold))
-          .foregroundStyle(.black)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 14)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(.white)
-          )
+        HStack(spacing: 8) {
+          Image(systemName: "sparkle")
+            .font(.system(size: 16, weight: .semibold))
+          Text("Unlock my price")
+            .font(.system(size: 17, weight: .semibold))
+        }
+        .foregroundStyle(.black)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.white)
+        )
+      }
+      .accessibilityLabel("Unlock my price")
+      .alert("Drevvy's on it", isPresented: $showUnlockConfirmation) {
+        Button("OK", role: .cancel) {}
+      } message: {
+        Text("Your price is coming.")
       }
       
       Button {
@@ -416,18 +428,24 @@ struct VehicleDetailView: View {
   private var bottomCTA: some View {
     VStack(spacing: 12) {
       Button {
-        // Contact dealer action
+        showUnlockConfirmation = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
       } label: {
-        Text("Contact Dealer")
-          .font(.system(size: 17, weight: .semibold))
-          .foregroundStyle(.black)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 14)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(.white)
-          )
+        HStack(spacing: 8) {
+          Image(systemName: "sparkle")
+            .font(.system(size: 16, weight: .semibold))
+          Text("Unlock my price")
+            .font(.system(size: 17, weight: .semibold))
+        }
+        .foregroundStyle(.black)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.white)
+        )
       }
+      .accessibilityLabel("Unlock my price")
 
       Button {
         // Schedule test drive action

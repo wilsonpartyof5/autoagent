@@ -1,185 +1,360 @@
 import SwiftUI
 
-struct ContentView: View {
-  enum SidebarTab: String, CaseIterable, Identifiable {
-    case chat = "Chat"
-    case marketScan = "Market Scan"
-    case savedVehicles = "Saved Vehicles"
-    case myDeals = "My Deals"
-    case profile = "Profile"
-
-    var id: String { rawValue }
-
-    var systemImage: String {
-      switch self {
-      case .chat: return "message.fill"
-      case .marketScan: return "sparkle.magnifyingglass"
-      case .savedVehicles: return "bookmark.fill"
-      case .myDeals: return "briefcase.fill"
-      case .profile: return "person.crop.circle"
-      }
+enum AppTab: String, CaseIterable, Identifiable {
+  case shop = "Shop"
+  case deals = "Deals"
+  case profile = "Profile"
+  
+  var id: String { rawValue }
+  
+  var systemImage: String {
+    switch self {
+    case .shop: return "text.bubble"
+    case .deals: return "tag"
+    case .profile: return "person"
     }
   }
+}
 
+enum ChatMode: String {
+  case ask = "Ask"
+  case shop = "Shop"
+}
+
+struct ContentView: View {
   @StateObject private var chatVM = ChatViewModel(preload: true)
   @StateObject private var mapVM = MapViewModel()
   @StateObject private var inventoryVM = InventoryViewModel()
-
-  @State private var selectedTab: SidebarTab = .chat
-  @State private var isSidebarOpen: Bool = false
+  @StateObject private var demoStore = DemoDataStore.shared
+  
+  @State private var selectedTab: AppTab = .shop
+  @State private var chatMode: ChatMode = .ask
+  @State private var isDrawerOpen: Bool = false
   @State private var isMapExpanded: Bool = false
-
   @State private var draftText: String = ""
-
+  
+  private var hasStartedChat: Bool {
+    !chatVM.messages.isEmpty
+  }
+  
+  private var showShopHome: Bool {
+    selectedTab == .shop && !hasStartedChat
+  }
+  
+  private var inputPlaceholder: String {
+    chatMode == .ask ? "Ask about any car..." : "Search for any vehicle..."
+  }
+  
   var body: some View {
-    NavigationStack {
-      ZStack(alignment: .bottom) {
-        // Non-negotiable base: ChatView is always present.
-        ChatView(messages: $chatVM.messages, mapVM: mapVM, chatVM: chatVM, onMapExpand: {
-          isMapExpanded = true
-        })
-        .onAppear {
-          chatVM.setMapViewModel(mapVM)
-        }
-        .opacity(selectedTab == .chat ? 1 : 0.12)
-        .allowsHitTesting(selectedTab == .chat)
-
-        if selectedTab == .profile {
-          ProfileView()
-            .transition(.opacity)
-        } else if selectedTab != .chat {
-          PlaceholderTabView(title: selectedTab.rawValue)
-            .transition(.opacity)
-        }
-
-        if isSidebarOpen {
-          Color.black.opacity(0.45)
-            .ignoresSafeArea()
-            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen = false } }
-            .transition(.opacity)
-
-          sidebar
-            .transition(.move(edge: .leading))
-        }
+    ZStack(alignment: .bottom) {
+      mainContent
+      
+      if isDrawerOpen {
+        drawerOverlay
       }
-      // safeAreaInset pins the bar at the bottom and lets iOS move it above the
-      // keyboard automatically — same system animation, no manual tracking needed.
-      .safeAreaInset(edge: .bottom, spacing: 0) {
-        InputBarView(
-          text: $draftText,
-          placeholder: "Search for any vehicle...",
-          onSend: {
-            let query = draftText
-            chatVM.send(text: query)
-
-            if query.lowercased().contains("black") ||
-              query.lowercased().contains("white") || query.lowercased().contains("red") ||
-              query.lowercased().contains("blue") || query.lowercased().contains("under") ||
-              query.lowercased().contains("below") || query.lowercased().contains("$") {
-              mapVM.applyQuery(query)
-            }
-
-            draftText = ""
-          }
-        )
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
-        .background(Color.black)
-      }
-      .background(Color.black.ignoresSafeArea())
-      .toolbar {
-        ToolbarItem(placement: .topBarLeading) {
-          Button {
-            withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen.toggle() }
-          } label: {
-            Image(systemName: "line.3.horizontal")
-              .font(.system(size: 17, weight: .semibold))
-          }
-          .tint(.white)
+      
+      floatingControls
+    }
+    .background(
+      LinearGradient(
+        colors: [
+          Color(red: 0.08, green: 0.08, blue: 0.12),
+          Color(red: 0.02, green: 0.02, blue: 0.04)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+      )
+      .ignoresSafeArea()
+    )
+    .onAppear {
+      chatVM.setMapViewModel(mapVM)
+    }
+  }
+  
+  @ViewBuilder
+  private var mainContent: some View {
+    VStack(spacing: 0) {
+      if selectedTab == .shop {
+        shopHeader
+        
+        if showShopHome {
+          ShopHomeView(
+            demoStore: demoStore,
+            chatVM: chatVM,
+            onStarterCardTapped: handleStarterCardTap
+          )
+        } else {
+          ChatView(
+            messages: $chatVM.messages,
+            mapVM: mapVM,
+            chatVM: chatVM,
+            onMapExpand: { isMapExpanded = true },
+            demoStore: demoStore
+          )
         }
-
-        ToolbarItem(placement: .principal) {
-          Text(selectedTab.rawValue)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(.white)
-        }
+      } else if selectedTab == .deals {
+        DealsPlaceholderView()
+      } else if selectedTab == .profile {
+        ProfileView(demoStore: demoStore)
       }
     }
   }
-
-  private var sidebar: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Text("Drevvy")
-          .font(.system(size: 20, weight: .bold))
-          .foregroundStyle(.white)
-        Spacer()
-      }
-      .padding(.bottom, 8)
-
-      ForEach(SidebarTab.allCases) { tab in
-        Button {
-          selectedTab = tab
-          withAnimation(.easeOut(duration: 0.2)) { isSidebarOpen = false }
-        } label: {
-          HStack(spacing: 10) {
-            Image(systemName: tab.systemImage)
-              .frame(width: 22)
-            Text(tab.rawValue)
-              .font(.system(size: 16, weight: .semibold))
-            Spacer()
-          }
-          .foregroundStyle(.white)
-          .padding(.vertical, 10)
-          .padding(.horizontal, 12)
-          .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-              .fill(selectedTab == tab ? Color.white.opacity(0.12) : Color.clear)
-          )
+  
+  private var shopHeader: some View {
+    HStack {
+      Button {
+        withAnimation(.easeOut(duration: 0.25)) {
+          isDrawerOpen = true
         }
-        .buttonStyle(.plain)
+      } label: {
+        Image(systemName: "line.3.horizontal")
+          .font(.system(size: 20, weight: .medium))
+          .foregroundStyle(.white)
+          .frame(width: 44, height: 44)
       }
-
+      .accessibilityLabel("Chat history")
+      
       Spacer()
+      
+      modeToggle
+      
+      Spacer()
+      
+      SizedBox(width: 44)
     }
-    .padding(.top, 16)
-    .padding(.horizontal, 14)
-    .frame(maxWidth: 300, alignment: .leading)
-    .frame(width: 280)
+    .padding(.horizontal, 8)
+    .padding(.top, 8)
+  }
+  
+  private var modeToggle: some View {
+    HStack(spacing: 0) {
+      modeButton(mode: .ask, icon: "plus", label: "Ask")
+      modeButton(mode: .shop, icon: "text.bubble", label: "Shop")
+    }
+    .padding(4)
     .background(
-      Rectangle()
-        .fill(Color(white: 0.08))
+      Capsule()
+        .fill(Color.white.opacity(0.08))
+    )
+  }
+  
+  private func modeButton(mode: ChatMode, icon: String, label: String) -> some View {
+    Button {
+      withAnimation(.easeOut(duration: 0.2)) {
+        chatMode = mode
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: icon)
+          .font(.system(size: 13, weight: .medium))
+        Text(label)
+          .font(.system(size: 14, weight: .semibold))
+      }
+      .foregroundStyle(chatMode == mode ? .black : .white)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 8)
+      .background(
+        Capsule()
+          .fill(chatMode == mode ? .white : .clear)
+      )
+    }
+  }
+  
+  private var drawerOverlay: some View {
+    ZStack(alignment: .leading) {
+      Color.black.opacity(0.38)
         .ignoresSafeArea()
+        .onTapGesture {
+          withAnimation(.easeOut(duration: 0.25)) {
+            isDrawerOpen = false
+          }
+        }
+      
+      ChatHistoryDrawer(
+        demoStore: demoStore,
+        isOpen: $isDrawerOpen,
+        onChatSelected: { chat in
+          // Load chat
+        },
+        onNewChat: {
+          chatVM.messages = []
+        }
+      )
+      .transition(.move(edge: .leading))
+    }
+  }
+  
+  private var floatingControls: some View {
+    VStack(spacing: 0) {
+      Spacer()
+      
+      if selectedTab == .shop {
+        floatingInputBar
+          .padding(.horizontal, 16)
+          .padding(.bottom, 12)
+      }
+      
+      floatingTabBar
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+  }
+  
+  private var floatingInputBar: some View {
+    HStack(alignment: .center, spacing: 10) {
+      TextField("", text: $draftText, prompt: Text(inputPlaceholder).foregroundStyle(Color.white.opacity(0.4)))
+        .font(.system(size: 16))
+        .foregroundStyle(.white)
+        .textInputAutocapitalization(.sentences)
+        .autocorrectionDisabled(false)
+        .padding(.leading, 16)
+        .padding(.vertical, 14)
+      
+      Button {
+        // Microphone action placeholder
+      } label: {
+        Image(systemName: "mic")
+          .font(.system(size: 18))
+          .foregroundStyle(Color.white.opacity(0.5))
+      }
+      .padding(.trailing, 4)
+      
+      Button {
+        sendMessage()
+      } label: {
+        Image(systemName: "arrow.up")
+          .font(.system(size: 16, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 36, height: 36)
+          .background(
+            Circle()
+              .fill(canSend ? Color(red: 0.35, green: 0.4, blue: 0.95) : Color.white.opacity(0.15))
+          )
+      }
+      .disabled(!canSend)
+      .padding(.trailing, 8)
+    }
+    .frame(height: 56)
+    .background(
+      Capsule()
+        .fill(Color.white.opacity(0.08))
     )
     .overlay(
-      Rectangle()
-        .fill(Color.white.opacity(0.06))
-        .frame(width: 1),
-      alignment: .trailing
+      Capsule()
+        .stroke(Color.white.opacity(0.1), lineWidth: 1)
     )
-    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+  
+  private var canSend: Bool {
+    !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+  
+  private func sendMessage() {
+    guard canSend else { return }
+    let query = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+    draftText = ""
+    
+    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    chatVM.send(text: query)
+    
+    if query.lowercased().contains("black") ||
+       query.lowercased().contains("white") ||
+       query.lowercased().contains("red") ||
+       query.lowercased().contains("blue") ||
+       query.lowercased().contains("under") ||
+       query.lowercased().contains("below") ||
+       query.lowercased().contains("$") {
+      mapVM.applyQuery(query)
+    }
+  }
+  
+  private func handleStarterCardTap(_ card: StarterCard) {
+    switch card.action {
+    case .askGeneric(let prompt):
+      draftText = prompt
+      sendMessage()
+    case .runSearch(let searchId):
+      if let search = demoStore.searchProfile.searches.first(where: { $0.id == searchId }) {
+        draftText = search.displayTitle
+        sendMessage()
+      }
+    case .showPriceDrops:
+      draftText = "Show me price drops on cars I've viewed"
+      sendMessage()
+    case .showNewListings:
+      draftText = "Show new listings matching my searches"
+      sendMessage()
+    case .askFairPrice(let vin, let price):
+      draftText = "Is $\(price.formatted()) fair for this car?"
+      sendMessage()
+    }
+  }
+  
+  private var floatingTabBar: some View {
+    HStack(spacing: 0) {
+      ForEach(AppTab.allCases) { tab in
+        Button {
+          withAnimation(.easeOut(duration: 0.2)) {
+            selectedTab = tab
+          }
+        } label: {
+          HStack(spacing: 8) {
+            Image(systemName: tab.systemImage)
+              .font(.system(size: 16))
+            Text(tab.rawValue)
+              .font(.system(size: 15, weight: .medium))
+          }
+          .foregroundStyle(selectedTab == tab ? .white : Color.white.opacity(0.5))
+          .padding(.horizontal, 20)
+          .padding(.vertical, 14)
+          .background(
+            Capsule()
+              .fill(selectedTab == tab ? Color.white.opacity(0.15) : .clear)
+          )
+        }
+      }
+    }
+    .padding(6)
+    .background(
+      Capsule()
+        .fill(Color(white: 0.12).opacity(0.95))
+    )
+    .overlay(
+      Capsule()
+        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+    )
   }
 }
 
-private struct PlaceholderTabView: View {
-  let title: String
+struct SizedBox: View {
+  var width: CGFloat? = nil
+  var height: CGFloat? = nil
+  
+  var body: some View {
+    Color.clear
+      .frame(width: width, height: height)
+  }
+}
 
+struct DealsPlaceholderView: View {
   var body: some View {
     VStack(spacing: 14) {
       Spacer()
-      Text(title)
+      
+      Image(systemName: "tag")
+        .font(.system(size: 48))
+        .foregroundStyle(Color.white.opacity(0.3))
+      
+      Text("Deals")
         .font(.system(size: 26, weight: .bold))
         .foregroundStyle(.white)
-
-      Text("Step 0 placeholder")
+      
+      Text("Cars you're working on will appear here.")
         .font(.system(size: 15))
         .foregroundStyle(Color.white.opacity(0.7))
-
+      
       Spacer()
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color.black.opacity(0.92))
   }
 }
-
-// Keyboard utilities moved to Utilities/KeyboardExtensions.swift
