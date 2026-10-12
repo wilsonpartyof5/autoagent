@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../widgets/memory_edit_sheet.dart';
 
 /// Screen 41, 55 (v1.6.1): Profile with search profile and notification switches
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -363,49 +366,94 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _editMemoryItem(MemoryItem item) {
-    // Placeholder for edit functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit ${item.kind.label} - coming soon')),
+    MemoryEditSheet.show(
+      context,
+      item: item,
+      onSave: (updatedItem) {
+        setState(() {
+          _searchProfile = _searchProfile?.copyWith(
+            items: _searchProfile!.items.map((i) {
+              return i.id == updatedItem.id ? updatedItem : i;
+            }).toList(),
+          );
+        });
+        _repo.updateSearchProfile(_searchProfile!);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${updatedItem.kind.label} updated')),
+        );
+      },
     );
   }
 
   void _showRecentSearches(List<SavedSearch> searches) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(DrevvySpace.gutter),
-              child: Text('Recent searches', style: text.title),
-            ),
-            ...searches.map((search) => ListTile(
-              leading: Icon(LucideIcons.search, color: colors.muted),
-              title: Text(search.displayTitle, style: text.body),
-              subtitle: Text(
-                'Run ${search.runCount} ${search.runCount == 1 ? 'time' : 'times'}',
-                style: text.callout.copyWith(color: colors.muted),
-              ),
-              trailing: IconButton(
-                icon: Icon(LucideIcons.trash2, color: colors.danger, size: 20),
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Delete search
-                },
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // Run search
-              },
-            )),
-            const SizedBox(height: DrevvySpace.s4),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _RecentSearchesSheet(
+        searches: searches,
+        onRun: (search) {
+          Navigator.pop(sheetContext);
+          _runSearch(search);
+        },
+        onDelete: (search) {
+          _deleteSearch(search);
+        },
+      ),
+    );
+  }
+
+  void _runSearch(SavedSearch search) {
+    final updatedSearch = SavedSearch(
+      id: search.id,
+      filters: search.filters,
+      lastRunAt: DateTime.now(),
+      runCount: search.runCount + 1,
+      seenListingIds: search.seenListingIds,
+    );
+    
+    setState(() {
+      _searchProfile = _searchProfile?.copyWith(
+        searches: _searchProfile!.searches.map((s) {
+          return s.id == search.id ? updatedSearch : s;
+        }).toList(),
+      );
+    });
+    _repo.updateSearchProfile(_searchProfile!);
+    
+    context.go('/shop');
+  }
+
+  void _deleteSearch(SavedSearch search) {
+    final deletedSearch = search;
+    final deletedIndex = _searchProfile?.searches.indexWhere((s) => s.id == search.id) ?? -1;
+    
+    setState(() {
+      _searchProfile = _searchProfile?.copyWith(
+        searches: _searchProfile!.searches.where((s) => s.id != search.id).toList(),
+      );
+    });
+    _repo.updateSearchProfile(_searchProfile!);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Search "${deletedSearch.displayTitle}" deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            setState(() {
+              final searches = List<SavedSearch>.from(_searchProfile?.searches ?? []);
+              if (deletedIndex >= 0 && deletedIndex <= searches.length) {
+                searches.insert(deletedIndex, deletedSearch);
+              } else {
+                searches.add(deletedSearch);
+              }
+              _searchProfile = _searchProfile?.copyWith(searches: searches);
+            });
+            _repo.updateSearchProfile(_searchProfile!);
+          },
         ),
+        duration: const Duration(seconds: 5),
       ),
     );
   }
@@ -931,6 +979,206 @@ class _MemoryItemRow extends StatelessWidget {
           ),
           IconButton(
             icon: Icon(LucideIcons.x, size: 18, color: colors.muted),
+            onPressed: onDelete,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Recent searches sheet with Run and Delete actions per spec §6.14
+class _RecentSearchesSheet extends StatefulWidget {
+  const _RecentSearchesSheet({
+    required this.searches,
+    required this.onRun,
+    required this.onDelete,
+  });
+
+  final List<SavedSearch> searches;
+  final ValueChanged<SavedSearch> onRun;
+  final ValueChanged<SavedSearch> onDelete;
+
+  @override
+  State<_RecentSearchesSheet> createState() => _RecentSearchesSheetState();
+}
+
+class _RecentSearchesSheetState extends State<_RecentSearchesSheet> {
+  late List<SavedSearch> _searches;
+
+  @override
+  void initState() {
+    super.initState();
+    _searches = List.from(widget.searches);
+  }
+
+  void _handleDelete(SavedSearch search) {
+    setState(() {
+      _searches = _searches.where((s) => s.id != search.id).toList();
+    });
+    widget.onDelete(search);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: colors.glassSolid,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(DrevvyRadius.sheetTop),
+        ),
+        boxShadow: colors.elevSheet,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: DrevvySpace.s3),
+                width: 36,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: colors.track,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(DrevvySpace.gutter),
+              child: Text('Recent searches', style: text.title),
+            ),
+
+            if (_searches.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(DrevvySpace.gutter),
+                child: Text(
+                  'No recent searches',
+                  style: text.body.copyWith(color: colors.muted),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                  itemCount: _searches.length,
+                  separatorBuilder: (a, b) => Divider(height: 1, color: colors.line),
+                  itemBuilder: (context, index) {
+                    final search = _searches[index];
+                    return _SearchRow(
+                      search: search,
+                      onRun: () => widget.onRun(search),
+                      onDelete: () => _handleDelete(search),
+                    );
+                  },
+                ),
+              ),
+
+            const SizedBox(height: DrevvySpace.s4),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+              child: DrevvyButton(
+                label: 'Done',
+                variant: DrevvyButtonVariant.secondary,
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+
+            const SizedBox(height: DrevvySpace.s4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchRow extends StatelessWidget {
+  const _SearchRow({
+    required this.search,
+    required this.onRun,
+    required this.onDelete,
+  });
+
+  final SavedSearch search;
+  final VoidCallback onRun;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: DrevvySpace.s3),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.lilacTint,
+              borderRadius: BorderRadius.circular(DrevvyRadius.xs),
+            ),
+            child: Icon(LucideIcons.search, color: colors.violet, size: 20),
+          ),
+          const SizedBox(width: DrevvySpace.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  search.displayTitle,
+                  style: text.bodyStrong.copyWith(color: colors.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Run ${search.runCount} ${search.runCount == 1 ? 'time' : 'times'}',
+                  style: text.callout.copyWith(color: colors.muted),
+                ),
+              ],
+            ),
+          ),
+          // Run button
+          GestureDetector(
+            onTap: onRun,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: DrevvyColors.brandGradient,
+                borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.play, color: Colors.white, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Run',
+                    style: text.label.copyWith(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: DrevvySpace.s2),
+          // Delete button
+          IconButton(
+            icon: Icon(LucideIcons.trash2, size: 18, color: colors.danger),
             onPressed: onDelete,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),

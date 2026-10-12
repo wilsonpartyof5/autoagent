@@ -46,7 +46,11 @@ class ChatEmpty extends StatelessWidget {
     final usePersonalized = hasHistory && starters != null && starters!.isNotEmpty;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+      padding: const EdgeInsets.only(
+        left: DrevvySpace.gutter,
+        right: DrevvySpace.gutter,
+        bottom: DrevvySpace.composerMinHeight + DrevvySpace.s8,
+      ),
       child: Column(
         children: [
           const SizedBox(height: DrevvySpace.s8),
