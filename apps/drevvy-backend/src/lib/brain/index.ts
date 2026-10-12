@@ -71,6 +71,10 @@ export {
   recordEmailOptout,
   isEmailOptedOut,
   getEmailOptout,
+  checkEmailBeforeSend,
+  endDealOnOptout,
   type EmailOptout,
   type EmailOptoutReason,
+  type EmailSendCheckResult,
+  type EndDealOnOptoutResult,
 } from './email-optout';

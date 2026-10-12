@@ -14,7 +14,7 @@ export const NO_RESPONSE_MS = 5 * 24 * 60 * 60 * 1000;
 export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'none';
 export type BillingSource = 'revenuecat' | 'demo';
 export type QuotaReason = 'ok' | 'monthly_quota' | 'subscription_inactive';
-export type QuotaEndState = 'open' | 'sold' | 'ended_no_response' | 'removed';
+export type QuotaEndState = 'open' | 'sold' | 'ended_no_response' | 'removed' | 'dealer_declined';
 
 export type BillingPeriod = {
   status: SubscriptionStatus;
@@ -57,7 +57,7 @@ type FetchLike = (input: string, init?: { headers?: Record<string, string>; cach
 
 export function dealCountsTowardQuota(deal: QuotaDeal, period: Pick<BillingPeriod, 'periodStart' | 'periodEnd'>): boolean {
   if (!addedInPeriod(deal.addedAt, period)) return false;
-  if (deal.endState === 'sold' || deal.endState === 'ended_no_response') return false;
+  if (deal.endState === 'sold' || deal.endState === 'ended_no_response' || deal.endState === 'dealer_declined') return false;
   if (refundsRemoval(deal)) return false;
   return true;
 }

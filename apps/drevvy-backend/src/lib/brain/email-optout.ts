@@ -6,6 +6,10 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { endDeal } from '@/lib/shopper/lifecycle';
+import { getLifecycleRepository } from '@/lib/shopper/lifecycle-store';
+import { supabaseShopperDealRepository } from '@/lib/shopper/deal-store';
+
 export type EmailOptoutReason = 'unsubscribed' | 'spam_reported';
 
 export type EmailOptout = {
@@ -68,6 +72,35 @@ export async function isEmailOptedOut(
   return !!data;
 }
 
+export type EmailSendCheckResult =
+  | { canSend: true }
+  | { canSend: false; reason: 'opted_out'; email: string; optout: EmailOptout };
+
+export async function checkEmailBeforeSend(
+  supabase: SupabaseClient,
+  recipientEmail: string,
+): Promise<EmailSendCheckResult> {
+  const optout = await getEmailOptout(supabase, recipientEmail);
+
+  if (optout) {
+    console.log(JSON.stringify({
+      event: 'email_send_blocked_optout',
+      email: recipientEmail,
+      reason: optout.reason,
+      optedOutAt: optout.createdAt,
+    }));
+
+    return {
+      canSend: false,
+      reason: 'opted_out',
+      email: recipientEmail,
+      optout,
+    };
+  }
+
+  return { canSend: true };
+}
+
 export async function getEmailOptout(
   supabase: SupabaseClient,
   email: string,
@@ -88,5 +121,65 @@ export async function getEmailOptout(
     reason: data.reason as EmailOptoutReason,
     vendorEventId: data.vendor_event_id,
     createdAt: data.created_at,
+  };
+}
+
+export type EndDealOnOptoutResult = {
+  ended: boolean;
+  dealId: string;
+  previousState: string;
+  newState: string;
+  reason: string;
+};
+
+export async function endDealOnOptout(
+  dealId: string,
+  reason: EmailOptoutReason,
+  occurredAt: string,
+): Promise<EndDealOnOptoutResult> {
+  const lifecycle = getLifecycleRepository();
+  const deals = supabaseShopperDealRepository();
+
+  const record = await lifecycle.getById(dealId);
+  if (!record) {
+    return {
+      ended: false,
+      dealId,
+      previousState: 'unknown',
+      newState: 'unknown',
+      reason: 'deal_not_found',
+    };
+  }
+
+  const previousState = record.endState;
+  if (previousState !== 'open') {
+    return {
+      ended: false,
+      dealId,
+      previousState,
+      newState: previousState,
+      reason: 'already_ended',
+    };
+  }
+
+  const updated = endDeal(record, 'dealer_declined', occurredAt);
+  await lifecycle.save(updated);
+  await deals.close(record.consumerUserId, dealId);
+
+  console.log(JSON.stringify({
+    event: 'deal_ended_email_optout',
+    dealId,
+    reason,
+    previousState,
+    newState: updated.endState,
+    occurredAt,
+  }));
+
+  return {
+    ended: true,
+    dealId,
+    previousState,
+    newState: updated.endState,
+    reason: `email_${reason}`,
   };
 }

@@ -13,7 +13,7 @@ import {
   type TelnyxEmailPayload,
 } from '@/lib/brain/telnyx';
 import { insertBrainVendorEvent, type BrainVendorEvent } from '@/lib/brain/repository';
-import { recordEmailOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
+import { recordEmailOptout, endDealOnOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,9 +86,14 @@ export async function POST(request: NextRequest) {
 
     if (eventType === 'email.unsubscribed' || eventType === 'email.spam_reported') {
       const fromEmail = emailPayload.from;
+      const reason: EmailOptoutReason = eventType === 'email.unsubscribed' ? 'unsubscribed' : 'spam_reported';
+
       if (fromEmail) {
-        const reason: EmailOptoutReason = eventType === 'email.unsubscribed' ? 'unsubscribed' : 'spam_reported';
         await recordEmailOptout(supabase, fromEmail, reason, vendorEventId);
+      }
+
+      if (clientState.dealId) {
+        await endDealOnOptout(clientState.dealId, reason, occurredAt);
       }
     }
   }
