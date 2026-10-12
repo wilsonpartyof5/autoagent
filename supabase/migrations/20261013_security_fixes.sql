@@ -45,26 +45,27 @@ begin
 end;
 $$;
 
--- 4. Revoke EXECUTE on mc_usage_increment from anon and public
+-- 4. Revoke EXECUTE on mc_usage_increment from anon, authenticated, and public
 -- The function is called via RPC from server-side API routes using service_role,
--- not from the client. This prevents direct invocation from anonymous users.
+-- not from the client. This prevents direct invocation from any user.
 revoke execute on function public.mc_usage_increment(text, text) from anon;
+revoke execute on function public.mc_usage_increment(text, text) from authenticated;
 revoke execute on function public.mc_usage_increment(text, text) from public;
 
--- 5. Align shopper_outreach tables with the rest: revoke from public, grant to service_role, force RLS
+-- 5. Align shopper_outreach tables with the rest: revoke from public/anon/authenticated, grant to service_role, force RLS
 -- shopper_outreach_messages
 alter table public.shopper_outreach_messages force row level security;
-revoke all on table public.shopper_outreach_messages from public;
+revoke all on table public.shopper_outreach_messages from public, anon, authenticated;
 grant select, insert, update, delete on table public.shopper_outreach_messages to service_role;
 
 -- shopper_offers
 alter table public.shopper_offers force row level security;
-revoke all on table public.shopper_offers from public;
+revoke all on table public.shopper_offers from public, anon, authenticated;
 grant select, insert, update, delete on table public.shopper_offers to service_role;
 
 -- shopper_deal_events
 alter table public.shopper_deal_events force row level security;
-revoke all on table public.shopper_deal_events from public;
+revoke all on table public.shopper_deal_events from public, anon, authenticated;
 grant select, insert, update, delete on table public.shopper_deal_events to service_role;
 
 -- Note: create_own_dealership remains available to authenticated users because
