@@ -20,6 +20,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? _user;
   SearchProfile? _searchProfile;
   bool _isLoading = true;
+  bool _isFirstRunDemo = false;
 
   @override
   void initState() {
@@ -240,6 +241,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: DrevvySpace.s6),
                   _buildDangerSection(context, colors, text),
+                  const SizedBox(height: DrevvySpace.s6),
+                  
+                  // Demo toggle section
+                  _buildDemoSection(context, colors, text),
                   const SizedBox(height: DrevvySpace.rootScrollBottomPadding),
                 ]),
               ),
@@ -637,6 +642,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
               ],
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Demo settings section with first-run toggle
+  Widget _buildDemoSection(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(
+            left: DrevvySpace.s1,
+            bottom: DrevvySpace.s3,
+          ),
+          child: Text(
+            'Demo Settings',
+            style: text.label.copyWith(color: colors.muted),
+          ),
+        ),
+        GlassCard(
+          child: _NotificationSwitch(
+            icon: LucideIcons.userPlus,
+            label: 'First-run mode',
+            description: 'Show generic starters instead of personalized',
+            value: _isFirstRunDemo,
+            onChanged: (value) {
+              setState(() {
+                _isFirstRunDemo = value;
+                if (value) {
+                  // Disable personalization to simulate first-run
+                  _searchProfile = _searchProfile?.copyWith(personalize: false);
+                } else {
+                  // Re-enable personalization
+                  _searchProfile = _searchProfile?.copyWith(personalize: true);
+                }
+              });
+              _repo.updateSearchProfile(_searchProfile!);
+            },
           ),
         ),
       ],

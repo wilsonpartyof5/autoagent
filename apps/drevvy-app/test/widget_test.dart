@@ -5,18 +5,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
-import 'package:drevvy_app/data/models/chat.dart';
 
 void main() {
   group('DrevvyApp Tests', () {
     testWidgets('DrevvyApp renders with tab bar', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: DrevvyApp()),
-      );
+      // Using runAsync to handle repository timers properly
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          const ProviderScope(child: DrevvyApp()),
+        );
 
-      // Pump multiple frames to allow async operations to settle
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 1));
+        // Allow async operations to complete
+        await Future.delayed(const Duration(milliseconds: 600));
+        await tester.pump();
+      });
 
       // Verify tab bar is present with all three tabs
       // "Shop" appears twice (screen + tab), "Deals" and "Profile" only in tab bar
@@ -26,11 +28,15 @@ void main() {
     });
 
     testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: DrevvyApp()),
-      );
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          const ProviderScope(child: DrevvyApp()),
+        );
+
+        // Allow async operations to complete
+        await Future.delayed(const Duration(milliseconds: 600));
+        await tester.pump();
+      });
 
       // Shop tab should be active - Ask|Shop toggle visible
       expect(find.text('Ask'), findsOneWidget);

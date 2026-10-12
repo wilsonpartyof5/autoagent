@@ -30,6 +30,8 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _isLoading = false;
   bool _isSearching = false;
   User? _user;
+  List<StarterCard>? _starters;
+  SearchProfile? _searchProfile;
 
   @override
   void initState() {
@@ -41,10 +43,14 @@ class _ShopScreenState extends State<ShopScreen> {
     final thread = await _repo.getChatThread();
     final user = await _repo.getCurrentUser();
     final history = await _repo.getChatHistory();
+    final starters = await _repo.getStarters();
+    final searchProfile = await _repo.getSearchProfile();
     setState(() {
       _thread = thread;
       _user = user;
       _chatHistory = history;
+      _starters = starters;
+      _searchProfile = searchProfile;
     });
   }
 
@@ -161,6 +167,10 @@ class _ShopScreenState extends State<ShopScreen> {
                         userName: _user?.firstName ?? 'there',
                         onPromptTap: (prompt) => _sendMessage(prompt),
                         onShopTap: (query) => _search(query),
+                        starters: _starters,
+                        hasHistory: _searchProfile?.personalize == true && 
+                                   (_searchProfile?.searches.isNotEmpty == true ||
+                                    _searchProfile?.items.isNotEmpty == true),
                       )
                     : ChatMessages(
                         thread: _thread!,
