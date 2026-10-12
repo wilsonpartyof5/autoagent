@@ -9,6 +9,7 @@ import {
   type TelnyxPayload,
   type TelnyxCallPayload,
   type TelnyxMessagingPayload,
+  type TelnyxEmailPayload,
 } from '@/lib/brain/telnyx';
 import { insertBrainVendorEvent, type BrainVendorEvent } from '@/lib/brain/repository';
 
@@ -16,11 +17,26 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const publicKey = process.env.TELNYX_PUBLIC_KEY ?? null;
+
+  if (!publicKey) {
+    return NextResponse.json(
+      { error: 'Webhook signature verification not configured' },
+      { status: 401 },
+    );
+  }
+
   const rawBody = await request.text();
   const signature = request.headers.get('telnyx-signature-ed25519');
   const timestamp = request.headers.get('telnyx-timestamp');
 
   const verification = verifyTelnyxSignature(rawBody, signature, timestamp, publicKey);
+
+  if (!verification.valid) {
+    return NextResponse.json(
+      { error: 'Invalid signature', reason: verification.reason },
+      { status: 401 },
+    );
+  }
 
   let payload: TelnyxPayload;
   try {
@@ -59,6 +75,11 @@ export async function POST(request: NextRequest) {
     const msgPayload = payload.data.payload as TelnyxMessagingPayload['data']['payload'];
     direction = msgPayload.direction ?? null;
     transcript = msgPayload.text ?? null;
+  } else if (eventType.startsWith('email.')) {
+    const emailPayload = payload.data.payload as TelnyxEmailPayload['data']['payload'];
+    direction = emailPayload.direction ?? null;
+    clientState = parseClientState(emailPayload.client_state);
+    transcript = emailPayload.body?.plain ?? emailPayload.body?.html ?? null;
   }
 
   const event: BrainVendorEvent = {
@@ -78,8 +99,8 @@ export async function POST(request: NextRequest) {
     transcript,
     summary: null,
     occurred_at: occurredAt,
-    signature_verified: verification.valid,
-    payload,
+    signature_verified: true,
+    payload: sanitizePayloadForStorage(payload),
   };
 
   const result = await insertBrainVendorEvent(supabase, event);
@@ -88,9 +109,21 @@ export async function POST(request: NextRequest) {
     console.error('[Telnyx webhook] Insert error:', result.error);
   }
 
-  if (!verification.valid) {
-    console.warn('[Telnyx webhook] Signature verification failed:', verification.reason);
-  }
-
   return NextResponse.json({ received: true, id: 'id' in result ? result.id : null });
+}
+
+function sanitizePayloadForStorage(payload: TelnyxPayload): Record<string, unknown> {
+  const sanitized = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+  const data = sanitized.data as Record<string, unknown> | undefined;
+  if (data?.payload) {
+    const innerPayload = data.payload as Record<string, unknown>;
+    delete innerPayload.listing_id;
+    delete innerPayload.listing_url;
+    delete innerPayload.dealer_name;
+    delete innerPayload.dealer_address;
+    delete innerPayload.dealer_phone;
+    delete innerPayload.marketcheck_id;
+    delete innerPayload.vehicle_details;
+  }
+  return sanitized;
 }

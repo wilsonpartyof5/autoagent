@@ -13,10 +13,25 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET ?? null;
+
+  if (!webhookSecret) {
+    return NextResponse.json(
+      { error: 'Webhook signature verification not configured' },
+      { status: 401 },
+    );
+  }
+
   const rawBody = await request.text();
   const signatureHeader = request.headers.get('elevenlabs-signature');
 
   const verification = verifyElevenLabsSignature(rawBody, signatureHeader, webhookSecret);
+
+  if (!verification.valid) {
+    return NextResponse.json(
+      { error: 'Invalid signature', reason: verification.reason },
+      { status: 401 },
+    );
+  }
 
   let payload: ElevenLabsPostCallPayload;
   try {
@@ -52,8 +67,8 @@ export async function POST(request: NextRequest) {
     transcript,
     summary,
     occurred_at: new Date(payload.event_timestamp * 1000).toISOString(),
-    signature_verified: verification.valid,
-    payload,
+    signature_verified: true,
+    payload: sanitizePayloadForStorage(payload),
   };
 
   const result = await insertBrainVendorEvent(supabase, event);
@@ -62,9 +77,24 @@ export async function POST(request: NextRequest) {
     console.error('[ElevenLabs webhook] Insert error:', result.error);
   }
 
-  if (!verification.valid) {
-    console.warn('[ElevenLabs webhook] Signature verification failed:', verification.reason);
-  }
-
   return NextResponse.json({ received: true, id: 'id' in result ? result.id : null });
+}
+
+function sanitizePayloadForStorage(payload: ElevenLabsPostCallPayload): Record<string, unknown> {
+  const sanitized = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+  const metadata = sanitized.metadata as Record<string, unknown> | undefined;
+  if (metadata?.conversation_initiation_client_data) {
+    const clientData = metadata.conversation_initiation_client_data as Record<string, unknown>;
+    const dynamicVars = clientData.dynamic_variables as Record<string, unknown> | undefined;
+    if (dynamicVars) {
+      delete dynamicVars.listing_id;
+      delete dynamicVars.listing_url;
+      delete dynamicVars.dealer_name;
+      delete dynamicVars.dealer_address;
+      delete dynamicVars.dealer_phone;
+      delete dynamicVars.marketcheck_id;
+      delete dynamicVars.vehicle_details;
+    }
+  }
+  return sanitized;
 }
