@@ -44,21 +44,27 @@ class ChatEmpty extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final usePersonalized = hasHistory && starters != null && starters!.isNotEmpty;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    // Bottom padding: composer (56) + gap (12) + tab bar (64) + tab bar inset (24) + safe area + buffer
+    final totalBottomPadding = DrevvySpace.composerMinHeight + 12 + 
+        DrevvySpace.tabBarHeight + DrevvySpace.tabBarBottomInset + bottomPadding + DrevvySpace.s4;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(
+      padding: EdgeInsets.only(
         left: DrevvySpace.gutter,
         right: DrevvySpace.gutter,
-        bottom: DrevvySpace.composerMinHeight + DrevvySpace.s8,
+        bottom: totalBottomPadding,
       ),
       child: Column(
         children: [
-          const SizedBox(height: DrevvySpace.s8),
+          // Tighter top spacing per frame 51
+          const SizedBox(height: DrevvySpace.s4),
           
-          // Gradient orb
+          // Gradient orb - smaller per frame 51
           Container(
-            width: 92,
-            height: 92,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               gradient: DrevvyColors.brandGradient,
               shape: BoxShape.circle,
@@ -67,11 +73,12 @@ class ChatEmpty extends StatelessWidget {
             child: const Icon(
               LucideIcons.sparkles,
               color: Colors.white,
-              size: 40,
+              size: 32,
             ),
           ),
           
-          const SizedBox(height: DrevvySpace.s6),
+          // Tighter gap between orb and greeting
+          const SizedBox(height: DrevvySpace.s4),
           
           // Greeting - personalized vs generic
           Text(
@@ -83,7 +90,7 @@ class ChatEmpty extends StatelessWidget {
           ),
           
           if (usePersonalized) ...[
-            const SizedBox(height: DrevvySpace.s2),
+            const SizedBox(height: DrevvySpace.s1),
             Text(
               'Pick up where you left off, or ask anything.',
               style: text.body.copyWith(color: colors.muted),
@@ -91,16 +98,17 @@ class ChatEmpty extends StatelessWidget {
             ),
           ],
           
-          const SizedBox(height: DrevvySpace.s8),
+          // Tighter gap before cards
+          const SizedBox(height: DrevvySpace.s5),
           
           // 2x2 prompt cards - personalized or generic
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: DrevvySpace.s3,
-            crossAxisSpacing: DrevvySpace.s3,
-            childAspectRatio: 1.1,
+            mainAxisSpacing: DrevvySpace.s2,
+            crossAxisSpacing: DrevvySpace.s2,
+            childAspectRatio: 1.15,
             children: usePersonalized
                 ? starters!.map((starter) {
                     return _PromptCard(
@@ -128,7 +136,7 @@ class ChatEmpty extends StatelessWidget {
           
           // "Based on your past searches · Manage" link (personalized only)
           if (usePersonalized) ...[
-            const SizedBox(height: DrevvySpace.s4),
+            const SizedBox(height: DrevvySpace.s3),
             GestureDetector(
               onTap: () => context.go('/profile'),
               child: Row(
@@ -154,7 +162,7 @@ class ChatEmpty extends StatelessWidget {
             ),
           ],
           
-          const SizedBox(height: DrevvySpace.s8),
+          const SizedBox(height: DrevvySpace.s4),
           
           // Trust line
           Row(
@@ -168,8 +176,6 @@ class ChatEmpty extends StatelessWidget {
               ),
             ],
           ),
-          
-          const SizedBox(height: DrevvySpace.s8),
         ],
       ),
     );
@@ -197,18 +203,18 @@ class _PromptCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: GlassCard(
-        padding: const EdgeInsets.all(DrevvySpace.s4),
+        padding: const EdgeInsets.all(DrevvySpace.s3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: colors.lilacTint,
                 borderRadius: BorderRadius.circular(DrevvyRadius.xs),
               ),
-              child: Icon(icon, color: colors.violet, size: 20),
+              child: Icon(icon, color: colors.violet, size: 18),
             ),
             const Spacer(),
             // Uppercase kicker (v1.6.1)
@@ -219,12 +225,14 @@ class _PromptCard extends StatelessWidget {
                   color: colors.muted,
                   fontWeight: FontWeight.w800,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
             ],
             Text(
               title, 
-              style: text.bodyStrong,
+              style: text.bodyStrong.copyWith(fontSize: 13, height: 1.3),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),

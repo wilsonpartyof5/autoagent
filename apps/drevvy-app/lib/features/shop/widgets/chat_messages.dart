@@ -35,12 +35,17 @@ class ChatMessages extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    // Bottom padding: composer (56) + gap (12) + tab bar (64) + tab bar inset (24) + safe area + buffer
+    final totalBottomPadding = DrevvySpace.composerMinHeight + 12 + 
+        DrevvySpace.tabBarHeight + DrevvySpace.tabBarBottomInset + bottomPadding + DrevvySpace.s4;
+    
     return ListView.builder(
-      padding: const EdgeInsets.only(
+      padding: EdgeInsets.only(
         left: DrevvySpace.gutter,
         right: DrevvySpace.gutter,
         top: DrevvySpace.s4,
-        bottom: DrevvySpace.composerMinHeight + DrevvySpace.s8,
+        bottom: totalBottomPadding,
       ),
       itemCount: thread.messages.length + (isLoading ? 1 : 0),
       itemBuilder: (context, index) {
