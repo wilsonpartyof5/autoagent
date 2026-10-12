@@ -96,10 +96,35 @@ class ChatEmpty extends StatelessWidget {
               style: text.body.copyWith(color: colors.muted),
               textAlign: TextAlign.center,
             ),
+            // "Based on your past searches · Manage" link - moved above cards
+            const SizedBox(height: DrevvySpace.s2),
+            GestureDetector(
+              onTap: () => context.go('/profile'),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Based on your past searches',
+                    style: text.callout.copyWith(color: colors.muted),
+                  ),
+                  Text(
+                    ' · ',
+                    style: text.callout.copyWith(color: colors.muted),
+                  ),
+                  Text(
+                    'Manage',
+                    style: text.callout.copyWith(
+                      color: colors.violet,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           
-          // Tighter gap before cards
-          const SizedBox(height: DrevvySpace.s5),
+          // Tight gap before cards
+          const SizedBox(height: DrevvySpace.s3),
           
           // 2x2 prompt cards - personalized or generic
           GridView.count(
@@ -134,35 +159,7 @@ class ChatEmpty extends StatelessWidget {
                   }).toList(),
           ),
           
-          // "Based on your past searches · Manage" link (personalized only)
-          if (usePersonalized) ...[
-            const SizedBox(height: DrevvySpace.s3),
-            GestureDetector(
-              onTap: () => context.go('/profile'),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Based on your past searches',
-                    style: text.callout.copyWith(color: colors.muted),
-                  ),
-                  Text(
-                    ' · ',
-                    style: text.callout.copyWith(color: colors.muted),
-                  ),
-                  Text(
-                    'Manage',
-                    style: text.callout.copyWith(
-                      color: colors.violet,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          
-          const SizedBox(height: DrevvySpace.s4),
+          const SizedBox(height: DrevvySpace.s3),
           
           // Trust line
           Row(
