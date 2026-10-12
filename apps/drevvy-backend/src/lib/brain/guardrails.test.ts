@@ -1,7 +1,15 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runGuardrails, checkOtdThreshold, computeOtdThreshold, type GuardrailInput } from './guardrails';
+import {
+  runGuardrails,
+  checkOtdThreshold,
+  computeOtdThreshold,
+  applyPlaybookRules,
+  getAiDisclosure,
+  getPriceFirstResponse,
+  type GuardrailInput,
+} from './guardrails';
 
 describe('runGuardrails', () => {
   const baseInput: GuardrailInput = {
@@ -77,10 +85,10 @@ describe('runGuardrails', () => {
   });
 
   describe('no tax contest rule', () => {
-    it('blocks drafts that contest taxes', () => {
+    it('blocks drafts that contest tax amounts', () => {
       const input: GuardrailInput = {
         ...baseInput,
-        draft: 'We think the taxes are too high and should be reduced.',
+        draft: 'The taxes are too high, can you reduce them?',
       };
       const result = runGuardrails(input);
       assert.equal(result.blocked, true);
@@ -90,7 +98,7 @@ describe('runGuardrails', () => {
     it('blocks drafts that contest title fees', () => {
       const input: GuardrailInput = {
         ...baseInput,
-        draft: 'Can you waive the title fee?',
+        draft: 'We want to remove the title fee from the deal.',
       };
       const result = runGuardrails(input);
       assert.equal(result.blocked, true);
@@ -100,21 +108,38 @@ describe('runGuardrails', () => {
     it('blocks drafts that contest registration fees', () => {
       const input: GuardrailInput = {
         ...baseInput,
-        draft: 'The registration fee seems excessive.',
+        draft: 'The registration fee is excessive and unfair.',
       };
       const result = runGuardrails(input);
       assert.equal(result.blocked, true);
       assert.ok(result.violations.includes('no_tax_contest'));
     });
 
-    it('blocks drafts that contest doc fees', () => {
+    it('allows discussing doc fees', () => {
       const input: GuardrailInput = {
         ...baseInput,
         draft: 'Can you reduce the doc fee?',
       };
       const result = runGuardrails(input);
-      assert.equal(result.blocked, true);
-      assert.ok(result.violations.includes('no_tax_contest'));
+      assert.equal(result.checks.noTaxContest, true);
+    });
+
+    it('allows discussing destination fees', () => {
+      const input: GuardrailInput = {
+        ...baseInput,
+        draft: 'What is the destination fee on this vehicle?',
+      };
+      const result = runGuardrails(input);
+      assert.equal(result.checks.noTaxContest, true);
+    });
+
+    it('allows plain mentions of tax', () => {
+      const input: GuardrailInput = {
+        ...baseInput,
+        draft: 'What are the taxes on this vehicle?',
+      };
+      const result = runGuardrails(input);
+      assert.equal(result.checks.noTaxContest, true);
     });
 
     it('allows normal pricing discussions', () => {
@@ -305,5 +330,93 @@ describe('computeOtdThreshold', () => {
   it('returns 1.5% above the crossover point', () => {
     const threshold = computeOtdThreshold(33334);
     assert.ok(threshold > 500);
+  });
+});
+
+describe('applyPlaybookRules', () => {
+  it('escalates when fair OTD is unknown', () => {
+    const result = applyPlaybookRules({
+      fairOtd: null,
+      currentOfferOtd: 30000,
+      isItemized: true,
+      dealerMessage: 'Here is our best price.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'escalate_to_human');
+    assert.ok(result.reason.includes('unknown'));
+  });
+
+  it('presents to shopper when $750+ under fair', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: 31000,
+      isItemized: true,
+      dealerMessage: 'Here is our price.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'present_to_shopper');
+    assert.ok(result.reason.includes('1,000'));
+  });
+
+  it('requests itemization when price is not itemized', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: 31500,
+      isItemized: false,
+      dealerMessage: 'Here is our price.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'request_itemization');
+  });
+
+  it('responds price-first when dealer says come in', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'Have the buyer come in to discuss.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'price_first_response');
+    assert.ok(result.reason.includes('come in'));
+  });
+
+  it('responds price-first when dealer asks for buyer contact', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'Can I get the buyer\'s phone number?',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'price_first_response');
+    assert.ok(result.reason.includes('contact'));
+  });
+
+  it('continues when no special rule triggered', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: 32500,
+      isItemized: true,
+      dealerMessage: 'Let me check with my manager.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'continue');
+  });
+});
+
+describe('getAiDisclosure', () => {
+  it('includes the shopper first name', () => {
+    const disclosure = getAiDisclosure('Maya');
+    assert.ok(disclosure.includes('Maya'));
+    assert.ok(disclosure.includes("Drevvy's AI"));
+  });
+});
+
+describe('getPriceFirstResponse', () => {
+  it('returns the price-first message', () => {
+    const response = getPriceFirstResponse();
+    assert.ok(response.includes('Price first'));
+    assert.ok(response.includes('happy to set that up'));
   });
 });

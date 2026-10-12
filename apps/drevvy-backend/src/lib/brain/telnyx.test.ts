@@ -101,6 +101,12 @@ describe('mapTelnyxEventToChannel', () => {
     assert.equal(mapTelnyxEventToChannel('message.finalized'), 'sms');
   });
 
+  it('maps email events to email', () => {
+    assert.equal(mapTelnyxEventToChannel('email.delivered'), 'email');
+    assert.equal(mapTelnyxEventToChannel('email.bounced'), 'email');
+    assert.equal(mapTelnyxEventToChannel('email.received'), 'email');
+  });
+
   it('returns null for unknown events', () => {
     assert.equal(mapTelnyxEventToChannel('unknown.event'), null);
   });
@@ -157,5 +163,44 @@ describe('mapTelnyxEventToStatus', () => {
     const result = mapTelnyxEventToStatus(payload);
     assert.equal(result.status, 'failed');
     assert.equal(result.errorCode, '40001');
+  });
+
+  it('maps email.bounced to bounced with error', () => {
+    const payload = {
+      data: {
+        id: 'test',
+        event_type: 'email.bounced' as const,
+        occurred_at: new Date().toISOString(),
+        record_type: 'event' as const,
+        payload: {
+          id: 'email-1',
+          direction: 'outbound' as const,
+          bounce_type: 'hard',
+          bounce_reason: 'Invalid recipient',
+        },
+      },
+    };
+    const result = mapTelnyxEventToStatus(payload);
+    assert.equal(result.status, 'bounced');
+    assert.equal(result.errorCode, 'hard');
+    assert.equal(result.errorDetail, 'Invalid recipient');
+  });
+
+  it('maps email.delivered to delivered', () => {
+    const payload = {
+      data: {
+        id: 'test',
+        event_type: 'email.delivered' as const,
+        occurred_at: new Date().toISOString(),
+        record_type: 'event' as const,
+        payload: {
+          id: 'email-1',
+          direction: 'outbound' as const,
+        },
+      },
+    };
+    const result = mapTelnyxEventToStatus(payload);
+    assert.equal(result.status, 'delivered');
+    assert.equal(result.errorCode, null);
   });
 });
