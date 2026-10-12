@@ -254,6 +254,19 @@ export default function TermsPage() {
             </section>
 
             <section>
+              <h2 className="text-2xl font-semibold mb-4">Aggregated Market Insights</h2>
+              <p className="text-muted-foreground">
+                Drevvy may create and share de-identified, aggregated market insights from App activity with
+                dealerships and partners. These insights never identify individual shoppers. For details, see
+                our{' '}
+                <Link href="/privacy" className="text-primary hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            </section>
+
+            <section>
               <h2 className="text-2xl font-semibold mb-4">Intellectual Property</h2>
               <p className="text-muted-foreground">
                 The App, including its design, features, content, and code, is owned by {LEGAL.ENTITY_NAME} and
