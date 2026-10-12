@@ -133,11 +133,12 @@ void main() {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
-        // The orb is a 72x72 container with gradient (tightened per frame 51)
+        // The orb is a container with gradient decoration (size is responsive)
         final orbFinder = find.byWidgetPredicate((widget) =>
           widget is Container &&
-          widget.constraints?.maxWidth == 72 &&
-          widget.constraints?.maxHeight == 72
+          widget.decoration is BoxDecoration &&
+          (widget.decoration as BoxDecoration).gradient != null &&
+          (widget.decoration as BoxDecoration).shape == BoxShape.circle
         );
         expect(orbFinder, findsOneWidget);
       });

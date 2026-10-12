@@ -143,9 +143,11 @@ class _DealsScreenState extends State<DealsScreen> {
                     ),
                   ),
 
-                  // Bottom padding for tab bar
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: DrevvySpace.rootScrollBottomPadding),
+                  // Bottom padding per spec §6.5a: tabBarHeight + safeArea.bottom + composerHeight + 24
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: DrevvySpace.contentBottomInset + MediaQuery.of(context).padding.bottom,
+                    ),
                   ),
                 ],
               ),

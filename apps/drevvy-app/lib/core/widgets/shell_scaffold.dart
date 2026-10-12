@@ -5,6 +5,7 @@ import 'canvas_background.dart';
 import 'offline_banner.dart';
 import '../theme/drevvy_tokens.dart';
 
+/// Shell scaffold per spec §1.1/§6.5a: extendBody true, frosted tab bar pinned at bottom
 class ShellScaffold extends StatefulWidget {
   const ShellScaffold({
     super.key,
@@ -29,6 +30,7 @@ class _ShellScaffoldState extends State<ShellScaffold> {
     final topPadding = MediaQuery.of(context).padding.top;
     
     return Scaffold(
+      extendBody: true,
       body: Stack(
         children: [
           const CanvasBackground(),

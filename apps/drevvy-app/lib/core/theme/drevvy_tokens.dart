@@ -199,11 +199,15 @@ abstract final class DrevvySpace {
   static const compactPillHeight = 44.0;
   static const tabBarHeight = 64.0;
   static const tabBarSideInset = 20.0;
-  static const tabBarBottomInset = 24.0;
-  static const rootScrollBottomPadding = 120.0;
+  static const tabBarBottomInset = 12.0;
   static const composerMinHeight = 56.0;
-  static const composerBottomOffset = 100.0;
+  static const composerTabBarGap = 12.0;
   static const chatHeaderHeight = 56.0;
+  
+  /// Computed bottom inset for scrollable content per spec §6.5a:
+  /// tabBarHeight + composerMinHeight + composerTabBarGap + 24pt buffer
+  /// Add safeArea.bottom at runtime.
+  static const contentBottomInset = tabBarHeight + composerMinHeight + composerTabBarGap + 24.0;
 }
 
 abstract final class DrevvyRadius {

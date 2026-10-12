@@ -248,7 +248,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   
                   // Demo toggle section
                   _buildDemoSection(context, colors, text),
-                  const SizedBox(height: DrevvySpace.rootScrollBottomPadding),
+                  // Bottom padding per spec §6.5a
+                  SizedBox(height: DrevvySpace.contentBottomInset + MediaQuery.of(context).padding.bottom),
                 ]),
               ),
             ),

@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/search_profile.dart';
 
 /// Screen 07, 51: Shop empty state with personalized starters (v1.6.1)
+/// Per spec §6.5a: scrollable content with computed bottom padding
 class ChatEmpty extends StatelessWidget {
   const ChatEmpty({
     super.key,
@@ -44,41 +45,48 @@ class ChatEmpty extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final usePersonalized = hasHistory && starters != null && starters!.isNotEmpty;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final screenHeight = MediaQuery.of(context).size.height;
     
-    // Bottom padding: composer (56) + gap (12) + tab bar (64) + tab bar inset (24) + safe area + buffer
-    final totalBottomPadding = DrevvySpace.composerMinHeight + 12 + 
-        DrevvySpace.tabBarHeight + DrevvySpace.tabBarBottomInset + bottomPadding + DrevvySpace.s4;
+    // Computed bottom padding per spec §6.5a:
+    // tabBarHeight + safeArea.bottom + composerHeight + 24
+    final bottomPadding = DrevvySpace.contentBottomInset + safeBottom;
+    
+    // On screens shorter than 750, reduce orb to 64 and tighten spacing
+    final isCompact = screenHeight < 750;
+    final orbSize = isCompact ? 64.0 : 72.0;
+    final orbIconSize = isCompact ? 28.0 : 32.0;
+    final topSpacing = isCompact ? DrevvySpace.s2 : DrevvySpace.s4;
+    final orbGreetingGap = isCompact ? DrevvySpace.s2 : DrevvySpace.s3;
+    final greetingCardsGap = isCompact ? DrevvySpace.s2 : DrevvySpace.s3;
 
     return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: DrevvySpace.gutter,
         right: DrevvySpace.gutter,
-        bottom: totalBottomPadding,
+        bottom: bottomPadding,
       ),
       child: Column(
         children: [
-          // Tighter top spacing per frame 51
-          const SizedBox(height: DrevvySpace.s4),
+          SizedBox(height: topSpacing),
           
-          // Gradient orb - smaller per frame 51
+          // Gradient orb - responsive size
           Container(
-            width: 72,
-            height: 72,
+            width: orbSize,
+            height: orbSize,
             decoration: BoxDecoration(
               gradient: DrevvyColors.brandGradient,
               shape: BoxShape.circle,
               boxShadow: colors.elevBrand,
             ),
-            child: const Icon(
+            child: Icon(
               LucideIcons.sparkles,
               color: Colors.white,
-              size: 32,
+              size: orbIconSize,
             ),
           ),
           
-          // Tighter gap between orb and greeting
-          const SizedBox(height: DrevvySpace.s4),
+          SizedBox(height: orbGreetingGap),
           
           // Greeting - personalized vs generic
           Text(
@@ -96,7 +104,7 @@ class ChatEmpty extends StatelessWidget {
               style: text.body.copyWith(color: colors.muted),
               textAlign: TextAlign.center,
             ),
-            // "Based on your past searches · Manage" link - moved above cards
+            // "Based on your past searches · Manage" link
             const SizedBox(height: DrevvySpace.s2),
             GestureDetector(
               onTap: () => context.go('/profile'),
@@ -123,43 +131,19 @@ class ChatEmpty extends StatelessWidget {
             ),
           ],
           
-          // Tight gap before cards
-          const SizedBox(height: DrevvySpace.s3),
+          SizedBox(height: greetingCardsGap),
           
-          // 2x2 prompt cards - personalized or generic
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: DrevvySpace.s2,
-            crossAxisSpacing: DrevvySpace.s2,
-            childAspectRatio: 1.15,
-            children: usePersonalized
-                ? starters!.map((starter) {
-                    return _PromptCard(
-                      icon: _iconForKind(starter.kind),
-                      kicker: starter.kicker,
-                      title: starter.title,
-                      onTap: () {
-                        if (starter.action.mode == 'shop') {
-                          onShopTap(starter.action.prompt ?? '');
-                        } else {
-                          onPromptTap(starter.action.prompt ?? starter.title);
-                        }
-                      },
-                    );
-                  }).toList()
-                : _genericPrompts.map((prompt) {
-                    return _PromptCard(
-                      icon: prompt.icon,
-                      kicker: prompt.kicker,
-                      title: prompt.title,
-                      onTap: () => onPromptTap(prompt.query),
-                    );
-                  }).toList(),
+          // 2x2 prompt cards with 16pt gaps, min height 120, no fixed aspect ratio
+          _StarterGrid(
+            usePersonalized: usePersonalized,
+            starters: starters,
+            genericPrompts: _genericPrompts,
+            iconForKind: _iconForKind,
+            onPromptTap: onPromptTap,
+            onShopTap: onShopTap,
           ),
           
-          const SizedBox(height: DrevvySpace.s3),
+          const SizedBox(height: DrevvySpace.s4),
           
           // Trust line
           Row(
@@ -176,6 +160,83 @@ class ChatEmpty extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// 2x2 grid with 16pt gaps, min card height 120, maxLines 2 with ellipsis
+class _StarterGrid extends StatelessWidget {
+  const _StarterGrid({
+    required this.usePersonalized,
+    required this.starters,
+    required this.genericPrompts,
+    required this.iconForKind,
+    required this.onPromptTap,
+    required this.onShopTap,
+  });
+
+  final bool usePersonalized;
+  final List<StarterCard>? starters;
+  final List<({IconData icon, String kicker, String title, String query})> genericPrompts;
+  final IconData Function(StarterKind) iconForKind;
+  final ValueChanged<String> onPromptTap;
+  final ValueChanged<String> onShopTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = usePersonalized && starters != null
+        ? starters!.take(4).toList()
+        : genericPrompts.take(4).toList();
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _buildCard(context, 0, items)),
+            const SizedBox(width: DrevvySpace.gutter),
+            Expanded(child: _buildCard(context, 1, items)),
+          ],
+        ),
+        const SizedBox(height: DrevvySpace.gutter),
+        Row(
+          children: [
+            Expanded(child: _buildCard(context, 2, items)),
+            const SizedBox(width: DrevvySpace.gutter),
+            Expanded(child: _buildCard(context, 3, items)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCard(BuildContext context, int index, List<dynamic> items) {
+    if (index >= items.length) {
+      return const SizedBox.shrink();
+    }
+
+    final item = items[index];
+    
+    if (item is StarterCard) {
+      return _PromptCard(
+        icon: iconForKind(item.kind),
+        kicker: item.kicker,
+        title: item.title,
+        onTap: () {
+          if (item.action.mode == 'shop') {
+            onShopTap(item.action.prompt ?? '');
+          } else {
+            onPromptTap(item.action.prompt ?? item.title);
+          }
+        },
+      );
+    } else {
+      final prompt = item as ({IconData icon, String kicker, String title, String query});
+      return _PromptCard(
+        icon: prompt.icon,
+        kicker: prompt.kicker,
+        title: prompt.title,
+        onTap: () => onPromptTap(prompt.query),
+      );
+    }
   }
 }
 
@@ -201,39 +262,43 @@ class _PromptCard extends StatelessWidget {
       onTap: onTap,
       child: GlassCard(
         padding: const EdgeInsets.all(DrevvySpace.s3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: colors.lilacTint,
-                borderRadius: BorderRadius.circular(DrevvyRadius.xs),
-              ),
-              child: Icon(icon, color: colors.violet, size: 18),
-            ),
-            const Spacer(),
-            // Uppercase kicker (v1.6.1)
-            if (kicker != null) ...[
-              Text(
-                kicker!,
-                style: text.micro.copyWith(
-                  color: colors.muted,
-                  fontWeight: FontWeight.w800,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colors.lilacTint,
+                  borderRadius: BorderRadius.circular(DrevvyRadius.xs),
                 ),
-                maxLines: 1,
+                child: Icon(icon, color: colors.violet, size: 18),
+              ),
+              const SizedBox(height: DrevvySpace.s3),
+              // Uppercase kicker (v1.6.1)
+              if (kicker != null) ...[
+                Text(
+                  kicker!,
+                  style: text.micro.copyWith(
+                    color: colors.muted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+              ],
+              Text(
+                title, 
+                style: text.bodyStrong,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 2),
             ],
-            Text(
-              title, 
-              style: text.bodyStrong.copyWith(fontSize: 13, height: 1.3),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          ),
         ),
       ),
     );

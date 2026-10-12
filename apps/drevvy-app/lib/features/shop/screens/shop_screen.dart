@@ -140,7 +140,11 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final isEmpty = _thread?.isEmpty ?? true;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    
+    // Composer pinned 12pt above tab bar per spec §6.5a
+    final composerBottom = DrevvySpace.tabBarBottomInset + DrevvySpace.tabBarHeight + 
+        DrevvySpace.composerTabBarGap + safeBottom;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -193,13 +197,11 @@ class _ShopScreenState extends State<ShopScreen> {
             ],
           ),
           
-          // Floating composer: 12pt above the floating tab bar per §6.5a
-          // Tab bar: bottom = tabBarBottomInset (24) + safe area
-          // Composer: bottom = tabBarBottomInset + tabBarHeight (64) + 12pt gap
+          // Composer pinned 12pt above tab bar, never overlapping content
           Positioned(
             left: DrevvySpace.gutter,
             right: DrevvySpace.gutter,
-            bottom: DrevvySpace.tabBarBottomInset + DrevvySpace.tabBarHeight + 12 + bottomPadding,
+            bottom: composerBottom,
             child: ChatComposer(
               mode: _mode,
               onSend: _mode == ChatMode.ask ? _sendMessage : _search,
