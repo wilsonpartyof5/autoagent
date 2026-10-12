@@ -5,7 +5,6 @@ struct ChatView: View {
   @ObservedObject var mapVM: MapViewModel
   @ObservedObject var chatVM: ChatViewModel
   var onMapExpand: (() -> Void)? = nil
-  var demoStore: DemoDataStore? = nil
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -14,13 +13,6 @@ struct ChatView: View {
           introIfNeeded
 
           ForEach(messages) { message in
-            if message.role == .assistant, let store = demoStore, store.hasHistory {
-              let memoryItems = store.memoryItemsUsedInChat("current")
-              if !memoryItems.isEmpty {
-                MemoryChipView(memoryItems: memoryItems)
-                  .padding(.bottom, 4)
-              }
-            }
             MessageRow(message: message, mapVM: mapVM, chatVM: chatVM, onMapExpand: onMapExpand)
               .id(message.id)
           }
