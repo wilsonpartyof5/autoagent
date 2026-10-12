@@ -5,10 +5,15 @@
  * Rules:
  * 1. No cold texts: SMS only if dealer texted first or opted in
  * 2. California calls NOT paused (spec clarification: CA calls are allowed)
- * 3. Never contest taxes, title, or registration fees
+ * 3. Never contest taxes, title, or registration AMOUNTS (doc/destination fees are discussable)
  * 4. Max 2 pushback rounds per deal per dealer
  * 5. Push back only when offer OTD > fair OTD + max($500, 1.5% of fair OTD)
  * 6. Never share shopper contact info (phone, email, last name)
+ * 7. Present offer immediately when $750+ under fair
+ * 8. Request itemization when price isn't itemized
+ * 9. "Price first, then we're happy to set that up" for come-in/call-me requests
+ * 10. Honest AI disclosure ("I'm Drevvy's AI, working for {first}")
+ * 11. Escalate when fair OTD is unknown
  */
 
 import { PUSHBACK_THRESHOLD } from './config';
@@ -39,15 +44,14 @@ export type GuardrailResult = {
 };
 
 const MAX_PUSHBACK_ROUNDS = 2;
+const PRESENT_IMMEDIATELY_THRESHOLD = 750;
 
-const TAX_TITLE_REG_PATTERNS = [
-  /\b(tax|taxes|taxation)\b/i,
-  /\btitle\s*(fee|fees|charge|charges|cost|costs)?\b/i,
-  /\bregistration\s*(fee|fees|charge|charges|cost|costs)?\b/i,
-  /\bdoc\s*(fee|fees)\b/i,
-  /\bdestination\s*(fee|fees|charge|charges)?\b/i,
-  /\b(contest|dispute|challenge|negotiate|reduce|lower|waive|remove)\s*(the\s+)?(tax|title|registration|doc|destination)/i,
-  /\b(tax|title|registration|doc|destination)\s*(is|are|seems?)?\s*(too\s+)?(high|much|excessive)/i,
+const TAX_TITLE_REG_CONTEST_PATTERNS = [
+  /\b(contest|dispute|challenge|reduce|lower|waive|remove|drop)\s+.{0,20}(tax|taxes|title\s*fee|registration\s*fee)/i,
+  /\b(tax|taxes|title\s*fee|registration\s*fee).{0,20}(too\s+)?(high|much|excessive|unfair|wrong)/i,
+  /\bshouldn'?t\s+(have\s+to\s+)?pay.{0,20}(tax|taxes|title|registration)/i,
+  /\b(we\s+)?won'?t\s+pay.{0,20}(tax|taxes|title|registration)/i,
+  /\bremove\s+the\s+(tax|title|registration)/i,
 ];
 
 const SHOPPER_CONTACT_PATTERNS = [
@@ -107,9 +111,9 @@ function checkNoColdTexts(input: GuardrailInput): boolean {
 
 function checkNoTaxContest(draft: string, action: string | null): boolean {
   if (!draft && !action) return true;
-  const textToCheck = `${draft} ${action ?? ''}`.toLowerCase();
+  const textToCheck = `${draft} ${action ?? ''}`;
 
-  for (const pattern of TAX_TITLE_REG_PATTERNS) {
+  for (const pattern of TAX_TITLE_REG_CONTEST_PATTERNS) {
     if (pattern.test(textToCheck)) {
       return false;
     }
@@ -133,10 +137,7 @@ export function checkOtdThreshold(
 
   const absoluteThreshold = PUSHBACK_THRESHOLD.absoluteDollars;
   const percentThreshold = fairOtd * PUSHBACK_THRESHOLD.percentOfFair;
-
-  const threshold = PUSHBACK_THRESHOLD.mode === 'greater'
-    ? Math.max(absoluteThreshold, percentThreshold)
-    : Math.min(absoluteThreshold, percentThreshold);
+  const threshold = Math.max(absoluteThreshold, percentThreshold);
 
   const difference = currentOfferOtd - fairOtd;
   return difference >= threshold;
@@ -172,8 +173,76 @@ function checkNoShopperContactInfo(draft: string, shopperFirst: string): boolean
 export function computeOtdThreshold(fairOtd: number): number {
   const absoluteThreshold = PUSHBACK_THRESHOLD.absoluteDollars;
   const percentThreshold = fairOtd * PUSHBACK_THRESHOLD.percentOfFair;
+  return Math.max(absoluteThreshold, percentThreshold);
+}
 
-  return PUSHBACK_THRESHOLD.mode === 'greater'
-    ? Math.max(absoluteThreshold, percentThreshold)
-    : Math.min(absoluteThreshold, percentThreshold);
+export type PlaybookDecision =
+  | { action: 'present_to_shopper'; reason: string }
+  | { action: 'request_itemization'; reason: string }
+  | { action: 'price_first_response'; reason: string }
+  | { action: 'escalate_to_human'; reason: string }
+  | { action: 'continue'; reason: string };
+
+export function applyPlaybookRules(input: {
+  fairOtd: number | null;
+  currentOfferOtd: number | null;
+  isItemized: boolean;
+  dealerMessage: string;
+  shopperFirst: string;
+}): PlaybookDecision {
+  if (input.fairOtd === null) {
+    return { action: 'escalate_to_human', reason: 'Fair OTD is unknown; cannot evaluate offer' };
+  }
+
+  if (input.currentOfferOtd !== null) {
+    const underFair = input.fairOtd - input.currentOfferOtd;
+    if (underFair >= PRESENT_IMMEDIATELY_THRESHOLD) {
+      return {
+        action: 'present_to_shopper',
+        reason: `Offer is $${underFair.toLocaleString()} under fair OTD; present immediately`,
+      };
+    }
+  }
+
+  if (input.currentOfferOtd !== null && !input.isItemized) {
+    return { action: 'request_itemization', reason: 'Price received but not itemized' };
+  }
+
+  const lowerMessage = input.dealerMessage.toLowerCase();
+  const comeInPatterns = [
+    /come\s*(on\s+)?in/i,
+    /stop\s+by/i,
+    /visit\s+(us|the\s+dealership)/i,
+    /come\s+to\s+(the\s+)?(store|dealership)/i,
+  ];
+  const callMePatterns = [
+    /call\s+(me|us)/i,
+    /give\s+(me|us)\s+a\s+call/i,
+    /phone\s+number/i,
+    /can\s+i\s+(get|have)\s+(your|the\s+buyer'?s?)\s+(number|phone|contact)/i,
+    /buyer'?s?\s+(phone|number|contact)/i,
+    /contact\s+(info|information|details)/i,
+  ];
+
+  for (const pattern of comeInPatterns) {
+    if (pattern.test(lowerMessage)) {
+      return { action: 'price_first_response', reason: 'Dealer requested buyer come in' };
+    }
+  }
+
+  for (const pattern of callMePatterns) {
+    if (pattern.test(lowerMessage)) {
+      return { action: 'price_first_response', reason: 'Dealer requested buyer contact info' };
+    }
+  }
+
+  return { action: 'continue', reason: 'No special playbook rule triggered' };
+}
+
+export function getAiDisclosure(shopperFirst: string): string {
+  return `I'm Drevvy's AI, working for ${shopperFirst}.`;
+}
+
+export function getPriceFirstResponse(): string {
+  return "Price first, then we're happy to set that up.";
 }

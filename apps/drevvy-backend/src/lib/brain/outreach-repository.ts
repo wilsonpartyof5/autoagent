@@ -38,7 +38,7 @@ export async function getOutreachDealsFromDb(
         region: event.region ?? '',
         dealerSize: event.dealer_size ?? 'mid',
         dealerTz: event.dealer_tz ?? 'America/New_York',
-        mainLineTextable: true,
+        mainLineTextable: false,
         vehicleId: event.vehicle_id,
         vehicle: '',
         vehicleShort: '',
