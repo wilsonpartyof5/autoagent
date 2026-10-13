@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/drevvy_theme.dart';
 import '../theme/drevvy_tokens.dart';
 
+/// Frosted tab bar per spec §1.1/§6.5a: blur 20, night fill ~72% opacity
 class FloatingTabBar extends StatelessWidget {
   const FloatingTabBar({
     super.key,
@@ -22,7 +23,6 @@ class FloatingTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
@@ -33,16 +33,12 @@ class FloatingTabBar extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(DrevvyRadius.tab),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: DrevvyColors.glassBlur, sigmaY: DrevvyColors.glassBlur),
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
             height: DrevvySpace.tabBarHeight,
             decoration: BoxDecoration(
-              color: colors.tabBar,
+              color: const Color(0xFF171A2C).withValues(alpha: 0.72),
               borderRadius: BorderRadius.circular(DrevvyRadius.tab),
-              boxShadow: colors.elev2,
-              border: Theme.of(context).brightness == Brightness.dark
-                  ? Border.all(color: Colors.white.withValues(alpha: 0.08))
-                  : null,
             ),
             padding: const EdgeInsets.all(DrevvySpace.s2),
             child: Row(
@@ -58,7 +54,9 @@ class FloatingTabBar extends StatelessWidget {
                       duration: DrevvyMotion.tabSwitch.duration,
                       curve: DrevvyMotion.tabSwitch.curve,
                       decoration: BoxDecoration(
-                        color: isActive ? colors.tabActiveFill : Colors.transparent,
+                        color: isActive 
+                            ? Colors.white.withValues(alpha: 0.15) 
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(24),
                       ),
                       height: 48,
@@ -68,14 +66,18 @@ class FloatingTabBar extends StatelessWidget {
                           Icon(
                             tab.icon,
                             size: 22,
-                            color: isActive ? Colors.white : colors.tabInactive,
+                            color: isActive 
+                                ? Colors.white 
+                                : Colors.white.withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 7),
                           Text(
                             tab.label,
                             style: text.bodyStrong.copyWith(
                               fontSize: 13,
-                              color: isActive ? Colors.white : colors.tabInactive,
+                              color: isActive 
+                                  ? Colors.white 
+                                  : Colors.white.withValues(alpha: 0.6),
                             ),
                           ),
                         ],

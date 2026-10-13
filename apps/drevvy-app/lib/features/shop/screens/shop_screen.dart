@@ -30,6 +30,8 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _isLoading = false;
   bool _isSearching = false;
   User? _user;
+  List<StarterCard>? _starters;
+  SearchProfile? _searchProfile;
 
   @override
   void initState() {
@@ -41,10 +43,14 @@ class _ShopScreenState extends State<ShopScreen> {
     final thread = await _repo.getChatThread();
     final user = await _repo.getCurrentUser();
     final history = await _repo.getChatHistory();
+    final starters = await _repo.getStarters();
+    final searchProfile = await _repo.getSearchProfile();
     setState(() {
       _thread = thread;
       _user = user;
       _chatHistory = history;
+      _starters = starters;
+      _searchProfile = searchProfile;
     });
   }
 
@@ -134,6 +140,11 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final isEmpty = _thread?.isEmpty ?? true;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    
+    // Composer pinned 12pt above tab bar per spec §6.5a
+    final composerBottom = DrevvySpace.tabBarBottomInset + DrevvySpace.tabBarHeight + 
+        DrevvySpace.composerTabBarGap + safeBottom;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -146,45 +157,57 @@ class _ShopScreenState extends State<ShopScreen> {
         onDeleteChat: _deleteChat,
         onRenameChat: _renameChat,
       ),
-      body: Column(
+      body: Stack(
         children: [
-          ChatHeader(
-            mode: _mode,
-            onModeChanged: _switchMode,
-            onMenuTap: _openHistoryDrawer,
+          Column(
+            children: [
+              ChatHeader(
+                mode: _mode,
+                onModeChanged: _switchMode,
+                onMenuTap: _openHistoryDrawer,
+              ),
+              
+              Expanded(
+                child: _mode == ChatMode.ask
+                    ? isEmpty
+                        ? ChatEmpty(
+                            userName: _user?.firstName ?? 'there',
+                            onPromptTap: (prompt) => _sendMessage(prompt),
+                            onShopTap: (query) => _search(query),
+                            starters: _starters,
+                            hasHistory: _searchProfile?.personalize == true && 
+                                       (_searchProfile?.searches.isNotEmpty == true ||
+                                        _searchProfile?.items.isNotEmpty == true),
+                          )
+                        : ChatMessages(
+                            thread: _thread!,
+                            isLoading: _isLoading,
+                            onShopTap: (query) => _search(query),
+                            memoryItems: _searchProfile?.items,
+                          )
+                    : ShopResults(
+                        listings: _listings,
+                        isLoading: _isSearching,
+                        isPro: _user?.isPro ?? false,
+                        onListingTap: (listing) {
+                          context.push('/vdp/${listing.id}');
+                        },
+                      ),
+              ),
+            ],
           ),
           
-          Expanded(
-            child: _mode == ChatMode.ask
-                ? isEmpty
-                    ? ChatEmpty(
-                        userName: _user?.firstName ?? 'there',
-                        onPromptTap: (prompt) => _sendMessage(prompt),
-                        onShopTap: (query) => _search(query),
-                      )
-                    : ChatMessages(
-                        thread: _thread!,
-                        isLoading: _isLoading,
-                        onShopTap: (query) => _search(query),
-                      )
-                : ShopResults(
-                    listings: _listings,
-                    isLoading: _isSearching,
-                    isPro: _user?.isPro ?? false,
-                    onListingTap: (listing) {
-                      context.push('/vdp/${listing.id}');
-                    },
-                  ),
+          // Composer pinned 12pt above tab bar, never overlapping content
+          Positioned(
+            left: DrevvySpace.gutter,
+            right: DrevvySpace.gutter,
+            bottom: composerBottom,
+            child: ChatComposer(
+              mode: _mode,
+              onSend: _mode == ChatMode.ask ? _sendMessage : _search,
+              isLoading: _isLoading,
+            ),
           ),
-          
-          ChatComposer(
-            mode: _mode,
-            onSend: _mode == ChatMode.ask ? _sendMessage : _search,
-            isLoading: _isLoading,
-          ),
-          
-          // Space for tab bar
-          const SizedBox(height: DrevvySpace.rootScrollBottomPadding - 56),
         ],
       ),
     );

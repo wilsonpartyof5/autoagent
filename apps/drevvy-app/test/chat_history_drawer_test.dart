@@ -40,12 +40,10 @@ void main() {
     ];
 
     late String? selectedChatId;
-    late String? deletedChatId;
     late bool newChatCalled;
 
     setUp(() {
       selectedChatId = null;
-      deletedChatId = null;
       newChatCalled = false;
     });
 
@@ -61,8 +59,8 @@ void main() {
             currentChatId: currentChatId,
             onNewChat: () => newChatCalled = true,
             onSelectChat: (chat) => selectedChatId = chat.id,
-            onDeleteChat: (id) => deletedChatId = id,
-            onRenameChat: (_, __) {},
+            onDeleteChat: (_) {},
+            onRenameChat: (a, b) {},
           ),
           body: Builder(
             builder: (context) => ElevatedButton(

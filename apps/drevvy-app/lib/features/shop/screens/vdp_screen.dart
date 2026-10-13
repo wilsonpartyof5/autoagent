@@ -586,8 +586,8 @@ class _StickyCta extends StatelessWidget {
               ),
               const Spacer(),
               DrevvyButton(
-                label: isPro ? 'Add to Drevvy' : 'Unlock my price',
-                icon: isPro ? LucideIcons.plus : null,
+                label: 'Unlock my price',
+                icon: LucideIcons.sparkles,
                 onPressed: onTap,
               ),
             ],

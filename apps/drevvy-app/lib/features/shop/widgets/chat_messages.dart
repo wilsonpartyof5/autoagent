@@ -3,6 +3,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
+import '../../../data/models/search_profile.dart';
+import 'memory_sheet.dart';
 
 /// Chat messages view with "Using your past searches" chip per spec §6.14 (v1.6.1)
 class ChatMessages extends StatelessWidget {
@@ -11,20 +13,39 @@ class ChatMessages extends StatelessWidget {
     required this.thread,
     required this.isLoading,
     required this.onShopTap,
-    this.onMemoryChipTap,
+    this.memoryItems,
+    this.onMemoryItemsChanged,
   });
 
   final ChatThread thread;
   final bool isLoading;
   final ValueChanged<String> onShopTap;
-  final VoidCallback? onMemoryChipTap;
+  final List<MemoryItem>? memoryItems;
+  final ValueChanged<Set<String>>? onMemoryItemsChanged;
+
+  void _showMemorySheet(BuildContext context) {
+    if (memoryItems == null || memoryItems!.isEmpty) return;
+    
+    MemorySheet.show(
+      context,
+      items: memoryItems!,
+      onItemsChanged: onMemoryItemsChanged ?? (_) {},
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    // Computed bottom padding per spec §6.5a:
+    // tabBarHeight + safeArea.bottom + composerHeight + 24
+    final bottomPadding = DrevvySpace.contentBottomInset + safeBottom;
+    
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(
-        horizontal: DrevvySpace.gutter,
-        vertical: DrevvySpace.s4,
+      padding: EdgeInsets.only(
+        left: DrevvySpace.gutter,
+        right: DrevvySpace.gutter,
+        top: DrevvySpace.s4,
+        bottom: bottomPadding,
       ),
       itemCount: thread.messages.length + (isLoading ? 1 : 0),
       itemBuilder: (context, index) {
@@ -42,7 +63,9 @@ class ChatMessages extends StatelessWidget {
           text: message.text ?? '',
           sourcesCount: thread.sourcesCount,
           usedMemory: message.usedMemory,
-          onMemoryChipTap: onMemoryChipTap,
+          onMemoryChipTap: memoryItems != null && memoryItems!.isNotEmpty
+              ? () => _showMemorySheet(context)
+              : null,
         );
       },
     );
