@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -11,14 +12,10 @@ import '../../../data/models/search_profile.dart';
 /// - Budget: numeric input
 /// - Body types: multi-select chips
 /// - Makes: multi-select chips
-/// - Fuel: multi-select chips  
+/// - Fuel: multi-select chips
 /// - Location: ZIP + radius picker
 class MemoryEditSheet extends StatefulWidget {
-  const MemoryEditSheet({
-    super.key,
-    required this.item,
-    required this.onSave,
-  });
+  const MemoryEditSheet({super.key, required this.item, required this.onSave});
 
   final MemoryItem item;
   final ValueChanged<MemoryItem> onSave;
@@ -32,10 +29,7 @@ class MemoryEditSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => MemoryEditSheet(
-        item: item,
-        onSave: onSave,
-      ),
+      builder: (context) => MemoryEditSheet(item: item, onSave: onSave),
     );
   }
 
@@ -49,20 +43,51 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
   final _zipController = TextEditingController();
   int _radius = 50;
 
-  static const _bodyTypes = ['SUV', 'Sedan', 'Truck', 'Coupe', 'Hatchback', 'Wagon', 'Convertible', 'Van'];
-  static const _makes = ['Toyota', 'Honda', 'Mazda', 'Hyundai', 'Kia', 'Ford', 'Chevrolet', 'BMW', 'Mercedes-Benz', 'Audi', 'Tesla', 'Subaru', 'Lexus', 'Volkswagen', 'Nissan'];
-  static const _fuelTypes = ['Gas', 'Hybrid', 'Electric', 'Plug-in Hybrid', 'Diesel'];
+  static const _bodyTypes = [
+    'SUV',
+    'Sedan',
+    'Truck',
+    'Coupe',
+    'Hatchback',
+    'Wagon',
+    'Convertible',
+    'Van',
+  ];
+  static const _makes = [
+    'Toyota',
+    'Honda',
+    'Mazda',
+    'Hyundai',
+    'Kia',
+    'Ford',
+    'Chevrolet',
+    'BMW',
+    'Mercedes-Benz',
+    'Audi',
+    'Tesla',
+    'Subaru',
+    'Lexus',
+    'Volkswagen',
+    'Nissan',
+  ];
+  static const _fuelTypes = [
+    'Gas',
+    'Hybrid',
+    'Electric',
+    'Plug-in Hybrid',
+    'Diesel',
+  ];
   static const _radiusOptions = [10, 25, 50, 75, 100, 150, 200];
 
   @override
   void initState() {
     super.initState();
     _value = widget.item.value;
-    
+
     if (widget.item.kind == MemoryKind.budget && _value is int) {
       _budgetController.text = _value.toString();
     }
-    
+
     if (widget.item.kind == MemoryKind.location && _value is Map) {
       final map = _value as Map;
       _zipController.text = map['zip']?.toString() ?? '';
@@ -120,7 +145,8 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
               left: DrevvySpace.gutter,
               right: DrevvySpace.gutter,
               top: DrevvySpace.gutter,
-              bottom: MediaQuery.of(context).viewInsets.bottom + DrevvySpace.gutter,
+              bottom:
+                  MediaQuery.of(context).viewInsets.bottom + DrevvySpace.gutter,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -140,10 +166,7 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
                 ),
 
                 // Title
-                Text(
-                  'Edit ${widget.item.kind.label}',
-                  style: text.title,
-                ),
+                Text('Edit ${widget.item.kind.label}', style: text.title),
 
                 const SizedBox(height: DrevvySpace.s6),
 
@@ -153,10 +176,7 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
                 const SizedBox(height: DrevvySpace.s6),
 
                 // Save button
-                DrevvyButton(
-                  label: 'Save',
-                  onPressed: _save,
-                ),
+                DrevvyButton(label: 'Save', onPressed: _save),
               ],
             ),
           ),
@@ -165,7 +185,11 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
     );
   }
 
-  Widget _buildEditor(BuildContext context, DrevvyColors colors, DrevvyText text) {
+  Widget _buildEditor(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
     switch (widget.item.kind) {
       case MemoryKind.budget:
         return _buildBudgetEditor(colors, text);
@@ -222,10 +246,7 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
           },
         ),
         const SizedBox(height: DrevvySpace.s4),
-        Text(
-          'Quick select:',
-          style: text.label.copyWith(color: colors.muted),
-        ),
+        Text('Quick select:', style: text.label.copyWith(color: colors.muted)),
         const SizedBox(height: DrevvySpace.s2),
         Wrap(
           spacing: DrevvySpace.s2,
@@ -240,7 +261,10 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
                 });
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? colors.violet : colors.glass,
                   borderRadius: BorderRadius.circular(DrevvyRadius.pill),
@@ -262,7 +286,11 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
     );
   }
 
-  Widget _buildMultiSelectEditor(DrevvyColors colors, DrevvyText text, List<String> options) {
+  Widget _buildMultiSelectEditor(
+    DrevvyColors colors,
+    DrevvyText text,
+    List<String> options,
+  ) {
     final selected = (_value as List?)?.cast<String>() ?? <String>[];
 
     return Column(
@@ -281,7 +309,10 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
             return GestureDetector(
               onTap: () => _toggleMultiSelect(option),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? colors.violet : colors.glass,
                   borderRadius: BorderRadius.circular(DrevvyRadius.pill),
@@ -293,7 +324,11 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isSelected) ...[
-                      const Icon(LucideIcons.check, color: Colors.white, size: 16),
+                      const Icon(
+                        LucideIcons.check,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                       const SizedBox(width: 6),
                     ],
                     Text(
@@ -316,10 +351,7 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'ZIP code',
-          style: text.bodyStrong.copyWith(color: colors.ink),
-        ),
+        Text('ZIP code', style: text.bodyStrong.copyWith(color: colors.ink)),
         const SizedBox(height: DrevvySpace.s3),
         TextField(
           controller: _zipController,
@@ -370,7 +402,10 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
                 _updateLocation();
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? colors.violet : colors.glass,
                   borderRadius: BorderRadius.circular(DrevvyRadius.pill),
@@ -394,10 +429,7 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
 
   void _updateLocation() {
     setState(() {
-      _value = {
-        'zip': _zipController.text,
-        'radius': _radius,
-      };
+      _value = {'zip': _zipController.text, 'radius': _radius};
     });
   }
 
