@@ -40,7 +40,7 @@ import {
   checkCanAddCar,
   getShopperCredits,
   refundCredit,
-  useCredit,
+  consumeCredit,
   type ShopperCredits,
 } from './credits';
 import { findSimilarListings, similarSearchQuery, type SimilarListing, type SimilarQuery, type SimilarSearch } from './similar';
@@ -116,7 +116,7 @@ export async function addShopperCar(
     vehicle: input.vehicle,
   });
 
-  const useResult = await useCredit(supabase, userId, deal.id);
+  const useResult = await consumeCredit(supabase, userId, deal.id);
   if (!useResult.success) {
     console.error('[deal-actions] Failed to use credit:', useResult.error);
   }
@@ -153,11 +153,13 @@ export async function getShopperCar(userId: string, dealId: string, deps: DealDe
   return presentDeal(deal, record);
 }
 
+const REMOVAL_REFUND_MS = 30 * 60 * 1000;
+
 export async function removeShopperCar(
   userId: string,
   dealId: string,
   deps: DealDeps,
-): Promise<{ id: string; removedAt: string; credits: CreditSummary }> {
+): Promise<{ id: string; removedAt: string; credits: CreditSummary; refunded: boolean }> {
   const supabase = getAdminClient(deps);
   const deal = await requireDeal(userId, dealId, deps);
   const at = deps.now.toISOString();
@@ -166,10 +168,22 @@ export async function removeShopperCar(
   await deps.lifecycle.save(removed);
   await deps.deals.close(userId, deal.id);
 
+  let refunded = false;
+  const addedMs = Date.parse(current.addedAt);
+  const nowMs = Date.parse(at);
+  const within30Minutes = Number.isFinite(addedMs) && Number.isFinite(nowMs) && nowMs - addedMs <= REMOVAL_REFUND_MS;
+  const beforeOutreach = current.outreachSentAt == null;
+
+  if (within30Minutes && beforeOutreach) {
+    const result = await refundCredit(supabase, userId, deal.id, 'removed');
+    refunded = result.refunded;
+  }
+
   return {
     id: deal.id,
     removedAt: removed.removedAt ?? at,
     credits: await creditSummaryFor(supabase, userId),
+    refunded,
   };
 }
 

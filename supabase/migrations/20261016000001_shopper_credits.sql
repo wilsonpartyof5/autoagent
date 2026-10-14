@@ -60,3 +60,69 @@ revoke all on public.shopper_credit_events from anon, public;
 revoke insert, update, delete on public.shopper_credit_events from authenticated;
 grant select on public.shopper_credit_events to authenticated;
 grant select, insert, update, delete on public.shopper_credit_events to service_role;
+
+-- Atomic credit refund: inserts event and updates balance in one transaction.
+-- Returns: refunded (true if credit was added), already_refunded (true if idempotency key existed).
+create or replace function public.refund_credit_atomic(
+  p_user_id uuid,
+  p_deal_id uuid,
+  p_idempotency_key text
+)
+returns table(refunded boolean, already_refunded boolean, new_balance integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_existing_refund_id uuid;
+  v_use_event_id uuid;
+  v_new_balance integer;
+begin
+  -- Check for existing refund (idempotent)
+  select id into v_existing_refund_id
+  from public.shopper_credit_events
+  where user_id = p_user_id and idempotency_key = p_idempotency_key
+  limit 1;
+
+  if v_existing_refund_id is not null then
+    select balance into v_new_balance from public.shopper_credits where user_id = p_user_id;
+    return query select false, true, coalesce(v_new_balance, 0);
+    return;
+  end if;
+
+  -- Check that a use event exists for this deal
+  select id into v_use_event_id
+  from public.shopper_credit_events
+  where user_id = p_user_id and idempotency_key = 'use:' || p_deal_id::text
+  limit 1;
+
+  if v_use_event_id is null then
+    select balance into v_new_balance from public.shopper_credits where user_id = p_user_id;
+    return query select false, false, coalesce(v_new_balance, 0);
+    return;
+  end if;
+
+  -- Insert refund event (unique constraint provides additional idempotency)
+  begin
+    insert into public.shopper_credit_events (user_id, event_type, amount, deal_id, idempotency_key)
+    values (p_user_id, 'refund', 1, p_deal_id, p_idempotency_key);
+  exception when unique_violation then
+    select balance into v_new_balance from public.shopper_credits where user_id = p_user_id;
+    return query select false, true, coalesce(v_new_balance, 0);
+    return;
+  end;
+
+  -- Atomic balance update with returning
+  update public.shopper_credits
+  set balance = balance + 1,
+      lifetime_refunded = lifetime_refunded + 1,
+      updated_at = now()
+  where user_id = p_user_id
+  returning balance into v_new_balance;
+
+  return query select true, false, coalesce(v_new_balance, 0);
+end;
+$$;
+
+revoke execute on function public.refund_credit_atomic(uuid, uuid, text) from anon, authenticated, public;
+grant execute on function public.refund_credit_atomic(uuid, uuid, text) to service_role;

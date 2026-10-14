@@ -89,6 +89,33 @@ function createMockSupabase() {
         eq: (_col: string, _val: string) => ({ error: null }),
       }),
     }),
+    rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_idempotency_key?: string }) => {
+      if (fnName === 'refund_credit_atomic') {
+        const userId = params.p_user_id ?? '';
+        const dealId = params.p_deal_id ?? '';
+        const idempotencyKey = params.p_idempotency_key ?? '';
+        const userEvents = events.get(userId) ?? [];
+        const existingRefund = userEvents.find((e) => e.idempotency_key === idempotencyKey);
+        if (existingRefund) {
+          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+          return { data: [{ refunded: false, already_refunded: true, new_balance: c.balance }], error: null };
+        }
+        const useKey = `use:${dealId}`;
+        const useEvent = userEvents.find((e) => e.idempotency_key === useKey);
+        if (!useEvent) {
+          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+          return { data: [{ refunded: false, already_refunded: false, new_balance: c.balance }], error: null };
+        }
+        userEvents.push({ id: randomUUID(), user_id: userId, idempotency_key: idempotencyKey });
+        events.set(userId, userEvents);
+        const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+        c.balance += 1;
+        c.lifetime_refunded += 1;
+        credits.set(userId, c);
+        return { data: [{ refunded: true, already_refunded: false, new_balance: c.balance }], error: null };
+      }
+      return { data: null, error: null };
+    },
   } as unknown;
 }
 const VEHICLE = {

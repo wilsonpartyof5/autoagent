@@ -88,7 +88,7 @@ export async function checkCanAddCar(
   return { canAdd: true, balance: credits.balance };
 }
 
-export async function useCredit(
+export async function consumeCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
@@ -184,80 +184,38 @@ export async function refundCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
-  reason: 'sold' | 'ended_no_response' | 'dealer_declined',
+  reason: 'sold' | 'ended_no_response' | 'dealer_declined' | 'removed',
 ): Promise<{ refunded: boolean; newBalance: number; alreadyRefunded: boolean }> {
-  const idempotencyKey = `refund:${dealId}:${reason}`;
+  const idempotencyKey = `refund:${dealId}`;
 
-  const { data: existing } = await supabase
-    .from('shopper_credit_events')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle();
-
-  if (existing) {
-    const credits = await getShopperCredits(supabase, userId);
-    return { refunded: false, newBalance: credits.balance, alreadyRefunded: true };
-  }
-
-  const { data: useEvent } = await supabase
-    .from('shopper_credit_events')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('idempotency_key', `use:${dealId}`)
-    .maybeSingle();
-
-  if (!useEvent) {
-    const credits = await getShopperCredits(supabase, userId);
-    return { refunded: false, newBalance: credits.balance, alreadyRefunded: false };
-  }
-
-  const { error: eventError } = await supabase.from('shopper_credit_events').insert({
-    user_id: userId,
-    event_type: 'refund',
-    amount: 1,
-    deal_id: dealId,
-    idempotency_key: idempotencyKey,
+  const { data, error } = await supabase.rpc('refund_credit_atomic', {
+    p_user_id: userId,
+    p_deal_id: dealId,
+    p_idempotency_key: idempotencyKey,
   });
 
-  if (eventError) {
-    if (eventError.code === '23505') {
-      const credits = await getShopperCredits(supabase, userId);
-      return { refunded: false, newBalance: credits.balance, alreadyRefunded: true };
-    }
-    console.error('[credits] Error inserting refund event:', eventError.message);
+  if (error) {
+    console.error('[credits] Error calling refund_credit_atomic:', error.message);
     const credits = await getShopperCredits(supabase, userId);
     return { refunded: false, newBalance: credits.balance, alreadyRefunded: false };
   }
 
-  const { data: currentCredits } = await supabase
-    .from('shopper_credits')
-    .select('balance, lifetime_refunded')
-    .eq('user_id', userId)
-    .single();
+  const row = Array.isArray(data) ? data[0] : data;
+  const refunded = row?.refunded ?? false;
+  const alreadyRefunded = row?.already_refunded ?? false;
+  const newBalance = row?.new_balance ?? 0;
 
-  if (currentCredits) {
-    await supabase
-      .from('shopper_credits')
-      .update({
-        balance: currentCredits.balance + 1,
-        lifetime_refunded: currentCredits.lifetime_refunded + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId);
+  if (refunded) {
+    console.log(JSON.stringify({
+      event: 'credit_refunded',
+      userId,
+      dealId,
+      reason,
+      newBalance,
+    }));
   }
 
-  const updatedCredits = await getShopperCredits(supabase, userId);
-
-  console.log(JSON.stringify({
-    event: 'credit_refunded',
-    userId,
-    dealId,
-    reason,
-    newBalance: updatedCredits.balance,
-  }));
-
-  return { refunded: true, newBalance: updatedCredits.balance, alreadyRefunded: false };
+  return { refunded, newBalance, alreadyRefunded };
 }
 
 export async function purchaseCredits(
