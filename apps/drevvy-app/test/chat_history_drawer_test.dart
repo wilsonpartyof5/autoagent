@@ -6,43 +6,60 @@ import 'package:drevvy_app/data/models/chat.dart';
 
 void main() {
   group('ChatHistoryDrawer Tests (v1.6.1)', () {
-    final testChats = [
-      ChatThread(
-        id: 'chat_001',
-        mode: ChatMode.ask,
-        title: 'RAV4 Hybrid search',
-        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-        updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
-        messages: [
-          ChatMessage(
-            id: 'msg_001',
-            role: MessageRole.user,
-            contentType: MessageContentType.text,
-            text: 'What are the best RAV4 Hybrids?',
-          ),
-        ],
-      ),
-      ChatThread(
-        id: 'chat_002',
-        mode: ChatMode.shop,
-        title: 'SUV search',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        sourcesCount: 24,
-      ),
-      ChatThread(
-        id: 'chat_003',
-        mode: ChatMode.ask,
-        title: 'CR-V vs RAV4',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
-      ),
-    ];
+    // Use helper to get stable timestamps relative to today at noon
+    // This avoids flakiness when running near midnight
+    DateTime todayAt(int hour) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, hour);
+    }
+    
+    DateTime yesterdayAt(int hour) {
+      final today = todayAt(hour);
+      return today.subtract(const Duration(days: 1));
+    }
+    
+    DateTime daysAgoAt(int days, int hour) {
+      final today = todayAt(hour);
+      return today.subtract(Duration(days: days));
+    }
 
+    late List<ChatThread> testChats;
     late String? selectedChatId;
     late bool newChatCalled;
 
     setUp(() {
+      testChats = [
+        ChatThread(
+          id: 'chat_001',
+          mode: ChatMode.ask,
+          title: 'RAV4 Hybrid search',
+          createdAt: todayAt(10), // 10 AM today - always "Today"
+          updatedAt: todayAt(10),
+          messages: [
+            ChatMessage(
+              id: 'msg_001',
+              role: MessageRole.user,
+              contentType: MessageContentType.text,
+              text: 'What are the best RAV4 Hybrids?',
+            ),
+          ],
+        ),
+        ChatThread(
+          id: 'chat_002',
+          mode: ChatMode.shop,
+          title: 'SUV search',
+          createdAt: yesterdayAt(14), // 2 PM yesterday - always "Yesterday"
+          updatedAt: yesterdayAt(14),
+          sourcesCount: 24,
+        ),
+        ChatThread(
+          id: 'chat_003',
+          mode: ChatMode.ask,
+          title: 'CR-V vs RAV4',
+          createdAt: daysAgoAt(3, 9), // 9 AM 3 days ago
+          updatedAt: daysAgoAt(3, 9),
+        ),
+      ];
       selectedChatId = null;
       newChatCalled = false;
     });

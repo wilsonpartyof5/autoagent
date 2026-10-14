@@ -73,8 +73,8 @@ class DemoRepository {
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
   
-  /// Server-driven avg_savings config. Null if unavailable.
-  final AvgSavingsConfig? _avgSavingsConfig = const AvgSavingsConfig(
+  /// Server-driven avg_savings config.
+  final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
     label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
     source: 'CarEdge, State of Dealer Fees 2026',
@@ -277,7 +277,7 @@ class DemoRepository {
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing, {int? maxOtd}) async {
+  Future<Deal> addDeal(Listing listing) async {
     final newDeal = Deal(
       id: 'deal_${DateTime.now().millisecondsSinceEpoch}',
       listingId: listing.id,
@@ -287,7 +287,6 @@ class DemoRepository {
       addedAt: DateTime.now(),
       listing: listing,
       marketContext: await getMarketContext(listing),
-      maxOtd: maxOtd,
     );
     _deals = [..._deals, newDeal];
     
