@@ -7,7 +7,7 @@ import {
   type ShopperDealRow,
 } from './deals';
 
-// Lifecycle columns stay off this query until 20261011_deal_lifecycle.sql is applied.
+// Lifecycle columns stay off this query until 20261012183301_deal_lifecycle.sql is applied.
 const COLUMNS = 'id, consumer_user_id, listing_id, status, outreach_locked_until_paid, vehicle_snapshot, created_at, updated_at';
 
 type DealTableRow = {

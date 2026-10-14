@@ -40,10 +40,84 @@ import {
   selectLifecycleRepository,
   type LifecycleRepository,
 } from './lifecycle-store';
-import { NO_RESPONSE_MS, type BillingPeriod } from './quota';
+import { NO_RESPONSE_MS } from './quota';
 import { findSimilarListings, similarSearchQuery, toShopperListing } from './similar';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+function createMockSupabase() {
+  const credits = new Map<string, { balance: number; lifetime_purchased: number; lifetime_used: number; lifetime_refunded: number }>();
+  const events = new Map<string, { id: string; user_id: string; idempotency_key: string }[]>();
+
+  credits.set('shopper-1', { balance: 999, lifetime_purchased: 999, lifetime_used: 0, lifetime_refunded: 0 });
+
+  const mockResult = (table: string, userId: string) => ({
+    maybeSingle: async () => {
+      if (table === 'shopper_credits') {
+        const data = credits.get(userId);
+        return { data: data ? { ...data, user_id: userId } : null, error: null };
+      }
+      return { data: null, error: null };
+    },
+    single: async () => {
+      if (table === 'shopper_credits') {
+        const data = credits.get(userId) ?? { balance: 999, lifetime_purchased: 999, lifetime_used: 0, lifetime_refunded: 0 };
+        return { data: { ...data, user_id: userId }, error: null };
+      }
+      return { data: null, error: null };
+    },
+    eq: (_col: string, _val: string) => mockResult(table, userId),
+  });
+
+  return {
+    from: (table: string) => ({
+      select: (_cols?: string) => ({
+        eq: (_col: string, val: string) => mockResult(table, val),
+      }),
+      upsert: async (_data: unknown, _opts?: unknown) => ({ error: null }),
+      insert: async (data: { user_id?: string; idempotency_key?: string }) => {
+        if (table === 'shopper_credit_events' && data.user_id && data.idempotency_key) {
+          const userEvents = events.get(data.user_id) ?? [];
+          const existing = userEvents.find((e) => e.idempotency_key === data.idempotency_key);
+          if (existing) return { error: { code: '23505', message: 'duplicate' } };
+          userEvents.push({ id: randomUUID(), user_id: data.user_id, idempotency_key: data.idempotency_key });
+          events.set(data.user_id, userEvents);
+        }
+        return { error: null };
+      },
+      update: (_data: unknown) => ({
+        eq: (_col: string, _val: string) => ({ error: null }),
+      }),
+    }),
+    rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_idempotency_key?: string }) => {
+      if (fnName === 'refund_credit_atomic') {
+        const userId = params.p_user_id ?? '';
+        const dealId = params.p_deal_id ?? '';
+        const idempotencyKey = params.p_idempotency_key ?? '';
+        const userEvents = events.get(userId) ?? [];
+        const existingRefund = userEvents.find((e) => e.idempotency_key === idempotencyKey);
+        if (existingRefund) {
+          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+          return { data: [{ refunded: false, already_refunded: true, new_balance: c.balance }], error: null };
+        }
+        const useKey = `use:${dealId}`;
+        const useEvent = userEvents.find((e) => e.idempotency_key === useKey);
+        if (!useEvent) {
+          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+          return { data: [{ refunded: false, already_refunded: false, new_balance: c.balance }], error: null };
+        }
+        userEvents.push({ id: randomUUID(), user_id: userId, idempotency_key: idempotencyKey });
+        events.set(userId, userEvents);
+        const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+        c.balance += 1;
+        c.lifetime_refunded += 1;
+        credits.set(userId, c);
+        return { data: [{ refunded: true, already_refunded: false, new_balance: c.balance }], error: null };
+      }
+      return { data: null, error: null };
+    },
+  } as unknown;
+}
 const VEHICLE = {
   year: 2024,
   make: 'Chevrolet',
@@ -56,12 +130,6 @@ const VEHICLE = {
   state: 'NC',
 };
 
-const PERIOD: BillingPeriod = {
-  status: 'active',
-  periodStart: '2026-10-01T00:00:00.000Z',
-  periodEnd: '2026-11-01T00:00:00.000Z',
-  source: 'demo',
-};
 
 function memoryDeals(): ShopperDealRepository & { rows: ShopperDealRow[] } {
   const rows: ShopperDealRow[] = [];
@@ -110,15 +178,15 @@ function memoryDeals(): ShopperDealRepository & { rows: ShopperDealRow[] } {
   };
 }
 
-function harness(now = '2026-10-01T16:10:00.000Z', period: BillingPeriod = PERIOD) {
+function harness(now = '2026-10-01T16:10:00.000Z') {
   const deals = memoryDeals();
   const lifecycle = createMemoryLifecycleRepository();
   const deps: DealDeps = {
     deals,
     lifecycle,
     now: new Date(now),
-    period,
     live: false,
+    supabase: createMockSupabase() as DealDeps['supabase'],
   };
   return { deals, lifecycle, deps };
 }
@@ -127,75 +195,48 @@ async function addCar(box: ReturnType<typeof harness>, listingId: string) {
   return addShopperCar('shopper-1', { listingId, vehicle: VEHICLE }, box.deps);
 }
 
-test('the eleventh car is rejected and a refunded slot can be used again', async () => {
-  const box = harness();
-  for (let index = 0; index < 10; index += 1) {
-    await addCar(box, `mc-car-${index + 10}`);
-  }
-  await assert.rejects(
-    () => addCar(box, 'mc-car-99'),
-    (error: unknown) => error instanceof ShopperDealError && error.code === 'monthly_quota',
-  );
-  assert.equal(box.deals.rows.length, 10);
-
-  const removed = await removeShopperCar('shopper-1', box.deals.rows[0].id, box.deps);
-  assert.equal(removed.refunded, true);
-  assert.equal(removed.quota.used, 9);
-  const again = await addCar(box, 'mc-car-99');
-  assert.equal(again.quota.used, 10);
-  assert.equal(again.deal.outreachLockedUntilPaid, true);
-});
-
-test('a quick removal after email, text, or call still counts', async () => {
-  for (const channel of ['email', 'text', 'call'] as const) {
-    const box = harness();
-    const created = await addCar(box, 'mc-car-10');
-    await applyAgentEvent({
-      type: 'outreach',
-      dealId: created.deal.id,
-      consumerUserId: 'shopper-1',
-      channel,
-      sentAt: '2026-10-01T16:05:00.000Z',
-    }, box.deps);
-    const removed = await removeShopperCar('shopper-1', created.deal.id, box.deps);
-    assert.equal(removed.refunded, false);
-    assert.equal(removed.quota.used, 1);
-  }
-});
-
-test('a late removal counts and the same listing can start a second counted car', async () => {
+test('a removed deal can be added again with a new id', async () => {
   const box = harness('2026-10-01T16:40:00.000Z');
   const created = await addCar(box, 'mc-car-10');
-  const removed = await removeShopperCar('shopper-1', created.deal.id, box.deps);
-  assert.equal(removed.refunded, false);
+  await removeShopperCar('shopper-1', created.deal.id, box.deps);
   const second = await addCar(box, 'mc-car-10');
   assert.notEqual(second.deal.id, created.deal.id);
-  assert.equal(second.quota.used, 2);
 });
 
-test('saving an open listing does not spend another slot when the month is full', async () => {
+test('removeShopperCar refunds a credit within 30 minutes and before outreach', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-window');
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, true);
+});
+
+test('removeShopperCar does not refund after 30 minutes', async () => {
+  const box = harness('2026-10-01T16:40:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-late');
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, false);
+});
+
+test('removeShopperCar does not refund after outreach even within 30 minutes', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-outreach');
+  await applyAgentEvent({
+    type: 'outreach',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    channel: 'email',
+    sentAt: '2026-10-01T16:05:00.000Z',
+  }, box.deps);
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, false);
+});
+
+test('saving an open listing returns the same deal', async () => {
   const box = harness();
-  for (let index = 0; index < 10; index += 1) {
-    await addCar(box, `mc-car-${index + 10}`);
-  }
+  const first = await addCar(box, 'mc-car-10');
   const again = await addCar(box, 'mc-car-10');
-  assert.equal(again.deal.id, box.deals.rows[0].id);
-  assert.equal(box.deals.rows.length, 10);
-});
-
-test('cancel blocks a new car and leaves the started deal open', async () => {
-  const box = harness();
-  const created = await addCar(box, 'mc-car-10');
-  box.deps.period = { ...PERIOD, status: 'canceled' };
-  await assert.rejects(
-    () => addCar(box, 'mc-car-11'),
-    (error: unknown) => error instanceof ShopperDealError && error.code === 'subscription_inactive',
-  );
-  const deal = await getShopperCar('shopper-1', created.deal.id, box.deps);
-  assert.equal(deal.endState, 'open');
-  assert.equal(deal.status, 'interested');
-  assert.equal(deal.findSimilar, false);
-  assert.equal('visit' in deal, false);
+  assert.equal(again.deal.id, first.deal.id);
+  assert.equal(box.deals.rows.length, 1);
 });
 
 test('sold and no-response expose similar cars without dealer identity', async () => {
@@ -467,7 +508,7 @@ test('cron auth stays closed until the secret is set and lifecycle storage is op
   assert.equal(dealStore.includes('dealer_latitude'), false);
   assert.equal(dealStore.includes('end_state'), false);
 
-  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261011_deal_lifecycle.sql'), 'utf8');
+  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261012183301_deal_lifecycle.sql'), 'utf8');
   assert.match(sql, /NOT APPLIED/);
   assert.match(sql, /shopper_deal_lifecycle/);
   assert.match(sql, /dealer_latitude/);

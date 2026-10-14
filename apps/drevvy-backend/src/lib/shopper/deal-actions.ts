@@ -1,4 +1,5 @@
 import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseShopperDealRepository } from './deal-store';
 import {
@@ -20,7 +21,6 @@ import {
   noteReply,
   presentDeal,
   quotaDealFromRecord,
-  quotaDealFromShopperDeal,
   readAgentEvent,
   recordGeofenceExit,
   recordOutcome,
@@ -35,32 +35,48 @@ import {
   type PresentedDeal,
 } from './lifecycle';
 import { getLifecycleRepository, type LifecycleRepository } from './lifecycle-store';
+import { shouldRefundCredit, type QuotaEndState } from './quota';
 import {
-  dealCountsTowardQuota,
-  loadBillingPeriod,
-  quotaUsage,
-  type BillingPeriod,
-  type QuotaDeal,
-  type QuotaSummary,
-} from './quota';
+  checkCanAddCar,
+  getShopperCredits,
+  refundCredit,
+  consumeCredit,
+  type ShopperCredits,
+} from './credits';
 import { findSimilarListings, similarSearchQuery, type SimilarListing, type SimilarQuery, type SimilarSearch } from './similar';
+
+export type CreditSummary = {
+  balance: number;
+  canAdd: boolean;
+  reason: 'ok' | 'no_credits';
+};
 
 export type DealDeps = {
   deals: ShopperDealRepository;
   lifecycle: LifecycleRepository;
   now: Date;
-  period: BillingPeriod;
   live: boolean;
   search?: SimilarSearch;
+  supabase?: SupabaseClient;
 };
 
-export async function shopperDeps(userId: string): Promise<DealDeps> {
+let createAdminClientFn: (() => SupabaseClient) | null = null;
+
+function getAdminClient(deps: DealDeps): SupabaseClient {
+  if (deps.supabase) return deps.supabase;
+  if (!createAdminClientFn) {
+    const { createAdminClient } = require('@/lib/supabase/admin');
+    createAdminClientFn = createAdminClient;
+  }
+  return createAdminClientFn!();
+}
+
+export async function shopperDeps(_userId: string): Promise<DealDeps> {
   const now = new Date();
   return {
     deals: supabaseShopperDealRepository(),
     lifecycle: getLifecycleRepository(),
     now,
-    period: await loadBillingPeriod(userId, process.env, fetch, now),
     live: process.env.MARKETCHECK_LIVE === '1',
     search: searchActiveCarsMcp,
   };
@@ -70,7 +86,9 @@ export async function addShopperCar(
   userId: string,
   input: { listingId: unknown; vehicle: unknown },
   deps: DealDeps,
-): Promise<{ deal: PresentedDeal; quota: QuotaSummary }> {
+): Promise<{ deal: PresentedDeal; credits: CreditSummary }> {
+  const supabase = getAdminClient(deps);
+
   if (isShopperListingId(input.listingId)) {
     const existing = await deps.deals.findOpen(userId, input.listingId);
     if (existing) {
@@ -78,40 +96,54 @@ export async function addShopperCar(
       const records = await deps.lifecycle.listForShopper(userId);
       return {
         deal: presentDeal(deal, findRecord(records, deal.id)),
-        quota: await quotaFor(userId, deps),
+        credits: await creditSummaryFor(supabase, userId),
       };
     }
   }
 
-  const usage = await quotaFor(userId, deps);
-  if (!usage.canAdd) throw quotaDenied(usage);
+  const creditCheck = await checkCanAddCar(supabase, userId);
+  if (!creditCheck.canAdd) {
+    throw new ShopperDealError(
+      'You need car credits to add a new car. Purchase a car pack to continue.',
+      402,
+      'no_credits',
+    );
+  }
 
   const deal = await createShopperDeal(deps.deals, {
     consumerUserId: userId,
     listingId: input.listingId,
     vehicle: input.vehicle,
   });
+
+  const useResult = await consumeCredit(supabase, userId, deal.id);
+  if (!useResult.success) {
+    console.error('[deal-actions] Failed to use credit:', useResult.error);
+  }
+
   const records = await deps.lifecycle.listForShopper(userId);
   if (!findRecord(records, deal.id)) {
     await deps.lifecycle.save(blankLifecycle(deal, userId));
   }
+
   return {
     deal: presentDeal(deal, (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId)),
-    quota: await quotaFor(userId, deps),
+    credits: await creditSummaryFor(supabase, userId),
   };
 }
 
 export async function listShopperCars(
   userId: string,
   deps: DealDeps,
-): Promise<{ deals: PresentedDeal[]; quota: QuotaSummary }> {
+): Promise<{ deals: PresentedDeal[]; credits: CreditSummary }> {
+  const supabase = getAdminClient(deps);
   const [deals, records] = await Promise.all([
     listShopperDeals(deps.deals, userId),
     deps.lifecycle.listForShopper(userId),
   ]);
   return {
     deals: deals.map((deal) => presentDeal(deal, findRecord(records, deal.id))),
-    quota: quotaFrom(deps.period, deals, records),
+    credits: await creditSummaryFor(supabase, userId),
   };
 }
 
@@ -121,22 +153,37 @@ export async function getShopperCar(userId: string, dealId: string, deps: DealDe
   return presentDeal(deal, record);
 }
 
+const REMOVAL_REFUND_MS = 30 * 60 * 1000;
+
 export async function removeShopperCar(
   userId: string,
   dealId: string,
   deps: DealDeps,
-): Promise<{ id: string; removedAt: string; refunded: boolean; quota: QuotaSummary }> {
+): Promise<{ id: string; removedAt: string; credits: CreditSummary; refunded: boolean }> {
+  const supabase = getAdminClient(deps);
   const deal = await requireDeal(userId, dealId, deps);
   const at = deps.now.toISOString();
   const current = (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId);
   const removed = removeDeal(current, at);
   await deps.lifecycle.save(removed);
   await deps.deals.close(userId, deal.id);
+
+  let refunded = false;
+  const addedMs = Date.parse(current.addedAt);
+  const nowMs = Date.parse(at);
+  const within30Minutes = Number.isFinite(addedMs) && Number.isFinite(nowMs) && nowMs - addedMs <= REMOVAL_REFUND_MS;
+  const beforeOutreach = current.outreachSentAt == null;
+
+  if (within30Minutes && beforeOutreach) {
+    const result = await refundCredit(supabase, userId, deal.id, 'removed');
+    refunded = result.refunded;
+  }
+
   return {
     id: deal.id,
     removedAt: removed.removedAt ?? at,
-    refunded: !dealCountsTowardQuota(quotaDealFromRecord(removed), deps.period),
-    quota: await quotaFor(userId, deps),
+    credits: await creditSummaryFor(supabase, userId),
+    refunded,
   };
 }
 
@@ -190,11 +237,21 @@ export async function answerOutcome(
   input: OutcomeInput,
   deps: DealDeps,
 ): Promise<{ outcome: BuyOutcome; deal: PresentedDeal }> {
+  const supabase = getAdminClient(deps);
   const deal = await requireDeal(userId, dealId, deps);
   const current = (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId);
+  const previousState = current.endState;
   const answered = recordOutcome(current, input, deps.now.toISOString());
   await deps.lifecycle.save(answered);
-  if (answered.endState !== 'open') await deps.deals.close(userId, deal.id);
+
+  if (answered.endState !== 'open') {
+    await deps.deals.close(userId, deal.id);
+
+    if (shouldRefundCredit(answered.endState) && previousState === 'open') {
+      await refundCredit(supabase, userId, deal.id, answered.endState as 'sold' | 'ended_no_response' | 'dealer_declined');
+    }
+  }
+
   const closed = await getShopperDeal(deps.deals, userId, deal.id);
   const outcome = buyOutcome(answered);
   if (!outcome) throw new ShopperDealError('Drevvy could not save this answer.', 500, 'outcome_unreadable');
@@ -207,30 +264,48 @@ export async function setLocationAccess(userId: string, dealId: string, granted:
   await deps.lifecycle.save({ ...current, locationGranted: granted });
 }
 
-export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps, 'deals' | 'lifecycle'>): Promise<LifecycleRecord> {
+export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'supabase'>): Promise<LifecycleRecord> {
+  const supabase = getAdminClient(deps as DealDeps);
   const current = await deps.lifecycle.getById(event.dealId);
   if (!current || current.consumerUserId !== event.consumerUserId) {
     throw new ShopperDealError('Deal not found.', 404, 'not_found');
   }
+
+  const previousState = current.endState;
   let next = current;
   if (event.type === 'outreach') next = noteOutreach(current, event.sentAt, event.channel);
   if (event.type === 'reply') next = noteReply(current, event.sentAt);
   if (event.type === 'end') next = endDeal(current, event.endState, event.sentAt);
   await deps.lifecycle.save(next);
-  if (next.endState !== 'open') await deps.deals.close(next.consumerUserId, next.dealId);
+
+  if (next.endState !== 'open') {
+    await deps.deals.close(next.consumerUserId, next.dealId);
+
+    if (shouldRefundCredit(next.endState) && previousState === 'open') {
+      await refundCredit(supabase, next.consumerUserId, next.dealId, next.endState as 'sold' | 'ended_no_response' | 'dealer_declined');
+    }
+  }
+
   return next;
 }
 
-export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'now'>): Promise<{
+export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'now' | 'supabase'>): Promise<{
   endedNoResponse: number;
   buyPrompts: number;
+  creditsRefunded: number;
 }> {
+  const supabase = getAdminClient(deps as DealDeps);
   const records = await deps.lifecycle.listAll();
   const result = runScheduledLifecycle(records, deps.now.toISOString());
+  let creditsRefunded = 0;
+
   for (let index = 0; index < records.length; index += 1) {
     const next = result.records[index];
-    if (next === records[index]) continue;
+    const previous = records[index];
+    if (next === previous) continue;
+
     await deps.lifecycle.save(next);
+
     if (next.endState !== 'open') {
       try {
         await deps.deals.close(next.consumerUserId, next.dealId);
@@ -241,11 +316,25 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
           message: error instanceof Error ? error.message : 'unknown',
         }));
       }
+
+      if (shouldRefundCredit(next.endState) && previous.endState === 'open') {
+        const refundResult = await refundCredit(
+          supabase,
+          next.consumerUserId,
+          next.dealId,
+          next.endState as 'sold' | 'ended_no_response' | 'dealer_declined',
+        );
+        if (refundResult.refunded) {
+          creditsRefunded += 1;
+        }
+      }
     }
   }
+
   return {
     endedNoResponse: result.endedNoResponse.length,
     buyPrompts: result.buyPrompts.length,
+    creditsRefunded,
   };
 }
 
@@ -277,45 +366,15 @@ async function requireDeal(userId: string, dealId: string, deps: DealDeps): Prom
   return deal;
 }
 
-async function quotaFor(userId: string, deps: DealDeps): Promise<QuotaSummary> {
-  const [deals, records] = await Promise.all([
-    listShopperDeals(deps.deals, userId),
-    deps.lifecycle.listForShopper(userId),
-  ]);
-  return quotaFrom(deps.period, deals, records);
-}
-
-function quotaFrom(period: BillingPeriod, deals: ShopperDeal[], records: LifecycleRecord[]): QuotaSummary {
-  return quotaUsage(period, quotaInputs(deals, records));
-}
-
-function quotaInputs(deals: ShopperDeal[], records: LifecycleRecord[]): QuotaDeal[] {
-  const recordsById = new Map<string, LifecycleRecord>();
-  records.forEach((record) => recordsById.set(record.dealId, record));
-  const seen = new Set<string>();
-  const inputs: QuotaDeal[] = [];
-  deals.forEach((deal) => {
-    seen.add(deal.id);
-    const record = recordsById.get(deal.id);
-    inputs.push(record ? quotaDealFromRecord(record) : quotaDealFromShopperDeal(deal));
-  });
-  records.forEach((record) => {
-    if (!seen.has(record.dealId)) inputs.push(quotaDealFromRecord(record));
-  });
-  return inputs;
+async function creditSummaryFor(supabase: SupabaseClient, userId: string): Promise<CreditSummary> {
+  const credits = await getShopperCredits(supabase, userId);
+  return {
+    balance: credits.balance,
+    canAdd: credits.balance > 0,
+    reason: credits.balance > 0 ? 'ok' : 'no_credits',
+  };
 }
 
 function findRecord(records: LifecycleRecord[], dealId: string): LifecycleRecord | null {
   return records.find((record) => record.dealId === dealId) ?? null;
-}
-
-function quotaDenied(usage: QuotaSummary): ShopperDealError {
-  if (usage.reason === 'subscription_inactive') {
-    return new ShopperDealError(
-      'Deals already started will finish. A current subscription is required to add a car.',
-      403,
-      'subscription_inactive',
-    );
-  }
-  return new ShopperDealError('This billing period includes 10 cars.', 402, 'monthly_quota');
 }
