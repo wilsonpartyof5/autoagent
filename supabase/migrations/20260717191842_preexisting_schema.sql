@@ -13,6 +13,12 @@ create table if not exists public.profiles (
   inventory_connected boolean default false,
   billing_active boolean default false,
   dms_provider text,
+  marketcheck_dealer_id text,
+  marketcheck_zip text,
+  marketcheck_website_url text,
+  lead_delivery_method text,
+  lead_delivery_endpoint text,
+  lead_delivery_email text,
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
@@ -99,6 +105,7 @@ create table if not exists public.lead_delivery_logs (
 -- production (which already has the full table) is unchanged.
 create table if not exists public.uvs_vehicles (
   id text primary key,
+  vin text,
   dealer_id text,
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
