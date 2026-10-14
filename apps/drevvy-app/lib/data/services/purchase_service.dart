@@ -85,10 +85,25 @@ sealed class RestoreResult {
   const RestoreResult();
 }
 
+/// One restored consumable transaction. Credits from these packs never expire.
+class RestoredTransaction {
+  const RestoredTransaction({
+    required this.transactionId,
+    required this.packType,
+  });
+
+  final String transactionId;
+  final CarPackType packType;
+}
+
 class RestoreSuccess extends RestoreResult {
-  const RestoreSuccess({required this.creditsRestored});
+  const RestoreSuccess({
+    required this.creditsRestored,
+    this.transactions = const [],
+  });
 
   final int creditsRestored;
+  final List<RestoredTransaction> transactions;
 }
 
 class RestoreNoPurchases extends RestoreResult {

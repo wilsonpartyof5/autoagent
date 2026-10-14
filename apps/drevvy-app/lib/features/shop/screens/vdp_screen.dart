@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +9,10 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
+import '../../../data/services/cars_balance_placement.dart';
+import '../../../data/services/purchase_config.dart';
 import '../../../data/services/purchase_service.dart';
+import '../../../data/services/superwall_placement.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
@@ -28,6 +33,8 @@ class VdpScreen extends StatefulWidget {
 
 class _VdpScreenState extends State<VdpScreen> {
   final _repo = DemoRepository.instance;
+  final CarsBalancePlacement _carsBalancePlacement =
+      carsBalancePlacementFor(PurchaseConfig.fromEnvironment());
   Listing? _listing;
   MarketContext? _market;
   CarCreditBalance? _creditBalance;
@@ -128,22 +135,8 @@ class _VdpScreenState extends State<VdpScreen> {
       builder: (context) => PackPickerSheet(
         listing: _listing!,
         avgSavings: _avgSavings,
-        onPurchase: (packType) async {
-          final result = await _repo.purchasePack(packType);
-          if (result is PurchaseSuccess && mounted) {
-            // Reload balance and show add sheet
-            final newBalance = await _repo.getCreditBalance();
-            setState(() => _creditBalance = newBalance);
-            if (context.mounted) {
-              Navigator.pop(context);
-              _showAddSheet();
-            }
-          }
-        },
-        onRestore: () async {
-          await _repo.restorePurchases();
-          if (context.mounted) Navigator.pop(context);
-        },
+        onPurchase: (packType) => _onPackPurchase(context, packType),
+        onRestore: () => _onRestore(context),
         onKeepShopping: () {
           Navigator.pop(context);
         },
@@ -152,6 +145,7 @@ class _VdpScreenState extends State<VdpScreen> {
   }
 
   /// v1.7: Show OutOfCarsSheet when user's balance is 0.
+  /// Superwall placement: cars_balance_empty. The local sheet keeps the pack copy.
   void _showOutOfCarsSheet() {
     showModalBottomSheet(
       context: context,
@@ -159,22 +153,65 @@ class _VdpScreenState extends State<VdpScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => OutOfCarsSheet(
         listing: _listing!,
-        onPurchase: (packType) async {
-          final result = await _repo.purchasePack(packType);
-          if (result is PurchaseSuccess && mounted) {
-            final newBalance = await _repo.getCreditBalance();
-            setState(() => _creditBalance = newBalance);
-            if (context.mounted) {
-              Navigator.pop(context);
-              _showAddSheet();
-            }
-          }
-        },
+        onPurchase: (packType) => _onPackPurchase(context, packType),
         onNotNow: () {
           Navigator.pop(context);
         },
       ),
     );
+  }
+
+  Future<void> _onPackPurchase(BuildContext sheetContext, CarPackType packType) async {
+    final result = await _repo.purchasePack(packType);
+    if (!mounted) return;
+    if (result is PurchaseSuccess) {
+      final newBalance = await _repo.getCreditBalance();
+      if (!mounted) return;
+      setState(() => _creditBalance = newBalance);
+      if (!sheetContext.mounted) return;
+      Navigator.pop(sheetContext);
+      _showAddSheet();
+      return;
+    }
+    if (result is PurchasePending) {
+      _showMessage('Payment is pending. Cars are added when it completes.');
+      return;
+    }
+    if (result is PurchaseError) {
+      _showMessage(result.message);
+    }
+  }
+
+  Future<void> _onRestore(BuildContext sheetContext) async {
+    final result = await _repo.restorePurchases();
+    if (!mounted) return;
+    final newBalance = await _repo.getCreditBalance();
+    if (!mounted) return;
+    setState(() => _creditBalance = newBalance);
+    if (sheetContext.mounted) Navigator.pop(sheetContext);
+    final message = switch (result) {
+      RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+        'Restored $creditsRestored cars.',
+      RestoreSuccess() => 'Purchases restored.',
+      RestoreNoPurchases() => 'No purchases to restore.',
+      RestoreError(:final message) => message,
+    };
+    _showMessage(message);
+    if (result is RestoreSuccess && result.creditsRestored > 0 && newBalance.canUnlock) {
+      _showAddSheet();
+    }
+  }
+
+  Future<void> _reloadBalanceAndContinue() async {
+    final newBalance = await _repo.getCreditBalance();
+    if (!mounted) return;
+    setState(() => _creditBalance = newBalance);
+    if (newBalance.canUnlock) _showAddSheet();
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// v1.7: Determine which sheet to show based on credit balance.
@@ -187,8 +224,11 @@ class _VdpScreenState extends State<VdpScreen> {
       // Never purchased: show pack picker (first-time paywall)
       _showPackPickerSheet();
     } else {
-      // Had credits but used them all: show out of cars
-      _showOutOfCarsSheet();
+      // Had credits but used them all: Superwall placement cars_balance_empty.
+      unawaited(_carsBalancePlacement.register(
+        presentLocalPaywall: _showOutOfCarsSheet,
+        onPurchased: _reloadBalanceAndContinue,
+      ));
     }
   }
 
