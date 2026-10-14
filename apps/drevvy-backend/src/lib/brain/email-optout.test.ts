@@ -30,35 +30,15 @@ describe('email optout - endDealOnOptout behavior', () => {
   });
 });
 
-describe('email optout - quota impact', () => {
-  it('dealer_declined state should not count toward quota', async () => {
-    const { dealCountsTowardQuota } = await import('@/lib/shopper/quota');
+describe('email optout - credit refund eligibility', () => {
+  it('dealer_declined state should refund credit (slot returned)', async () => {
+    const { shouldRefundCredit } = await import('@/lib/shopper/quota');
 
-    const period = {
-      periodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    };
-
-    const openDeal = {
-      id: 'deal-1',
-      addedAt: new Date().toISOString(),
-      removedAt: null,
-      outreachSentAt: new Date().toISOString(),
-      endState: 'open' as const,
-      endedAt: null,
-    };
-
-    const declinedDeal = {
-      id: 'deal-2',
-      addedAt: new Date().toISOString(),
-      removedAt: null,
-      outreachSentAt: new Date().toISOString(),
-      endState: 'dealer_declined' as const,
-      endedAt: new Date().toISOString(),
-    };
-
-    assert.equal(dealCountsTowardQuota(openDeal, period), true, 'open deal should count');
-    assert.equal(dealCountsTowardQuota(declinedDeal, period), false, 'dealer_declined should not count (slot returned)');
+    assert.equal(shouldRefundCredit('open'), false, 'open deal should not refund');
+    assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer_declined should refund (slot returned)');
+    assert.equal(shouldRefundCredit('sold'), true, 'sold should refund');
+    assert.equal(shouldRefundCredit('ended_no_response'), true, 'ended_no_response should refund');
+    assert.equal(shouldRefundCredit('removed'), false, 'removed should not refund');
   });
 });
 

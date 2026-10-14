@@ -43,8 +43,8 @@ export async function DELETE(
     const result = await removeShopperCar(auth.userId, id, deps);
     return NextResponse.json({
       success: true,
-      data: { id: result.id, removedAt: result.removedAt, refunded: result.refunded },
-      quota: result.quota,
+      data: { id: result.id, removedAt: result.removedAt },
+      credits: result.credits,
     });
   } catch (error) {
     return shopperDealErrorResponse(error);

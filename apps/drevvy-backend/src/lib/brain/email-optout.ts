@@ -6,9 +6,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { createAdminClient } from '@/lib/supabase/admin';
 import { endDeal } from '@/lib/shopper/lifecycle';
 import { getLifecycleRepository } from '@/lib/shopper/lifecycle-store';
 import { supabaseShopperDealRepository } from '@/lib/shopper/deal-store';
+import { refundCredit } from '@/lib/shopper/credits';
 
 export type EmailOptoutReason = 'unsubscribed' | 'spam_reported';
 
@@ -130,6 +132,7 @@ export type EndDealOnOptoutResult = {
   previousState: string;
   newState: string;
   reason: string;
+  creditRefunded: boolean;
 };
 
 export async function endDealOnOptout(
@@ -139,6 +142,7 @@ export async function endDealOnOptout(
 ): Promise<EndDealOnOptoutResult> {
   const lifecycle = getLifecycleRepository();
   const deals = supabaseShopperDealRepository();
+  const supabase = createAdminClient();
 
   const record = await lifecycle.getById(dealId);
   if (!record) {
@@ -148,6 +152,7 @@ export async function endDealOnOptout(
       previousState: 'unknown',
       newState: 'unknown',
       reason: 'deal_not_found',
+      creditRefunded: false,
     };
   }
 
@@ -159,12 +164,20 @@ export async function endDealOnOptout(
       previousState,
       newState: previousState,
       reason: 'already_ended',
+      creditRefunded: false,
     };
   }
 
   const updated = endDeal(record, 'dealer_declined', occurredAt);
   await lifecycle.save(updated);
   await deals.close(record.consumerUserId, dealId);
+
+  const refundResult = await refundCredit(
+    supabase,
+    record.consumerUserId,
+    dealId,
+    'dealer_declined',
+  );
 
   console.log(JSON.stringify({
     event: 'deal_ended_email_optout',
@@ -173,6 +186,8 @@ export async function endDealOnOptout(
     previousState,
     newState: updated.endState,
     occurredAt,
+    creditRefunded: refundResult.refunded,
+    newBalance: refundResult.newBalance,
   }));
 
   return {
@@ -181,5 +196,6 @@ export async function endDealOnOptout(
     previousState,
     newState: updated.endState,
     reason: `email_${reason}`,
+    creditRefunded: refundResult.refunded,
   };
 }
