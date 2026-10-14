@@ -1,4 +1,6 @@
 import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
+import { deliverShopperPushLive } from '@/lib/push/dispatch';
+import type { ShopperPush } from '@/lib/push/events';
 
 import { supabaseShopperDealRepository } from './deal-store';
 import {
@@ -52,6 +54,7 @@ export type DealDeps = {
   period: BillingPeriod;
   live: boolean;
   search?: SimilarSearch;
+  notify?: (push: ShopperPush) => Promise<void>;
 };
 
 export async function shopperDeps(userId: string): Promise<DealDeps> {
@@ -63,6 +66,7 @@ export async function shopperDeps(userId: string): Promise<DealDeps> {
     period: await loadBillingPeriod(userId, process.env, fetch, now),
     live: process.env.MARKETCHECK_LIVE === '1',
     search: searchActiveCarsMcp,
+    notify: (push) => deliverShopperPushLive(push).then(() => undefined),
   };
 }
 
@@ -168,8 +172,17 @@ export async function forwardOffer(
 ): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const current = (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId);
+  const firstForward = !current.offerForwardedAt;
   const revealed = revealDealerVisit(current, input, deps.now.toISOString());
   await deps.lifecycle.save(revealed);
+  if (firstForward) {
+    await emitPush(deps, {
+      event: 'official_offer',
+      userId,
+      dealId: deal.id,
+      listingId: deal.listingId,
+    });
+  }
   return presentDeal(deal, revealed);
 }
 
@@ -207,21 +220,30 @@ export async function setLocationAccess(userId: string, dealId: string, granted:
   await deps.lifecycle.save({ ...current, locationGranted: granted });
 }
 
-export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps, 'deals' | 'lifecycle'>): Promise<LifecycleRecord> {
+export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'notify'>): Promise<LifecycleRecord> {
   const current = await deps.lifecycle.getById(event.dealId);
   if (!current || current.consumerUserId !== event.consumerUserId) {
     throw new ShopperDealError('Deal not found.', 404, 'not_found');
   }
+  const soldNow = event.type === 'end' && event.endState === 'sold' && current.endState !== 'sold';
   let next = current;
   if (event.type === 'outreach') next = noteOutreach(current, event.sentAt, event.channel);
   if (event.type === 'reply') next = noteReply(current, event.sentAt);
   if (event.type === 'end') next = endDeal(current, event.endState, event.sentAt);
   await deps.lifecycle.save(next);
   if (next.endState !== 'open') await deps.deals.close(next.consumerUserId, next.dealId);
+  if (soldNow) {
+    await emitPush(deps, {
+      event: 'car_sold',
+      userId: next.consumerUserId,
+      dealId: next.dealId,
+      listingId: next.listingId,
+    });
+  }
   return next;
 }
 
-export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'now'>): Promise<{
+export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'now' | 'notify'>): Promise<{
   endedNoResponse: number;
   buyPrompts: number;
 }> {
@@ -242,6 +264,17 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
         }));
       }
     }
+  }
+  for (const prompt of result.buyPrompts) {
+    if (prompt.source !== 'pickup_fallback') continue;
+    const record = result.records.find((item) => item.dealId === prompt.dealId);
+    if (!record) continue;
+    await emitPush(deps, {
+      event: 'did_you_buy',
+      userId: record.consumerUserId,
+      dealId: record.dealId,
+      listingId: record.listingId,
+    });
   }
   return {
     endedNoResponse: result.endedNoResponse.length,
@@ -307,6 +340,19 @@ function quotaInputs(deals: ShopperDeal[], records: LifecycleRecord[]): QuotaDea
 
 function findRecord(records: LifecycleRecord[], dealId: string): LifecycleRecord | null {
   return records.find((record) => record.dealId === dealId) ?? null;
+}
+
+async function emitPush(deps: { notify?: (push: ShopperPush) => Promise<void> }, push: ShopperPush): Promise<void> {
+  if (!deps.notify) return;
+  try {
+    await deps.notify(push);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'shopper_push_failed',
+      push: push.event,
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
+  }
 }
 
 function quotaDenied(usage: QuotaSummary): ShopperDealError {
