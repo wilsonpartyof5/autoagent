@@ -1,27 +1,24 @@
-'use client';
-
-import { QRCodeSVG } from 'qrcode.react';
-import { LEGAL } from '@/lib/legal-constants';
+import Image from 'next/image';
+import { QR_TARGET } from '@/lib/store-links';
 
 interface QRCodeProps {
-  url?: string;
   size?: number;
   className?: string;
 }
 
-export function QRCode({ url, size = 160, className }: QRCodeProps) {
-  const targetUrl = url || `${LEGAL.WEBSITE_URL}/get`;
-
+/**
+ * Static SVG for https://drevvy.com/get. The file is the supplied
+ * qr-drevvy-get asset, drawn locally with no QR API.
+ */
+export function QRCode({ size = 112, className }: QRCodeProps) {
   return (
-    <div className={className}>
-      <QRCodeSVG
-        value={targetUrl}
-        size={size}
-        bgColor="transparent"
-        fgColor="currentColor"
-        level="M"
-        includeMargin={false}
-      />
-    </div>
+    <Image
+      src="/qr-drevvy-get.svg"
+      alt={`QR code linking to ${QR_TARGET}`}
+      width={size}
+      height={size}
+      unoptimized
+      className={className}
+    />
   );
 }

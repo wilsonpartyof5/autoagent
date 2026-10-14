@@ -1,29 +1,37 @@
 import type { Metadata, Viewport } from 'next';
 import React from 'react';
+import { Manrope } from 'next/font/google';
 import './globals.css';
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  weight: ['500', '600', '700', '800'],
+  display: 'swap',
+  variable: '--font-sans',
+});
 
 export const metadata: Metadata = {
   title: {
-    default: 'Drevvy - Get the Real Out-the-Door Price',
+    default: 'Drevvy — Know the real price before you go',
     template: '%s | Drevvy',
   },
   description:
-    "Stop guessing what you'll actually pay for a car. Drevvy's AI contacts dealers for you and gets a clear, written out-the-door price.",
+    'Drevvy asks the dealer for an itemized out-the-door price in writing, so every fee and add-on is on the table. You get transparency, and you stay anonymous until you accept.',
   metadataBase: new URL('https://www.drevvy.com'),
   openGraph: {
     type: 'website',
     locale: 'en_US',
     url: 'https://www.drevvy.com',
     siteName: 'Drevvy',
-    title: 'Drevvy - Get the Real Out-the-Door Price',
+    title: 'Drevvy — Know the real price before you go',
     description:
-      "Stop guessing what you'll actually pay for a car. Drevvy's AI contacts dealers for you and gets a clear, written out-the-door price.",
+      'Drevvy asks the dealer for an itemized out-the-door price in writing. You get transparency, and you stay anonymous until you accept.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Drevvy - Get the Real Out-the-Door Price',
+    title: 'Drevvy — Know the real price before you go',
     description:
-      "Stop guessing what you'll actually pay for a car. Drevvy's AI contacts dealers for you.",
+      'Itemized out-the-door prices in writing. Transparency before you go, and you stay anonymous until you accept.',
   },
   robots: {
     index: true,
@@ -51,8 +59,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="antialiased">{children}</body>
+    <html lang="en" className={manrope.variable}>
+      <body className={`${manrope.className} antialiased`}>{children}</body>
     </html>
   );
 }

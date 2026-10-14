@@ -1,517 +1,425 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
-import { QRCode } from '@/components/landing/qr-code';
-import { StoreBadges } from '@/components/landing/store-badges';
 import { Footer } from '@/components/landing/footer';
-import { IPhoneFrame } from '@/components/landing/iphone-frame';
-import { LEGAL } from '@/lib/legal-constants';
+import { Logo } from '@/components/landing/logo';
+import { PhoneFrame } from '@/components/landing/iphone-frame';
+import { StoreCta } from '@/components/landing/store-cta';
 
 export const metadata: Metadata = {
-  title: 'Drevvy - Get the Real Out-the-Door Price',
+  title: {
+    absolute: 'Drevvy — Know the real price before you go',
+  },
   description:
-    "Stop guessing what you'll actually pay for a car. Drevvy gets you a clear, itemized out-the-door price from dealers—every fee visible, nothing hidden. $97/month for up to 10 cars.",
+    'Drevvy asks the dealer for an itemized out-the-door price in writing, so every fee and add-on is on the table. You get transparency, and you stay anonymous until you accept.',
   openGraph: {
-    title: 'Drevvy - Get the Real Out-the-Door Price',
+    title: 'Drevvy — Know the real price before you go',
     description:
-      "Stop guessing what you'll actually pay for a car. Drevvy gets you a clear, itemized out-the-door price from dealers.",
+      'Drevvy asks the dealer for an itemized out-the-door price in writing. You get transparency, and you stay anonymous until you accept.',
     type: 'website',
     url: 'https://www.drevvy.com',
     siteName: 'Drevvy',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Drevvy - Get the Real Out-the-Door Price',
+    title: 'Drevvy — Know the real price before you go',
     description:
-      "Stop guessing what you'll actually pay for a car. Drevvy gets you transparency on every car.",
+      'Itemized out-the-door prices in writing. Transparency before you go, and you stay anonymous until you accept.',
   },
   alternates: {
     canonical: 'https://www.drevvy.com',
   },
 };
 
+const steps = [
+  {
+    title: 'Shop',
+    body: 'Ask Drevvy or browse real listings near you. Asking and shopping are free.',
+  },
+  {
+    title: 'Unlock my price',
+    body: 'Found the one? Tap Unlock my price. Drevvy reaches out to the dealer for you.',
+  },
+  {
+    title: 'Get an itemized out-the-door price',
+    body: 'Every line in writing: vehicle, doc fee, tax, title, and any add-ons called out.',
+  },
+  {
+    title: 'Stay anonymous until you accept',
+    body: 'Dealers see “Dealer A”, not you. Your name goes over only when you accept an offer.',
+  },
+];
+
+const STARTING_OTD = 37541;
+const BAR_FLOOR = 34000;
+
+const rounds = [
+  {
+    label: 'Starting OTD',
+    price: 37541,
+    title: 'Out the door',
+    detail: 'Before Drevvy asked',
+    featured: false,
+  },
+  {
+    label: 'Round 1',
+    price: 36632,
+    title: 'Paint protection removed',
+    detail: '−$909',
+    featured: false,
+  },
+  {
+    label: 'Round 2',
+    price: 36179,
+    title: 'VIN etching removed',
+    detail: '−$453',
+    featured: false,
+  },
+  {
+    label: 'Final',
+    price: 35980,
+    title: 'Nitrogen removed',
+    detail: '−$199',
+    featured: true,
+  },
+];
+
+function barPercent(price: number) {
+  return ((price - BAR_FLOOR) / (STARTING_OTD - BAR_FLOOR)) * 100;
+}
+
+function formatDollars(amount: number) {
+  return `$${amount.toLocaleString('en-US')}`;
+}
+
+const packs = [
+  {
+    name: 'Starter',
+    price: '$47',
+    cars: '3 cars',
+    detail: '$15.67 per car',
+    best: false,
+  },
+  {
+    name: 'Plus',
+    price: '$67',
+    cars: '5 cars',
+    detail: '$13.40 per car · save 14.5%',
+    best: false,
+  },
+  {
+    name: 'Best Value',
+    price: '$97',
+    cars: '10 cars',
+    detail: '$9.70 per car · save 38.1%',
+    best: true,
+  },
+];
+
 const faqs = [
   {
     question: 'What is an out-the-door price?',
     answer:
-      "The out-the-door (OTD) price is the total amount you'll pay to drive the car home, including taxes, registration, documentation fees, and any dealer add-ons. It's the only price that matters when comparing deals.",
+      'The total you would pay to drive the car home: vehicle price, dealer fees, taxes, title and registration, and any add-ons.',
+    open: true,
   },
   {
-    question: 'How does Drevvy get prices from dealers?',
+    question: 'How does Drevvy get prices?',
     answer:
-      "Drevvy contacts dealers through email, text, and phone calls on your behalf. We ask for a clear, itemized out-the-door quote so you know exactly what you're paying for—no surprises at the finance desk.",
-  },
-  {
-    question: 'Why $97 per month?',
-    answer:
-      "For $97/month, you get Drevvy working on up to 10 vehicles at once. That's complete transparency on every car you're considering. Most shoppers save far more than that by knowing the real price before they walk in.",
-  },
-  {
-    question: "What if I'm not ready to buy?",
-    answer:
-      "That's fine. Use Drevvy to research and understand real pricing in your market. When you're ready, you'll have actual out-the-door quotes instead of guesses.",
+      'Drevvy contacts the listing dealer by email or text during business hours and asks for an itemized out-the-door quote in writing.',
+    open: true,
   },
   {
     question: 'Do dealers know who I am?',
     answer:
-      "No. We only share your first name and general location (for accurate tax estimates). Dealers never get your phone number, email, or address unless you decide to move forward with a specific vehicle.",
+      'No. Dealers see an anonymous shopper (“Dealer A” on your side). Your name is shared only when you accept an offer.',
+    open: false,
   },
   {
-    question: 'Can I cancel anytime?',
+    question: 'How do car packs work?',
     answer:
-      'Yes. Your subscription renews monthly through the App Store or Google Play. Cancel anytime from your phone settings—no calls, no hassle.',
+      'Each car you unlock uses one. Packs are one-time purchases (3 for $47, 5 for $67, 10 for $97) and never expire. If a dealer never replies, you get the car back.',
+    open: false,
+  },
+  {
+    question: 'Is Drevvy guaranteed to save me money?',
+    answer:
+      'No. Drevvy gets you a clear, written number. Dealer response and savings aren’t guaranteed, and you decide on every offer.',
+    open: false,
   },
 ];
 
-const stats = [
-  {
-    value: '$3,350+',
-    label: 'above advertised price',
-    description: 'In an FTC case, buyers paid more than $3,350 above the advertised price in over 92% of deals.',
-    source: 'FTC alleged, Oct 2026',
-    sourceUrl: 'https://www.ftc.gov/news-events/news/press-releases/2026/10/ftc-secures-settlement-auto-dealership-group-price-transparency-win-consumers',
-  },
-  {
-    value: '67%',
-    label: 'dealers won\'t itemize',
-    description: 'Only 33 of 100 dealers sent a full out-the-door breakdown when AI agents asked.',
-    source: 'CarEdge mystery shop, 2026',
-    sourceUrl: 'https://www.dealeraiguy.com/100-ai-agents-mystery-shopped-100-dealers/',
-  },
-  {
-    value: '30%',
-    label: 'found hidden fees',
-    description: '30% of buyers agreed on a price and then found hidden fees when it was time to sign.',
-    source: 'KPA / Harris Poll, 2024',
-    sourceUrl: 'https://kpa.io/kpa-car-dealership-trust-survey-while-a-minority-of-americans-experience-deceptive-selling-at-dealerships-most-still-distrust-them/',
-  },
-  {
-    value: '~3 hrs',
-    label: 'at the dealership',
-    description: 'Buyers spend almost 3 hours at the dealership where they buy.',
-    source: 'Cox Automotive, 2025',
-    sourceUrl: 'https://www.coxautoinc.com/wp-content/uploads/2026/03/2025-Cox-Automotive-Car-Buyer-Journey-Study-Summary.pdf',
-  },
-];
+const navLinkClass = 'text-[15px] font-bold text-[#4E5568] transition-colors hover:text-[#171A2C]';
 
-function CheckIcon({ className }: { className?: string }) {
+function Eyebrow({ children }: { children: string }) {
   return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-}
-
-function SparkleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2L13.09 8.26L18 6L15.74 10.91L22 12L15.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L8.26 13.09L2 12L8.26 10.91L6 6L10.91 8.26L12 2Z" />
-    </svg>
+    <p className="text-base font-extrabold uppercase tracking-[0.1em] text-[#4B3FD9] lg:text-[13px]">{children}</p>
   );
 }
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen relative overflow-hidden">
-      {/* Ambient gradient blobs - Drevvy Halo style */}
-      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
-        <div className="absolute top-[-10%] right-[-5%] w-[50vw] h-[50vw] rounded-full bg-[hsl(var(--blob-violet))] blur-[100px] opacity-60" />
-        <div className="absolute top-[20%] left-[-10%] w-[40vw] h-[40vw] rounded-full bg-[hsl(var(--blob-blue))] blur-[100px] opacity-50" />
-        <div className="absolute bottom-[10%] right-[10%] w-[35vw] h-[35vw] rounded-full bg-[hsl(var(--blob-lilac))] blur-[100px] opacity-40" />
-      </div>
-
-      {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-[hsl(var(--background))]/80 border-b border-[hsl(var(--border))]/50">
-        <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
-              <SparkleIcon className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-[hsl(var(--foreground))]">Drevvy</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-            <Link href="#how-it-works" className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+    <main className="min-h-screen bg-[radial-gradient(900px_600px_at_50%_-10%,#DCD8FF,transparent_70%),#EEF1F7] text-[#171A2C]">
+      <header className="sticky top-0 z-40 bg-[#EEF1F7]/80 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-5 py-4 md:px-10 lg:px-20 lg:py-6">
+          <Logo gradientId="logo-nav" />
+          <nav className="hidden items-center gap-8 lg:flex" aria-label="Primary">
+            <a href="#how-it-works" className={navLinkClass}>
               How it works
-            </Link>
-            <Link href="#pricing" className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+            </a>
+            <a href="#pricing" className={navLinkClass}>
               Pricing
-            </Link>
-            <Link href="#faq" className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+            </a>
+            <a href="#faq" className={navLinkClass}>
               FAQ
+            </a>
+            <Link href="/dealers" className={navLinkClass}>
+              For dealers
             </Link>
           </nav>
-          <Link
-            href="/get"
-            className="px-5 py-2.5 gradient-brand text-white rounded-full text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[hsl(var(--primary))]/25"
+          <a
+            href="#get-the-app"
+            className="inline-flex min-h-11 shrink-0 items-center rounded-[22px] bg-gradient-to-br from-[#5B4FE9] to-[#3A6FF0] px-4 text-base font-extrabold text-white shadow-[0_10px_24px_rgba(70,80,220,0.28)] transition-opacity hover:opacity-90 sm:px-5 lg:text-sm"
           >
             Get the app
-          </Link>
+          </a>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="pt-16 pb-24 md:pt-24 md:pb-32">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            {/* Hero text */}
-            <div className="max-w-2xl animate-fade-in-up">
-              {/* Gradient orb - matches app design */}
-              <div className="w-20 h-20 mb-8 relative">
-                <div className="absolute inset-0 rounded-full gradient-brand opacity-80 blur-sm" />
-                <div className="relative w-full h-full rounded-full gradient-brand flex items-center justify-center shadow-lg shadow-[hsl(var(--primary))]/30">
-                  <SparkleIcon className="w-10 h-10 text-white" />
-                </div>
-              </div>
-              
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 text-[hsl(var(--foreground))]">
-                Stop guessing.{' '}
-                <span className="gradient-brand-text">Know the real price.</span>
-              </h1>
-              <p className="text-lg md:text-xl text-[hsl(var(--muted-foreground))] mb-8 leading-relaxed">
-                Drevvy contacts dealers for you and gets a clear, itemized out-the-door price. 
-                Every fee visible. Nothing hidden. Complete transparency.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                <StoreBadges />
-              </div>
-              <p className="mt-4 text-sm text-[hsl(var(--muted-foreground))]">
-                Dealers never see your contact info.
-              </p>
-            </div>
+      <section className="px-5 pb-12 pt-8 text-center md:px-10 md:pt-14 lg:px-20 lg:pb-16 lg:pt-16">
+        <div className="mx-auto max-w-[1000px]">
+          <p className="inline-block rounded-full border border-white bg-white/75 px-3.5 py-2 text-base font-extrabold text-[#4B3FD9] lg:text-[13px]">
+            Asking and shopping are free
+          </p>
+          <h1 className="mx-auto mt-5 max-w-[1000px] text-balance text-[clamp(2.15rem,10.2vw,2.875rem)] font-extrabold leading-[1.02] tracking-[-0.045em] sm:text-6xl lg:text-7xl xl:text-[88px]">
+            Know the <em className="gradient-brand-text not-italic">real price</em>
+            <br />
+            before you go.
+          </h1>
+          <p className="mx-auto mt-5 max-w-[640px] text-[17px] font-medium leading-relaxed text-[#4E5568] lg:text-[21px]">
+            Drevvy asks the dealer for an itemized out-the-door price in writing, so every fee and add-on is on the
+            table. You stay anonymous until you accept.
+          </p>
+          <StoreCta id="get-the-app" />
+        </div>
 
-            {/* Hero phone */}
-            <div className="relative animate-fade-in delay-200">
-              <div className="absolute inset-0 gradient-brand rounded-full blur-[120px] opacity-20" />
-              <IPhoneFrame
-                src="/screenshots/51-shop-home-personalized.png"
-                alt="Drevvy app showing personalized car shopping experience"
-                priority
-              />
-            </div>
+        <div className="relative -mx-5 mt-10 overflow-x-clip px-1 pb-6 sm:mx-0 sm:px-0 md:mx-auto md:mt-14 md:max-w-[1100px] md:pb-12">
+          <div className="flex items-end justify-center md:gap-5 lg:gap-8">
+            <PhoneFrame
+              src="/screenshots/10-shop-results.png"
+              alt="Drevvy shop results for hybrid SUVs near you"
+              className="-mr-9 w-[108px] -translate-y-2 rounded-[28px] p-1.5 opacity-90 sm:w-[128px] md:mr-0 md:w-[168px] md:translate-y-6 md:rounded-[40px] md:p-2 md:opacity-95 lg:w-[210px] lg:translate-y-10 lg:rounded-[48px] lg:p-2.5 xl:w-[250px] xl:translate-y-14"
+            />
+            <PhoneFrame
+              src="/screenshots/51-shop-home-personalized.png"
+              alt="Drevvy home screen welcoming Dana back"
+              priority
+              className="relative z-10 w-[180px] rounded-[28px] p-1.5 sm:w-[200px] md:w-[240px] md:rounded-[40px] md:p-2 lg:w-[300px] lg:rounded-[48px] lg:p-2.5 xl:w-[330px]"
+            />
+            <PhoneFrame
+              src="/screenshots/08-shop-ask-answer.png"
+              alt="Drevvy answer comparing typical out-the-door prices"
+              className="-ml-9 w-[108px] -translate-y-2 rounded-[28px] p-1.5 opacity-90 sm:w-[128px] md:ml-0 md:w-[168px] md:translate-y-6 md:rounded-[40px] md:p-2 md:opacity-95 lg:w-[210px] lg:translate-y-10 lg:rounded-[48px] lg:p-2.5 xl:w-[250px] xl:translate-y-14"
+            />
+          </div>
+
+          <div className="pointer-events-none absolute left-[2%] top-[14%] hidden max-w-[210px] rounded-3xl border border-white bg-white/80 px-4 py-3.5 text-left shadow-[0_16px_40px_rgba(40,50,110,0.14)] backdrop-blur-md xl:block">
+            <p className="text-[15px] font-extrabold leading-tight">Itemized in writing</p>
+            <p className="mt-1 text-[12.5px] font-semibold text-[#6A7086]">Doc fee, tax, title, add-ons</p>
+          </div>
+          <div className="pointer-events-none absolute right-[2%] top-[30%] hidden max-w-[210px] rounded-3xl border border-white bg-white/80 px-4 py-3.5 text-left shadow-[0_16px_40px_rgba(40,50,110,0.14)] backdrop-blur-md xl:block">
+            <p className="text-[15px] font-extrabold leading-tight">Dealer A</p>
+            <p className="mt-1 text-[12.5px] font-semibold text-[#6A7086]">Your name stays private</p>
           </div>
         </div>
       </section>
 
-      {/* Stats Band */}
-      <section className="py-16 md:py-20 bg-[hsl(var(--foreground))] relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5" aria-hidden="true">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
-        </div>
-        <div className="container mx-auto px-4 md:px-6 relative">
-          <h2 className="text-2xl md:text-3xl font-bold text-white text-center mb-4">
-            Why transparency matters
+      <section id="how-it-works" className="scroll-mt-24 px-5 py-16 text-center md:px-10 md:py-20 lg:px-20 lg:py-24">
+        <div className="mx-auto max-w-[1440px]">
+          <Eyebrow>How it works</Eyebrow>
+          <h2 className="mx-auto mt-2.5 max-w-[16ch] text-balance text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:max-w-none sm:text-5xl lg:text-[54px]">
+            Four steps to a clear number.
           </h2>
-          <p className="text-white/70 text-center mb-12 max-w-2xl mx-auto">
-            The numbers show why knowing your out-the-door price before you visit matters.
-          </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((stat, index) => (
-              <div
-                key={index}
-                className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover:bg-white/15 transition-colors"
+          <ol className="mt-10 grid list-none grid-cols-1 gap-4 text-left sm:grid-cols-2 xl:grid-cols-4">
+            {steps.map((step, index) => (
+              <li
+                key={step.title}
+                className="rounded-3xl border border-white bg-white/75 p-6 shadow-[0_10px_30px_rgba(40,50,110,0.08)]"
               >
-                <div className="text-3xl md:text-4xl font-extrabold text-white mb-2">
-                  {stat.value}
+                <span className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-gradient-to-br from-[#5B4FE9] to-[#3A6FF0] text-base font-extrabold text-white">
+                  {index + 1}
+                </span>
+                <h3 className="mt-4 text-[19px] font-extrabold leading-snug">{step.title}</h3>
+                <p className="mt-1.5 text-base leading-relaxed text-[#565D73] lg:text-[15px]">{step.body}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="px-5 pb-16 text-center md:px-10 md:pb-20 lg:px-20 lg:pb-24" aria-labelledby="price-rounds-heading">
+        <div className="mx-auto max-w-[1440px]">
+          <Eyebrow>Price-drop rounds</Eyebrow>
+          <h2
+            id="price-rounds-heading"
+            className="mx-auto mt-2.5 max-w-[14ch] text-balance text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:max-w-none sm:text-5xl lg:text-[54px]"
+          >
+            Watch the number come down.
+          </h2>
+          <div className="mt-10 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {rounds.map((round) => (
+              <article
+                key={round.label}
+                className={
+                  round.featured
+                    ? 'flex h-full flex-col rounded-3xl bg-gradient-to-br from-[#5B4FE9] to-[#3A6FF0] p-5 text-left text-white shadow-[0_10px_30px_rgba(70,80,220,0.28)] sm:p-6'
+                    : 'flex h-full flex-col rounded-3xl bg-white p-5 text-left shadow-[0_10px_30px_rgba(40,50,110,0.08)] sm:p-6'
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p
+                    className={
+                      round.featured
+                        ? 'text-base font-extrabold uppercase tracking-[0.06em] text-[#E2E0FF] xl:text-xs'
+                        : 'text-base font-extrabold uppercase tracking-[0.06em] text-[#6A7086] xl:text-xs'
+                    }
+                  >
+                    {round.label}
+                  </p>
+                  <span
+                    className={
+                      round.featured
+                        ? 'shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-base font-extrabold text-white xl:text-xs'
+                        : 'shrink-0 rounded-full bg-[#EEF1F7] px-2.5 py-1 text-base font-extrabold text-[#6A7086] xl:text-xs'
+                    }
+                  >
+                    Example
+                  </span>
                 </div>
-                <div className="text-sm font-semibold text-white/90 mb-3">
-                  {stat.label}
-                </div>
-                <p className="text-sm text-white/70 mb-4 leading-relaxed">
-                  {stat.description}
+                <p className="mt-3 text-[32px] font-extrabold tabular-nums leading-none tracking-[-0.03em] sm:text-[34px]">
+                  {formatDollars(round.price)}
                 </p>
-                <a
-                  href={stat.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-white/50 hover:text-white/70 transition-colors underline underline-offset-2"
+                <p className="mt-2 font-extrabold">{round.title}</p>
+                <p className={round.featured ? 'mt-1 text-base text-[#E2E0FF] lg:text-[13.5px]' : 'mt-1 text-base text-[#6A7086] lg:text-[13.5px]'}>
+                  {round.detail}
+                </p>
+                <div
+                  className={round.featured ? 'mt-4 h-2 w-full overflow-hidden rounded-full bg-white/25' : 'mt-4 h-2 w-full overflow-hidden rounded-full bg-[#E7E9F2]'}
+                  aria-hidden="true"
                 >
-                  {stat.source}
-                </a>
-              </div>
+                  <div
+                    className={
+                      round.featured
+                        ? 'h-full rounded-full bg-white'
+                        : 'h-full rounded-full bg-gradient-to-r from-[#5B4FE9] to-[#3A6FF0]'
+                    }
+                    style={{ width: `${barPercent(round.price)}%` }}
+                  />
+                </div>
+              </article>
             ))}
           </div>
+          <p className="mx-auto mt-4 max-w-xl text-base font-semibold text-[#171A2C]/70 lg:text-[12.5px]">
+            Example only. Total saved $1,561. Your results depend on the dealer.
+          </p>
         </div>
       </section>
 
-      {/* How it works */}
-      <section id="how-it-works" className="py-20 md:py-28">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[hsl(var(--foreground))]">
-              How Drevvy works
-            </h2>
-            <p className="text-[hsl(var(--muted-foreground))] text-lg max-w-2xl mx-auto">
-              Three steps to complete price transparency. You decide, we handle the rest.
+      <section className="px-5 pb-16 md:px-10 md:pb-20 lg:px-20 lg:pb-24">
+        <div className="mx-auto flex max-w-[1440px] flex-col items-center gap-6 rounded-[32px] bg-white px-6 py-8 text-center shadow-[0_20px_60px_rgba(40,50,110,0.1)] md:flex-row md:items-center md:gap-10 md:px-12 md:py-12 md:text-left lg:px-16 lg:py-14">
+          <p className="gradient-brand-text shrink-0 text-[72px] font-extrabold leading-none tracking-[-0.05em] md:text-8xl lg:text-[120px]">
+            3–5%
+          </p>
+          <div className="min-w-0">
+            <h2 className="text-2xl font-extrabold tracking-[-0.02em]">Typical savings for buyers who compare.</h2>
+            <p className="mt-2 text-[17px] leading-relaxed text-[#4E5568]">
+              Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price
+              they&apos;re quoted.
+            </p>
+            <p className="mt-3 text-base font-semibold text-[#6A7086] lg:text-[13px]">
+              Source: CarEdge, State of Dealer Fees 2026. Industry figure, not a Drevvy result.
             </p>
           </div>
-          
-          <div className="grid lg:grid-cols-3 gap-8 lg:gap-12 items-start">
-            {/* Step 1 */}
-            <div className="text-center">
-              <div className="relative mx-auto mb-8 max-w-[240px]">
-                <IPhoneFrame
-                  src="/screenshots/10-shop-results.png"
-                  alt="Drevvy app showing car search results"
-                  className="transform scale-90"
-                />
-              </div>
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full gradient-brand text-white font-bold text-lg mb-4">
-                1
-              </div>
-              <h3 className="text-xl font-bold mb-3 text-[hsl(var(--foreground))]">Add a car</h3>
-              <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                Browse listings in the app. When you find one you like, tap "Add to Agent" and Drevvy takes over.
-              </p>
-            </div>
-
-            {/* Step 2 */}
-            <div className="text-center">
-              <div className="relative mx-auto mb-8 max-w-[240px]">
-                <IPhoneFrame
-                  src="/screenshots/08-shop-ask-answer.png"
-                  alt="Drevvy getting the itemized price from a dealer"
-                  className="transform scale-90"
-                />
-              </div>
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full gradient-brand text-white font-bold text-lg mb-4">
-                2
-              </div>
-              <h3 className="text-xl font-bold mb-3 text-[hsl(var(--foreground))]">Drevvy gets the itemized price</h3>
-              <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                We contact the dealer by email, text, and call to request a complete, itemized out-the-door quote.
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className="text-center">
-              <div className="relative mx-auto mb-8 max-w-[240px]">
-                <IPhoneFrame
-                  src="/screenshots/17-shop-results-pro.png"
-                  alt="Drevvy showing complete price breakdown"
-                  className="transform scale-90"
-                />
-              </div>
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full gradient-brand text-white font-bold text-lg mb-4">
-                3
-              </div>
-              <h3 className="text-xl font-bold mb-3 text-[hsl(var(--foreground))]">You decide</h3>
-              <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                See every line item: vehicle price, doc fee, taxes, add-ons—everything. Accept, ask for better, or move on.
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* See Every Line Item Section */}
-      <section className="py-20 md:py-28 bg-[hsl(var(--card))]">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-            <div className="order-2 lg:order-1">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full lilac-tint text-sm font-semibold mb-6">
-                <SparkleIcon className="w-4 h-4" />
-                <span>Complete Transparency</span>
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6 text-[hsl(var(--foreground))]">
-                See every line item before you visit
-              </h2>
-              <p className="text-lg text-[hsl(var(--muted-foreground))] mb-8 leading-relaxed">
-                No more surprises in the finance office. Drevvy shows you the complete breakdown: 
-                vehicle price, documentation fees, title and registration, taxes, and any dealer add-ons.
-              </p>
-              
-              <div className="space-y-4 mb-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl mint-highlight flex items-center justify-center flex-shrink-0">
-                    <CheckIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-[hsl(var(--foreground))] mb-1">Vehicle price vs. listed price</div>
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">See exactly how the offer compares to what was advertised</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl mint-highlight flex items-center justify-center flex-shrink-0">
-                    <CheckIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-[hsl(var(--foreground))] mb-1">Fees and taxes itemized</div>
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Doc fee, title, registration, and sales tax—nothing hidden</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl mint-highlight flex items-center justify-center flex-shrink-0">
-                    <CheckIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-[hsl(var(--foreground))] mb-1">Add-ons called out</div>
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Paint protection, nitrogen, VIN etching—see what&apos;s included and what it costs</p>
-                  </div>
-                </div>
-              </div>
-
-              <Link
-                href="/get"
-                className="inline-flex items-center gap-2 px-6 py-3 gradient-brand text-white rounded-full font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[hsl(var(--primary))]/25"
+      <section id="pricing" className="scroll-mt-24 px-5 pb-16 text-center md:px-10 md:pb-20 lg:px-20 lg:pb-24">
+        <div className="mx-auto max-w-[1000px]">
+          <Eyebrow>Car packs</Eyebrow>
+          <h2 className="mt-2.5 text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:text-5xl lg:text-[54px]">
+            Pay per car. Never expires.
+          </h2>
+          <div className="mt-12 grid grid-cols-1 gap-6 pt-2 md:grid-cols-3 md:gap-4 lg:gap-5">
+            {packs.map((pack) => (
+              <article
+                key={pack.name}
+                className={
+                  pack.best
+                    ? 'relative rounded-3xl border-2 border-[#5B4FE9] bg-white/80 px-6 py-8 shadow-[0_0_0_6px_#ECEAFF,0_20px_50px_rgba(70,80,220,0.2)]'
+                    : 'relative rounded-3xl border border-white bg-white/80 px-6 py-8 shadow-[0_10px_30px_rgba(40,50,110,0.08)]'
+                }
               >
-                <SparkleIcon className="w-5 h-5" />
-                Get transparency now
-              </Link>
-            </div>
-
-            <div className="order-1 lg:order-2 relative">
-              <div className="absolute inset-0 gradient-brand rounded-full blur-[100px] opacity-15" />
-              <IPhoneFrame
-                src="/screenshots/07-shop-empty.png"
-                alt="Drevvy offer showing itemized price breakdown"
-              />
-            </div>
+                {pack.best ? (
+                  <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-[10px] bg-gradient-to-r from-[#5B4FE9] to-[#3A6FF0] px-3 py-1 text-base font-extrabold tracking-[0.08em] text-white md:text-xs">
+                    BEST VALUE
+                  </span>
+                ) : null}
+                <p className="font-extrabold text-[#6A7086]">{pack.name}</p>
+                <p className="mt-1.5 text-[56px] font-extrabold tabular-nums leading-none tracking-[-0.04em]">{pack.price}</p>
+                <p className="mt-2 text-lg font-extrabold">{pack.cars}</p>
+                <p className={pack.best ? 'mt-1.5 text-base font-extrabold text-[#4B3FD9] md:text-sm' : 'mt-1.5 text-base font-semibold text-[#6A7086] md:text-sm'}>
+                  {pack.detail}
+                </p>
+              </article>
+            ))}
           </div>
+          <p className="mx-auto mt-6 max-w-xl font-bold text-[#4E5568]">
+            One-time purchase. No subscription. Your cars never expire. Asking and shopping are always free.
+          </p>
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="py-20 md:py-28">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[hsl(var(--foreground))]">
-              Simple, transparent pricing
-            </h2>
-            <p className="text-[hsl(var(--muted-foreground))] text-lg">
-              One plan. Complete transparency on every car.
-            </p>
-          </div>
-
-          <div className="max-w-md mx-auto">
-            <div className="glass-card p-8 relative overflow-hidden">
-              {/* Decorative gradient */}
-              <div className="absolute top-0 right-0 w-32 h-32 gradient-brand rounded-full blur-3xl opacity-20" aria-hidden="true" />
-              
-              <div className="relative">
-                <div className="text-center mb-8">
-                  <div className="text-5xl font-extrabold text-[hsl(var(--foreground))] mb-2">
-                    {LEGAL.SUBSCRIPTION_PRICE}
-                    <span className="text-xl font-normal text-[hsl(var(--muted-foreground))]">/{LEGAL.SUBSCRIPTION_PERIOD}</span>
-                  </div>
-                  <p className="text-[hsl(var(--muted-foreground))]">Billed monthly through the App Store or Google Play</p>
-                </div>
-
-                <ul className="space-y-4 mb-8">
-                  {[
-                    `Up to ${LEGAL.VEHICLE_LIMIT} vehicles at once`,
-                    'Full out-the-door price breakdown',
-                    'Email, text, and call outreach',
-                    'Your info stays private until you decide',
-                    'Cancel anytime from your phone',
-                  ].map((feature, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full gradient-brand flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <CheckIcon className="w-3 h-3 text-white" />
-                      </div>
-                      <span className="text-[hsl(var(--foreground))]">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Link
-                  href="/get"
-                  className="block w-full py-4 gradient-brand text-white rounded-2xl font-semibold text-center hover:opacity-90 transition-opacity shadow-lg shadow-[hsl(var(--primary))]/25"
-                >
-                  Get started
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* For Dealers */}
-      <section className="py-16 md:py-20 bg-[hsl(var(--card))]">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-2xl md:text-3xl font-bold mb-4 text-[hsl(var(--foreground))]">
-              For dealerships
-            </h2>
-            <p className="text-lg text-[hsl(var(--muted-foreground))] mb-6 leading-relaxed">
-              Drevvy helps shoppers get clarity—not haggle. When we reach out, we&apos;re asking for
-              an itemized quote, not a discount. Buyers who know the price are ready to move.
-            </p>
-            <Link
-              href="/dealers"
-              className="inline-flex items-center gap-2 text-[hsl(var(--primary))] font-semibold hover:underline"
-            >
-              Learn more about how we work with dealers
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="py-20 md:py-28">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[hsl(var(--foreground))]">
-              Frequently asked questions
-            </h2>
-          </div>
-          <div className="max-w-3xl mx-auto space-y-4">
-            {faqs.map((faq, index) => (
+      <section id="faq" className="scroll-mt-24 px-5 pb-16 text-center md:px-10 md:pb-20 lg:px-20 lg:pb-28">
+        <div className="mx-auto max-w-[820px]">
+          <Eyebrow>FAQ</Eyebrow>
+          <h2 className="mt-2.5 text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:text-5xl lg:text-[54px]">
+            Questions, answered.
+          </h2>
+          <div className="mt-9 text-left">
+            {faqs.map((faq) => (
               <details
-                key={index}
-                className="group glass-card overflow-hidden"
+                key={faq.question}
+                open={faq.open}
+                className="group mb-2.5 rounded-[20px] border border-white bg-white/80 px-5 py-4 shadow-[0_10px_30px_rgba(40,50,110,0.05)] sm:px-6"
               >
-                <summary className="flex items-center justify-between p-6 cursor-pointer list-none">
-                  <h3 className="font-semibold pr-4 text-[hsl(var(--foreground))]">{faq.question}</h3>
-                  <ChevronIcon className="w-5 h-5 text-[hsl(var(--muted-foreground))] flex-shrink-0 transition-transform group-open:rotate-180" />
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-[17px] font-extrabold [&::-webkit-details-marker]:hidden">
+                  <span>{faq.question}</span>
+                  <span className="text-[22px] font-medium leading-none text-[#171A2C]/60 group-open:hidden" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="hidden text-[22px] font-medium leading-none text-[#171A2C]/60 group-open:inline" aria-hidden="true">
+                    –
+                  </span>
                 </summary>
-                <div className="px-6 pb-6 text-[hsl(var(--muted-foreground))]">
-                  <p className="leading-relaxed">{faq.answer}</p>
-                </div>
+                <p className="mt-2 text-base leading-relaxed text-[#171A2C]/80">{faq.answer}</p>
               </details>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Download CTA */}
-      <section className="py-20 md:py-28 gradient-brand relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" aria-hidden="true">
-          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
-        </div>
-        <div className="container mx-auto px-4 md:px-6 relative">
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
-              <SparkleIcon className="w-8 h-8 text-white" />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
-              Ready for transparency?
-            </h2>
-            <p className="text-lg text-white/80 mb-10">
-              Download Drevvy and find out what you&apos;ll actually pay.
-            </p>
-            <div className="flex flex-col md:flex-row items-center justify-center gap-8">
-              <div className="bg-white p-4 rounded-2xl shadow-xl">
-                <QRCode size={140} className="text-[hsl(var(--foreground))]" />
-              </div>
-              <div className="text-left">
-                <p className="text-sm text-white/70 mb-3">Scan to download</p>
-                <StoreBadges showWaitlist={false} />
-              </div>
-            </div>
-          </div>
+      <section className="scroll-mt-24 px-5 pb-16 md:px-10 lg:px-20 lg:pb-28" aria-labelledby="download-heading">
+        <div className="mx-auto max-w-[1280px] rounded-[32px] bg-[radial-gradient(600px_300px_at_50%_0%,#DCD8FF,transparent_75%),#fff] px-5 py-11 text-center shadow-[0_20px_60px_rgba(40,50,110,0.1)] sm:px-8 md:px-14 md:py-16">
+          <Eyebrow>Get the app</Eyebrow>
+          <h2
+            id="download-heading"
+            className="mx-auto mt-2.5 max-w-[16ch] text-balance text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:max-w-none sm:text-5xl lg:text-[54px]"
+          >
+            Know the real price before you go.
+          </h2>
+          <p className="mx-auto mt-3.5 max-w-[640px] text-[17px] font-medium leading-relaxed text-[#4E5568] lg:text-[21px]">
+            Asking and shopping are free. Unlock a price only on the car you want.
+          </p>
+          <StoreCta />
         </div>
       </section>
 
