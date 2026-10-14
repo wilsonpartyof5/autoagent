@@ -2,9 +2,11 @@
 -- migration created. Preview starts from an empty database and replays every
 -- local file, so these objects must exist before 20260717191843.
 --
--- All statements are IF NOT EXISTS / OR REPLACE. On production merge this
--- runs once as a no-op. The 26 archived files under supabase/migrations_archive
--- are not in this directory, so they cannot re-run on production.
+-- Every statement is a no-op when the object already exists: CREATE TABLE
+-- IF NOT EXISTS, ENABLE ROW LEVEL SECURITY (already on in production), and
+-- a create-if-absent function. No CREATE OR REPLACE, no grants, no revokes.
+-- The 26 archived files under supabase/migrations_archive are not in this
+-- directory, so they cannot re-run on production.
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -25,16 +27,33 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
+-- Preview needs a trigger function before 20260717191843 revokes EXECUTE on it.
+-- Production already has the Apple-skip body from 20261001172059, so create
+-- this older body only when public.handle_new_user is absent.
+do $$
 begin
-  insert into public.profiles (id, email)
-  values (new.id, new.email);
-  return new;
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'handle_new_user'
+  ) then
+    execute $fn$
+      create function public.handle_new_user()
+      returns trigger
+      language plpgsql
+      security definer
+      set search_path = public
+      as $body$
+      begin
+        insert into public.profiles (id, email)
+        values (new.id, new.email);
+        return new;
+      end;
+      $body$
+    $fn$;
+  end if;
 end;
 $$;
 
