@@ -7,19 +7,22 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
 
-/// Screen 18: Add to Drevvy bottom sheet
+/// Screen 18: Add to Drevvy bottom sheet.
+/// v1.7: Uses car credits instead of monthly usage.
+/// Shows "X cars left" and "Uses 1 car" instead of "X of Y used · resets Oct 20".
 class AddToDrevvySheet extends StatefulWidget {
   const AddToDrevvySheet({
     super.key,
     required this.listing,
     required this.market,
-    required this.user,
+    required this.creditBalance,
     required this.onAdd,
   });
 
   final Listing listing;
   final MarketContext market;
-  final User user;
+  /// v1.7: Car credit balance instead of User usage.
+  final CarCreditBalance creditBalance;
   final Function(int? maxOtd) onAdd;
 
   @override
@@ -68,7 +71,6 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final listing = widget.listing;
-    final user = widget.user;
 
     return Container(
       decoration: BoxDecoration(
@@ -193,10 +195,10 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                 
                 const SizedBox(height: DrevvySpace.s3),
                 
-                // Usage caption
+                // v1.7: Credit balance caption
                 Center(
                   child: Text(
-                    '${user.usage.used + 1} of ${user.usage.cap} cars · resets ${user.usage.resetsFormatted}',
+                    '${widget.creditBalance.displayText} · ${widget.creditBalance.useText}',
                     style: text.callout.copyWith(color: colors.muted),
                   ),
                 ),

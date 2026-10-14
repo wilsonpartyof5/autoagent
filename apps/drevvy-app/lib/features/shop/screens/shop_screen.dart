@@ -188,7 +188,8 @@ class _ShopScreenState extends State<ShopScreen> {
                     : ShopResults(
                         listings: _listings,
                         isLoading: _isSearching,
-                        isPro: _user?.isPro ?? false,
+                        // v1.7: hasCredits for future A/B testing (always false for now)
+                        hasCredits: false,
                         onListingTap: (listing) {
                           context.push('/vdp/${listing.id}');
                         },

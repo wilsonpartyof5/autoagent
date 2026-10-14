@@ -159,7 +159,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   if (_searchProfile != null)
                     const SizedBox(height: DrevvySpace.s6),
                   
-                  _buildSubscriptionBanner(context, colors, text, user),
+                  _buildCreditBalanceBanner(context, colors, text),
                   const SizedBox(height: DrevvySpace.s6),
 
                   // v1.6: Notification category switches
@@ -190,17 +190,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     context,
                     colors,
                     text,
-                    title: 'Subscription',
+                    title: 'Car packs',
                     items: [
                       _ProfileRow(
-                        icon: LucideIcons.creditCard,
-                        label: 'Manage subscription',
-                        onTap: () {},
+                        icon: LucideIcons.shoppingBag,
+                        label: 'Buy more cars',
+                        onTap: () {
+                          // TODO: Show pack picker
+                        },
                       ),
                       _ProfileRow(
                         icon: LucideIcons.rotateCcw,
                         label: 'Restore purchases',
-                        onTap: () {},
+                        onTap: () {
+                          // TODO: Restore purchases
+                        },
                       ),
                     ],
                   ),
@@ -497,82 +501,57 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildSubscriptionBanner(
+  /// v1.7: Credit balance banner replaces subscription banner.
+  Widget _buildCreditBalanceBanner(
     BuildContext context,
     DrevvyColors colors,
     DrevvyText text,
-    User user,
   ) {
-    final isCancelled = user.isCancelled;
-
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(DrevvySpace.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return FutureBuilder<CarCreditBalance>(
+      future: _repo.getCreditBalance(),
+      builder: (context, snapshot) {
+        final balance = snapshot.data ?? const CarCreditBalance.empty();
+        
+        return GlassCard(
+          child: Padding(
+            padding: const EdgeInsets.all(DrevvySpace.s4),
+            child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DrevvySpace.s3,
-                    vertical: DrevvySpace.s2,
-                  ),
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
-                    gradient: isCancelled ? null : DrevvyBrand.gradient,
-                    color: isCancelled ? colors.tile : null,
-                    borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+                    gradient: DrevvyBrand.gradient,
+                    shape: BoxShape.circle,
                   ),
-                  child: Text(
-                    isCancelled ? 'Pro (cancelled)' : 'Pro',
-                    style: text.label.copyWith(
-                      color: isCancelled ? colors.muted : DrevvyColors.onBrand,
+                  child: Center(
+                    child: Text(
+                      '${balance.balance}',
+                      style: text.figureS.copyWith(color: Colors.white),
                     ),
                   ),
                 ),
-                const SizedBox(width: DrevvySpace.s3),
+                const SizedBox(width: DrevvySpace.s4),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Drevvy Pro',
+                        balance.displayText,
                         style: text.bodyStrong.copyWith(color: colors.ink),
                       ),
                       Text(
-                        user.usage.formatted,
-                        style: text.label.copyWith(color: colors.muted),
+                        'Car packs never expire',
+                        style: text.callout.copyWith(color: colors.muted),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            if (isCancelled) ...[
-              const SizedBox(height: DrevvySpace.s3),
-              Container(
-                padding: const EdgeInsets.all(DrevvySpace.s3),
-                decoration: BoxDecoration(
-                  color: colors.soldTint,
-                  borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-                ),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.info, size: 16, color: colors.sold),
-                    const SizedBox(width: DrevvySpace.s2),
-                    Expanded(
-                      child: Text(
-                        'Your subscription ends Oct 20. Finishing deals will continue.',
-                        style: text.callout.copyWith(color: colors.sold),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

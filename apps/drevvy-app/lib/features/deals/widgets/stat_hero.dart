@@ -1,11 +1,11 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/repositories/demo_repository.dart';
 
-/// Stat hero with savings total and usage ring
+/// Stat hero with savings total and credit balance.
+/// v1.7: Updated to show "X cars left" instead of usage ring + "resets" text.
 class StatHero extends StatelessWidget {
   const StatHero({
     super.key,
@@ -29,32 +29,29 @@ class StatHero extends StatelessWidget {
       padding: const EdgeInsets.all(DrevvySpace.s5),
       child: Row(
         children: [
-          // Usage ring
-          SizedBox(
+          // v1.7: Credit balance indicator (replaces usage ring)
+          Container(
             width: 80,
             height: 80,
-            child: CustomPaint(
-              painter: _RingPainter(
-                progress: stats.used / stats.cap,
-                trackColor: colors.track,
-                progressColors: DrevvyPaletteLight.progressGradient,
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${stats.used}',
-                      style: text.figureS.copyWith(
-                        color: colors.violet,
-                      ),
+            decoration: BoxDecoration(
+              gradient: DrevvyColors.brandGradient,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${stats.carsRemaining}',
+                    style: text.figureS.copyWith(
+                      color: Colors.white,
                     ),
-                    Text(
-                      'of ${stats.cap}',
-                      style: text.micro.copyWith(color: colors.muted),
-                    ),
-                  ],
-                ),
+                  ),
+                  Text(
+                    stats.carsRemaining == 1 ? 'car' : 'cars',
+                    style: text.micro.copyWith(color: DrevvyColors.onBrandMuted),
+                  ),
+                ],
               ),
             ),
           ),
@@ -99,8 +96,9 @@ class StatHero extends StatelessWidget {
                       ),
                     if (stats.offersToReview > 0)
                       const SizedBox(width: DrevvySpace.s2),
+                    // v1.7: Show "X cars left" instead of "Resets"
                     _Pill(
-                      label: 'Resets ${stats.resetsFormatted}',
+                      label: stats.carsRemainingFormatted,
                       color: colors.muted,
                       bgColor: colors.tile,
                     ),
@@ -147,59 +145,3 @@ class _Pill extends StatelessWidget {
   }
 }
 
-class _RingPainter extends CustomPainter {
-  _RingPainter({
-    required this.progress,
-    required this.trackColor,
-    required this.progressColors,
-  });
-
-  final double progress;
-  final Color trackColor;
-  final List<Color> progressColors;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - 12) / 2;
-    const strokeWidth = 8.0;
-
-    // Track
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawCircle(center, radius, trackPaint);
-
-    // Progress arc
-    if (progress > 0) {
-      final rect = Rect.fromCircle(center: center, radius: radius);
-      final gradient = SweepGradient(
-        startAngle: -math.pi / 2,
-        endAngle: math.pi * 1.5,
-        colors: progressColors,
-      );
-
-      final progressPaint = Paint()
-        ..shader = gradient.createShader(rect)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
-
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        2 * math.pi * progress.clamp(0.0, 1.0),
-        false,
-        progressPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter oldDelegate) {
-    return progress != oldDelegate.progress;
-  }
-}

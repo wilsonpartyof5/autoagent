@@ -24,7 +24,7 @@ void main() {
     );
 
     Widget buildTestWidget({
-      bool isPro = true,
+      bool hasCredits = true,
       int? marketDelta,
       double screenWidth = 393,
       double textScale = 1.0,
@@ -42,7 +42,7 @@ void main() {
                 width: screenWidth - 32, // Minus gutters
                 child: InventoryCard(
                   listing: testListing,
-                  isPro: isPro,
+                  hasCredits: hasCredits,
                   onTap: () {},
                   marketDelta: marketDelta,
                 ),
@@ -57,8 +57,8 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Verify the CTA button is present
-      expect(find.text('Add to Drevvy'), findsOneWidget);
+      // v1.7: CTA is now always "See price" regardless of credits
+      expect(find.text('See price'), findsOneWidget);
       
       // Verify no overflow errors
       expect(tester.takeException(), isNull);
@@ -68,7 +68,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget(screenWidth: 320));
       await tester.pumpAndSettle();
 
-      expect(find.text('Add to Drevvy'), findsOneWidget);
+      expect(find.text('See price'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -76,7 +76,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget(textScale: 1.3));
       await tester.pumpAndSettle();
 
-      expect(find.text('Add to Drevvy'), findsOneWidget);
+      expect(find.text('See price'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -88,15 +88,16 @@ void main() {
       await tester.pumpAndSettle();
 
       // The button should still be visible and not clipped
-      expect(find.text('Add to Drevvy'), findsOneWidget);
+      expect(find.text('See price'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('Free user sees "Get Best Price" button', (tester) async {
-      await tester.pumpWidget(buildTestWidget(isPro: false));
+    testWidgets('CTA shows "See price" regardless of credit status (v1.7)', (tester) async {
+      await tester.pumpWidget(buildTestWidget(hasCredits: false));
       await tester.pumpAndSettle();
 
-      expect(find.text('Get Best Price'), findsOneWidget);
+      // v1.7: Single CTA for all users
+      expect(find.text('See price'), findsOneWidget);
     });
 
     testWidgets('Market badge shows correct text for below-market delta', (tester) async {
@@ -119,14 +120,14 @@ void main() {
 
       // Find the CTA button container - it should be a ConstrainedBox with full width
       final ctaFinder = find.ancestor(
-        of: find.text('Add to Drevvy'),
+        of: find.text('See price'),
         matching: find.byType(ConstrainedBox),
       );
       expect(ctaFinder, findsOneWidget);
 
       // Verify it has the width: double.infinity via SizedBox parent
       final sizedBoxFinder = find.ancestor(
-        of: find.text('Add to Drevvy'),
+        of: find.text('See price'),
         matching: find.byType(SizedBox),
       );
       expect(sizedBoxFinder, findsWidgets);
