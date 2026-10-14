@@ -218,80 +218,93 @@ export async function refundCredit(
   return { refunded, newBalance, alreadyRefunded };
 }
 
+export function purchaseIdempotencyKey(transactionId: string): string {
+  return `purchase:${transactionId}`;
+}
+
+export function purchaseReversalKey(transactionId: string): string {
+  return `purchase_reversal:${transactionId}`;
+}
+
+type AtomicCreditRow = {
+  granted?: boolean;
+  already_granted?: boolean;
+  reversed?: boolean;
+  already_reversed?: boolean;
+  balance?: number;
+  lifetime_purchased?: number;
+  lifetime_used?: number;
+  lifetime_refunded?: number;
+};
+
+function atomicCreditRow(data: unknown): AtomicCreditRow {
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row ?? {}) as AtomicCreditRow;
+}
+
+function creditsFromAtomicRow(userId: string, row: AtomicCreditRow): ShopperCredits {
+  return {
+    userId,
+    balance: row.balance ?? 0,
+    lifetimePurchased: row.lifetime_purchased ?? 0,
+    lifetimeUsed: row.lifetime_used ?? 0,
+    lifetimeRefunded: row.lifetime_refunded ?? 0,
+  };
+}
+
 export async function purchaseCredits(
   supabase: SupabaseClient,
   userId: string,
   packSize: number,
   packPriceUsd: number,
   transactionId: string,
-): Promise<{ success: boolean; newBalance: number; error?: string }> {
-  const idempotencyKey = `purchase:${transactionId}`;
-
-  const { data: existing } = await supabase
-    .from('shopper_credit_events')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle();
-
-  if (existing) {
-    const credits = await getShopperCredits(supabase, userId);
-    return { success: true, newBalance: credits.balance };
-  }
-
-  const { error: upsertError } = await supabase
-    .from('shopper_credits')
-    .upsert(
-      {
-        user_id: userId,
-        balance: 0,
-        lifetime_purchased: 0,
-        lifetime_used: 0,
-        lifetime_refunded: 0,
-      },
-      { onConflict: 'user_id', ignoreDuplicates: true },
-    );
-
-  if (upsertError) {
-    return { success: false, newBalance: 0, error: upsertError.message };
-  }
-
-  const { error: eventError } = await supabase.from('shopper_credit_events').insert({
-    user_id: userId,
-    event_type: 'purchase',
-    amount: packSize,
-    pack_size: packSize,
-    pack_price_usd: packPriceUsd,
-    idempotency_key: idempotencyKey,
+): Promise<{ success: boolean; credits: ShopperCredits; alreadyGranted: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc('purchase_credits_atomic', {
+    p_user_id: userId,
+    p_pack_size: packSize,
+    p_pack_price_usd: packPriceUsd,
+    p_idempotency_key: purchaseIdempotencyKey(transactionId),
+    p_reversal_key: purchaseReversalKey(transactionId),
   });
 
-  if (eventError) {
-    if (eventError.code === '23505') {
-      const credits = await getShopperCredits(supabase, userId);
-      return { success: true, newBalance: credits.balance };
-    }
-    return { success: false, newBalance: 0, error: eventError.message };
+  if (error) {
+    const credits = await getShopperCredits(supabase, userId);
+    return { success: false, credits, alreadyGranted: false, error: error.message };
   }
 
-  const { data: currentCredits } = await supabase
-    .from('shopper_credits')
-    .select('balance, lifetime_purchased')
-    .eq('user_id', userId)
-    .single();
+  const row = atomicCreditRow(data);
+  return {
+    success: true,
+    credits: creditsFromAtomicRow(userId, row),
+    alreadyGranted: row.already_granted === true || row.granted !== true,
+  };
+}
 
-  if (currentCredits) {
-    await supabase
-      .from('shopper_credits')
-      .update({
-        balance: currentCredits.balance + packSize,
-        lifetime_purchased: currentCredits.lifetime_purchased + packSize,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId);
+export async function reversePurchaseCredits(
+  supabase: SupabaseClient,
+  userId: string,
+  packSize: number,
+  transactionId: string,
+): Promise<{ success: boolean; credits: ShopperCredits; reversed: boolean; alreadyReversed: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc('reverse_purchase_atomic', {
+    p_user_id: userId,
+    p_amount: packSize,
+    p_purchase_key: purchaseIdempotencyKey(transactionId),
+    p_reversal_key: purchaseReversalKey(transactionId),
+  });
+
+  if (error) {
+    const credits = await getShopperCredits(supabase, userId);
+    return { success: false, credits, reversed: false, alreadyReversed: false, error: error.message };
   }
 
-  const updatedCredits = await getShopperCredits(supabase, userId);
-  return { success: true, newBalance: updatedCredits.balance };
+  const row = atomicCreditRow(data);
+  return {
+    success: true,
+    credits: creditsFromAtomicRow(userId, row),
+    reversed: row.reversed === true,
+    alreadyReversed: row.already_reversed === true,
+  };
 }
 
 export async function getCreditEvents(
