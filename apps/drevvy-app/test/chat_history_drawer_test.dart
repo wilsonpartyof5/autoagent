@@ -6,51 +6,65 @@ import 'package:drevvy_app/data/models/chat.dart';
 
 void main() {
   group('ChatHistoryDrawer Tests (v1.6.1)', () {
-    final testChats = [
-      ChatThread(
-        id: 'chat_001',
-        mode: ChatMode.ask,
-        title: 'RAV4 Hybrid search',
-        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-        updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
-        messages: [
-          ChatMessage(
-            id: 'msg_001',
-            role: MessageRole.user,
-            contentType: MessageContentType.text,
-            text: 'What are the best RAV4 Hybrids?',
-          ),
-        ],
-      ),
-      ChatThread(
-        id: 'chat_002',
-        mode: ChatMode.shop,
-        title: 'SUV search',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        sourcesCount: 24,
-      ),
-      ChatThread(
-        id: 'chat_003',
-        mode: ChatMode.ask,
-        title: 'CR-V vs RAV4',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
-      ),
-    ];
+    // Use helper to get stable timestamps relative to today at noon
+    // This avoids flakiness when running near midnight
+    DateTime todayAt(int hour) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, hour);
+    }
 
+    DateTime yesterdayAt(int hour) {
+      final today = todayAt(hour);
+      return today.subtract(const Duration(days: 1));
+    }
+
+    DateTime daysAgoAt(int days, int hour) {
+      final today = todayAt(hour);
+      return today.subtract(Duration(days: days));
+    }
+
+    late List<ChatThread> testChats;
     late String? selectedChatId;
     late bool newChatCalled;
 
     setUp(() {
+      testChats = [
+        ChatThread(
+          id: 'chat_001',
+          mode: ChatMode.ask,
+          title: 'RAV4 Hybrid search',
+          createdAt: todayAt(10), // 10 AM today - always "Today"
+          updatedAt: todayAt(10),
+          messages: [
+            ChatMessage(
+              id: 'msg_001',
+              role: MessageRole.user,
+              contentType: MessageContentType.text,
+              text: 'What are the best RAV4 Hybrids?',
+            ),
+          ],
+        ),
+        ChatThread(
+          id: 'chat_002',
+          mode: ChatMode.shop,
+          title: 'SUV search',
+          createdAt: yesterdayAt(14), // 2 PM yesterday - always "Yesterday"
+          updatedAt: yesterdayAt(14),
+          sourcesCount: 24,
+        ),
+        ChatThread(
+          id: 'chat_003',
+          mode: ChatMode.ask,
+          title: 'CR-V vs RAV4',
+          createdAt: daysAgoAt(3, 9), // 9 AM 3 days ago
+          updatedAt: daysAgoAt(3, 9),
+        ),
+      ];
       selectedChatId = null;
       newChatCalled = false;
     });
 
-    Widget buildTestWidget({
-      List<ChatThread>? chats,
-      String? currentChatId,
-    }) {
+    Widget buildTestWidget({List<ChatThread>? chats, String? currentChatId}) {
       return MaterialApp(
         theme: drevvyTheme(Brightness.light),
         home: Scaffold(
@@ -155,7 +169,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No chats yet.'), findsOneWidget);
-      expect(find.text('Your conversations will show up here.'), findsOneWidget);
+      expect(
+        find.text('Your conversations will show up here.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Footer note about deals is shown', (tester) async {
@@ -164,7 +181,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Chats about a car you added live in that deal, under Deals.'),
+        find.text(
+          'Chats about a car you added live in that deal, under Deals.',
+        ),
         findsOneWidget,
       );
     });
@@ -199,6 +218,42 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Ask ·'), findsWidgets);
+    });
+
+    testWidgets('Recent searches row opens from the menu', (tester) async {
+      var opened = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: Scaffold(
+            drawer: ChatHistoryDrawer(
+              chats: testChats,
+              currentChatId: null,
+              onNewChat: () {},
+              onSelectChat: (_) {},
+              onDeleteChat: (_) {},
+              onRenameChat: (_, _) {},
+              onRecentSearches: () => opened = true,
+              recentSearchCount: 2,
+            ),
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.text('Recent searches'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+
+      await tester.tap(find.text('Recent searches'));
+      await tester.pumpAndSettle();
+      expect(opened, isTrue);
     });
 
     testWidgets('Drawer has correct width (max 318)', (tester) async {

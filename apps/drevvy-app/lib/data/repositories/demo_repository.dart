@@ -20,6 +20,9 @@ class DemoRepository {
   DemoRepository._();
   static final instance = DemoRepository._();
 
+  /// Shop listens so "Run again" from the menu or account sheet opens results.
+  void Function(SavedSearch search)? onSavedSearchRun;
+
   // Simulated delay for realistic loading states
   Future<T> _delay<T>(T value, [Duration duration = const Duration(milliseconds: 500)]) async {
     await Future.delayed(duration);
@@ -73,8 +76,8 @@ class DemoRepository {
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
   
-  /// Server-driven avg_savings config. Null if unavailable.
-  final AvgSavingsConfig? _avgSavingsConfig = const AvgSavingsConfig(
+  /// Server-driven avg_savings config.
+  final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
     label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
     source: 'CarEdge, State of Dealer Fees 2026',
@@ -207,8 +210,57 @@ class DemoRepository {
     List<String>? bodyTypes,
     int? radius,
     int limit = 10,
+    SearchFilters? filters,
   }) async {
-    return _delay(_demoListings);
+    if (filters == null &&
+        maxPrice == null &&
+        (bodyTypes == null || bodyTypes.isEmpty) &&
+        radius == null) {
+      return _delay(_demoListings);
+    }
+
+    final effective = filters ??
+        SearchFilters(
+          priceMax: maxPrice,
+          bodyTypes: bodyTypes ?? const [],
+          radiusMi: radius,
+        );
+    final matches = _demoListings
+        .where((listing) => _listingMatches(listing, effective))
+        .take(limit)
+        .toList();
+    return _delay(matches);
+  }
+
+  bool _listingMatches(Listing listing, SearchFilters filters) {
+    bool includes(List<String> values, String? candidate) {
+      if (values.isEmpty) return true;
+      final value = candidate?.toLowerCase() ?? '';
+      return values.any((item) => item.toLowerCase() == value);
+    }
+
+    if (!includes(filters.makes, listing.build.make)) return false;
+    if (!includes(filters.models, listing.build.model)) return false;
+    if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
+    if (!includes(filters.fuel, listing.build.powertrainType)) return false;
+    if (filters.priceMax != null && listing.price > filters.priceMax!) {
+      return false;
+    }
+    if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
+      return false;
+    }
+    if (filters.yearMin != null && listing.build.year < filters.yearMin!) {
+      return false;
+    }
+    if (filters.yearMax != null && listing.build.year > filters.yearMax!) {
+      return false;
+    }
+    if (filters.radiusMi != null &&
+        listing.dist != null &&
+        listing.dist! > filters.radiusMi!) {
+      return false;
+    }
+    return true;
   }
 
   Future<Listing> getListingById(String id) async {
@@ -261,6 +313,117 @@ class DemoRepository {
     ));
   }
 
+  // ============== SAVED CARS (v1.8) ==============
+  
+  /// Saved cars list - stores only Drevvy's own data, no MarketCheck listing data.
+  /// Per spec §11.2: price changes must come from live data, not stored prices.
+  List<SavedCar> _savedCars = [];
+  bool _savedCarsInitialized = false;
+
+  /// Get all saved cars for the current user.
+  Future<List<SavedCar>> getSavedCars() async {
+    if (!_savedCarsInitialized) {
+      _savedCars = _demoSavedCars;
+      _savedCarsInitialized = true;
+    }
+    return _delay(List.unmodifiable(_savedCars));
+  }
+
+  /// Check if a listing is saved.
+  bool isListingSaved(String listingId) {
+    return _savedCars.any((sc) => sc.listingId == listingId);
+  }
+
+  /// Check if a listing is already in Deals.
+  bool isListingInDeals(String listingId) {
+    return _deals.any((d) => d.listingId == listingId);
+  }
+
+  /// Save a car (heart tap). No credit spent, no dealer contact.
+  Future<SavedCar> saveCar(Listing listing) async {
+    final savedCar = SavedCar(
+      id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUser?.id ?? 'user_demo_001',
+      listingId: listing.id,
+      vin: listing.vin,
+      savedAt: DateTime.now(),
+      savedPrice: listing.price,
+      status: SavedCarStatus.active,
+    );
+    _savedCars = [..._savedCars, savedCar];
+    return _delay(savedCar);
+  }
+
+  /// Remove a saved car (unsave / swipe to remove).
+  Future<void> removeSavedCar(String savedCarId) async {
+    _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
+    return _delay(null);
+  }
+
+  /// Remove saved car by listing ID.
+  Future<void> unsaveByListingId(String listingId) async {
+    _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
+    return _delay(null);
+  }
+
+  /// Get saved car by listing ID.
+  SavedCar? getSavedCarByListingId(String listingId) {
+    try {
+      return _savedCars.firstWhere((sc) => sc.listingId == listingId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Move saved car to Deals (unlock my price flow).
+  /// Removes from saved, creates deal, spends 1 credit in one transaction.
+  Future<Deal?> moveToDeals(String savedCarId) async {
+    final savedCar = _savedCars.firstWhere((sc) => sc.id == savedCarId);
+    final listing = await getListingById(savedCar.listingId);
+    
+    // Check if has credits
+    if (!_creditBalance.canUnlock) return null;
+    
+    // Remove from saved
+    _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
+    
+    // Create deal (this also spends credit)
+    final deal = await addDeal(listing);
+    
+    return deal;
+  }
+
+  /// Demo saved cars data.
+  List<SavedCar> get _demoSavedCars => [
+    SavedCar(
+      id: 'saved_001',
+      userId: 'user_demo_001',
+      listingId: 'listing_001',
+      vin: '2T3P1RFV5RC123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 5)),
+      savedPrice: 33995, // Was $33,995 when saved, now $32,995 -> $1,000 drop
+      status: SavedCarStatus.active,
+    ),
+    SavedCar(
+      id: 'saved_002',
+      userId: 'user_demo_001',
+      listingId: 'listing_002',
+      vin: '2HKRW2H50NH123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 3)),
+      savedPrice: 31490, // Same price
+      status: SavedCarStatus.active,
+    ),
+    SavedCar(
+      id: 'saved_003',
+      userId: 'user_demo_001',
+      listingId: 'listing_006',
+      vin: 'KM8JBCA19NU123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 2)),
+      savedPrice: 27450, // Was $27,450 when saved, now $27,950 -> $500 increase
+      status: SavedCarStatus.active,
+    ),
+  ];
+
   // ============== DEALS ==============
 
   List<Deal> _deals = [];
@@ -277,7 +440,7 @@ class DemoRepository {
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing, {int? maxOtd}) async {
+  Future<Deal> addDeal(Listing listing) async {
     final newDeal = Deal(
       id: 'deal_${DateTime.now().millisecondsSinceEpoch}',
       listingId: listing.id,
@@ -287,7 +450,6 @@ class DemoRepository {
       addedAt: DateTime.now(),
       listing: listing,
       marketContext: await getMarketContext(listing),
-      maxOtd: maxOtd,
     );
     _deals = [..._deals, newDeal];
     
@@ -410,7 +572,10 @@ class DemoRepository {
     ),
   ];
 
-  Future<ChatThread> sendMessage(String text) async {
+  Future<ChatThread> sendMessage(
+    String text, {
+    Set<String>? enabledMemoryIds,
+  }) async {
     final userMsg = ChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       role: MessageRole.user,
@@ -426,12 +591,14 @@ class DemoRepository {
     // Simulate agent response
     await Future.delayed(const Duration(milliseconds: 1500));
 
+    final memory = chatMemoryItems(enabledMemoryIds);
     final agentMsg = ChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}_agent',
       role: MessageRole.agent,
       contentType: MessageContentType.text,
-      text: _getDemoResponse(text),
+      text: _getDemoResponse(text, memory),
       timestamp: DateTime.now(),
+      memoryItemIds: memory.map((item) => item.id).toList(),
     );
 
     _chatThread = _chatThread.copyWith(
@@ -442,18 +609,62 @@ class DemoRepository {
     return _chatThread;
   }
 
+  /// Rewrites the latest answer so toggles in the memory sheet apply to this chat only.
+  Future<ChatThread> applyChatMemory(Set<String> enabledIds) async {
+    final messages = List<ChatMessage>.from(_chatThread.messages);
+    final agentIndex = messages.lastIndexWhere((message) => message.isAgent);
+    if (agentIndex < 0) return _chatThread;
+
+    var userText = '';
+    for (var index = agentIndex - 1; index >= 0; index--) {
+      final message = messages[index];
+      if (message.isUser && message.text != null) {
+        userText = message.text!;
+        break;
+      }
+    }
+
+    final memory = chatMemoryItems(enabledIds);
+    final current = messages[agentIndex];
+    messages[agentIndex] = ChatMessage(
+      id: current.id,
+      chatId: current.chatId,
+      role: current.role,
+      contentType: current.contentType,
+      text: _getDemoResponse(userText, memory),
+      listings: current.listings,
+      handoff: current.handoff,
+      timestamp: DateTime.now(),
+      memoryItemIds: memory.map((item) => item.id).toList(),
+    );
+    _chatThread = _chatThread.copyWith(messages: messages);
+    return _chatThread;
+  }
+
   Future<ChatThread> switchMode(ChatMode mode) async {
     _chatThread = _chatThread.copyWith(mode: mode);
     return _delay(_chatThread);
   }
 
-  String _getDemoResponse(String input) {
+  String _getDemoResponse(String input, [List<MemoryItem> memory = const []]) {
+    final String answer;
     if (input.toLowerCase().contains('rav4')) {
-      return 'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
+      answer = 'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
           'Based on 214 listings nearby, the median price for a 2024 RAV4 Hybrid XLE '
           'is around \$34,600. With your budget, you have several good options within 50 miles.';
+    } else {
+      answer = 'I can help you find the right car. What features are most important to you?';
     }
-    return 'I can help you find the right car. What features are most important to you?';
+    if (memory.isEmpty) return answer;
+
+    final remembered = memory
+        .map((item) => '${item.kind.label.toLowerCase()} ${item.displayValue}')
+        .join(', ');
+    final search = latestSearchTitle();
+    final intro = search == null
+        ? 'Using what you saved: $remembered.'
+        : 'You searched $search. Using $remembered.';
+    return '$intro $answer';
   }
 
   // ============== STATS ==============
@@ -1090,8 +1301,8 @@ class DealStats {
 
 // ============== SEARCH PROFILE (v1.6.1) ==============
 
-extension DemoRepositorySearchProfile on DemoRepository {
-  static SearchProfile _searchProfile = SearchProfile(
+SearchProfile _newDemoSearchProfile() {
+  return SearchProfile(
     userId: 'user_demo_001',
     personalize: true,
     items: [
@@ -1160,6 +1371,60 @@ extension DemoRepositorySearchProfile on DemoRepository {
       ),
     ],
   );
+}
+
+extension DemoRepositorySearchProfile on DemoRepository {
+  static SearchProfile _searchProfile = _newDemoSearchProfile();
+
+  /// Restores the in-memory demo search profile between tests.
+  void resetDemoSearchProfile() {
+    _searchProfile = _newDemoSearchProfile();
+  }
+
+  List<MemoryItem> chatMemoryItems(Set<String>? enabledIds) {
+    if (!_searchProfile.personalize) return const [];
+    if (enabledIds == null) return List<MemoryItem>.from(_searchProfile.items);
+    return _searchProfile.items.where((item) => enabledIds.contains(item.id)).toList();
+  }
+
+  String? latestSearchTitle() {
+    if (_searchProfile.searches.isEmpty) return null;
+    return _searchProfile.searches.first.displayTitle;
+  }
+
+  void markSavedSearchRun(String searchId) {
+    SavedSearch? updated;
+    final searches = _searchProfile.searches.map((search) {
+      if (search.id != searchId) return search;
+      final next = search.copyWith(
+        lastRunAt: DateTime.now(),
+        runCount: search.runCount + 1,
+      );
+      updated = next;
+      return next;
+    }).toList()
+      ..sort((a, b) => b.lastRunAt.compareTo(a.lastRunAt));
+    _searchProfile = _searchProfile.copyWith(searches: searches);
+    final ran = updated;
+    if (ran != null) onSavedSearchRun?.call(ran);
+  }
+
+  void deleteSavedSearch(String searchId) {
+    _searchProfile = _searchProfile.copyWith(
+      searches: _searchProfile.searches.where((search) => search.id != searchId).toList(),
+    );
+  }
+
+  void restoreSavedSearch(SavedSearch search, int index) {
+    if (_searchProfile.searches.any((item) => item.id == search.id)) return;
+    final searches = List<SavedSearch>.from(_searchProfile.searches);
+    searches.insert(index.clamp(0, searches.length), search);
+    _searchProfile = _searchProfile.copyWith(searches: searches);
+  }
+
+  void clearSavedSearches() {
+    _searchProfile = _searchProfile.copyWith(searches: const []);
+  }
 
   Future<SearchProfile> getSearchProfile() async {
     await Future.delayed(const Duration(milliseconds: 300));
@@ -1167,8 +1432,8 @@ extension DemoRepositorySearchProfile on DemoRepository {
   }
 
   Future<SearchProfile> updateSearchProfile(SearchProfile profile) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     _searchProfile = profile;
+    await Future.delayed(const Duration(milliseconds: 300));
     return _searchProfile;
   }
 

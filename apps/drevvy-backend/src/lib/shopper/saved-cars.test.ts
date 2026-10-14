@@ -199,7 +199,7 @@ test('saved car routes and the migration stay on the shopper\'s own rows', () =>
   assert.equal(store.includes('photo'), false);
   assert.equal(/negotiat/i.test(store), false);
 
-  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261014120000_saved_cars.sql'), 'utf8');
+  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261017130000_saved_cars.sql'), 'utf8');
   assert.match(sql, /NOT APPLIED/);
   assert.match(sql, /Shoppers read own saved cars/);
   assert.match(sql, /Shoppers insert own saved cars/);

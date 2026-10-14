@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
@@ -7,6 +8,7 @@ import '../../../data/models/listing.dart';
 /// Shop result card per spec §6.7 (v1.6.1): no fixed height, full-width CTA on own row.
 /// Fixed overflow issue where badge + CTA in a Row exceeded width by 14-24pt.
 /// v1.7: Removed isPro flag; CTA is now always "See price" regardless of credits.
+/// v1.8: Added heart/save button on photo (§6.15).
 class InventoryCard extends StatelessWidget {
   const InventoryCard({
     super.key,
@@ -15,6 +17,8 @@ class InventoryCard extends StatelessWidget {
     required this.onTap,
     this.marketDelta,
     this.isAlreadyAdded = false,
+    this.isSaved = false,
+    this.onSaveToggle,
   });
 
   final Listing listing;
@@ -23,6 +27,10 @@ class InventoryCard extends StatelessWidget {
   final VoidCallback onTap;
   final int? marketDelta;
   final bool isAlreadyAdded;
+  /// v1.8: Whether the car is saved (heart filled).
+  final bool isSaved;
+  /// v1.8: Callback when heart is tapped. If null, heart is not shown.
+  final VoidCallback? onSaveToggle;
 
   String _formatNumber(int n) {
     return n.toString().replaceAllMapped(
@@ -57,20 +65,34 @@ class InventoryCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Photo
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-                  child: SizedBox(
-                    width: 96,
-                    height: 70,
-                    child: listing.media.primaryPhoto != null
-                        ? Image.asset(
-                            listing.media.primaryPhoto!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => _BrokenImage(),
-                          )
-                        : _BrokenImage(),
-                  ),
+                // Photo with heart overlay
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+                      child: SizedBox(
+                        width: 96,
+                        height: 70,
+                        child: listing.media.primaryPhoto != null
+                            ? Image.asset(
+                                listing.media.primaryPhoto!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _BrokenImage(),
+                              )
+                            : _BrokenImage(),
+                      ),
+                    ),
+                    // v1.8: Heart button (only show if not already in Deals)
+                    if (onSaveToggle != null && !isAlreadyAdded)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: _HeartButton(
+                          isSaved: isSaved,
+                          onTap: onSaveToggle!,
+                        ),
+                      ),
+                  ],
                 ),
                 
                 const SizedBox(width: DrevvySpace.s3),
@@ -273,6 +295,50 @@ class _CardCta extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Heart/save button per spec §6.15 (v1.8).
+/// 30pt circle with 44pt hit area for accessibility.
+class _HeartButton extends StatelessWidget {
+  const _HeartButton({
+    required this.isSaved,
+    required this.onTap,
+  });
+
+  final bool isSaved;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Center(
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: colors.glassSolid.withValues(alpha: 0.9),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isSaved ? LucideIcons.heart : LucideIcons.heart,
+              size: 16,
+              color: isSaved ? colors.danger : colors.muted,
             ),
           ),
         ),

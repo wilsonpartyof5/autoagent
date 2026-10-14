@@ -5,6 +5,7 @@ import '../theme/drevvy_theme.dart';
 import '../theme/drevvy_tokens.dart';
 
 /// Frosted tab bar per spec §1.1/§6.5a: blur 20, night fill ~72% opacity
+/// v1.8: Now a non-Positioned widget to support hide-on-scroll animations.
 class FloatingTabBar extends StatelessWidget {
   const FloatingTabBar({
     super.key,
@@ -18,75 +19,69 @@ class FloatingTabBar extends StatelessWidget {
   static const _tabs = [
     (icon: LucideIcons.messageSquare, label: 'Shop'),
     (icon: LucideIcons.tag, label: 'Deals'),
-    (icon: LucideIcons.user, label: 'Profile'),
+    (icon: LucideIcons.heart, label: 'Saved'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final text = context.drevvyText;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return Positioned(
-      left: DrevvySpace.tabBarSideInset,
-      right: DrevvySpace.tabBarSideInset,
-      bottom: DrevvySpace.tabBarBottomInset + bottomPadding,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(DrevvyRadius.tab),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            height: DrevvySpace.tabBarHeight,
-            decoration: BoxDecoration(
-              color: const Color(0xFF171A2C).withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(DrevvyRadius.tab),
-            ),
-            padding: const EdgeInsets.all(DrevvySpace.s2),
-            child: Row(
-              children: List.generate(_tabs.length, (index) {
-                final tab = _tabs[index];
-                final isActive = index == currentIndex;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(DrevvyRadius.tab),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: DrevvySpace.tabBarHeight,
+          decoration: BoxDecoration(
+            color: const Color(0xFF171A2C).withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(DrevvyRadius.tab),
+          ),
+          padding: const EdgeInsets.all(DrevvySpace.s2),
+          child: Row(
+            children: List.generate(_tabs.length, (index) {
+              final tab = _tabs[index];
+              final isActive = index == currentIndex;
 
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onTap(index),
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: DrevvyMotion.tabSwitch.duration,
-                      curve: DrevvyMotion.tabSwitch.curve,
-                      decoration: BoxDecoration(
-                        color: isActive 
-                            ? Colors.white.withValues(alpha: 0.15) 
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      height: 48,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            tab.icon,
-                            size: 22,
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(index),
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: DrevvyMotion.tabSwitch.duration,
+                    curve: DrevvyMotion.tabSwitch.curve,
+                    decoration: BoxDecoration(
+                      color: isActive 
+                          ? Colors.white.withValues(alpha: 0.15) 
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    height: 48,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          tab.icon,
+                          size: 22,
+                          color: isActive 
+                              ? Colors.white 
+                              : Colors.white.withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          tab.label,
+                          style: text.bodyStrong.copyWith(
+                            fontSize: 13,
                             color: isActive 
                                 ? Colors.white 
                                 : Colors.white.withValues(alpha: 0.6),
                           ),
-                          const SizedBox(width: 7),
-                          Text(
-                            tab.label,
-                            style: text.bodyStrong.copyWith(
-                              fontSize: 13,
-                              color: isActive 
-                                  ? Colors.white 
-                                  : Colors.white.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }),
-            ),
+                ),
+              );
+            }),
           ),
         ),
       ),

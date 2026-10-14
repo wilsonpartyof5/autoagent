@@ -1,5 +1,7 @@
 -- Google shoppers are shoppers, the same as Apple.
 -- They get a consumer profile from the sign-in route and no dealer profile row.
+-- This keeps the Apple skip from 20261001172059 and adds Google.
+-- security definer, search_path, and the execute revoke stay.
 --
 -- NOT APPLIED. Do not run this against production from the Google sign-in change.
 

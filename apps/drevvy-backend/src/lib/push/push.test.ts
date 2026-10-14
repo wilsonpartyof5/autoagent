@@ -138,7 +138,7 @@ test('device and push routes stay shopper-scoped and the migration is not applie
   assert.match(cron, /status: 404/);
   assert.equal(/negotiat/i.test(devices + demo + cron), false);
 
-  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261014120001_device_tokens.sql'), 'utf8');
+  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261017130001_device_tokens.sql'), 'utf8');
   assert.match(sql, /NOT APPLIED/);
   assert.match(sql, /Shoppers read own device tokens/);
   assert.match(sql, /Shoppers insert own device tokens/);

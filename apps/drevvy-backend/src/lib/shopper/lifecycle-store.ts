@@ -237,7 +237,7 @@ function channel(value: string | null): OutreachChannel | null {
 }
 
 function endState(value: string): DealEndState {
-  if (value === 'sold' || value === 'ended_no_response' || value === 'removed') return value;
+  if (value === 'sold' || value === 'ended_no_response' || value === 'removed' || value === 'dealer_declined') return value;
   return 'open';
 }
 

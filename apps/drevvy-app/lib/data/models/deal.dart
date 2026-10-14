@@ -17,7 +17,6 @@ class Deal extends Equatable {
     this.offers = const [],
     this.comms = const DealComms(),
     this.events = const [],
-    this.maxOtd,
     this.dealer,
     this.officialOffer,
     this.outcome,
@@ -38,7 +37,6 @@ class Deal extends Equatable {
   final List<Offer> offers;
   final DealComms comms;
   final List<DealEvent> events;
-  final int? maxOtd;
   final RevealedDealer? dealer;
   final OfficialOffer? officialOffer;
   final DealOutcome? outcome;
@@ -110,7 +108,6 @@ class Deal extends Equatable {
       offers: offers ?? this.offers,
       comms: comms ?? this.comms,
       events: events ?? this.events,
-      maxOtd: maxOtd,
       dealer: dealer ?? this.dealer,
       officialOffer: officialOffer ?? this.officialOffer,
       outcome: outcome ?? this.outcome,

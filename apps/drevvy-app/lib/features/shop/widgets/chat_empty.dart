@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/search_profile.dart';
+import 'account_sheet.dart';
 
 /// Screen 07, 51: Shop empty state with personalized starters (v1.6.1)
 /// Per spec §6.5a: scrollable content with computed bottom padding
@@ -29,6 +29,16 @@ class ChatEmpty extends StatelessWidget {
     (icon: LucideIcons.users, kicker: 'FAMILY', title: 'Family friendly', query: 'Best family cars with good safety ratings?'),
     (icon: LucideIcons.zap, kicker: 'ELECTRIC', title: 'Electric options', query: 'What electric cars have the best range?'),
   ];
+  
+  /// v1.8: Show Account sheet instead of navigating to /profile
+  void _showAccountSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AccountSheet(),
+    );
+  }
 
   IconData _iconForKind(StarterKind kind) {
     return switch (kind) {
@@ -107,7 +117,7 @@ class ChatEmpty extends StatelessWidget {
             // "Based on your past searches · Manage" link
             const SizedBox(height: DrevvySpace.s2),
             GestureDetector(
-              onTap: () => context.go('/profile'),
+              onTap: () => _showAccountSheet(context),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

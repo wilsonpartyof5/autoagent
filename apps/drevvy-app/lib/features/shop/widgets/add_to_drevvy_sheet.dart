@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
@@ -23,14 +22,13 @@ class AddToDrevvySheet extends StatefulWidget {
   final MarketContext market;
   /// v1.7: Car credit balance instead of User usage.
   final CarCreditBalance creditBalance;
-  final Function(int? maxOtd) onAdd;
+  final VoidCallback onAdd;
 
   @override
   State<AddToDrevvySheet> createState() => _AddToDrevvySheetState();
 }
 
 class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
-  final _maxOtdController = TextEditingController();
   bool _isLoading = false;
   bool _showConfirmation = false;
 
@@ -38,22 +36,8 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
     return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Pre-fill with fair OTD as suggestion
-    _maxOtdController.text = widget.market.fairOtd.toString();
-  }
-
-  @override
-  void dispose() {
-    _maxOtdController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleAdd() async {
     setState(() => _isLoading = true);
-    final maxOtd = int.tryParse(_maxOtdController.text.replaceAll(',', ''));
     
     // Show confirmation briefly before navigating
     setState(() {
@@ -62,7 +46,7 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
     });
     
     await Future.delayed(const Duration(milliseconds: 1500));
-    await widget.onAdd(maxOtd);
+    widget.onAdd();
   }
 
   @override
@@ -153,35 +137,6 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                 ),
                 _BulletPoint(
                   text: 'Only share your first name—never your phone or email',
-                ),
-                
-                const SizedBox(height: DrevvySpace.s6),
-                
-                // Max OTD field (optional)
-                Text('Max out-the-door (optional)', style: text.callout),
-                const SizedBox(height: DrevvySpace.s2),
-                TextField(
-                  controller: _maxOtdController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
-                    prefixText: r'$ ',
-                    hintText: 'e.g. ${widget.market.fairOtd}',
-                    filled: true,
-                    fillColor: colors.tile,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: DrevvySpace.s4,
-                      vertical: DrevvySpace.s3,
-                    ),
-                  ),
-                ),
-                Text(
-                  'Drevvy will try to get below this price',
-                  style: text.callout.copyWith(color: colors.muted),
                 ),
                 
                 const SizedBox(height: DrevvySpace.s6),

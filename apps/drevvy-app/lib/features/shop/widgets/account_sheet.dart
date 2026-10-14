@@ -1,0 +1,548 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/theme/drevvy_theme.dart';
+import '../../../core/theme/drevvy_tokens.dart';
+import '../../../data/models/models.dart';
+import '../../../data/repositories/demo_repository.dart';
+import '../../account/widgets/memory_facts_sheet.dart';
+import '../../account/widgets/recent_searches_sheet.dart';
+import 'pack_picker_sheet.dart';
+
+/// Account sheet per spec §6.16 (v1.8).
+/// Replaces Profile tab - shown from avatar button tap.
+class AccountSheet extends StatefulWidget {
+  const AccountSheet({super.key});
+
+  @override
+  State<AccountSheet> createState() => _AccountSheetState();
+}
+
+class _AccountSheetState extends State<AccountSheet> {
+  final _repo = DemoRepository.instance;
+  User? _user;
+  SearchProfile? _searchProfile;
+  CarCreditBalance? _creditBalance;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _repo.getCurrentUser();
+    final searchProfile = await _repo.getSearchProfile();
+    final balance = await _repo.getCreditBalance();
+
+    setState(() {
+      _user = user;
+      _searchProfile = searchProfile;
+      _creditBalance = balance;
+      _isLoading = false;
+    });
+  }
+
+  void _togglePersonalize(bool value) {
+    if (_searchProfile == null) return;
+    setState(() {
+      _searchProfile = _searchProfile!.copyWith(personalize: value);
+    });
+    _repo.updateSearchProfile(_searchProfile!);
+  }
+
+  void _showPackPicker() {
+    Navigator.pop(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PackPickerSheet(
+        listing: null, // No specific listing
+        avgSavings: null,
+        onPurchase: (packType) async {
+          await _repo.purchasePack(packType);
+          if (context.mounted) Navigator.pop(context);
+        },
+        onRestore: () async {
+          await _repo.restorePurchases();
+          if (context.mounted) Navigator.pop(context);
+        },
+        onKeepShopping: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  void _handleSignOut() {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Signed out (demo)')));
+  }
+
+  void _handleDeleteAccount() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final colors = context.drevvy;
+        final text = context.drevvyText;
+
+        return AlertDialog(
+          title: Text('Delete account?', style: text.title),
+          content: Text(
+            'This will permanently delete your account, saved cars, and deals. This cannot be undone.',
+            style: text.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: text.body.copyWith(color: colors.muted),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Account deleted (demo)')),
+                );
+              },
+              child: Text(
+                'Delete',
+                style: text.body.copyWith(color: colors.danger),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openMemoryFacts() async {
+    final items = _searchProfile?.items ?? const <MemoryItem>[];
+    await MemoryFactsSheet.show(
+      context,
+      items: items,
+      onChanged: (next) {
+        final updated = _searchProfile?.copyWith(items: next);
+        if (updated == null) return;
+        setState(() => _searchProfile = updated);
+        _repo.updateSearchProfile(updated);
+      },
+    );
+  }
+
+  Future<void> _openRecentSearches() async {
+    final searches = List<SavedSearch>.from(
+      _searchProfile?.searches ?? const [],
+    );
+    final ran = await RecentSearchesSheet.show(
+      context,
+      searches: searches,
+      onRun: (search) {
+        _repo.markSavedSearchRun(search.id);
+      },
+      onDelete: (search) {
+        _repo.deleteSavedSearch(search.id);
+      },
+      onRestore: (search, index) {
+        _repo.restoreSavedSearch(search, index);
+      },
+      onClearAll: _repo.clearSavedSearches,
+    );
+    if (!mounted) return;
+    if (ran) {
+      Navigator.pop(context);
+      return;
+    }
+    final profile = await _repo.getSearchProfile();
+    if (!mounted) return;
+    setState(() => _searchProfile = profile);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
+      decoration: BoxDecoration(
+        color: colors.glassSolid,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(DrevvyRadius.sheetTop),
+        ),
+      ),
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: DrevvySpace.s3),
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.track,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+
+                // Close button
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      right: DrevvySpace.s3,
+                      top: DrevvySpace.s2,
+                    ),
+                    child: IconButton(
+                      icon: Icon(LucideIcons.x, color: colors.muted),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ),
+
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.gutter,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Account header
+                        _buildAccountHeader(colors, text),
+                        const SizedBox(height: DrevvySpace.s4),
+
+                        // Credit balance card
+                        _buildCreditCard(colors, text),
+                        const SizedBox(height: DrevvySpace.s6),
+
+                        // Your search profile
+                        _buildSectionLabel(text, colors, 'YOUR SEARCH PROFILE'),
+                        const SizedBox(height: DrevvySpace.s2),
+                        _buildSearchProfile(colors, text),
+                        const SizedBox(height: DrevvySpace.s6),
+
+                        // Settings
+                        _buildSectionLabel(text, colors, 'SETTINGS'),
+                        const SizedBox(height: DrevvySpace.s2),
+                        _buildSettings(colors, text),
+                        const SizedBox(height: DrevvySpace.s6),
+
+                        // Legal
+                        _buildSectionLabel(text, colors, 'LEGAL'),
+                        const SizedBox(height: DrevvySpace.s2),
+                        _buildLegal(colors, text),
+                        const SizedBox(height: DrevvySpace.s6),
+
+                        // Sign out / Delete
+                        _buildDangerActions(colors, text),
+
+                        SizedBox(height: DrevvySpace.s4 + bottomPadding),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildAccountHeader(DrevvyColors colors, DrevvyText text) {
+    final user = _user!;
+
+    return Row(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            gradient: DrevvyBrand.gradient,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U',
+              style: text.headline.copyWith(color: DrevvyColors.onBrand),
+            ),
+          ),
+        ),
+        const SizedBox(width: DrevvySpace.s3),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${user.firstName.split(' ').first} ${user.firstName.split(' ').length > 1 ? user.firstName.split(' ').last[0] : 'W'}.',
+                style: text.title,
+              ),
+              Text(
+                '${user.email} · Apple',
+                style: text.callout.copyWith(color: colors.muted),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreditCard(DrevvyColors colors, DrevvyText text) {
+    final balance = _creditBalance!;
+
+    return Container(
+      padding: const EdgeInsets.all(DrevvySpace.s4),
+      decoration: BoxDecoration(
+        gradient: DrevvyBrand.gradient,
+        borderRadius: BorderRadius.circular(DrevvyRadius.md),
+      ),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${balance.balance}',
+                style: text.figureM.copyWith(color: Colors.white),
+              ),
+              Text(
+                'cars left · packs never expire',
+                style: text.callout.copyWith(
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: _showPackPicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+              ),
+              child: Text(
+                'Buy cars',
+                style: text.label.copyWith(
+                  color: colors.violet,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(
+    DrevvyText text,
+    DrevvyColors colors,
+    String label,
+  ) {
+    return Text(label, style: text.label.copyWith(color: colors.muted));
+  }
+
+  Widget _buildSearchProfile(DrevvyColors colors, DrevvyText text) {
+    final profile = _searchProfile!;
+
+    return GlassCard(
+      child: Column(
+        children: [
+          // Personalize toggle
+          _SettingsRow(
+            label: 'Personalize with my history',
+            trailing: Switch.adaptive(
+              value: profile.personalize,
+              onChanged: _togglePersonalize,
+              activeTrackColor: colors.violet,
+            ),
+            subtitle: 'Starters and answers use your past searches',
+          ),
+          Divider(height: 1, color: colors.line),
+
+          _SettingsRow(
+            label: 'Remembered facts',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Edit', style: text.label.copyWith(color: colors.muted)),
+                const SizedBox(width: 4),
+                Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
+              ],
+            ),
+            subtitle: _buildPreferencesSummary(),
+            onTap: _openMemoryFacts,
+          ),
+          Divider(height: 1, color: colors.line),
+
+          _SettingsRow(
+            label: 'Recent searches',
+            subtitle: profile.searches.isEmpty
+                ? 'Run again, delete, or clear all'
+                : '${profile.searches.length} saved',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: _openRecentSearches,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildPreferencesSummary() {
+    final items = _searchProfile?.items ?? const <MemoryItem>[];
+    if (items.isEmpty) return 'Add facts Drevvy should remember';
+    return items.map((item) => item.displayValue).join(' · ');
+  }
+
+  Widget _buildSettings(DrevvyColors colors, DrevvyText text) {
+    return GlassCard(
+      child: Column(
+        children: [
+          _SettingsRow(
+            icon: LucideIcons.bell,
+            label: 'Notifications',
+            subtitle: 'Price drops, offers, official offer',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: () {},
+          ),
+          Divider(height: 1, color: colors.line),
+          _SettingsRow(
+            icon: LucideIcons.mapPin,
+            label: 'Location',
+            subtitle: 'While using · pickup check off',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: () {},
+          ),
+          Divider(height: 1, color: colors.line),
+          _SettingsRow(
+            icon: LucideIcons.rotateCcw,
+            label: 'Restore purchases',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: () async {
+              await _repo.restorePurchases();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Purchases restored')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegal(DrevvyColors colors, DrevvyText text) {
+    return GlassCard(
+      child: _SettingsRow(
+        label: 'Terms · Privacy',
+        trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
+        onTap: () {},
+      ),
+    );
+  }
+
+  Widget _buildDangerActions(DrevvyColors colors, DrevvyText text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _handleSignOut,
+          child: Text('Sign out', style: text.body.copyWith(color: colors.ink)),
+        ),
+        const SizedBox(height: DrevvySpace.s4),
+        GestureDetector(
+          onTap: _handleDeleteAccount,
+          child: Text(
+            'Delete account',
+            style: text.body.copyWith(color: colors.danger),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    this.icon,
+    required this.label,
+    this.subtitle,
+    required this.trailing,
+    this.onTap,
+  });
+
+  final IconData? icon;
+  final String label;
+  final String? subtitle;
+  final Widget trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(DrevvySpace.s4),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: colors.muted),
+                const SizedBox(width: DrevvySpace.s3),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: text.body),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: text.callout.copyWith(color: colors.muted),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              trailing,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

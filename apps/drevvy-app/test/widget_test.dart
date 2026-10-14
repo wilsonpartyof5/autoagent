@@ -21,10 +21,11 @@ void main() {
       });
 
       // Verify tab bar is present with all three tabs
-      // "Shop" appears twice (screen + tab), "Deals" and "Profile" only in tab bar
+      // "Shop" appears twice (screen + tab), "Deals" and "Saved" only in tab bar
+      // v1.8: Profile tab renamed to Saved
       expect(find.text('Shop'), findsWidgets);
       expect(find.text('Deals'), findsOneWidget);
-      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Saved'), findsOneWidget);
     });
 
     testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
