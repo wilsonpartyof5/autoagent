@@ -50,3 +50,4 @@ create table if not exists uvs_vehicles (
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
+
