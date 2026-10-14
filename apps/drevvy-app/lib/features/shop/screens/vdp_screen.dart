@@ -97,7 +97,7 @@ class _VdpScreenState extends State<VdpScreen> {
         },
         onRestore: () async {
           await _repo.restorePurchases();
-          if (mounted) Navigator.pop(context);
+          if (context.mounted) Navigator.pop(context);
         },
         onKeepShopping: () {
           Navigator.pop(context);

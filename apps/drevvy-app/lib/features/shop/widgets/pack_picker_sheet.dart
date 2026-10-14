@@ -353,7 +353,7 @@ class _PackOption extends StatelessWidget {
                       style: text.cardTitle,
                     ),
                     Text(
-                      pack.perCarFormatted + '/car',
+                      '${pack.perCarFormatted}/car',
                       style: text.callout.copyWith(
                         color: isSelected && pack == CarPackType.bestValue
                             ? colors.mint
