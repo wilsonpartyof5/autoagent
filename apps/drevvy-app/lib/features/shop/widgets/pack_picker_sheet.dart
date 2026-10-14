@@ -18,14 +18,15 @@ import '../../../data/models/models.dart';
 class PackPickerSheet extends StatefulWidget {
   const PackPickerSheet({
     super.key,
-    required this.listing,
+    this.listing,
     required this.onPurchase,
     required this.onRestore,
     required this.onKeepShopping,
     this.avgSavings,
   });
 
-  final Listing listing;
+  /// The listing context, if shown from a VDP. Null when shown from Account sheet.
+  final Listing? listing;
   final Future<void> Function(CarPackType) onPurchase;
   final VoidCallback onRestore;
   final VoidCallback onKeepShopping;
@@ -98,14 +99,14 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Car preview image
-                if (widget.listing.media.primaryPhoto != null)
+                // Car preview image (only shown when context listing provided)
+                if (widget.listing?.media.primaryPhoto != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(DrevvyRadius.md),
                     child: AspectRatio(
                       aspectRatio: 16 / 9,
                       child: Image.asset(
-                        widget.listing.media.primaryPhoto!,
+                        widget.listing!.media.primaryPhoto!,
                         fit: BoxFit.cover,
                       ),
                     ),
