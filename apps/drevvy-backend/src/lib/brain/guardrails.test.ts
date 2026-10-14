@@ -489,6 +489,70 @@ describe('no automated assistant rule', () => {
   });
 });
 
+describe('no negotiate word rule', () => {
+  const baseInput: GuardrailInput = {
+    action: 'respond',
+    draft: 'Thank you for the offer.',
+    dealerState: 'SC',
+    channel: 'email',
+    hasOptedInToText: true,
+    hasTextedBefore: true,
+    fairOtd: 30000,
+    currentOfferOtd: 31000,
+    pushbackCount: 0,
+    shopperFirst: 'Maya',
+  };
+
+  it('blocks drafts containing "negotiate"', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'We would like to negotiate the price.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('negotiate_word_used'));
+  });
+
+  it('blocks drafts containing "negotiating"', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'We are negotiating on behalf of the buyer.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('negotiate_word_used'));
+  });
+
+  it('blocks drafts containing "negotiation"', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'This negotiation is ongoing.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('negotiate_word_used'));
+  });
+
+  it('blocks case-insensitive variations', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'We need to NEGOTIATE on this price.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.blocked, true);
+    assert.ok(result.violations.includes('negotiate_word_used'));
+  });
+
+  it('allows drafts without negotiate words', () => {
+    const input: GuardrailInput = {
+      ...baseInput,
+      draft: 'We would like to discuss the price.',
+    };
+    const result = runGuardrails(input);
+    assert.equal(result.checks.noNegotiateWord, true);
+  });
+});
+
 describe('fair OTD known for counter rule', () => {
   const baseInput: GuardrailInput = {
     action: 'respond',

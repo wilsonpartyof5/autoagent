@@ -44,6 +44,7 @@ export type GuardrailResult = {
     otdThreshold: boolean;
     noShopperContactInfo: boolean;
     noAutomatedAssistant: boolean;
+    noNegotiateWord: boolean;
     fairOtdKnownForCounter: boolean;
   };
 };
@@ -68,6 +69,7 @@ const SHOPPER_CONTACT_PATTERNS = [
 ];
 
 const AUTOMATED_ASSISTANT_PATTERN = /\bautomated\s+assistant\b/i;
+const NEGOTIATE_PATTERN = /\bnegotiat/i;
 
 export function runGuardrails(input: GuardrailInput): GuardrailResult {
   const violations: string[] = [];
@@ -103,6 +105,11 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
     violations.push('automated_assistant_phrase');
   }
 
+  const noNegotiateWord = checkNoNegotiateWord(draft);
+  if (!noNegotiateWord) {
+    violations.push('negotiate_word_used');
+  }
+
   const fairOtdKnownForCounter = checkFairOtdKnownForCounter(input.action, input.fairOtd);
   if (!fairOtdKnownForCounter) {
     violations.push('fair_otd_unknown_for_counter');
@@ -118,6 +125,7 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
       otdThreshold,
       noShopperContactInfo,
       noAutomatedAssistant,
+      noNegotiateWord,
       fairOtdKnownForCounter,
     },
   };
@@ -166,6 +174,11 @@ export function checkOtdThreshold(
 function checkNoAutomatedAssistant(draft: string): boolean {
   if (!draft) return true;
   return !AUTOMATED_ASSISTANT_PATTERN.test(draft);
+}
+
+function checkNoNegotiateWord(draft: string): boolean {
+  if (!draft) return true;
+  return !NEGOTIATE_PATTERN.test(draft);
 }
 
 function checkFairOtdKnownForCounter(action: string | null, fairOtd: number | null): boolean {
