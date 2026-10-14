@@ -326,7 +326,7 @@ class _EndedBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: DrevvySpace.s1),
                 Text(
-                  'This car has been returned to your monthly limit.',
+                  'You got your car credit back.',
                   style: text.callout.copyWith(color: colors.sold),
                 ),
               ],

@@ -6,13 +6,16 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
+import '../../../data/services/purchase_service.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
 import '../widgets/add_to_drevvy_sheet.dart';
-import '../widgets/paywall_sheet.dart';
+import '../widgets/pack_picker_sheet.dart';
+import '../widgets/out_of_cars_sheet.dart';
 
-/// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants
+/// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
+/// v1.7: Uses car credit balance instead of Pro subscription.
 class VdpScreen extends StatefulWidget {
   const VdpScreen({super.key, required this.listingId});
 
@@ -26,7 +29,8 @@ class _VdpScreenState extends State<VdpScreen> {
   final _repo = DemoRepository.instance;
   Listing? _listing;
   MarketContext? _market;
-  User? _user;
+  CarCreditBalance? _creditBalance;
+  AvgSavingsConfig? _avgSavings;
   bool _isLoading = true;
 
   @override
@@ -38,15 +42,18 @@ class _VdpScreenState extends State<VdpScreen> {
   Future<void> _loadData() async {
     final listing = await _repo.getListingById(widget.listingId);
     final market = await _repo.getMarketContext(listing);
-    final user = await _repo.getCurrentUser();
+    final balance = await _repo.getCreditBalance();
+    final avgSavings = await _repo.getAvgSavingsConfig();
     setState(() {
       _listing = listing;
       _market = market;
-      _user = user;
+      _creditBalance = balance;
+      _avgSavings = avgSavings;
       _isLoading = false;
     });
   }
 
+  /// v1.7: Show AddToDrevvySheet when user has credits.
   void _showAddSheet() {
     showModalBottomSheet(
       context: context,
@@ -55,7 +62,7 @@ class _VdpScreenState extends State<VdpScreen> {
       builder: (context) => AddToDrevvySheet(
         listing: _listing!,
         market: _market!,
-        user: _user!,
+        creditBalance: _creditBalance!,
         onAdd: (maxOtd) async {
           await _repo.addDeal(_listing!, maxOtd: maxOtd);
           if (mounted && context.mounted) {
@@ -67,22 +74,77 @@ class _VdpScreenState extends State<VdpScreen> {
     );
   }
 
-  void _showPaywallSheet() {
+  /// v1.7: Show PackPickerSheet when user has no credits (first-time paywall).
+  void _showPackPickerSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => PaywallSheet(
+      builder: (context) => PackPickerSheet(
         listing: _listing!,
-        onSubscribe: () {
-          Navigator.pop(context);
-          context.push('/paywall');
+        avgSavings: _avgSavings,
+        onPurchase: (packType) async {
+          final result = await _repo.purchasePack(packType);
+          if (result is PurchaseSuccess && mounted) {
+            // Reload balance and show add sheet
+            final newBalance = await _repo.getCreditBalance();
+            setState(() => _creditBalance = newBalance);
+            if (context.mounted) {
+              Navigator.pop(context);
+              _showAddSheet();
+            }
+          }
         },
-        onRestore: () {
+        onRestore: () async {
+          await _repo.restorePurchases();
+          if (mounted) Navigator.pop(context);
+        },
+        onKeepShopping: () {
           Navigator.pop(context);
         },
       ),
     );
+  }
+
+  /// v1.7: Show OutOfCarsSheet when user's balance is 0.
+  void _showOutOfCarsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => OutOfCarsSheet(
+        listing: _listing!,
+        onPurchase: (packType) async {
+          final result = await _repo.purchasePack(packType);
+          if (result is PurchaseSuccess && mounted) {
+            final newBalance = await _repo.getCreditBalance();
+            setState(() => _creditBalance = newBalance);
+            if (context.mounted) {
+              Navigator.pop(context);
+              _showAddSheet();
+            }
+          }
+        },
+        onNotNow: () {
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
+  /// v1.7: Determine which sheet to show based on credit balance.
+  void _handleUnlockTap() {
+    final balance = _creditBalance!;
+    if (balance.canUnlock) {
+      // Has credits: show add sheet directly
+      _showAddSheet();
+    } else if (balance.totalPurchased == 0) {
+      // Never purchased: show pack picker (first-time paywall)
+      _showPackPickerSheet();
+    } else {
+      // Had credits but used them all: show out of cars
+      _showOutOfCarsSheet();
+    }
   }
 
   @override
@@ -104,8 +166,8 @@ class _VdpScreenState extends State<VdpScreen> {
 
     final listing = _listing!;
     final market = _market!;
-    final user = _user!;
-    final isPro = user.isPro;
+    final creditBalance = _creditBalance!;
+    final hasCredits = creditBalance.canUnlock;
 
     return Scaffold(
       body: Stack(
@@ -268,8 +330,8 @@ class _VdpScreenState extends State<VdpScreen> {
                         const SizedBox(height: DrevvySpace.s6),
                       ],
                       
-                      // How Drevvy works (for free users)
-                      if (!isPro) ...[
+                      // v1.7: How Drevvy works (show for users without credits)
+                      if (!hasCredits) ...[
                         _HowDrevvyWorks(),
                         const SizedBox(height: DrevvySpace.s6),
                       ],
@@ -290,8 +352,8 @@ class _VdpScreenState extends State<VdpScreen> {
             bottom: 0,
             child: _StickyCta(
               listing: listing,
-              user: user,
-              onTap: isPro ? _showAddSheet : _showPaywallSheet,
+              creditBalance: creditBalance,
+              onTap: _handleUnlockTap,
             ),
           ),
         ],
@@ -441,6 +503,7 @@ class _HistoryRow extends StatelessWidget {
   }
 }
 
+/// v1.7: Updated copy to reflect pack-based pricing.
 class _HowDrevvyWorks extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -454,8 +517,9 @@ class _HowDrevvyWorks extends StatelessWidget {
           Text('How Drevvy works for you', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
           _Step(number: '1', text: 'You tap "Unlock my price"'),
-          _Step(number: '2', text: 'Drevvy asks the dealer for an itemized out-the-door price'),
-          _Step(number: '3', text: 'You review each offer and decide'),
+          _Step(number: '2', text: 'Pick a car pack (3, 5, or 10 cars)'),
+          _Step(number: '3', text: 'Drevvy asks the dealer for an itemized out-the-door price'),
+          _Step(number: '4', text: 'You review each offer and decide'),
         ],
       ),
     );
@@ -502,15 +566,16 @@ class _Step extends StatelessWidget {
   }
 }
 
+/// v1.7: Sticky CTA updated to use credit balance instead of Pro subscription.
 class _StickyCta extends StatelessWidget {
   const _StickyCta({
     required this.listing,
-    required this.user,
+    required this.creditBalance,
     required this.onTap,
   });
 
   final Listing listing;
-  final User user;
+  final CarCreditBalance creditBalance;
   final VoidCallback onTap;
 
   String _formatNumber(int n) {
@@ -525,7 +590,7 @@ class _StickyCta extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final isPro = user.isPro;
+    final hasCredits = creditBalance.canUnlock;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -542,28 +607,20 @@ class _StickyCta extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isPro) ...[
-            // Pro banner
+          // v1.7: Show credit balance when user has credits
+          if (hasCredits) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: colors.lilacTint,
                 borderRadius: BorderRadius.circular(DrevvyRadius.sm),
               ),
-              child: Row(
-                children: [
-                  Text(
-                    'Pro',
-                    style: text.label.copyWith(
-                      color: colors.violet,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    ' · ${user.usage.formatted} · ${user.usage.resetsFormatted}',
-                    style: text.label.copyWith(color: colors.onLilacTint),
-                  ),
-                ],
+              child: Text(
+                creditBalance.displayText,
+                style: text.label.copyWith(
+                  color: colors.violet,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const SizedBox(height: DrevvySpace.s3),
@@ -595,19 +652,12 @@ class _StickyCta extends StatelessWidget {
           
           const SizedBox(height: DrevvySpace.s2),
           
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (!isPro)
-                Icon(LucideIcons.lock, color: colors.muted, size: 12),
-              const SizedBox(width: 4),
-              Text(
-                isPro
-                    ? 'Drevvy contacts Dealer A during business hours'
-                    : 'Drevvy Pro · \$97/mo · 10 cars a month',
-                style: text.callout.copyWith(color: colors.muted),
-              ),
-            ],
+          // v1.7: Updated copy - no more "Pro" or "/mo"
+          Text(
+            hasCredits
+                ? 'Drevvy contacts Dealer A during business hours'
+                : 'From \$9.70/car · Car packs never expire',
+            style: text.callout.copyWith(color: colors.muted),
           ),
         ],
       ),

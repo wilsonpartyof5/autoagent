@@ -6,18 +6,20 @@ import '../../../data/models/listing.dart';
 
 /// Shop result card per spec §6.7 (v1.6.1): no fixed height, full-width CTA on own row.
 /// Fixed overflow issue where badge + CTA in a Row exceeded width by 14-24pt.
+/// v1.7: Removed isPro flag; CTA is now always "See price" regardless of credits.
 class InventoryCard extends StatelessWidget {
   const InventoryCard({
     super.key,
     required this.listing,
-    required this.isPro,
+    this.hasCredits = false,
     required this.onTap,
     this.marketDelta,
     this.isAlreadyAdded = false,
   });
 
   final Listing listing;
-  final bool isPro;
+  /// v1.7: Whether user has car credits (unused for now, kept for future A/B).
+  final bool hasCredits;
   final VoidCallback onTap;
   final int? marketDelta;
   final bool isAlreadyAdded;
@@ -128,7 +130,6 @@ class InventoryCard extends StatelessWidget {
             // Row 3: Full-width CTA button
             const SizedBox(height: DrevvySpace.s2),
             _CardCta(
-              isPro: isPro,
               isAlreadyAdded: isAlreadyAdded,
             ),
           ],
@@ -217,13 +218,12 @@ class _BrokenImage extends StatelessWidget {
 
 /// CTA button per spec §6.7: full-width on its own row, min height 44pt,
 /// label scales down with FittedBox rather than clipping at large text sizes.
+/// v1.7: Simplified CTA - always "See price" (no more Pro vs non-Pro distinction).
 class _CardCta extends StatelessWidget {
   const _CardCta({
-    required this.isPro,
     required this.isAlreadyAdded,
   });
 
-  final bool isPro;
   final bool isAlreadyAdded;
 
   @override
@@ -237,8 +237,9 @@ class _CardCta extends StatelessWidget {
       );
     }
 
-    final label = isPro ? 'Add to Drevvy' : 'Get Best Price';
-    final icon = isPro ? LucideIcons.plus : null;
+    // v1.7: Single CTA regardless of credit status
+    const label = 'See price';
+    const IconData? icon = null;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: DrevvySpace.minTap),

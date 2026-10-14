@@ -5,15 +5,39 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/models/models.dart';
+import '../../../data/repositories/demo_repository.dart';
 import '../widgets/progress_dots.dart';
 
-/// Screen 06: Paywall (onboarding or in-context)
-class PaywallScreen extends StatelessWidget {
+/// Screen S10: Soft paywall (onboarding or in-context).
+/// v1.7: Updated from monthly subscription to one-time car packs.
+/// 
+/// Copy: "From $9.70/car · Car packs 3 · 5 · 10 · One-time. Never expire."
+class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key, this.from});
 
   final String? from;
 
-  bool get isOnboarding => from == 'onboarding';
+  @override
+  State<PaywallScreen> createState() => _PaywallScreenState();
+}
+
+class _PaywallScreenState extends State<PaywallScreen> {
+  bool get isOnboarding => widget.from == 'onboarding';
+  AvgSavingsConfig? _avgSavings;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    final config = await DemoRepository.instance.getAvgSavingsConfig();
+    if (mounted) {
+      setState(() => _avgSavings = config);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,25 +56,55 @@ class PaywallScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s2),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      if (!isOnboarding)
+                        const SizedBox(width: 48)
+                      else
+                        IconButton(
+                          icon: Icon(LucideIcons.chevronLeft, color: colors.ink),
+                          onPressed: () => context.pop(),
+                        ),
+                      if (isOnboarding)
+                        const ProgressDots(current: 9, total: 10),
                       if (!isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.x, color: colors.ink),
                           onPressed: () => context.pop(),
                         )
                       else
-                        IconButton(
-                          icon: Icon(LucideIcons.chevronLeft, color: colors.ink),
-                          onPressed: () => context.pop(),
-                        ),
+                        const SizedBox(width: 48),
                     ],
                   ),
                 ),
                 
-                if (isOnboarding) ...[
-                  const SizedBox(height: DrevvySpace.s4),
-                  const ProgressDots(current: 4, total: 5),
-                ],
+                const SizedBox(height: DrevvySpace.s4),
+                
+                // Drevvy logo
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        gradient: DrevvyColors.brandGradient,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'D',
+                          style: text.bodyStrong.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: DrevvySpace.s2),
+                    Text('Drevvy', style: text.bodyStrong),
+                  ],
+                ),
                 
                 Expanded(
                   child: SingleChildScrollView(
@@ -59,117 +113,117 @@ class PaywallScreen extends StatelessWidget {
                       children: [
                         const SizedBox(height: DrevvySpace.s6),
                         
-                        // Pro pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: DrevvyColors.brandGradient,
-                            borderRadius: BorderRadius.circular(DrevvyRadius.pill),
-                          ),
-                          child: Text(
-                            'Drevvy Pro',
-                            style: text.label.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        
-                        const SizedBox(height: DrevvySpace.s6),
-                        
+                        // Headline
                         Text(
-                          'Let Drevvy find your\nbest price',
+                          'Your next car. Fewer surprises.',
                           style: text.headline,
                           textAlign: TextAlign.center,
                         ),
                         
                         const SizedBox(height: DrevvySpace.s3),
                         
+                        // Subtitle
                         Text(
-                          'We ask dealers for an itemized out-the-door price\nand keep going until you decide.',
+                          'Shop free. When you find the one, let Drevvy handle the dealer conversation.',
                           style: text.body.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),
                         
-                        const SizedBox(height: DrevvySpace.s8),
+                        const SizedBox(height: DrevvySpace.s6),
                         
-                        // Price card
+                        // v1.7: Pack pricing card
                         GlassCard(
                           padding: const EdgeInsets.all(DrevvySpace.s5),
                           child: Column(
                             children: [
+                              // Price headline
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('\$', style: text.title),
-                                  Text('97', style: text.figureL),
-                                  Text('/mo', style: text.body.copyWith(color: colors.muted)),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                                    textBaseline: TextBaseline.alphabetic,
+                                    children: [
+                                      Text('From ', style: text.body),
+                                      Text('\$9.70', style: text.figureM),
+                                      Text('/car', style: text.body),
+                                    ],
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        'Car packs: 3 · 5 · 10',
+                                        style: text.callout.copyWith(color: colors.muted),
+                                      ),
+                                      Text(
+                                        'One-time. Never expire.',
+                                        style: text.callout.copyWith(color: colors.muted),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: DrevvySpace.s2),
-                              Text(
-                                '10 cars per billing month',
-                                style: text.callout.copyWith(color: colors.muted),
+                              
+                              const SizedBox(height: DrevvySpace.s5),
+                              
+                              // Benefits list (updated copy, no "negotiate")
+                              _ValueProp(
+                                icon: LucideIcons.check,
+                                text: 'Drevvy handles the conversation with each selected vehicle\'s dealer.',
+                              ),
+                              const SizedBox(height: DrevvySpace.s3),
+                              _ValueProp(
+                                icon: LucideIcons.check,
+                                text: 'Works to get a written out-the-door quote with taxes, fees, and any add-ons.',
+                              ),
+                              const SizedBox(height: DrevvySpace.s3),
+                              _ValueProp(
+                                icon: LucideIcons.check,
+                                text: 'Keeps your personal phone number private from dealerships.',
                               ),
                             ],
                           ),
                         ),
+                        
+                        const SizedBox(height: DrevvySpace.s5),
+                        
+                        // Avg savings stat (hidden if unavailable)
+                        if (_avgSavings != null)
+                          Container(
+                            padding: const EdgeInsets.all(DrevvySpace.s4),
+                            decoration: BoxDecoration(
+                              color: colors.mintTint,
+                              borderRadius: BorderRadius.circular(DrevvyRadius.md),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _avgSavings!.value,
+                                  style: text.bodyStrong.copyWith(color: colors.mint),
+                                ),
+                                const SizedBox(height: DrevvySpace.s1),
+                                Text(
+                                  _avgSavings!.label,
+                                  style: text.callout.copyWith(color: colors.mint),
+                                ),
+                                const SizedBox(height: DrevvySpace.s1),
+                                Text(
+                                  'Source: ${_avgSavings!.source}.',
+                                  style: text.micro.copyWith(color: colors.muted),
+                                ),
+                              ],
+                            ),
+                          ),
                         
                         const SizedBox(height: DrevvySpace.s6),
                         
-                        // Benefits list
-                        _BenefitRow(
-                          icon: LucideIcons.messageSquare,
-                          title: 'Drevvy does the work',
-                          body: 'We reach out to the dealer and ask for their best itemized price.',
-                        ),
-                        const SizedBox(height: DrevvySpace.s4),
-                        _BenefitRow(
-                          icon: LucideIcons.trendingDown,
-                          title: 'Data-backed asks',
-                          body: 'We cite comparable listings, days listed, and market averages.',
-                        ),
-                        const SizedBox(height: DrevvySpace.s4),
-                        _BenefitRow(
-                          icon: LucideIcons.check,
-                          title: 'You always decide',
-                          body: 'Review each offer and accept when you\'re ready. We never accept for you.',
-                        ),
-                        const SizedBox(height: DrevvySpace.s4),
-                        _BenefitRow(
-                          icon: LucideIcons.shieldCheck,
-                          title: 'Your info stays private',
-                          body: 'Dealers see only your first name. Never your phone or email.',
-                        ),
-                        
-                        const SizedBox(height: DrevvySpace.s8),
-                        
-                        // Illustrative example
-                        Container(
-                          padding: const EdgeInsets.all(DrevvySpace.s4),
-                          decoration: BoxDecoration(
-                            color: colors.mintTint,
-                            borderRadius: BorderRadius.circular(DrevvyRadius.md),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Example savings',
-                                style: text.label.copyWith(color: colors.mint),
-                              ),
-                              const SizedBox(height: DrevvySpace.s2),
-                              Text(
-                                '\$2,295 under listed',
-                                style: text.title.copyWith(color: colors.mint),
-                              ),
-                              const SizedBox(height: DrevvySpace.s1),
-                              Text(
-                                'on a 2024 Toyota RAV4 Hybrid XLE',
-                                style: text.callout.copyWith(color: colors.mint),
-                              ),
-                            ],
-                          ),
+                        // Bottom text
+                        Text(
+                          'Asking and shopping stay free. Buy a car pack only when you want Drevvy to reach out. Packs are one-time and never expire.',
+                          style: text.callout.copyWith(color: colors.muted),
+                          textAlign: TextAlign.center,
                         ),
                         
                         const SizedBox(height: DrevvySpace.s8),
@@ -184,44 +238,34 @@ class PaywallScreen extends StatelessWidget {
                     DrevvySpace.gutter,
                     DrevvySpace.s2,
                     DrevvySpace.gutter,
-                    DrevvySpace.s6 + bottomPadding,
+                    DrevvySpace.s4 + bottomPadding,
                   ),
                   child: Column(
                     children: [
                       DrevvyButton(
-                        label: 'Start Drevvy Pro',
+                        label: 'Start shopping free',
                         onPressed: () {
-                          // TODO: RevenueCat/Superwall purchase flow
                           if (isOnboarding) {
                             context.push('/account/create');
                           } else {
-                            context.pop();
+                            context.go('/shop');
                           }
                         },
                         isFullWidth: true,
                       ),
-                      if (isOnboarding) ...[
-                        const SizedBox(height: DrevvySpace.s3),
-                        DrevvyGhostButton(
-                          label: 'Maybe later',
-                          onPressed: () => context.go('/shop'),
-                          color: colors.muted,
-                        ),
-                      ],
+                      const SizedBox(height: DrevvySpace.s3),
+                      DrevvyGhostButton(
+                        label: 'See how it works',
+                        onPressed: () {
+                          // TODO: Show how it works sheet
+                          context.pop();
+                        },
+                        color: colors.ink,
+                      ),
                       const SizedBox(height: DrevvySpace.s4),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          TextButton(
-                            onPressed: () {
-                              // TODO: Restore purchases
-                            },
-                            child: Text(
-                              'Restore',
-                              style: text.callout.copyWith(color: colors.muted),
-                            ),
-                          ),
-                          Text(' · ', style: text.callout.copyWith(color: colors.muted)),
                           TextButton(
                             onPressed: () {
                               // TODO: Terms
@@ -255,46 +299,34 @@ class PaywallScreen extends StatelessWidget {
   }
 }
 
-class _BenefitRow extends StatelessWidget {
-  const _BenefitRow({
+/// Value proposition row with check icon.
+class _ValueProp extends StatelessWidget {
+  const _ValueProp({
     required this.icon,
-    required this.title,
-    required this.body,
+    required this.text,
   });
 
   final IconData icon;
-  final String title;
-  final String body;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
-    final text = context.drevvyText;
+    final textStyle = context.drevvyText;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: colors.lilacTint,
-            borderRadius: BorderRadius.circular(DrevvyRadius.xs),
-          ),
-          child: Icon(icon, color: colors.violet, size: 20),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 18, color: colors.mint),
         ),
         const SizedBox(width: DrevvySpace.s3),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: text.bodyStrong),
-              const SizedBox(height: DrevvySpace.s1),
-              Text(body, style: text.body.copyWith(color: colors.muted)),
-            ],
-          ),
+          child: Text(text, style: textStyle.body),
         ),
       ],
     );
   }
 }
+

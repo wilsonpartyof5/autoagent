@@ -5,19 +5,21 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/listing.dart';
 import 'inventory_card.dart';
 
-/// Screens 10, 11, 17: Shop results with loading skeleton
+/// Screens 10, 11, 17: Shop results with loading skeleton.
+/// v1.7: Removed isPro flag; using hasCredits for future A/B testing.
 class ShopResults extends StatelessWidget {
   const ShopResults({
     super.key,
     required this.listings,
     required this.isLoading,
-    required this.isPro,
+    this.hasCredits = false,
     required this.onListingTap,
   });
 
   final List<Listing>? listings;
   final bool isLoading;
-  final bool isPro;
+  /// v1.7: Whether user has car credits (for future A/B testing).
+  final bool hasCredits;
   final ValueChanged<Listing> onListingTap;
 
   @override
@@ -88,7 +90,7 @@ class ShopResults extends StatelessWidget {
         final listing = listings![index];
         return InventoryCard(
           listing: listing,
-          isPro: isPro,
+          hasCredits: hasCredits,
           onTap: () => onListingTap(listing),
         );
       },

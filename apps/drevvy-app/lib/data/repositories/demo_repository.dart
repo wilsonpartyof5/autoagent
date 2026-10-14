@@ -1,13 +1,21 @@
 import '../models/models.dart';
+import '../services/purchase_service.dart';
 import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
 /// 
+/// v1.7: Uses one-time car packs instead of monthly subscription.
+/// Car credits are spent on "Unlock my price" and refunded for:
+/// - No response from dealer
+/// - Car no longer listed (sold)
+/// - Dealer decline
+/// - Removal within 30 minutes before outreach
+/// 
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
-/// - RevenueCat/Superwall for billing
+/// - RevenueCat/Superwall for billing (products: drevvy_pack_3/5/10)
 class DemoRepository {
   DemoRepository._();
   static final instance = DemoRepository._();
@@ -36,11 +44,11 @@ class DemoRepository {
     id: 'user_demo_001',
     firstName: 'Dana',
     email: 'dana.w@example.com',
-    entitlement: Entitlement.pro,
+    entitlement: Entitlement.free, // v1.7: No longer uses Pro; credits gate unlock
     usage: Usage(
-      used: 4,
-      cap: 10,
-      resetsOn: DateTime(2026, 10, 20),
+      used: 0,
+      cap: 0,
+      resetsOn: DateTime.now(), // Obsolete in v1.7
     ),
     prefs: const UserPrefs(
       budgetOtd: 40000,
@@ -56,6 +64,140 @@ class DemoRepository {
     locationState: LocationState.granted,
     zipCode: '94105',
   );
+
+  // ============== CAR CREDITS (v1.7) ==============
+  
+  /// Credit ledger for audit trail.
+  final List<CreditLedgerEntry> _creditLedger = [];
+  
+  /// Current balance computed from ledger. Start with demo credits.
+  CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
+  
+  /// Server-driven avg_savings config. Null if unavailable.
+  AvgSavingsConfig? _avgSavingsConfig = const AvgSavingsConfig(
+    value: '3–5%',
+    label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
+    source: 'CarEdge, State of Dealer Fees 2026',
+    kind: 'market',
+  );
+  
+  /// Purchase service for car packs.
+  late final PurchaseService _purchaseService = FakePurchaseService(
+    onPurchaseComplete: (packType, credits) {
+      _addCredits(credits, CreditReason.purchase, packType: packType);
+    },
+  );
+  
+  /// Get current car credit balance.
+  Future<CarCreditBalance> getCreditBalance() async {
+    return _delay(_creditBalance);
+  }
+  
+  /// Get credit ledger entries for this user.
+  Future<List<CreditLedgerEntry>> getCreditLedger() async {
+    return _delay(List.unmodifiable(_creditLedger));
+  }
+  
+  /// Get avg_savings config. Returns null if unavailable (hide stat in UI).
+  Future<AvgSavingsConfig?> getAvgSavingsConfig() async {
+    return _delay(_avgSavingsConfig);
+  }
+  
+  /// Get the purchase service.
+  PurchaseService get purchaseService => _purchaseService;
+  
+  /// Purchase a car pack. Returns the result and updates balance.
+  Future<PurchaseResult> purchasePack(CarPackType packType) async {
+    await _purchaseService.initialize();
+    return _purchaseService.purchasePack(packType);
+  }
+  
+  /// Spend 1 credit for "Unlock my price".
+  /// Returns true if successful, false if no credits.
+  bool spendCredit(String dealId) {
+    if (!_creditBalance.canUnlock) return false;
+    
+    final entry = CreditLedgerEntry(
+      id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUser?.id ?? 'user_demo_001',
+      delta: -1,
+      reason: CreditReason.unlock,
+      createdAt: DateTime.now(),
+      dealId: dealId,
+    );
+    _creditLedger.add(entry);
+    
+    _creditBalance = _creditBalance.copyWith(
+      balance: _creditBalance.balance - 1,
+      totalSpent: _creditBalance.totalSpent + 1,
+    );
+    
+    return true;
+  }
+  
+  /// Refund 1 credit for a deal. Returns true if successful.
+  bool refundCredit(String dealId, CreditReason reason) {
+    assert(
+      reason == CreditReason.refundNoResponse ||
+      reason == CreditReason.refundNoLongerListed ||
+      reason == CreditReason.refundDealerDecline ||
+      reason == CreditReason.refundEarlyRemoval,
+      'Invalid refund reason: $reason',
+    );
+    
+    final entry = CreditLedgerEntry(
+      id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUser?.id ?? 'user_demo_001',
+      delta: 1,
+      reason: reason,
+      createdAt: DateTime.now(),
+      dealId: dealId,
+    );
+    _creditLedger.add(entry);
+    
+    _creditBalance = _creditBalance.copyWith(
+      balance: _creditBalance.balance + 1,
+      totalRefunded: _creditBalance.totalRefunded + 1,
+    );
+    
+    return true;
+  }
+  
+  /// Add credits (from purchase).
+  void _addCredits(int credits, CreditReason reason, {CarPackType? packType}) {
+    final entry = CreditLedgerEntry(
+      id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUser?.id ?? 'user_demo_001',
+      delta: credits,
+      reason: reason,
+      createdAt: DateTime.now(),
+      packType: packType,
+    );
+    _creditLedger.add(entry);
+    
+    _creditBalance = _creditBalance.copyWith(
+      balance: _creditBalance.balance + credits,
+      totalPurchased: _creditBalance.totalPurchased + credits,
+    );
+  }
+  
+  /// Check if a deal qualifies for early removal refund (within 30 minutes, before outreach).
+  bool canGetEarlyRemovalRefund(Deal deal) {
+    if (deal.status != DealStatus.reachingOut) return false;
+    final elapsed = DateTime.now().difference(deal.addedAt);
+    return elapsed.inMinutes < 30;
+  }
+  
+  /// Get available pack offerings.
+  Future<List<CarPackOffering>?> getPackOfferings() async {
+    await _purchaseService.initialize();
+    return _purchaseService.getOfferings();
+  }
+  
+  /// Restore purchases.
+  Future<RestoreResult> restorePurchases() async {
+    return _purchaseService.restorePurchases();
+  }
 
   // ============== LISTINGS ==============
 
@@ -136,7 +278,6 @@ class DemoRepository {
   }
 
   Future<Deal> addDeal(Listing listing, {int? maxOtd}) async {
-    final user = await getCurrentUser();
     final newDeal = Deal(
       id: 'deal_${DateTime.now().millisecondsSinceEpoch}',
       listingId: listing.id,
@@ -150,14 +291,8 @@ class DemoRepository {
     );
     _deals = [..._deals, newDeal];
     
-    // Update usage
-    _currentUser = user.copyWith(
-      usage: Usage(
-        used: user.usage.used + 1,
-        cap: user.usage.cap,
-        resetsOn: user.usage.resetsOn,
-      ),
-    );
+    // v1.7: Spend 1 car credit
+    spendCredit(newDeal.id);
     
     return _delay(newDeal);
   }
@@ -166,16 +301,9 @@ class DemoRepository {
     final deal = await getDealById(dealId);
     _deals = _deals.where((d) => d.id != dealId).toList();
     
-    // Refund slot if within undo window
-    if (deal.canUndo) {
-      final user = await getCurrentUser();
-      _currentUser = user.copyWith(
-        usage: Usage(
-          used: user.usage.used - 1,
-          cap: user.usage.cap,
-          resetsOn: user.usage.resetsOn,
-        ),
-      );
+    // v1.7: Refund credit if within 30 minutes before outreach
+    if (canGetEarlyRemovalRefund(deal)) {
+      refundCredit(dealId, CreditReason.refundEarlyRemoval);
     }
     
     return _delay(null);
@@ -332,7 +460,7 @@ class DemoRepository {
 
   Future<DealStats> getDealStats() async {
     final deals = await getDeals();
-    final user = await getCurrentUser();
+    final balance = await getCreditBalance();
     
     int totalSavings = 0;
     int offersToReview = 0;
@@ -346,12 +474,11 @@ class DemoRepository {
       }
     }
     
+    // v1.7: Stats now use credit balance, not monthly usage
     return _delay(DealStats(
       underListedTotal: totalSavings,
       offersToReview: offersToReview,
-      used: user.usage.used,
-      cap: user.usage.cap,
-      resetsOn: user.usage.resetsOn,
+      carsRemaining: balance.balance,
     ));
   }
 
@@ -944,22 +1071,21 @@ class DealStats {
   const DealStats({
     required this.underListedTotal,
     required this.offersToReview,
-    required this.used,
-    required this.cap,
-    required this.resetsOn,
+    required this.carsRemaining,
   });
 
   final int underListedTotal;
   final int offersToReview;
-  final int used;
-  final int cap;
-  final DateTime resetsOn;
+  
+  /// v1.7: Cars remaining from credit balance (no longer monthly usage).
+  final int carsRemaining;
 
-  String get usageFormatted => '$used/$cap';
-  String get resetsFormatted {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[resetsOn.month - 1]} ${resetsOn.day}';
-  }
+  /// v1.7: Display text for cars remaining.
+  String get carsRemainingFormatted => 
+      carsRemaining == 1 ? '1 car left' : '$carsRemaining cars left';
+  
+  /// v1.7: Whether user can unlock more cars.
+  bool get canUnlock => carsRemaining > 0;
 }
 
 // ============== SEARCH PROFILE (v1.6.1) ==============
