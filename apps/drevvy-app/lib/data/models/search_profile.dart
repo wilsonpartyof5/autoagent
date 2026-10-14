@@ -117,6 +117,21 @@ class SavedSearch extends Equatable {
     return parts.isEmpty ? 'Search' : parts.join(' · ');
   }
 
+  SavedSearch copyWith({
+    SearchFilters? filters,
+    DateTime? lastRunAt,
+    int? runCount,
+    Set<String>? seenListingIds,
+  }) {
+    return SavedSearch(
+      id: id,
+      filters: filters ?? this.filters,
+      lastRunAt: lastRunAt ?? this.lastRunAt,
+      runCount: runCount ?? this.runCount,
+      seenListingIds: seenListingIds ?? this.seenListingIds,
+    );
+  }
+
   @override
   List<Object?> get props => [id, filters, lastRunAt];
 }

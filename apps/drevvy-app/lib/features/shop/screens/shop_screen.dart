@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
@@ -11,6 +12,7 @@ import '../widgets/chat_composer.dart';
 import '../widgets/shop_results.dart';
 import '../widgets/chat_history_drawer.dart';
 import '../widgets/account_sheet.dart';
+import '../../account/widgets/recent_searches_sheet.dart';
 
 /// Screens 07-11, 17, 51-52: Shop tab with Ask/Shop toggle and history drawer (v1.6.1)
 /// v1.8: Added save/heart support on inventory cards.
@@ -25,7 +27,7 @@ class ShopScreen extends StatefulWidget {
 class _ShopScreenState extends State<ShopScreen> {
   final _repo = DemoRepository.instance;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  
+
   ChatMode _mode = ChatMode.ask;
   ChatThread? _thread;
   List<ChatThread> _chatHistory = [];
@@ -35,7 +37,9 @@ class _ShopScreenState extends State<ShopScreen> {
   User? _user;
   List<StarterCard>? _starters;
   SearchProfile? _searchProfile;
-  
+  Set<String>? _enabledMemoryIds;
+  int _memoryRevision = 0;
+
   /// v1.8: Track saved and deals listing IDs
   Set<String> _savedListingIds = {};
   Set<String> _dealsListingIds = {};
@@ -43,7 +47,16 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   void initState() {
     super.initState();
+    _repo.onSavedSearchRun = _handleSavedSearchRun;
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    if (identical(_repo.onSavedSearchRun, _handleSavedSearchRun)) {
+      _repo.onSavedSearchRun = null;
+    }
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -52,17 +65,19 @@ class _ShopScreenState extends State<ShopScreen> {
     final history = await _repo.getChatHistory();
     final starters = await _repo.getStarters();
     final searchProfile = await _repo.getSearchProfile();
-    
+
     // v1.8: Load saved and deals listing IDs for heart state
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
-    
+    if (!mounted) return;
+
     setState(() {
       _thread = thread;
       _user = user;
       _chatHistory = history;
       _starters = starters;
       _searchProfile = searchProfile;
+      _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
       _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
       _dealsListingIds = deals.map((d) => d.listingId).toSet();
     });
@@ -70,29 +85,86 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _sendMessage(String text) async {
     if (text.isEmpty) return;
-    
+
     setState(() => _isLoading = true);
-    
-    final thread = await _repo.sendMessage(text);
-    
+
+    final thread = await _repo.sendMessage(
+      text,
+      enabledMemoryIds: _enabledMemoryIds,
+    );
+    if (!mounted) return;
+
     setState(() {
       _thread = thread;
       _isLoading = false;
     });
   }
 
-  Future<void> _search(String query) async {
+  Future<void> _search(String query, {SearchFilters? filters}) async {
     setState(() {
       _mode = ChatMode.shop;
       _isSearching = true;
     });
-    
-    final listings = await _repo.searchListings(query: query);
-    
+
+    final listings = await _repo.searchListings(query: query, filters: filters);
+    if (!mounted) return;
+
     setState(() {
       _listings = listings;
       _isSearching = false;
     });
+  }
+
+  void _handleSavedSearchRun(SavedSearch search) {
+    _search('', filters: search.filters);
+  }
+
+  Future<void> _onMemoryItemsChanged(Set<String> ids) async {
+    final revision = ++_memoryRevision;
+    setState(() => _enabledMemoryIds = ids);
+    final thread = await _repo.applyChatMemory(ids);
+    if (!mounted || revision != _memoryRevision) return;
+    setState(() => _thread = thread);
+  }
+
+  Future<void> _reloadSearchProfile() async {
+    final profile = await _repo.getSearchProfile();
+    final starters = await _repo.getStarters();
+    if (!mounted) return;
+    setState(() {
+      final previousIds =
+          _searchProfile?.items.map((item) => item.id).toSet() ?? {};
+      final nextIds = profile.items.map((item) => item.id).toSet();
+      final enabled = _enabledMemoryIds ?? previousIds;
+      _enabledMemoryIds = {
+        ...enabled.where(nextIds.contains),
+        ...nextIds.where((id) => !previousIds.contains(id)),
+      };
+      _searchProfile = profile;
+      _starters = starters;
+    });
+  }
+
+  Future<void> _openRecentSearches() async {
+    final searches = List<SavedSearch>.from(
+      _searchProfile?.searches ?? const [],
+    );
+    await RecentSearchesSheet.show(
+      context,
+      searches: searches,
+      onRun: (search) {
+        _repo.markSavedSearchRun(search.id);
+      },
+      onDelete: (search) {
+        _repo.deleteSavedSearch(search.id);
+      },
+      onRestore: (search, index) {
+        _repo.restoreSavedSearch(search, index);
+      },
+      onClearAll: _repo.clearSavedSearches,
+    );
+    if (!mounted) return;
+    await _reloadSearchProfile();
   }
 
   void _switchMode(ChatMode mode) {
@@ -115,6 +187,7 @@ class _ShopScreenState extends State<ShopScreen> {
       );
       _mode = ChatMode.ask;
       _listings = null;
+      _enabledMemoryIds = _searchProfile?.items.map((item) => item.id).toSet();
     });
   }
 
@@ -140,7 +213,7 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Handle heart tap on inventory card
   Future<void> _handleSaveToggle(Listing listing, bool isSaved) async {
     HapticFeedback.lightImpact();
-    
+
     if (isSaved) {
       // Unsave the car
       await _repo.unsaveByListingId(listing.id);
@@ -187,23 +260,28 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   /// v1.8: Show Account sheet
-  void _showAccountSheet() {
-    showModalBottomSheet(
+  Future<void> _showAccountSheet() async {
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const AccountSheet(),
     );
+    if (!mounted) return;
+    await _reloadSearchProfile();
   }
 
   @override
   Widget build(BuildContext context) {
     final isEmpty = _thread?.isEmpty ?? true;
     final safeBottom = MediaQuery.of(context).padding.bottom;
-    
+
     // Composer pinned 12pt above tab bar per spec §6.5a
-    final composerBottom = DrevvySpace.tabBarBottomInset + DrevvySpace.tabBarHeight + 
-        DrevvySpace.composerTabBarGap + safeBottom;
+    final composerBottom =
+        DrevvySpace.tabBarBottomInset +
+        DrevvySpace.tabBarHeight +
+        DrevvySpace.composerTabBarGap +
+        safeBottom;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -215,6 +293,10 @@ class _ShopScreenState extends State<ShopScreen> {
         onSelectChat: _selectChat,
         onDeleteChat: _deleteChat,
         onRenameChat: _renameChat,
+        onRecentSearches: () {
+          _openRecentSearches();
+        },
+        recentSearchCount: _searchProfile?.searches.length,
       ),
       body: Stack(
         children: [
@@ -224,27 +306,35 @@ class _ShopScreenState extends State<ShopScreen> {
                 mode: _mode,
                 onModeChanged: _switchMode,
                 onMenuTap: _openHistoryDrawer,
-                onAvatarTap: _showAccountSheet,
+                onAvatarTap: () {
+                  _showAccountSheet();
+                },
               ),
-              
+
               Expanded(
                 child: _mode == ChatMode.ask
                     ? isEmpty
-                        ? ChatEmpty(
-                            userName: _user?.firstName ?? 'there',
-                            onPromptTap: (prompt) => _sendMessage(prompt),
-                            onShopTap: (query) => _search(query),
-                            starters: _starters,
-                            hasHistory: _searchProfile?.personalize == true && 
-                                       (_searchProfile?.searches.isNotEmpty == true ||
-                                        _searchProfile?.items.isNotEmpty == true),
-                          )
-                        : ChatMessages(
-                            thread: _thread!,
-                            isLoading: _isLoading,
-                            onShopTap: (query) => _search(query),
-                            memoryItems: _searchProfile?.items,
-                          )
+                          ? ChatEmpty(
+                              userName: _user?.firstName ?? 'there',
+                              onPromptTap: (prompt) => _sendMessage(prompt),
+                              onShopTap: (query) => _search(query),
+                              starters: _starters,
+                              hasHistory:
+                                  _searchProfile?.personalize == true &&
+                                  (_searchProfile?.searches.isNotEmpty ==
+                                          true ||
+                                      _searchProfile?.items.isNotEmpty == true),
+                            )
+                          : ChatMessages(
+                              thread: _thread!,
+                              isLoading: _isLoading,
+                              onShopTap: (query) => _search(query),
+                              memoryItems: _searchProfile?.personalize == true
+                                  ? _searchProfile?.items
+                                  : null,
+                              enabledMemoryIds: _enabledMemoryIds,
+                              onMemoryItemsChanged: _onMemoryItemsChanged,
+                            )
                     : ShopResults(
                         listings: _listings,
                         isLoading: _isSearching,
@@ -260,7 +350,7 @@ class _ShopScreenState extends State<ShopScreen> {
               ),
             ],
           ),
-          
+
           // Composer pinned 12pt above tab bar, never overlapping content
           Positioned(
             left: DrevvySpace.gutter,
