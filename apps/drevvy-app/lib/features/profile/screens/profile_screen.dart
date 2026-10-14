@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/providers/app_services.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/auth/consumer_session.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/memory_edit_sheet.dart';
@@ -22,6 +24,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _repo = DemoRepository.instance;
   User? _user;
   SearchProfile? _searchProfile;
+  ConsumerSession? _session;
   bool _isLoading = true;
   bool _isFirstRunDemo = false;
 
@@ -34,11 +37,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _loadData() async {
     final user = await _repo.getCurrentUser();
     final searchProfile = await _repo.getSearchProfile();
+    ConsumerSession? session;
+    try {
+      session = await ref.read(authControllerProvider).currentSession();
+    } catch (_) {
+      session = null;
+    }
+    if (!mounted) return;
     setState(() {
       _user = user;
       _searchProfile = searchProfile;
+      _session = session;
       _isLoading = false;
     });
+  }
+
+  Future<void> _signOut() async {
+    final hadSession = _session != null;
+    try {
+      await ref.read(authControllerProvider).signOut();
+    } catch (_) {
+      // A storage failure still leaves the shopper in demo mode.
+    }
+    if (!mounted) return;
+    setState(() => _session = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(hadSession ? 'Signed out. Demo mode is on.' : 'Demo mode is on.'),
+      ),
+    );
   }
 
   void _updateNotificationPref(NotificationPrefs Function(NotificationPrefs) updater) {
@@ -494,6 +521,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 user.email,
                 style: text.body.copyWith(color: colors.muted),
               ),
+              Text(
+                _session == null ? 'Demo mode' : 'Signed in',
+                style: text.callout.copyWith(color: colors.violet),
+              ),
             ],
           ),
         ),
@@ -729,7 +760,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: _signOut,
           borderRadius: BorderRadius.circular(DrevvyRadius.md),
           child: Padding(
             padding: const EdgeInsets.all(DrevvySpace.s4),

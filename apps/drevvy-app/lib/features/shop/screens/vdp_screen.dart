@@ -1,31 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../../core/providers/app_services.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
-import '../../../data/services/purchase_service.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/purchase_service.dart';
+import '../../deals/widgets/notification_preprompt_sheet.dart';
+import '../widgets/add_to_drevvy_sheet.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
-import '../widgets/add_to_drevvy_sheet.dart';
 import '../widgets/pack_picker_sheet.dart';
 import '../widgets/out_of_cars_sheet.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
 /// v1.7: Uses car credit balance instead of Pro subscription.
-class VdpScreen extends StatefulWidget {
+class VdpScreen extends ConsumerStatefulWidget {
   const VdpScreen({super.key, required this.listingId});
 
   final String listingId;
 
   @override
-  State<VdpScreen> createState() => _VdpScreenState();
+  ConsumerState<VdpScreen> createState() => _VdpScreenState();
 }
 
-class _VdpScreenState extends State<VdpScreen> {
+class _VdpScreenState extends ConsumerState<VdpScreen> {
   final _repo = DemoRepository.instance;
   Listing? _listing;
   MarketContext? _market;
@@ -53,6 +56,35 @@ class _VdpScreenState extends State<VdpScreen> {
     });
   }
 
+  /// Adds the car, then asks for notification permission the first time only.
+  Future<void> _addCar(int? maxOtd) async {
+    await _repo.addDeal(_listing!, maxOtd: maxOtd);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    final prompt = ref.read(notificationPromptProvider);
+    final shouldAsk = await prompt.shouldPromptAfterAdd();
+    if (!mounted) return;
+    if (shouldAsk) {
+      await prompt.markPrompted();
+      if (!mounted) return;
+      final allow = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => NotificationPrepromptSheet(
+          onAllow: () => Navigator.pop(sheetContext, true),
+          onNotNow: () => Navigator.pop(sheetContext, false),
+        ),
+      );
+      if (allow == true) {
+        await ref.read(pushNotificationServiceProvider).enable();
+      }
+    }
+    if (!mounted) return;
+    context.go('/deals');
+  }
+
   /// v1.7: Show AddToDrevvySheet when user has credits.
   void _showAddSheet() {
     showModalBottomSheet(
@@ -63,13 +95,7 @@ class _VdpScreenState extends State<VdpScreen> {
         listing: _listing!,
         market: _market!,
         creditBalance: _creditBalance!,
-        onAdd: (maxOtd) async {
-          await _repo.addDeal(_listing!, maxOtd: maxOtd);
-          if (mounted && context.mounted) {
-            Navigator.pop(context);
-            context.go('/deals');
-          }
-        },
+        onAdd: (maxOtd) => _addCar(maxOtd),
       ),
     );
   }

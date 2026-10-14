@@ -1,0 +1,24 @@
+{
+  "_comment": "TODO: Replace this example with android/app/google-services.json from the Firebase console, then apply the google-services Gradle plugin. Do not commit the real file if it contains production secrets you treat as private. Pass the same values as DREVYY_FIREBASE_* dart-defines. See lib/core/config/drevvy_config.dart.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "TODO_PROJECT_ID",
+    "storage_bucket": "TODO_PROJECT_ID.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:TODO",
+        "android_client_info": {
+          "package_name": "com.drevvy.drevvy_app"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "TODO_FIREBASE_API_KEY"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}

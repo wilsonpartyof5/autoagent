@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TODO: Download the real GoogleService-Info.plist from the Firebase console
+  and save it as ios/Runner/GoogleService-Info.plist.
+  Then pass the same values to the app with:
+    --dart-define=DREVYY_FIREBASE_PROJECT_ID=...
+    --dart-define=DREVYY_FIREBASE_API_KEY=...
+    --dart-define=DREVYY_FIREBASE_APP_ID=...
+    --dart-define=DREVYY_FIREBASE_MESSAGING_SENDER_ID=...
+  Push permission is not requested until the shopper adds their first car.
+-->
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>TODO_FIREBASE_API_KEY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>TODO_SENDER_ID</string>
+	<key>BUNDLE_ID</key>
+	<string>com.drevvy.drevvyApp</string>
+	<key>PROJECT_ID</key>
+	<string>TODO_PROJECT_ID</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>TODO_APP_ID</string>
+</dict>
+</plist>

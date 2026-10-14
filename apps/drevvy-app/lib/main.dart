@@ -1,11 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/providers/app_services.dart';
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
 
 void main() {
-  runApp(const ProviderScope(child: DrevvyApp()));
+  WidgetsFlutterBinding.ensureInitialized();
+  final container = ProviderContainer();
+  runApp(UncontrolledProviderScope(
+    container: container,
+    child: const DrevvyApp(),
+  ));
+  // Reattach push listeners for someone who already opted in.
+  // This does not request notification permission.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(container.read(pushNotificationServiceProvider).restoreWithoutPrompting());
+  });
 }
 
 class DrevvyApp extends ConsumerWidget {
@@ -13,13 +26,19 @@ class DrevvyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+    ref.listen(deepLinkLocationsProvider, (previous, next) {
+      final location = next.asData?.value;
+      if (location != null) router.go(location);
+    });
+
     return MaterialApp.router(
       title: 'Drevvy',
       debugShowCheckedModeBanner: false,
       theme: drevvyTheme(Brightness.light),
       darkTheme: drevvyTheme(Brightness.dark),
       themeMode: ThemeMode.system,
-      routerConfig: ref.watch(routerProvider),
+      routerConfig: router,
     );
   }
 }

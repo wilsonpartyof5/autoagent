@@ -73,8 +73,8 @@ class DemoRepository {
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
   
-  /// Server-driven avg_savings config. Null if unavailable.
-  final AvgSavingsConfig? _avgSavingsConfig = const AvgSavingsConfig(
+  /// Server-driven avg_savings config shown beside car packs.
+  final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
     label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
     source: 'CarEdge, State of Dealer Fees 2026',
