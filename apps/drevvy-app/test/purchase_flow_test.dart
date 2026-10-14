@@ -228,7 +228,6 @@ class _ScriptedCredits extends CreditsEndpoint {
   @override
   Future<CarCreditBalance?> grantPurchase({
     required String productId,
-    required int credits,
     required String transactionId,
   }) async {
     lastProductId = productId;

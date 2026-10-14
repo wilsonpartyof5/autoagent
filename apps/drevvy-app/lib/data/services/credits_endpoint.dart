@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/car_pack.dart';
 import 'purchase_config.dart';
+import 'shopper_session_store.dart';
 
 /// Grants car credits after a store purchase.
 ///
@@ -21,7 +22,6 @@ abstract class CreditsEndpoint {
 
   Future<CarCreditBalance?> grantPurchase({
     required String productId,
-    required int credits,
     required String transactionId,
   });
 
@@ -36,7 +36,6 @@ class MissingCreditsEndpoint extends CreditsEndpoint {
   @override
   Future<CarCreditBalance?> grantPurchase({
     required String productId,
-    required int credits,
     required String transactionId,
   }) async {
     return null;
@@ -54,24 +53,24 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
   HttpCreditsEndpoint({
     required this.baseUrl,
     http.Client? client,
+    ShopperSessionStore? sessionStore,
     this.timeout = const Duration(seconds: 8),
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? http.Client(),
+       _sessionStore = sessionStore ?? ShopperSessionStore.instance;
 
   final String baseUrl;
   final Duration timeout;
   final http.Client _client;
+  final ShopperSessionStore _sessionStore;
 
   @override
   Future<CarCreditBalance?> grantPurchase({
     required String productId,
-    required int credits,
     required String transactionId,
   }) {
     return _post('/api/consumer/credits', {
       'productId': productId,
-      'credits': credits,
       'transactionId': transactionId,
-      'reason': 'purchase',
     });
   }
 
@@ -89,10 +88,7 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
       final response = await _client
           .post(
             _uri(path),
-            headers: const {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: _headers(),
             body: jsonEncode(body),
           )
           .timeout(timeout);
@@ -102,6 +98,18 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     } on Exception {
       return null;
     }
+  }
+
+  Map<String, String> _headers() {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    final token = _sessionStore.accessToken;
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
   Uri _uri(String path) {
@@ -123,9 +131,17 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     if (balance is! num) return null;
     return CarCreditBalance(
       balance: balance.toInt(),
-      totalPurchased: (payload['totalPurchased'] as num?)?.toInt() ?? balance.toInt(),
-      totalSpent: (payload['totalSpent'] as num?)?.toInt() ?? 0,
-      totalRefunded: (payload['totalRefunded'] as num?)?.toInt() ?? 0,
+      totalPurchased: _intField(payload, const ['lifetimePurchased', 'totalPurchased'], balance.toInt()),
+      totalSpent: _intField(payload, const ['lifetimeUsed', 'totalSpent'], 0),
+      totalRefunded: _intField(payload, const ['lifetimeRefunded', 'totalRefunded'], 0),
     );
+  }
+
+  int _intField(Map<String, dynamic> payload, List<String> keys, int fallback) {
+    for (final key in keys) {
+      final value = payload[key];
+      if (value is num) return value.toInt();
+    }
+    return fallback;
   }
 }

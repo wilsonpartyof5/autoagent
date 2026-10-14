@@ -187,7 +187,6 @@ class DemoRepository {
 
     final remote = await _credits.grantPurchase(
       productId: result.packType.productId,
-      credits: result.creditsAdded,
       transactionId: result.transactionId,
     );
     if (remote != null) {
