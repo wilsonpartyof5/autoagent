@@ -170,11 +170,14 @@ function buildGroundingContext(
     return `• ${v.year} ${v.make} ${v.model}${v.trim ? ` ${v.trim}` : ''} — ${price}${miles}`;
   });
 
+  const showing = vehicles.length < total
+    ? `Showing top ${vehicles.length} of ${total} total matches`
+    : `${total} total match${total === 1 ? '' : 'es'}`;
+
   return `User query: "${query}"
 Search area: ${locationStr || 'current location'}
 Filters applied: ${filterDesc || 'none'}
-Total vehicles found: ${total}
-Vehicles returned: ${vehicles.length}
+${showing}
 
 Top results:
 ${topVehicles.join('\n')}`;
@@ -195,12 +198,13 @@ async function generateAssistantReply(
   const systemPrompt = `You are Drevvy, a friendly AI car-shopping assistant embedded in a mobile app.
 The user just submitted a vehicle search. Given the search context and actual results found, write a helpful 1–2 sentence response that:
 - Acknowledges what they searched for
-- States how many matches were found and where
+- States the TOTAL match count (use the total from "Showing top X of Y total matches"), not just the page size
 - Briefly highlights the 1–2 best options by year, make/model, and price
 - Ends with a natural call-to-action (explore the map, tap a card, etc.)
 
 Rules:
 - Be conversational and specific — use real numbers from the results
+- When results exceed the page, say something like "I found 41 vehicles... here are the top 25" to convey the full total
 - Do NOT invent specs, features, or prices not in the results
 - Do NOT mention dealership names, salespeople, phone numbers, email addresses, or dealer websites
 - Keep it to 1–2 sentences max
