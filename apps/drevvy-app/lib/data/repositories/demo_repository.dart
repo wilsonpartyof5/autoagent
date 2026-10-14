@@ -261,6 +261,117 @@ class DemoRepository {
     ));
   }
 
+  // ============== SAVED CARS (v1.8) ==============
+  
+  /// Saved cars list - stores only Drevvy's own data, no MarketCheck listing data.
+  /// Per spec §11.2: price changes must come from live data, not stored prices.
+  List<SavedCar> _savedCars = [];
+  bool _savedCarsInitialized = false;
+
+  /// Get all saved cars for the current user.
+  Future<List<SavedCar>> getSavedCars() async {
+    if (!_savedCarsInitialized) {
+      _savedCars = _demoSavedCars;
+      _savedCarsInitialized = true;
+    }
+    return _delay(List.unmodifiable(_savedCars));
+  }
+
+  /// Check if a listing is saved.
+  bool isListingSaved(String listingId) {
+    return _savedCars.any((sc) => sc.listingId == listingId);
+  }
+
+  /// Check if a listing is already in Deals.
+  bool isListingInDeals(String listingId) {
+    return _deals.any((d) => d.listingId == listingId);
+  }
+
+  /// Save a car (heart tap). No credit spent, no dealer contact.
+  Future<SavedCar> saveCar(Listing listing) async {
+    final savedCar = SavedCar(
+      id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUser?.id ?? 'user_demo_001',
+      listingId: listing.id,
+      vin: listing.vin,
+      savedAt: DateTime.now(),
+      savedPrice: listing.price,
+      status: SavedCarStatus.active,
+    );
+    _savedCars = [..._savedCars, savedCar];
+    return _delay(savedCar);
+  }
+
+  /// Remove a saved car (unsave / swipe to remove).
+  Future<void> removeSavedCar(String savedCarId) async {
+    _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
+    return _delay(null);
+  }
+
+  /// Remove saved car by listing ID.
+  Future<void> unsaveByListingId(String listingId) async {
+    _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
+    return _delay(null);
+  }
+
+  /// Get saved car by listing ID.
+  SavedCar? getSavedCarByListingId(String listingId) {
+    try {
+      return _savedCars.firstWhere((sc) => sc.listingId == listingId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Move saved car to Deals (unlock my price flow).
+  /// Removes from saved, creates deal, spends 1 credit in one transaction.
+  Future<Deal?> moveToDeals(String savedCarId) async {
+    final savedCar = _savedCars.firstWhere((sc) => sc.id == savedCarId);
+    final listing = await getListingById(savedCar.listingId);
+    
+    // Check if has credits
+    if (!_creditBalance.canUnlock) return null;
+    
+    // Remove from saved
+    _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
+    
+    // Create deal (this also spends credit)
+    final deal = await addDeal(listing);
+    
+    return deal;
+  }
+
+  /// Demo saved cars data.
+  List<SavedCar> get _demoSavedCars => [
+    SavedCar(
+      id: 'saved_001',
+      userId: 'user_demo_001',
+      listingId: 'listing_001',
+      vin: '2T3P1RFV5RC123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 5)),
+      savedPrice: 33995, // Was $33,995 when saved, now $32,995 -> $1,000 drop
+      status: SavedCarStatus.active,
+    ),
+    SavedCar(
+      id: 'saved_002',
+      userId: 'user_demo_001',
+      listingId: 'listing_002',
+      vin: '2HKRW2H50NH123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 3)),
+      savedPrice: 31490, // Same price
+      status: SavedCarStatus.active,
+    ),
+    SavedCar(
+      id: 'saved_003',
+      userId: 'user_demo_001',
+      listingId: 'listing_006',
+      vin: 'KM8JBCA19NU123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 2)),
+      savedPrice: 27450, // Was $27,450 when saved, now $27,950 -> $500 increase
+      status: SavedCarStatus.active,
+    ),
+  ];
+
   // ============== DEALS ==============
 
   List<Deal> _deals = [];

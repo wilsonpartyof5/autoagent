@@ -3,12 +3,15 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/deal_card.dart';
 import '../widgets/stat_hero.dart';
+import '../../shop/widgets/account_sheet.dart';
 
 /// Screens 20-25: Deals list with stat hero
+/// v1.8: Added avatar button to header.
 class DealsScreen extends StatefulWidget {
   const DealsScreen({super.key});
 
@@ -43,6 +46,16 @@ class _DealsScreenState extends State<DealsScreen> {
     setState(() => _dismissedBannerId = dealId);
   }
 
+  /// v1.8: Show Account sheet
+  void _showAccountSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AccountSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
@@ -70,10 +83,19 @@ class _DealsScreenState extends State<DealsScreen> {
       backgroundColor: colors.canvas,
       body: SafeArea(
         child: deals.isEmpty
-            ? _EmptyDeals(stats: stats)
-            : CustomScrollView(
+            ? _EmptyDeals(stats: stats, onAvatarTap: _showAccountSheet)
+            // v1.8: Wrap in NotificationListener for hide-on-scroll
+            : NotificationListener<ScrollUpdateNotification>(
+                onNotification: (notification) {
+                  final hideOnScroll = HideOnScroll.of(context);
+                  if (hideOnScroll != null && notification.scrollDelta != null) {
+                    hideOnScroll.setFromScroll(notification.scrollDelta!);
+                  }
+                  return false;
+                },
+                child: CustomScrollView(
                 slivers: [
-                  // Header
+                  // Header with avatar button (v1.8)
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(
                       DrevvySpace.gutter,
@@ -82,7 +104,14 @@ class _DealsScreenState extends State<DealsScreen> {
                       0,
                     ),
                     sliver: SliverToBoxAdapter(
-                      child: Text('Deals', style: text.display),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text('Deals', style: text.display),
+                          ),
+                          _AvatarButton(onTap: _showAccountSheet),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -151,15 +180,17 @@ class _DealsScreenState extends State<DealsScreen> {
                   ),
                 ],
               ),
+            ),
       ),
     );
   }
 }
 
 class _EmptyDeals extends StatelessWidget {
-  const _EmptyDeals({this.stats});
+  const _EmptyDeals({this.stats, this.onAvatarTap});
 
   final DealStats? stats;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +203,15 @@ class _EmptyDeals extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: DrevvySpace.s4),
-          Text('Deals', style: text.display),
+          // Header with avatar button (v1.8)
+          Row(
+            children: [
+              Expanded(
+                child: Text('Deals', style: text.display),
+              ),
+              if (onAvatarTap != null) _AvatarButton(onTap: onAvatarTap!),
+            ],
+          ),
           
           const SizedBox(height: DrevvySpace.s6),
           
@@ -277,6 +316,43 @@ class _StepRow extends StatelessWidget {
           const SizedBox(width: DrevvySpace.s3),
           Text(text, style: textStyle.body),
         ],
+      ),
+    );
+  }
+}
+
+/// v1.8: Avatar button opens Account sheet.
+class _AvatarButton extends StatelessWidget {
+  const _AvatarButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = context.drevvyText;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Semantics(
+        label: 'Account',
+        button: true,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            gradient: DrevvyBrand.gradient,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              'DW',
+              style: text.label.copyWith(
+                color: DrevvyColors.onBrand,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

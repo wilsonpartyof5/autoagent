@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/search_profile.dart';
+import 'account_sheet.dart';
 
 /// Screen 54: Memory sheet per spec §6.14
 /// Modal sheet showing "Using your past searches" with per-item on/off toggles.
@@ -57,6 +57,16 @@ class _MemorySheetState extends State<MemorySheet> {
       }
     });
     widget.onItemsChanged(_enabledItemIds);
+  }
+  
+  /// v1.8: Show Account sheet instead of navigating to /profile
+  void _showAccountSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AccountSheet(),
+    );
   }
 
   @override
@@ -112,7 +122,7 @@ class _MemorySheetState extends State<MemorySheet> {
                   const SizedBox(height: DrevvySpace.s3),
 
                   Text(
-                    'Drevvy used these to answer. Turn any off for this chat, or edit them in Profile.',
+                    'Drevvy used these to answer. Turn any off for this chat, or edit them in the account menu.',
                     style: text.body.copyWith(color: colors.muted),
                   ),
 
@@ -148,11 +158,11 @@ class _MemorySheetState extends State<MemorySheet> {
                     children: [
                       Expanded(
                         child: DrevvyButton(
-                          label: 'Edit in Profile',
+                          label: 'Edit in Account',
                           variant: DrevvyButtonVariant.secondary,
                           onPressed: () {
                             Navigator.pop(context);
-                            context.go('/profile');
+                            _showAccountSheet(context);
                           },
                         ),
                       ),

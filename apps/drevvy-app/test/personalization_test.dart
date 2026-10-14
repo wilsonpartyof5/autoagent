@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/features/shop/widgets/chat_empty.dart';
+import 'package:drevvy_app/features/shop/widgets/memory_sheet.dart';
+import 'package:drevvy_app/features/shop/widgets/account_sheet.dart';
 import 'package:drevvy_app/data/models/search_profile.dart';
 import 'package:drevvy_app/data/models/chat.dart';
 
@@ -345,6 +347,93 @@ void main() {
         );
         
         expect(message.usedMemory, isFalse);
+      });
+    });
+
+    group('MemorySheet Widget (v1.8)', () {
+      testWidgets('Edit in Account button opens Account sheet', (tester) async {
+        final testItems = [
+          MemoryItem(
+            id: 'mem_001',
+            kind: MemoryKind.budget,
+            value: 40000,
+            source: MemorySource.onboarding,
+            updatedAt: DateTime.now(),
+          ),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: drevvyTheme(Brightness.light),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () => MemorySheet.show(
+                    context,
+                    items: testItems,
+                    onItemsChanged: (_) {},
+                  ),
+                  child: const Text('Open Sheet'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // Open the memory sheet
+        await tester.tap(find.text('Open Sheet'));
+        await tester.pumpAndSettle();
+
+        // Verify memory sheet is visible
+        expect(find.text('Using your past searches'), findsOneWidget);
+        expect(find.text('Edit in Account'), findsOneWidget);
+
+        // Tap the "Edit in Account" button
+        await tester.tap(find.text('Edit in Account'));
+        await tester.pumpAndSettle();
+
+        // Verify Account sheet is now visible (memory sheet should have closed)
+        expect(find.byType(AccountSheet), findsOneWidget);
+      });
+
+      testWidgets('Memory sheet shows updated copy about account menu', (tester) async {
+        final testItems = [
+          MemoryItem(
+            id: 'mem_001',
+            kind: MemoryKind.budget,
+            value: 40000,
+            source: MemorySource.onboarding,
+            updatedAt: DateTime.now(),
+          ),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: drevvyTheme(Brightness.light),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () => MemorySheet.show(
+                    context,
+                    items: testItems,
+                    onItemsChanged: (_) {},
+                  ),
+                  child: const Text('Open Sheet'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // Open the memory sheet
+        await tester.tap(find.text('Open Sheet'));
+        await tester.pumpAndSettle();
+
+        // Verify updated copy refers to "account menu" instead of "Profile"
+        expect(
+          find.text('Drevvy used these to answer. Turn any off for this chat, or edit them in the account menu.'),
+          findsOneWidget,
+        );
       });
     });
   });

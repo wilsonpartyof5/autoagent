@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/models/listing.dart';
 import 'inventory_card.dart';
 
 /// Screens 10, 11, 17: Shop results with loading skeleton.
 /// v1.7: Removed isPro flag; using hasCredits for future A/B testing.
+/// v1.8: Added heart/save support on inventory cards.
 class ShopResults extends StatelessWidget {
   const ShopResults({
     super.key,
@@ -14,6 +16,9 @@ class ShopResults extends StatelessWidget {
     required this.isLoading,
     this.hasCredits = false,
     required this.onListingTap,
+    this.savedListingIds = const {},
+    this.dealsListingIds = const {},
+    this.onSaveToggle,
   });
 
   final List<Listing>? listings;
@@ -21,6 +26,12 @@ class ShopResults extends StatelessWidget {
   /// v1.7: Whether user has car credits (for future A/B testing).
   final bool hasCredits;
   final ValueChanged<Listing> onListingTap;
+  /// v1.8: Set of listing IDs that are saved.
+  final Set<String> savedListingIds;
+  /// v1.8: Set of listing IDs that are in Deals.
+  final Set<String> dealsListingIds;
+  /// v1.8: Callback when heart is tapped on a listing.
+  final void Function(Listing listing, bool isSaved)? onSaveToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -79,21 +90,39 @@ class ShopResults extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(
-        horizontal: DrevvySpace.gutter,
-        vertical: DrevvySpace.s4,
-      ),
-      itemCount: listings!.length,
-      separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s3),
-      itemBuilder: (context, index) {
-        final listing = listings![index];
-        return InventoryCard(
-          listing: listing,
-          hasCredits: hasCredits,
-          onTap: () => onListingTap(listing),
-        );
+    // v1.8: Wrap in NotificationListener for hide-on-scroll
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (notification) {
+        final hideOnScroll = HideOnScroll.of(context);
+        if (hideOnScroll != null && notification.scrollDelta != null) {
+          hideOnScroll.setFromScroll(notification.scrollDelta!);
+        }
+        return false;
       },
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(
+          horizontal: DrevvySpace.gutter,
+          vertical: DrevvySpace.s4,
+        ),
+        itemCount: listings!.length,
+        separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s3),
+        itemBuilder: (context, index) {
+          final listing = listings![index];
+          final isSaved = savedListingIds.contains(listing.id);
+          final isInDeals = dealsListingIds.contains(listing.id);
+          
+          return InventoryCard(
+            listing: listing,
+            hasCredits: hasCredits,
+            onTap: () => onListingTap(listing),
+            isSaved: isSaved,
+            isAlreadyAdded: isInDeals,
+            onSaveToggle: isInDeals ? null : () {
+              onSaveToggle?.call(listing, isSaved);
+            },
+          );
+        },
+      ),
     );
   }
 }
