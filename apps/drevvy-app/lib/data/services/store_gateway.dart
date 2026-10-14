@@ -38,4 +38,9 @@ abstract class StoreGateway {
   Future<List<RestoredTransaction>> restore();
 
   Future<bool> isAvailable(String productId);
+
+  /// Identifies the shopper. [appUserId] is the Supabase user id.
+  Future<void> logIn(String appUserId);
+
+  Future<void> logOut();
 }

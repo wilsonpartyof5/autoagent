@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/car_pack.dart';
@@ -8,9 +9,13 @@ import 'shopper_session_store.dart';
 
 /// Grants car credits after a store purchase.
 ///
-/// `POST /api/consumer/credits` and `POST /api/consumer/credits/restore`.
-/// A missing route (404, 405, 501), an empty base URL, or a network failure
-/// returns null so the caller keeps the local demo balance.
+/// `GET` and `POST /api/consumer/credits` and `POST /api/consumer/credits/restore`.
+/// A purchase body is `{productId, transactionId}`. A restore body is
+/// `{transactionIds}`. The balance response is
+/// `{data: {balance, lifetimePurchased, lifetimeUsed, lifetimeRefunded}}`.
+/// A missing route (404, 405, 501), a 503 `purchases not configured`, an empty
+/// base URL, or a network failure returns null so the caller keeps the local
+/// demo balance.
 abstract class CreditsEndpoint {
   const CreditsEndpoint();
 
@@ -54,6 +59,7 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     required this.baseUrl,
     http.Client? client,
     ShopperSessionStore? sessionStore,
+    this.log,
     this.timeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client(),
        _sessionStore = sessionStore ?? ShopperSessionStore.instance;
@@ -62,6 +68,7 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
   final Duration timeout;
   final http.Client _client;
   final ShopperSessionStore _sessionStore;
+  final void Function(String message)? log;
 
   @override
   Future<CarCreditBalance?> grantPurchase({
@@ -92,6 +99,12 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
             body: jsonEncode(body),
           )
           .timeout(timeout);
+      if (_purchasesNotConfigured(response.statusCode, response.body)) {
+        _log(
+          'Credits server is not ready (purchases not configured). Keeping the local demo balance.',
+        );
+        return null;
+      }
       if (_endpointMissing(response.statusCode)) return null;
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       return _parseBalance(response.body);
@@ -115,6 +128,19 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
   Uri _uri(String path) {
     final root = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     return Uri.parse('$root$path');
+  }
+
+  void _log(String message) {
+    final sink = log;
+    if (sink != null) {
+      sink(message);
+      return;
+    }
+    debugPrint(message);
+  }
+
+  bool _purchasesNotConfigured(int statusCode, String body) {
+    return statusCode == 503 && body.toLowerCase().contains('purchases not configured');
   }
 
   bool _endpointMissing(int statusCode) {

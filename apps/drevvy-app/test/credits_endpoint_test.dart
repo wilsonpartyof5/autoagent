@@ -117,6 +117,39 @@ void main() {
     );
   });
 
+  test('a 503 purchases not configured keeps the local balance and logs it', () async {
+    final logs = <String>[];
+    final endpoint = HttpCreditsEndpoint(
+      baseUrl: 'https://api.drevvy.com',
+      log: logs.add,
+      sessionStore: ShopperSessionStore()
+        ..save(const ShopperSession(accessToken: 'shopper-jwt')),
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'success': false,
+            'error': {
+              'code': 'purchases_not_configured',
+              'message': 'purchases not configured',
+            },
+          }),
+          503,
+        ),
+      ),
+    );
+
+    expect(
+      await endpoint.grantPurchase(
+        productId: 'drevvy_pack_10',
+        transactionId: 'txn_10',
+      ),
+      isNull,
+    );
+    expect(logs, [
+      'Credits server is not ready (purchases not configured). Keeping the local demo balance.',
+    ]);
+  });
+
   test('a failed request keeps the caller on the local balance', () async {
     final endpoint = HttpCreditsEndpoint(
       baseUrl: 'https://api.drevvy.com',

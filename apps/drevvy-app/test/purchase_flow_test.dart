@@ -5,7 +5,9 @@ import 'package:drevvy_app/data/services/credits_endpoint.dart';
 import 'package:drevvy_app/data/services/purchase_config.dart';
 import 'package:drevvy_app/data/services/purchase_service.dart';
 import 'package:drevvy_app/data/services/purchase_service_factory.dart';
+import 'package:drevvy_app/data/services/revenue_cat_identity.dart';
 import 'package:drevvy_app/data/services/revenue_cat_purchase_service.dart';
+import 'package:drevvy_app/data/services/shopper_session_store.dart';
 import 'package:drevvy_app/data/services/store_gateway.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -160,6 +162,51 @@ void main() {
     });
   });
 
+  group('RevenueCat app user id', () {
+    test('sign-in logs in as the Supabase user and sign-out logs out', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore();
+      final session = ShopperSessionStore()
+        ..identity = RevenueCatIdentity(
+          config: const PurchaseConfig(revenueCatIosApiKey: 'appl_test'),
+          gateway: store,
+        );
+
+      await session.save(
+        const ShopperSession(
+          accessToken: 'shopper-jwt',
+          consumerUserId: 'supabase-user-1',
+        ),
+      );
+      expect(store.loggedInUserId, 'supabase-user-1');
+
+      await session.clear();
+      expect(store.loggedOut, isTrue);
+    });
+
+    test('demo mode does not call RevenueCat identity', () async {
+      final store = _FakeStore();
+      final session = ShopperSessionStore()
+        ..identity = RevenueCatIdentity(
+          config: const PurchaseConfig(),
+          gateway: store,
+        );
+
+      await session.save(
+        const ShopperSession(
+          accessToken: 'shopper-jwt',
+          consumerUserId: 'supabase-user-1',
+        ),
+      );
+      await session.clear();
+
+      expect(store.loggedInUserId, isNull);
+      expect(store.loggedOut, isFalse);
+    });
+  });
+
   group('cars_balance_empty', () {
     test('shows the local paywall when Superwall is not configured', () async {
       expect(CarsBalancePlacement.name, 'cars_balance_empty');
@@ -176,6 +223,8 @@ class _FakeStore implements StoreGateway {
   StorePurchaseOutcome outcome = const StorePurchaseSucceeded(transactionId: 'txn');
   List<RestoredTransaction> restored = const [];
   CarPackType? purchased;
+  String? loggedInUserId;
+  bool loggedOut = false;
 
   @override
   Future<void> configure() async {}
@@ -216,6 +265,16 @@ class _FakeStore implements StoreGateway {
   @override
   Future<bool> isAvailable(String productId) async {
     return CarPackType.fromProductId(productId) != null;
+  }
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    loggedInUserId = appUserId;
+  }
+
+  @override
+  Future<void> logOut() async {
+    loggedOut = true;
   }
 }
 

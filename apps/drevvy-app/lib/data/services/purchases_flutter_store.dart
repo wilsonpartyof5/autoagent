@@ -27,7 +27,7 @@ class PurchasesFlutterStore implements StoreGateway {
       }
       await rc.Purchases.setLogLevel(kDebugMode ? rc.LogLevel.debug : rc.LogLevel.info);
       if (await rc.Purchases.isConfigured) return;
-      // Anonymous until the shopper signs in. Do not pass a device id.
+      // Stay anonymous until sign-in calls [logIn] with the Supabase user id.
       await rc.Purchases.configure(rc.PurchasesConfiguration(apiKey));
     } catch (_) {
       _configureOnce = null;
@@ -124,6 +124,22 @@ class PurchasesFlutterStore implements StoreGateway {
       );
     }
     return restored;
+  }
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    await configure();
+    await rc.Purchases.logIn(appUserId);
+  }
+
+  @override
+  Future<void> logOut() async {
+    if (!await rc.Purchases.isConfigured) return;
+    try {
+      await rc.Purchases.logOut();
+    } on PlatformException catch (error) {
+      debugPrint('RevenueCat logOut skipped: $error');
+    }
   }
 
   @override

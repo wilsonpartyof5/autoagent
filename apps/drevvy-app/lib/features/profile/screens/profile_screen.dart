@@ -8,6 +8,7 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/shopper_session_store.dart';
 import '../widgets/memory_edit_sheet.dart';
 
 /// Screen 41, 55 (v1.6.1): Profile with search profile and notification switches
@@ -729,7 +730,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: () async {
+            await ShopperSessionStore.instance.clear();
+          },
           borderRadius: BorderRadius.circular(DrevvyRadius.md),
           child: Padding(
             padding: const EdgeInsets.all(DrevvySpace.s4),
