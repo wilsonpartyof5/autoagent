@@ -453,7 +453,7 @@ test('cron auth stays closed until the secret is set and lifecycle storage is op
   assert.equal(dealStore.includes('dealer_latitude'), false);
   assert.equal(dealStore.includes('end_state'), false);
 
-  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261011_deal_lifecycle.sql'), 'utf8');
+  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261012183301_deal_lifecycle.sql'), 'utf8');
   assert.match(sql, /NOT APPLIED/);
   assert.match(sql, /shopper_deal_lifecycle/);
   assert.match(sql, /dealer_latitude/);
