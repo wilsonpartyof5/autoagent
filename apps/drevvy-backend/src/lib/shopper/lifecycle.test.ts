@@ -203,6 +203,34 @@ test('a removed deal can be added again with a new id', async () => {
   assert.notEqual(second.deal.id, created.deal.id);
 });
 
+test('removeShopperCar refunds a credit within 30 minutes and before outreach', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-window');
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, true);
+});
+
+test('removeShopperCar does not refund after 30 minutes', async () => {
+  const box = harness('2026-10-01T16:40:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-late');
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, false);
+});
+
+test('removeShopperCar does not refund after outreach even within 30 minutes', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z');
+  const created = await addCar(box, 'mc-car-refund-outreach');
+  await applyAgentEvent({
+    type: 'outreach',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    channel: 'email',
+    sentAt: '2026-10-01T16:05:00.000Z',
+  }, box.deps);
+  const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(result.refunded, false);
+});
+
 test('saving an open listing returns the same deal', async () => {
   const box = harness();
   const first = await addCar(box, 'mc-car-10');
