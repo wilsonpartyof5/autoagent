@@ -1,3 +1,4 @@
+import '../notifications/device_registration.dart';
 import 'auth_api.dart';
 import 'auth_exception.dart';
 import 'consumer_session.dart';
@@ -32,7 +33,11 @@ class AuthController {
     required this._google,
     DateTime Function()? now,
     this._onSignedIn,
-  }) : _now = now ?? DateTime.now;
+    this._devices,
+    this._deviceToken,
+    String Function()? platform,
+  }) : _now = now ?? DateTime.now,
+       _platform = platform ?? (() => 'other');
 
   final AuthApi _api;
   final SessionStore _store;
@@ -40,6 +45,9 @@ class AuthController {
   final IdentityClient _google;
   final DateTime Function() _now;
   final Future<void> Function(ConsumerSession session)? _onSignedIn;
+  final DeviceRegistrar? _devices;
+  final Future<String?> Function()? _deviceToken;
+  final String Function() _platform;
 
   Future<AuthResult> signInWithApple() => _signIn(_apple, _api.signInWithApple);
 
@@ -63,6 +71,15 @@ class AuthController {
   Future<void> signOut() async {
     final stored = await _store.read();
     if (stored != null) {
+      final token = await _deviceToken?.call();
+      final devices = _devices;
+      if (devices != null) {
+        await devices.unregister(
+          session: stored,
+          token: token,
+          platform: _platform(),
+        );
+      }
       try {
         await _api.signOut(stored.accessToken);
       } on AuthException {

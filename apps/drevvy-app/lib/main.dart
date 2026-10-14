@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/platform/flutter_test_env.dart';
 import 'core/providers/app_services.dart';
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
@@ -16,9 +17,13 @@ void main() {
   ));
   // Reattach push listeners for someone who already opted in.
   // This does not request notification permission.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(container.read(pushNotificationServiceProvider).restoreWithoutPrompting());
-  });
+  // Widget tests pump DrevvyApp and never call main(). The FLUTTER_TEST
+  // guard also keeps this work out of a test that does call main().
+  if (!isFlutterTest) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(container.read(pushNotificationServiceProvider).restoreWithoutPrompting());
+    });
+  }
 }
 
 class DrevvyApp extends ConsumerWidget {

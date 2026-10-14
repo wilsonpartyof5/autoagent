@@ -14,7 +14,7 @@ import '../../features/deals/screens/deals_screen.dart';
 import '../../features/deals/screens/deal_detail_screen.dart';
 import '../../features/deals/screens/official_offer_screen.dart';
 import '../../features/deals/screens/done_screen.dart';
-import '../../features/profile/screens/profile_screen.dart';
+import '../../features/saved/screens/saved_screen.dart';
 import '../../features/common/screens/error_screen.dart';
 import '../widgets/shell_scaffold.dart';
 
@@ -83,12 +83,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Profile tab
+          // Saved tab (v1.8: replaces Profile)
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/profile',
-                builder: (context, state) => const ProfileScreen(),
+                path: '/saved',
+                builder: (context, state) => const SavedScreen(),
               ),
             ],
           ),

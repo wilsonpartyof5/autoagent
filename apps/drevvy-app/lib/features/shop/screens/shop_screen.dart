@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
@@ -9,8 +10,10 @@ import '../widgets/chat_messages.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/shop_results.dart';
 import '../widgets/chat_history_drawer.dart';
+import '../widgets/account_sheet.dart';
 
 /// Screens 07-11, 17, 51-52: Shop tab with Ask/Shop toggle and history drawer (v1.6.1)
+/// v1.8: Added save/heart support on inventory cards.
 /// App always launches here on a new, unsaved Ask chat per spec §1.1
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
@@ -32,6 +35,10 @@ class _ShopScreenState extends State<ShopScreen> {
   User? _user;
   List<StarterCard>? _starters;
   SearchProfile? _searchProfile;
+  
+  /// v1.8: Track saved and deals listing IDs
+  Set<String> _savedListingIds = {};
+  Set<String> _dealsListingIds = {};
 
   @override
   void initState() {
@@ -45,12 +52,20 @@ class _ShopScreenState extends State<ShopScreen> {
     final history = await _repo.getChatHistory();
     final starters = await _repo.getStarters();
     final searchProfile = await _repo.getSearchProfile();
+    
+    // v1.8: Load saved and deals listing IDs for heart state
+    final savedCars = await _repo.getSavedCars();
+    final deals = await _repo.getDeals();
+    if (!mounted) return;
+
     setState(() {
       _thread = thread;
       _user = user;
       _chatHistory = history;
       _starters = starters;
       _searchProfile = searchProfile;
+      _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
+      _dealsListingIds = deals.map((d) => d.listingId).toSet();
     });
   }
 
@@ -123,6 +138,39 @@ class _ShopScreenState extends State<ShopScreen> {
     });
   }
 
+  /// v1.8: Handle heart tap on inventory card
+  Future<void> _handleSaveToggle(Listing listing, bool isSaved) async {
+    HapticFeedback.lightImpact();
+    
+    if (isSaved) {
+      // Unsave the car
+      await _repo.unsaveByListingId(listing.id);
+      if (!mounted) return;
+      setState(() {
+        _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Removed from Saved'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      // Save the car
+      await _repo.saveCar(listing);
+      if (!mounted) return;
+      setState(() {
+        _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved for later'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _renameChat(String chatId, String newTitle) {
     setState(() {
       _chatHistory = _chatHistory.map((c) {
@@ -135,6 +183,16 @@ class _ShopScreenState extends State<ShopScreen> {
         _thread = _thread?.copyWith(title: newTitle);
       }
     });
+  }
+
+  /// v1.8: Show Account sheet
+  void _showAccountSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AccountSheet(),
+    );
   }
 
   @override
@@ -165,6 +223,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 mode: _mode,
                 onModeChanged: _switchMode,
                 onMenuTap: _openHistoryDrawer,
+                onAvatarTap: _showAccountSheet,
               ),
               
               Expanded(
@@ -190,6 +249,9 @@ class _ShopScreenState extends State<ShopScreen> {
                         isLoading: _isSearching,
                         // v1.7: hasCredits for future A/B testing (always false for now)
                         hasCredits: false,
+                        savedListingIds: _savedListingIds,
+                        dealsListingIds: _dealsListingIds,
+                        onSaveToggle: _handleSaveToggle,
                         onListingTap: (listing) {
                           context.push('/vdp/${listing.id}');
                         },

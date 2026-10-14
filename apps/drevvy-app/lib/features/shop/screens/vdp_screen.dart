@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -35,6 +36,11 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   CarCreditBalance? _creditBalance;
   AvgSavingsConfig? _avgSavings;
   bool _isLoading = true;
+  
+  /// v1.8: Track if car is saved (heart state)
+  bool _isSaved = false;
+  /// v1.8: Track if car is already in Deals (hide heart if so)
+  bool _isInDeals = false;
 
   @override
   void initState() {
@@ -47,18 +53,56 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     final market = await _repo.getMarketContext(listing);
     final balance = await _repo.getCreditBalance();
     final avgSavings = await _repo.getAvgSavingsConfig();
+    
+    // v1.8: Check if listing is saved or in deals
+    await _repo.getSavedCars(); // ensure initialized
+    final isSaved = _repo.isListingSaved(listing.id);
+    final isInDeals = _repo.isListingInDeals(listing.id);
+    if (!mounted) return;
+
     setState(() {
       _listing = listing;
       _market = market;
       _creditBalance = balance;
       _avgSavings = avgSavings;
+      _isSaved = isSaved;
+      _isInDeals = isInDeals;
       _isLoading = false;
     });
   }
+  
+  /// v1.8: Handle heart tap on VDP
+  Future<void> _handleSaveToggle() async {
+    if (_listing == null) return;
+    
+    HapticFeedback.lightImpact();
+    
+    if (_isSaved) {
+      await _repo.unsaveByListingId(_listing!.id);
+      if (!mounted) return;
+      setState(() => _isSaved = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Removed from Saved'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      await _repo.saveCar(_listing!);
+      if (!mounted) return;
+      setState(() => _isSaved = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved for later'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 
   /// Adds the car, then asks for notification permission the first time only.
-  Future<void> _addCar(int? maxOtd) async {
-    await _repo.addDeal(_listing!, maxOtd: maxOtd);
+  Future<void> _addCar() async {
+    await _repo.addDeal(_listing!);
     if (!mounted) return;
     Navigator.of(context).pop();
 
@@ -95,7 +139,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         listing: _listing!,
         market: _market!,
         creditBalance: _creditBalance!,
-        onAdd: (maxOtd) => _addCar(maxOtd),
+        onAdd: () {
+          _addCar();
+        },
       ),
     );
   }
@@ -232,20 +278,23 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
                       // TODO: Share
                     },
                   ),
-                  IconButton(
-                    icon: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: colors.glassSolid,
-                        shape: BoxShape.circle,
+                  // v1.8: Heart button (only show if not already in Deals)
+                  if (!_isInDeals)
+                    IconButton(
+                      icon: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: colors.glassSolid,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          LucideIcons.heart,
+                          color: _isSaved ? colors.danger : colors.ink,
+                        ),
                       ),
-                      child: Icon(LucideIcons.heart, color: colors.ink),
+                      onPressed: _handleSaveToggle,
                     ),
-                    onPressed: () {
-                      // TODO: Favorite
-                    },
-                  ),
                   const SizedBox(width: DrevvySpace.s2),
                 ],
               ),

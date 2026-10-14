@@ -4,25 +4,29 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
 
-/// Shop header per spec §6.5a (v1.6.1):
+/// Shop header per spec §6.5a (v1.6.1, updated v1.8):
 /// - Left: hamburger (44pt) opens history drawer
 /// - Center: Ask | Shop toggle
-/// - Right: empty 44pt spacer (compose icon removed)
+/// - Right: avatar button opens Account sheet (v1.8)
 class ChatHeader extends StatelessWidget {
   const ChatHeader({
     super.key,
     required this.mode,
     required this.onModeChanged,
     this.onMenuTap,
+    this.onAvatarTap,
   });
 
   final ChatMode mode;
   final ValueChanged<ChatMode> onModeChanged;
   final VoidCallback? onMenuTap;
+  /// v1.8: Callback when avatar is tapped to open Account sheet.
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
+    final text = context.drevvyText;
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Container(
@@ -54,8 +58,34 @@ class ChatHeader extends StatelessWidget {
           
           const Spacer(),
           
-          // Empty spacer to keep toggle centered (compose icon removed per spec)
-          const SizedBox(width: DrevvySpace.minTap),
+          // v1.8: Avatar button opens Account sheet
+          if (onAvatarTap != null)
+            GestureDetector(
+              onTap: onAvatarTap,
+              child: Semantics(
+                label: 'Account',
+                button: true,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: DrevvyBrand.gradient,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      'DW',
+                      style: text.label.copyWith(
+                        color: DrevvyColors.onBrand,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: DrevvySpace.minTap),
         ],
       ),
     );

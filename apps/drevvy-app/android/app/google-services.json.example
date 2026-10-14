@@ -1,5 +1,5 @@
 {
-  "_comment": "TODO: Replace this example with android/app/google-services.json from the Firebase console, then apply the google-services Gradle plugin. Do not commit the real file if it contains production secrets you treat as private. Pass the same values as DREVYY_FIREBASE_* dart-defines. See lib/core/config/drevvy_config.dart.",
+  "_comment": "TODO: Replace this example with android/app/google-services.json from the Firebase console, then apply the google-services Gradle plugin. Do not commit the real file if it contains production secrets you treat as private. Pass the same values as DREVVY_FIREBASE_* dart-defines. See lib/core/config/drevvy_config.dart.",
   "project_info": {
     "project_number": "000000000000",
     "project_id": "TODO_PROJECT_ID",

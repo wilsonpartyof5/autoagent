@@ -242,6 +242,53 @@ void main() {
       expect(await controller.currentSession(), isNull);
     });
 
+    test('sign-out deletes the device token before clearing the session', () async {
+      final store = MemorySessionStore();
+      final calls = <http.Request>[];
+      var sessionPresentAtDelete = false;
+      final client = _ScriptedClient((request) async {
+        calls.add(request);
+        if (request.method == 'DELETE' && request.url.path == DrevvyConfig.devicesPath) {
+          sessionPresentAtDelete = await store.read() != null;
+          return http.Response('missing', 404);
+        }
+        if (request.url.path == DrevvyConfig.profilePath) {
+          return http.Response(jsonEncode({'success': true, 'data': {}}), 200);
+        }
+        if (request.url.path == DrevvyConfig.signOutPath) {
+          return http.Response(jsonEncode({'success': true}), 200);
+        }
+        return http.Response(jsonEncode(sessionJson), 200);
+      });
+      final controller = AuthController(
+        api: AuthApi(baseUrl: 'https://drevvy.test', client: client),
+        store: store,
+        apple: _FixedIdentity(const ProviderIdentity(identityToken: 'a.b.c', nonce: 'nonce')),
+        google: _FixedIdentity(const ProviderIdentity(identityToken: 'unused')),
+        devices: DeviceRegistrar(baseUrl: 'https://drevvy.test', client: client),
+        deviceToken: () async => 'fcm-token',
+        platform: () => 'ios',
+      );
+
+      await controller.signInWithApple();
+      await controller.signOut();
+
+      final deleteIndex = calls.indexWhere(
+        (request) => request.method == 'DELETE' && request.url.path == DrevvyConfig.devicesPath,
+      );
+      final signOutIndex = calls.indexWhere((request) => request.url.path == DrevvyConfig.signOutPath);
+      expect(deleteIndex, greaterThanOrEqualTo(0));
+      expect(signOutIndex, greaterThan(deleteIndex));
+      expect(sessionPresentAtDelete, isTrue);
+      expect(calls[deleteIndex].headers['Authorization'], 'Bearer access-token');
+      expect(jsonDecode(calls[deleteIndex].body), {
+        'token': 'fcm-token',
+        'platform': 'ios',
+        'provider': 'fcm',
+      });
+      expect(await store.read(), isNull);
+    });
+
     test('an expired session is refreshed', () async {
       final store = MemorySessionStore();
       await store.write(const ConsumerSession(
