@@ -5,6 +5,8 @@ const links = [
   { href: '/admin', label: 'Shoppers' },
   { href: '/admin/analytics', label: 'Analytics' },
   { href: '/admin/outreach', label: 'Outreach' },
+  { href: '/admin/deals', label: 'Deals' },
+  { href: '/admin/costs', label: 'Costs' },
 ];
 
 export function AdminShell({
@@ -29,7 +31,7 @@ export function AdminShell({
             ))}
           </nav>
           <p className="mt-8 text-xs text-slate-500">Signed in as {email}</p>
-          <p className="mt-2 text-xs text-slate-500">Mock shoppers. Nothing here is written to Supabase.</p>
+          <p className="mt-2 text-xs text-slate-500">Shopper lists use the mock book. Platform bills save to Supabase.</p>
         </aside>
         <main className="px-5 py-6 md:px-8">{children}</main>
       </div>
