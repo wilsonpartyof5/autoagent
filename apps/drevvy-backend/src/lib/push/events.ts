@@ -7,6 +7,8 @@ export type ShopperPush = {
   userId: string;
   dealId?: string;
   listingId?: string;
+  title?: string;
+  body?: string;
 };
 
 export type PushCopy = {

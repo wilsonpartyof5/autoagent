@@ -1,6 +1,7 @@
 import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
 import { deliverShopperPushLive } from '@/lib/push/dispatch';
 import type { ShopperPush } from '@/lib/push/events';
+import { planShopperPush, type PushIdentity, type PushTrigger } from '@/lib/push/triggers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseShopperDealRepository } from './deal-store';
@@ -31,6 +32,7 @@ import {
   runScheduledLifecycle,
   type BuyOutcome,
   type DealAgentEvent,
+  type DealSignalIdentity,
   type LifecycleRecord,
   type OfferInput,
   type OutcomeInput,
@@ -215,6 +217,7 @@ export async function forwardOffer(
   dealId: string,
   input: OfferInput,
   deps: DealDeps,
+  revealedDealerName: string | null = null,
 ): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const current = (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId);
@@ -222,11 +225,14 @@ export async function forwardOffer(
   const revealed = revealDealerVisit(current, input, deps.now.toISOString());
   await deps.lifecycle.save(revealed);
   if (firstForward) {
-    await emitPush(deps, {
-      event: 'official_offer',
+    await emitPlanned(deps, {
+      kind: 'official_offer',
       userId,
       dealId: deal.id,
       listingId: deal.listingId,
+      vehicle: { model: deal.vehicle.model },
+      offerForwarded: true,
+      identity: { dealerName: revealedDealerName },
     });
   }
   return presentDeal(deal, revealed);
@@ -277,11 +283,15 @@ export async function setLocationAccess(userId: string, dealId: string, granted:
 }
 
 export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps, 'deals' | 'lifecycle' | 'notify' | 'supabase'>): Promise<LifecycleRecord> {
-  const supabase = getAdminClient(deps as DealDeps);
   const current = await deps.lifecycle.getById(event.dealId);
   if (!current || current.consumerUserId !== event.consumerUserId) {
     throw new ShopperDealError('Deal not found.', 404, 'not_found');
   }
+  if (event.type === 'price_drop' || event.type === 'offer_ready') {
+    await emitListingSignal(event, current, deps);
+    return current;
+  }
+  const supabase = getAdminClient(deps as DealDeps);
   const soldNow = event.type === 'end' && event.endState === 'sold' && current.endState !== 'sold';
   const previousState = current.endState;
   let next = current;
@@ -298,11 +308,14 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
     }
   }
   if (soldNow) {
-    await emitPush(deps, {
-      event: 'car_sold',
+    const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
+    await emitPlanned(deps, {
+      kind: 'car_sold',
       userId: next.consumerUserId,
       dealId: next.dealId,
       listingId: next.listingId,
+      vehicle: { model },
+      identity: { dealerName: null },
     });
   }
   return next;
@@ -350,14 +363,17 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
     }
   }
   for (const prompt of result.buyPrompts) {
-    if (prompt.source !== 'pickup_fallback') continue;
     const record = result.records.find((item) => item.dealId === prompt.dealId);
     if (!record) continue;
-    await emitPush(deps, {
-      event: 'did_you_buy',
+    const model = await vehicleModel(deps, record.consumerUserId, record.dealId);
+    await emitPlanned(deps, {
+      kind: 'did_you_buy',
+      source: prompt.source,
       userId: record.consumerUserId,
       dealId: record.dealId,
       listingId: record.listingId,
+      vehicle: { model },
+      identity: { dealerName: null },
     });
   }
   return {
@@ -432,6 +448,99 @@ async function creditSummaryFor(supabase: SupabaseClient, userId: string): Promi
 
 function findRecord(records: LifecycleRecord[], dealId: string): LifecycleRecord | null {
   return records.find((record) => record.dealId === dealId) ?? null;
+}
+
+async function emitListingSignal(
+  event: Extract<DealAgentEvent, { type: 'price_drop' | 'offer_ready' }>,
+  record: LifecycleRecord,
+  deps: Pick<DealDeps, 'deals' | 'notify'>,
+): Promise<void> {
+  const model = await vehicleModel(deps, record.consumerUserId, record.dealId);
+  const identity = pushIdentity(event.identity);
+  if (event.type === 'price_drop') {
+    const previousPrice = event.previousPrice ?? (await listedPrice(deps, record.consumerUserId, record.dealId));
+    if (previousPrice == null) return;
+    await emitPlanned(deps, {
+      kind: 'price_drop',
+      userId: record.consumerUserId,
+      dealId: record.dealId,
+      listingId: record.listingId,
+      vehicle: { model },
+      previousPrice,
+      price: event.price,
+      dealerAlias: event.dealerAlias,
+      identity,
+      prefs: { priceDrops: event.priceDrops, hidePrices: event.hidePrices },
+    });
+    return;
+  }
+  await emitPlanned(deps, {
+    kind: 'offer_ready',
+    userId: record.consumerUserId,
+    dealId: record.dealId,
+    listingId: record.listingId,
+    vehicle: { model },
+    otd: event.otd,
+    identity,
+    prefs: { offers: event.offers, hidePrices: event.hidePrices },
+  });
+}
+
+async function listedPrice(
+  deps: Pick<DealDeps, 'deals'>,
+  userId: string,
+  dealId: string,
+): Promise<number | null> {
+  try {
+    const row = await deps.deals.get(userId, dealId);
+    if (!row) return null;
+    return toShopperDeal(row).vehicle.price;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'shopper_push_vehicle_unreadable',
+      dealId,
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
+    return null;
+  }
+}
+
+async function vehicleModel(
+  deps: Pick<DealDeps, 'deals'>,
+  userId: string,
+  dealId: string,
+): Promise<string | null> {
+  try {
+    const row = await deps.deals.get(userId, dealId);
+    if (!row) return null;
+    return toShopperDeal(row).vehicle.model;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'shopper_push_vehicle_unreadable',
+      dealId,
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
+    return null;
+  }
+}
+
+function pushIdentity(identity: DealSignalIdentity): PushIdentity {
+  return {
+    dealerName: identity.dealerName,
+    dealerPhone: identity.dealerPhone,
+    dealerEmail: identity.dealerEmail,
+    dealerWebsite: identity.dealerWebsite,
+    street: identity.street,
+  };
+}
+
+async function emitPlanned(
+  deps: { notify?: (push: ShopperPush) => Promise<void> },
+  trigger: PushTrigger,
+): Promise<void> {
+  const planned = planShopperPush(trigger);
+  if (!planned) return;
+  await emitPush(deps, planned);
 }
 
 async function emitPush(deps: { notify?: (push: ShopperPush) => Promise<void> }, push: ShopperPush): Promise<void> {
