@@ -1,23 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../../core/providers/app_services.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
-import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/auth/auth_controller.dart';
 
 /// Screen 15: Create account (before payment)
-class CreateAccountScreen extends StatefulWidget {
+class CreateAccountScreen extends ConsumerStatefulWidget {
   const CreateAccountScreen({super.key});
 
   @override
-  State<CreateAccountScreen> createState() => _CreateAccountScreenState();
+  ConsumerState<CreateAccountScreen> createState() => _CreateAccountScreenState();
 }
 
-class _CreateAccountScreenState extends State<CreateAccountScreen> {
+class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   final _firstNameController = TextEditingController();
   final _emailController = TextEditingController();
-  bool _isLoading = false; // ignore: prefer_final_fields - state var
+  String? _busy;
+
+  Future<void> _signIn(String provider) async {
+    if (_busy != null) return;
+    setState(() => _busy = provider);
+    final auth = ref.read(authControllerProvider);
+    final result = provider == 'apple'
+        ? await auth.signInWithApple()
+        : await auth.signInWithGoogle();
+    if (!mounted) return;
+    setState(() => _busy = null);
+    switch (result) {
+      case AuthSuccess():
+        context.go('/shop');
+      case AuthCancelled():
+        break;
+      case AuthFailure(:final message):
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
 
   @override
   void dispose() {
@@ -129,10 +151,8 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     label: 'Continue with Apple',
                     icon: LucideIcons.smartphone,
                     variant: DrevvyButtonVariant.secondary,
-                    onPressed: () {
-                      // TODO: Apple Sign In
-                      context.go('/shop');
-                    },
+                    isLoading: _busy == 'apple',
+                    onPressed: _busy == null ? () => _signIn('apple') : null,
                     isFullWidth: true,
                   ),
                   
@@ -142,10 +162,8 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     label: 'Continue with Google',
                     icon: LucideIcons.mail,
                     variant: DrevvyButtonVariant.secondary,
-                    onPressed: () {
-                      // TODO: Google Sign In
-                      context.go('/shop');
-                    },
+                    isLoading: _busy == 'google',
+                    onPressed: _busy == null ? () => _signIn('google') : null,
                     isFullWidth: true,
                   ),
                   
@@ -166,13 +184,13 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                   
                   DrevvyButton(
                     label: 'Continue with email',
-                    onPressed: _canContinue
+                    onPressed: _canContinue && _busy == null
                         ? () {
-                            // TODO: Email OTP flow
+                            // Email OTP is not a consumer auth route. Continue in demo mode.
                             context.go('/shop');
                           }
                         : null,
-                    isLoading: _isLoading,
+                    isLoading: false,
                     isFullWidth: true,
                   ),
                   

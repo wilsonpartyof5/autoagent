@@ -14,9 +14,16 @@ import '../widgets/remove_sheet.dart';
 
 /// Screens 27-32: Deal detail with offer card, breakdown, and actions
 class DealDetailScreen extends StatefulWidget {
-  const DealDetailScreen({super.key, required this.dealId});
+  const DealDetailScreen({
+    super.key,
+    required this.dealId,
+    this.openDidYouBuy = false,
+  });
 
   final String dealId;
+
+  /// Set by the `did_you_buy` push deep link.
+  final bool openDidYouBuy;
 
   @override
   State<DealDetailScreen> createState() => _DealDetailScreenState();
@@ -26,6 +33,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
   final _repo = DemoRepository.instance;
   Deal? _deal;
   bool _isLoading = true;
+  bool _didOpenOutcome = false;
 
   @override
   void initState() {
@@ -39,6 +47,12 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
       _deal = deal;
       _isLoading = false;
     });
+    if (widget.openDidYouBuy && !_didOpenOutcome) {
+      _didOpenOutcome = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showOutcomeSheet();
+      });
+    }
   }
 
   Future<void> _acceptOffer() async {

@@ -36,6 +36,7 @@ class _AccountSheetState extends State<AccountSheet> {
     final user = await _repo.getCurrentUser();
     final searchProfile = await _repo.getSearchProfile();
     final balance = await _repo.getCreditBalance();
+    if (!mounted) return;
 
     setState(() {
       _user = user;
@@ -478,7 +479,9 @@ class _AccountSheetState extends State<AccountSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: _handleSignOut,
+          onTap: () {
+            _handleSignOut();
+          },
           child: Text('Sign out', style: text.body.copyWith(color: colors.ink)),
         ),
         const SizedBox(height: DrevvySpace.s4),

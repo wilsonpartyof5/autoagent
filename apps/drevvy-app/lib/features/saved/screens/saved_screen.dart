@@ -47,7 +47,8 @@ class _SavedScreenState extends State<SavedScreen> {
         // Listing not found - mark as no longer listed
       }
     }
-    
+    if (!mounted) return;
+
     setState(() {
       _savedCars = savedCars;
       _listings = listings;

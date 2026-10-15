@@ -217,31 +217,29 @@ class _ShopScreenState extends State<ShopScreen> {
     if (isSaved) {
       // Unsave the car
       await _repo.unsaveByListingId(listing.id);
+      if (!mounted) return;
       setState(() {
         _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Removed from Saved'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Removed from Saved'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     } else {
       // Save the car
       await _repo.saveCar(listing);
+      if (!mounted) return;
       setState(() {
         _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Saved for later'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved for later'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 

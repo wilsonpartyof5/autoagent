@@ -109,7 +109,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final dealId = state.pathParameters['dealId']!;
-          return DealDetailScreen(dealId: dealId);
+          final prompt = state.uri.queryParameters['prompt'];
+          return DealDetailScreen(
+            dealId: dealId,
+            openDidYouBuy: prompt == 'did_you_buy',
+          );
         },
       ),
       GoRoute(

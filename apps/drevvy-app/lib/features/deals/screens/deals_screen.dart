@@ -35,6 +35,7 @@ class _DealsScreenState extends State<DealsScreen> {
   Future<void> _loadData() async {
     final deals = await _repo.getDeals();
     final stats = await _repo.getDealStats();
+    if (!mounted) return;
     setState(() {
       _deals = deals;
       _stats = stats;
