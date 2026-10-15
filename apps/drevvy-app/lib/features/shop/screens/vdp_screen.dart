@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/services/cars_balance_placement.dart';
+import '../../../data/services/packs_offering.dart';
 import '../../../data/services/purchase_config.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/superwall_placement.dart';
@@ -33,16 +35,18 @@ class VdpScreen extends StatefulWidget {
 
 class _VdpScreenState extends State<VdpScreen> {
   final _repo = DemoRepository.instance;
-  final CarsBalancePlacement _carsBalancePlacement =
-      carsBalancePlacementFor(PurchaseConfig.fromEnvironment());
+  final CarsBalancePlacement _carsBalancePlacement = carsBalancePlacementFor(
+    PurchaseConfig.fromEnvironment(),
+  );
   Listing? _listing;
   MarketContext? _market;
   CarCreditBalance? _creditBalance;
   AvgSavingsConfig? _avgSavings;
   bool _isLoading = true;
-  
+
   /// v1.8: Track if car is saved (heart state)
   bool _isSaved = false;
+
   /// v1.8: Track if car is already in Deals (hide heart if so)
   bool _isInDeals = false;
 
@@ -57,12 +61,12 @@ class _VdpScreenState extends State<VdpScreen> {
     final market = await _repo.getMarketContext(listing);
     final balance = await _repo.getCreditBalance();
     final avgSavings = await _repo.getAvgSavingsConfig();
-    
+
     // v1.8: Check if listing is saved or in deals
     await _repo.getSavedCars(); // ensure initialized
     final isSaved = _repo.isListingSaved(listing.id);
     final isInDeals = _repo.isListingInDeals(listing.id);
-    
+
     setState(() {
       _listing = listing;
       _market = market;
@@ -73,13 +77,13 @@ class _VdpScreenState extends State<VdpScreen> {
       _isLoading = false;
     });
   }
-  
+
   /// v1.8: Handle heart tap on VDP
   Future<void> _handleSaveToggle() async {
     if (_listing == null) return;
-    
+
     HapticFeedback.lightImpact();
-    
+
     if (_isSaved) {
       await _repo.unsaveByListingId(_listing!.id);
       setState(() => _isSaved = false);
@@ -161,7 +165,10 @@ class _VdpScreenState extends State<VdpScreen> {
     );
   }
 
-  Future<void> _onPackPurchase(BuildContext sheetContext, CarPackType packType) async {
+  Future<void> _onPackPurchase(
+    BuildContext sheetContext,
+    CarPackType packType,
+  ) async {
     final result = await _repo.purchasePack(packType);
     if (!mounted) return;
     if (result is PurchaseSuccess) {
@@ -197,7 +204,9 @@ class _VdpScreenState extends State<VdpScreen> {
       RestoreError(:final message) => message,
     };
     _showMessage(message);
-    if (result is RestoreSuccess && result.creditsRestored > 0 && newBalance.canUnlock) {
+    if (result is RestoreSuccess &&
+        result.creditsRestored > 0 &&
+        newBalance.canUnlock) {
       _showAddSheet();
     }
   }
@@ -211,25 +220,27 @@ class _VdpScreenState extends State<VdpScreen> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// v1.7: Determine which sheet to show based on credit balance.
+  /// Unlock my price spends a car, or presents the paywall when the balance is 0.
   void _handleUnlockTap() {
     final balance = _creditBalance!;
-    if (balance.canUnlock) {
-      // Has credits: show add sheet directly
+    if (!shouldPresentUnlockPaywall(balance)) {
       _showAddSheet();
-    } else if (balance.totalPurchased == 0) {
-      // Never purchased: show pack picker (first-time paywall)
-      _showPackPickerSheet();
-    } else {
-      // Had credits but used them all: Superwall placement cars_balance_empty.
-      unawaited(_carsBalancePlacement.register(
-        presentLocalPaywall: _showOutOfCarsSheet,
-        onPurchased: _reloadBalanceAndContinue,
-      ));
+      return;
     }
+    // Superwall placement unlock_my_price when a key exists. Otherwise the
+    // local pack sheet is the demo fallback.
+    unawaited(
+      _carsBalancePlacement.register(
+        presentLocalPaywall: balance.totalPurchased == 0
+            ? _showPackPickerSheet
+            : _showOutOfCarsSheet,
+        onPurchased: _reloadBalanceAndContinue,
+      ),
+    );
   }
 
   @override
@@ -311,10 +322,12 @@ class _VdpScreenState extends State<VdpScreen> {
                   const SizedBox(width: DrevvySpace.s2),
                 ],
               ),
-              
+
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DrevvySpace.gutter,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -330,22 +343,26 @@ class _VdpScreenState extends State<VdpScreen> {
                                 )
                               : Container(
                                   color: colors.glassSolid,
-                                  child: Icon(LucideIcons.imageOff, color: colors.muted, size: 48),
+                                  child: Icon(
+                                    LucideIcons.imageOff,
+                                    color: colors.muted,
+                                    size: 48,
+                                  ),
                                 ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: DrevvySpace.s4),
-                      
+
                       // Title
                       Text(listing.title, style: text.headline),
                       Text(
                         listing.subtitle,
                         style: text.callout.copyWith(color: colors.muted),
                       ),
-                      
+
                       const SizedBox(height: DrevvySpace.s4),
-                      
+
                       // Price
                       Row(
                         children: [
@@ -357,37 +374,37 @@ class _VdpScreenState extends State<VdpScreen> {
                           ),
                         ],
                       ),
-                      
+
                       // Meta
                       Text(
                         '${listing.milesFormatted} · ${listing.distanceFormatted}',
                         style: text.body.copyWith(color: colors.muted),
                       ),
-                      
+
                       const SizedBox(height: DrevvySpace.s6),
-                      
+
                       // Market card: different for new vs used cars (per spec §10.6)
                       if (listing.isNew)
                         NewCarMarketCard(listing: listing, market: market)
                       else
                         MarketPriceBar(listing: listing, market: market),
-                      
+
                       const SizedBox(height: DrevvySpace.s6),
-                      
+
                       // Market tiles (used cars only)
                       if (!listing.isNew)
                         _MarketTiles(listing: listing, market: market),
-                      
+
                       if (!listing.isNew)
                         const SizedBox(height: DrevvySpace.s6),
-                      
+
                       // Key specs (per audit: no cargo, no LATCH)
                       Text('Key specs', style: text.title),
                       const SizedBox(height: DrevvySpace.s3),
                       _KeySpecs(listing: listing),
-                      
+
                       const SizedBox(height: DrevvySpace.s6),
-                      
+
                       // History (per audit: only "One owner (per dealer listing)")
                       if (listing.carfax1Owner == true) ...[
                         Text('History', style: text.title),
@@ -398,9 +415,10 @@ class _VdpScreenState extends State<VdpScreen> {
                         ),
                         const SizedBox(height: DrevvySpace.s6),
                       ],
-                      
+
                       // Features
-                      if (listing.extra?.highValueFeatures?.isNotEmpty == true) ...[
+                      if (listing.extra?.highValueFeatures?.isNotEmpty ==
+                          true) ...[
                         Text('Features', style: text.title),
                         const SizedBox(height: DrevvySpace.s3),
                         Wrap(
@@ -411,19 +429,21 @@ class _VdpScreenState extends State<VdpScreen> {
                               label: Text(f, style: text.label),
                               backgroundColor: colors.tile,
                               side: BorderSide.none,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                             );
                           }).toList(),
                         ),
                         const SizedBox(height: DrevvySpace.s6),
                       ],
-                      
+
                       // v1.7: How Drevvy works (show for users without credits)
                       if (!hasCredits) ...[
                         _HowDrevvyWorks(),
                         const SizedBox(height: DrevvySpace.s6),
                       ],
-                      
+
                       // Space for sticky CTA
                       SizedBox(height: 120 + bottomPadding),
                     ],
@@ -432,7 +452,7 @@ class _VdpScreenState extends State<VdpScreen> {
               ),
             ],
           ),
-          
+
           // Sticky CTA
           Positioned(
             left: 0,
@@ -451,10 +471,7 @@ class _VdpScreenState extends State<VdpScreen> {
 }
 
 class _MarketTiles extends StatelessWidget {
-  const _MarketTiles({
-    required this.listing,
-    required this.market,
-  });
+  const _MarketTiles({required this.listing, required this.market});
 
   final Listing listing;
   final MarketContext market;
@@ -489,11 +506,7 @@ class _MarketTiles extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.label,
-    required this.value,
-    required this.sub,
-  });
+  const _Tile({required this.label, required this.value, required this.sub});
 
   final String label;
   final String value;
@@ -541,7 +554,11 @@ class _KeySpecs extends StatelessWidget {
       if (build.drivetrain != null)
         (LucideIcons.gitBranch, 'Drivetrain', build.drivetrain!),
       if (build.cityMpg != null && build.highwayMpg != null)
-        (LucideIcons.fuel, 'Fuel economy', '${build.cityMpg} / ${build.highwayMpg} mpg'),
+        (
+          LucideIcons.fuel,
+          'Fuel economy',
+          '${build.cityMpg} / ${build.highwayMpg} mpg',
+        ),
       if (build.seatingCapacity != null)
         (LucideIcons.users, 'Seats', '${build.seatingCapacity}'),
       if (listing.colors?.exteriorColor != null)
@@ -568,10 +585,7 @@ class _KeySpecs extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({
-    required this.icon,
-    required this.text,
-  });
+  const _HistoryRow({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -606,7 +620,10 @@ class _HowDrevvyWorks extends StatelessWidget {
           const SizedBox(height: DrevvySpace.s4),
           _Step(number: '1', text: 'You tap "Unlock my price"'),
           _Step(number: '2', text: 'Pick a car pack (3, 5, or 10 cars)'),
-          _Step(number: '3', text: 'Drevvy asks the dealer for an itemized out-the-door price'),
+          _Step(
+            number: '3',
+            text: 'Drevvy asks the dealer for an itemized out-the-door price',
+          ),
           _Step(number: '4', text: 'You review each offer and decide'),
         ],
       ),
@@ -689,7 +706,9 @@ class _StickyCta extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: colors.glassSolid.withValues(alpha: 0.97),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(DrevvyRadius.sheetTop)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(DrevvyRadius.sheetTop),
+        ),
         boxShadow: colors.elevSheet,
       ),
       child: Column(
@@ -713,7 +732,7 @@ class _StickyCta extends StatelessWidget {
             ),
             const SizedBox(height: DrevvySpace.s3),
           ],
-          
+
           Row(
             children: [
               Column(
@@ -737,9 +756,9 @@ class _StickyCta extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: DrevvySpace.s2),
-          
+
           // v1.7: Updated copy - no more "Pro" or "/mo"
           Text(
             hasCredits

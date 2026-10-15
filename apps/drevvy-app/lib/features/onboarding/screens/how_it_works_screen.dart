@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../finish_first_run.dart';
 import '../widgets/progress_dots.dart';
 
 /// Screen 03: Onboarding - How it works
@@ -14,23 +16,24 @@ class HowItWorksScreen extends StatelessWidget {
   static const _steps = [
     (
       icon: LucideIcons.search,
-      title: 'Find a car you like',
-      body: 'Browse or ask Drevvy for recommendations based on your needs.',
+      title: 'Ask and shop, free',
+      body:
+          'Ask questions and browse inventory. Asking and shopping stay free.',
     ),
     (
-      icon: LucideIcons.plus,
-      title: 'Add it to Drevvy',
-      body: 'Tap "Add to Drevvy" and we\'ll reach out to the dealer for you.',
+      icon: LucideIcons.dollarSign,
+      title: 'See the market',
+      body: 'Drevvy is a transparency layer. Listings line up with market data for that trim.',
     ),
     (
-      icon: LucideIcons.messageSquare,
-      title: 'We do the work',
-      body: 'Drevvy asks for an itemized out-the-door price and keeps going.',
+      icon: LucideIcons.receipt,
+      title: 'Unlock a written price',
+      body: 'Tap Unlock my price for an itemized out-the-door quote. One car from a pack covers it.',
     ),
     (
       icon: LucideIcons.check,
       title: 'You decide',
-      body: 'Review each offer and accept when you\'re ready. We never accept for you.',
+      body: 'Review the written price and decide. Drevvy never accepts an offer for you.',
     ),
   ];
 
@@ -49,7 +52,9 @@ class HowItWorksScreen extends StatelessWidget {
               children: [
                 // Top bar with back button
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DrevvySpace.s2,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
@@ -58,7 +63,7 @@ class HowItWorksScreen extends StatelessWidget {
                       ),
                       const Spacer(),
                       TextButton(
-                        onPressed: () => context.go('/shop'),
+                        onPressed: () => finishFirstRun(context),
                         child: Text(
                           'Skip',
                           style: text.bodyStrong.copyWith(color: colors.muted),
@@ -67,27 +72,30 @@ class HowItWorksScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: DrevvySpace.s4),
-                
+
                 const ProgressDots(current: 1, total: 5),
-                
+
                 const SizedBox(height: DrevvySpace.s6),
-                
+
                 Text(
                   'How Drevvy works',
                   style: text.headline,
                   textAlign: TextAlign.center,
                 ),
-                
+
                 const SizedBox(height: DrevvySpace.s8),
-                
+
                 // Steps
                 Expanded(
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.gutter,
+                    ),
                     itemCount: _steps.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s4),
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: DrevvySpace.s4),
                     itemBuilder: (context, index) {
                       final step = _steps[index];
                       return _StepCard(
@@ -99,7 +107,7 @@ class HowItWorksScreen extends StatelessWidget {
                     },
                   ),
                 ),
-                
+
                 // CTA
                 Padding(
                   padding: EdgeInsets.fromLTRB(
@@ -162,10 +170,7 @@ class _StepCard extends StatelessWidget {
               children: [
                 Text(title, style: text.title),
                 const SizedBox(height: DrevvySpace.s1),
-                Text(
-                  body,
-                  style: text.body.copyWith(color: colors.muted),
-                ),
+                Text(body, style: text.body.copyWith(color: colors.muted)),
               ],
             ),
           ),

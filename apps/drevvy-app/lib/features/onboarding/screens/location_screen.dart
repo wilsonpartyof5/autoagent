@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -37,7 +38,9 @@ class _LocationScreenState extends State<LocationScreen> {
           const CanvasBackground(),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+              padding: const EdgeInsets.symmetric(
+                horizontal: DrevvySpace.gutter,
+              ),
               child: Column(
                 children: [
                   // Top bar
@@ -49,13 +52,13 @@ class _LocationScreenState extends State<LocationScreen> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s4),
-                  
+
                   const ProgressDots(current: 2, total: 5),
-                  
+
                   const Spacer(),
-                  
+
                   // Location illustration
                   Container(
                     width: 120,
@@ -70,25 +73,25 @@ class _LocationScreenState extends State<LocationScreen> {
                       size: 48,
                     ),
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s6),
-                  
+
                   Text(
                     'Where are you\nshopping?',
                     style: text.headline,
                     textAlign: TextAlign.center,
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s3),
-                  
+
                   Text(
                     'Drevvy uses your location to find nearby\nlistings and estimate local taxes and fees.',
                     style: text.body.copyWith(color: colors.muted),
                     textAlign: TextAlign.center,
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s6),
-                  
+
                   // Permission bullets
                   _PermissionBullet(
                     icon: LucideIcons.search,
@@ -104,9 +107,9 @@ class _LocationScreenState extends State<LocationScreen> {
                     icon: LucideIcons.shieldCheck,
                     text: 'Never shared with dealers',
                   ),
-                  
+
                   const Spacer(),
-                  
+
                   if (_showZipInput) ...[
                     GlassCard(
                       padding: const EdgeInsets.all(DrevvySpace.s4),
@@ -116,11 +119,14 @@ class _LocationScreenState extends State<LocationScreen> {
                         maxLength: 5,
                         decoration: InputDecoration(
                           hintText: 'Enter ZIP code',
-                          hintStyle: text.body.copyWith(color: colors.placeholder),
+                          hintStyle: text.body.copyWith(
+                            color: colors.placeholder,
+                          ),
                           border: InputBorder.none,
                           counterText: '',
                         ),
                         style: text.body,
+                        onChanged: (_) => setState(() {}),
                       ),
                     ),
                     const SizedBox(height: DrevvySpace.s4),
@@ -149,7 +155,7 @@ class _LocationScreenState extends State<LocationScreen> {
                       isFullWidth: true,
                     ),
                   ],
-                  
+
                   SizedBox(height: DrevvySpace.s6 + bottomPadding),
                 ],
               ),
@@ -162,10 +168,7 @@ class _LocationScreenState extends State<LocationScreen> {
 }
 
 class _PermissionBullet extends StatelessWidget {
-  const _PermissionBullet({
-    required this.icon,
-    required this.text,
-  });
+  const _PermissionBullet({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -187,9 +190,7 @@ class _PermissionBullet extends StatelessWidget {
           child: Icon(icon, color: colors.violet, size: 18),
         ),
         const SizedBox(width: DrevvySpace.s3),
-        Expanded(
-          child: Text(text, style: textTheme.body),
-        ),
+        Expanded(child: Text(text, style: textTheme.body)),
       ],
     );
   }

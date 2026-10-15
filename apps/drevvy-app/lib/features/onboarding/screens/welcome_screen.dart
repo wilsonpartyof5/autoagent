@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../finish_first_run.dart';
 import '../widgets/demo_offer_card.dart';
 import '../widgets/progress_dots.dart';
 
@@ -23,16 +25,18 @@ class WelcomeScreen extends StatelessWidget {
           const CanvasBackground(),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+              padding: const EdgeInsets.symmetric(
+                horizontal: DrevvySpace.gutter,
+              ),
               child: Column(
                 children: [
                   const SizedBox(height: DrevvySpace.s8),
-                  
+
                   // Progress dots
                   const ProgressDots(current: 0, total: 5),
-                  
+
                   const SizedBox(height: DrevvySpace.s8),
-                  
+
                   // Logo placeholder (wordmark)
                   Text(
                     'Drevvy',
@@ -44,25 +48,25 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s6),
-                  
+
                   Text(
                     'Find your best price\non any car',
                     style: text.headline,
                     textAlign: TextAlign.center,
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s3),
-                  
+
                   Text(
-                    'Drevvy asks dealers for an itemized out-the-door\nprice and keeps going until you decide.',
+                    'Drevvy is a transparency layer. Market data stays free to browse. Buy a car pack only when you unlock a written price.',
                     style: text.body.copyWith(color: colors.muted),
                     textAlign: TextAlign.center,
                   ),
-                  
+
                   const Spacer(),
-                  
+
                   // Demo offer card
                   const DemoOfferCard(
                     otd: 33415,
@@ -70,26 +74,23 @@ class WelcomeScreen extends StatelessWidget {
                     title: '2024 Toyota RAV4 Hybrid',
                     subtitle: 'XLE · AWD',
                   ),
-                  
+
                   const Spacer(),
-                  
+
                   // CTAs
                   DrevvyButton(
                     label: 'Get started',
                     onPressed: () => context.push('/onboarding/how'),
                     isFullWidth: true,
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s3),
-                  
+
                   DrevvyGhostButton(
                     label: 'I already have an account',
-                    onPressed: () {
-                      // TODO: Navigate to sign in
-                      context.go('/shop');
-                    },
+                    onPressed: () => finishFirstRun(context),
                   ),
-                  
+
                   SizedBox(height: DrevvySpace.s6 + bottomPadding),
                 ],
               ),

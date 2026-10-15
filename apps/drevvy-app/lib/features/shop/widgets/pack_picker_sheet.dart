@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -7,12 +8,12 @@ import '../../../data/models/models.dart';
 
 /// Screen X: Pack picker paywall sheet shown when user taps "Unlock my price".
 /// v1.7: Replaces monthly subscription with one-time car packs.
-/// 
+///
 /// Pack options:
 /// - 3 cars (Starter) $47 - $15.67/car
 /// - 5 cars (Plus) $67 - $13.40/car, save 14.5%/car vs Starter
 /// - 10 cars (Best Value) $97 - $9.70/car, save 38.1%/car vs Starter (preselected)
-/// 
+///
 /// RevenueCat products: drevvy_pack_3, drevvy_pack_5, drevvy_pack_10
 /// Superwall placement: unlock_my_price
 class PackPickerSheet extends StatefulWidget {
@@ -30,7 +31,7 @@ class PackPickerSheet extends StatefulWidget {
   final Future<void> Function(CarPackType) onPurchase;
   final VoidCallback onRestore;
   final VoidCallback onKeepShopping;
-  
+
   /// Server-driven avg_savings stat. Hidden if null.
   final AvgSavingsConfig? avgSavings;
 
@@ -86,7 +87,10 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
           Align(
             alignment: Alignment.topRight,
             child: Padding(
-              padding: const EdgeInsets.only(right: DrevvySpace.s2, top: DrevvySpace.s1),
+              padding: const EdgeInsets.only(
+                right: DrevvySpace.s2,
+                top: DrevvySpace.s1,
+              ),
               child: IconButton(
                 icon: Icon(LucideIcons.x, color: colors.muted),
                 onPressed: () => Navigator.of(context).pop(),
@@ -115,16 +119,12 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 const SizedBox(height: DrevvySpace.s5),
 
                 // Title
-                Text(
-                  'Let Drevvy handle this dealer.',
-                  style: text.headline,
-                ),
+                Text('Unlock a written price.', style: text.headline),
 
                 const SizedBox(height: DrevvySpace.s2),
 
-                // Subtitle
                 Text(
-                  'Pick a car pack. Each car you unlock uses one. Packs never expire.',
+                  'Market data is free. Each written price uses one car. Packs are one-time and never expire.',
                   style: text.body.copyWith(color: colors.muted),
                 ),
 
@@ -134,7 +134,8 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 _PackOption(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => setState(() => _selectedPack = CarPackType.starter),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 _PackOption(
@@ -146,7 +147,8 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 _PackOption(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => setState(() => _selectedPack = CarPackType.bestValue),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.bestValue),
                   showBadge: true,
                 ),
 
@@ -200,7 +202,10 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                         style: text.callout.copyWith(color: colors.muted),
                       ),
                     ),
-                    Text(' · ', style: text.callout.copyWith(color: colors.muted)),
+                    Text(
+                      ' · ',
+                      style: text.callout.copyWith(color: colors.muted),
+                    ),
                     TextButton(
                       onPressed: () {
                         // TODO: Open terms
@@ -210,7 +215,10 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                         style: text.callout.copyWith(color: colors.muted),
                       ),
                     ),
-                    Text(' · ', style: text.callout.copyWith(color: colors.muted)),
+                    Text(
+                      ' · ',
+                      style: text.callout.copyWith(color: colors.muted),
+                    ),
                     TextButton(
                       onPressed: () {
                         // TODO: Open privacy
@@ -304,11 +312,7 @@ class _PackOption extends StatelessWidget {
                     color: isSelected ? colors.violet : Colors.transparent,
                   ),
                   child: isSelected
-                      ? Icon(
-                          LucideIcons.check,
-                          size: 14,
-                          color: Colors.white,
-                        )
+                      ? Icon(LucideIcons.check, size: 14, color: Colors.white)
                       : null,
                 ),
 
@@ -321,10 +325,7 @@ class _PackOption extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            '${pack.cars} cars',
-                            style: text.bodyStrong,
-                          ),
+                          Text('${pack.cars} cars', style: text.bodyStrong),
                           Text(
                             ' · ${pack.displayName}',
                             style: text.body.copyWith(color: colors.muted),
@@ -349,10 +350,7 @@ class _PackOption extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      '\$${pack.priceUsd}',
-                      style: text.cardTitle,
-                    ),
+                    Text(pack.priceFormatted, style: text.cardTitle),
                     Text(
                       '${pack.perCarFormatted}/car',
                       style: text.callout.copyWith(
@@ -397,10 +395,7 @@ class _AvgSavingsStat extends StatelessWidget {
             style: text.bodyStrong.copyWith(color: colors.mint),
           ),
           const SizedBox(height: DrevvySpace.s1),
-          Text(
-            config.label,
-            style: text.callout.copyWith(color: colors.mint),
-          ),
+          Text(config.label, style: text.callout.copyWith(color: colors.mint)),
           const SizedBox(height: DrevvySpace.s1),
           Text(
             'Source: ${config.source}.',

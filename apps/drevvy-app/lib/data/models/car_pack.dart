@@ -1,23 +1,22 @@
 import 'package:equatable/equatable.dart';
+import 'package:intl/intl.dart';
+
+/// Whole dollars as `$47`. Per-car amounts keep cents, as `$9.70`.
+String formatUsd(num amount, {int? decimalDigits}) {
+  final digits = decimalDigits ?? ((amount % 1) == 0 ? 0 : 2);
+  return NumberFormat.currency(
+    locale: 'en_US',
+    symbol: r'$',
+    decimalDigits: digits,
+  ).format(amount);
+}
 
 /// One-time car pack purchase options (v1.7).
 /// Packs never expire. RevenueCat products: drevvy_pack_3/5/10.
 enum CarPackType {
-  starter(
-    cars: 3,
-    priceUsd: 47,
-    productId: 'drevvy_pack_3',
-  ),
-  plus(
-    cars: 5,
-    priceUsd: 67,
-    productId: 'drevvy_pack_5',
-  ),
-  bestValue(
-    cars: 10,
-    priceUsd: 97,
-    productId: 'drevvy_pack_10',
-  );
+  starter(cars: 3, priceUsd: 47, productId: 'drevvy_pack_3'),
+  plus(cars: 5, priceUsd: 67, productId: 'drevvy_pack_5'),
+  bestValue(cars: 10, priceUsd: 97, productId: 'drevvy_pack_10');
 
   const CarPackType({
     required this.cars,
@@ -40,15 +39,18 @@ enum CarPackType {
   /// Per-car cost in cents.
   double get perCarCost => priceUsd / cars;
 
-  /// Per-car cost formatted as dollars.
-  String get perCarFormatted => '\$${perCarCost.toStringAsFixed(2)}';
+  /// Pack price in dollars, for example `$47`.
+  String get priceFormatted => formatUsd(priceUsd, decimalDigits: 0);
+
+  /// Per-car cost in dollars, for example `$9.70`.
+  String get perCarFormatted => formatUsd(perCarCost, decimalDigits: 2);
 
   /// Display name for the pack.
   String get displayName => switch (this) {
-        CarPackType.starter => 'Starter',
-        CarPackType.plus => 'Plus',
-        CarPackType.bestValue => 'Best Value',
-      };
+    CarPackType.starter => 'Starter',
+    CarPackType.plus => 'Plus',
+    CarPackType.bestValue => 'Best Value',
+  };
 
   /// Savings vs Starter pack (per car) as percentage.
   double? get savingsVsStarter {
@@ -73,7 +75,7 @@ enum CarPackType {
   }
 
   /// CTA button text: "Get X cars for $Y".
-  String get ctaText => 'Get $cars cars for \$$priceUsd';
+  String get ctaText => 'Get $cars cars for $priceFormatted';
 }
 
 /// Reason for a credit balance change in the ledger.
@@ -131,7 +133,16 @@ class CreditLedgerEntry extends Equatable {
   final String? rcEventId;
 
   @override
-  List<Object?> get props => [id, userId, delta, reason, createdAt, dealId, packType, rcEventId];
+  List<Object?> get props => [
+    id,
+    userId,
+    delta,
+    reason,
+    createdAt,
+    dealId,
+    packType,
+    rcEventId,
+  ];
 }
 
 /// User's current car credit balance (computed from ledger).
@@ -168,16 +179,16 @@ class CarCreditBalance extends Equatable {
   String get useText => 'Uses 1 car';
 
   const CarCreditBalance.empty()
-      : balance = 0,
-        totalPurchased = 0,
-        totalSpent = 0,
-        totalRefunded = 0;
+    : balance = 0,
+      totalPurchased = 0,
+      totalSpent = 0,
+      totalRefunded = 0;
 
   /// Create with initial balance (for demo).
   const CarCreditBalance.withBalance(this.balance)
-      : totalPurchased = balance,
-        totalSpent = 0,
-        totalRefunded = 0;
+    : totalPurchased = balance,
+      totalSpent = 0,
+      totalRefunded = 0;
 
   CarCreditBalance copyWith({
     int? balance,
@@ -194,7 +205,12 @@ class CarCreditBalance extends Equatable {
   }
 
   @override
-  List<Object?> get props => [balance, totalPurchased, totalSpent, totalRefunded];
+  List<Object?> get props => [
+    balance,
+    totalPurchased,
+    totalSpent,
+    totalRefunded,
+  ];
 }
 
 /// Server-driven config for avg_savings stat (v1.7).

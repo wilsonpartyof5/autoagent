@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -7,7 +8,7 @@ import '../../../data/models/models.dart';
 
 /// Screen X: Out of cars sheet shown when balance is 0 and user tries to unlock.
 /// v1.7: Replaces monthly_limit_reached / drevvy_extra_10.
-/// 
+///
 /// Superwall placement: cars_balance_empty
 class OutOfCarsSheet extends StatefulWidget {
   const OutOfCarsSheet({
@@ -73,7 +74,10 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
           Align(
             alignment: Alignment.topRight,
             child: Padding(
-              padding: const EdgeInsets.only(right: DrevvySpace.s2, top: DrevvySpace.s1),
+              padding: const EdgeInsets.only(
+                right: DrevvySpace.s2,
+                top: DrevvySpace.s1,
+              ),
               child: IconButton(
                 icon: Icon(LucideIcons.x, color: colors.muted),
                 onPressed: () => Navigator.of(context).pop(),
@@ -123,16 +127,13 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 const SizedBox(height: DrevvySpace.s4),
 
                 // Title
-                Text(
-                  "You've used all your cars.",
-                  style: text.headline,
-                ),
+                Text("You've used all your cars.", style: text.headline),
 
                 const SizedBox(height: DrevvySpace.s2),
 
                 // Subtitle
                 Text(
-                  'Your active deals keep going. Add a pack to unlock this car.',
+                  'Your active deals keep going. Add a pack to unlock a written price for this car.',
                   style: text.body.copyWith(color: colors.muted),
                 ),
 
@@ -142,7 +143,8 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 _PackOption(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => setState(() => _selectedPack = CarPackType.starter),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 _PackOption(
@@ -154,7 +156,8 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 _PackOption(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => setState(() => _selectedPack = CarPackType.bestValue),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.bestValue),
                   showBadge: true,
                 ),
 
@@ -270,11 +273,7 @@ class _PackOption extends StatelessWidget {
                     color: isSelected ? colors.violet : Colors.transparent,
                   ),
                   child: isSelected
-                      ? Icon(
-                          LucideIcons.check,
-                          size: 14,
-                          color: Colors.white,
-                        )
+                      ? Icon(LucideIcons.check, size: 14, color: Colors.white)
                       : null,
                 ),
 
@@ -287,10 +286,7 @@ class _PackOption extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            '${pack.cars} cars',
-                            style: text.bodyStrong,
-                          ),
+                          Text('${pack.cars} cars', style: text.bodyStrong),
                           Text(
                             ' · ${pack.displayName}',
                             style: text.body.copyWith(color: colors.muted),
@@ -315,10 +311,7 @@ class _PackOption extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      '\$${pack.priceUsd}',
-                      style: text.cardTitle,
-                    ),
+                    Text(pack.priceFormatted, style: text.cardTitle),
                     Text(
                       '${pack.perCarFormatted}/car',
                       style: text.callout.copyWith(

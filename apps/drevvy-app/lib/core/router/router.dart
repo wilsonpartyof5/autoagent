@@ -16,19 +16,30 @@ import '../../features/deals/screens/official_offer_screen.dart';
 import '../../features/deals/screens/done_screen.dart';
 import '../../features/saved/screens/saved_screen.dart';
 import '../../features/common/screens/error_screen.dart';
+import '../onboarding/onboarding_gate.dart';
 import '../widgets/shell_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-// Provider to track if onboarding is complete
-final onboardingCompleteProvider = StateProvider<bool>((ref) => true); // Set to true for demo
-
 final routerProvider = Provider<GoRouter>((ref) {
-  final isOnboardingComplete = ref.watch(onboardingCompleteProvider);
-  
+  final refresh = ValueNotifier<int>(0);
+  ref.listen<bool>(onboardingCompleteProvider, (_, _) {
+    refresh.value++;
+  });
+  ref.onDispose(refresh.dispose);
+
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: isOnboardingComplete ? '/shop' : '/onboarding/welcome',
+    initialLocation: ref.read(onboardingCompleteProvider)
+        ? '/shop'
+        : '/onboarding/welcome',
+    refreshListenable: refresh,
+    redirect: (context, state) {
+      return onboardingRedirect(
+        onboardingComplete: ref.read(onboardingCompleteProvider),
+        path: state.uri.path,
+      );
+    },
     routes: [
       // Onboarding routes (outside shell)
       GoRoute(
@@ -137,9 +148,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
     ],
-    errorBuilder: (context, state) => ErrorScreen(
-      code: 'NAV-404',
-      message: 'Page not found',
-    ),
+    errorBuilder: (context, state) =>
+        ErrorScreen(code: 'NAV-404', message: 'Page not found'),
   );
 });

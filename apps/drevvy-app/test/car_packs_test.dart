@@ -21,10 +21,10 @@ void main() {
     test('per-car cost is calculated correctly', () {
       // Starter: $47 / 3 = $15.67
       expect(CarPackType.starter.perCarCost, closeTo(15.67, 0.01));
-      
+
       // Plus: $67 / 5 = $13.40
       expect(CarPackType.plus.perCarCost, closeTo(13.40, 0.01));
-      
+
       // Best Value: $97 / 10 = $9.70
       expect(CarPackType.bestValue.perCarCost, closeTo(9.70, 0.01));
     });
@@ -33,6 +33,13 @@ void main() {
       expect(CarPackType.starter.perCarFormatted, r'$15.67');
       expect(CarPackType.plus.perCarFormatted, r'$13.40');
       expect(CarPackType.bestValue.perCarFormatted, r'$9.70');
+    });
+
+    test('pack prices use dollar format', () {
+      expect(CarPackType.starter.priceFormatted, r'$47');
+      expect(CarPackType.plus.priceFormatted, r'$67');
+      expect(CarPackType.bestValue.priceFormatted, r'$97');
+      expect(formatUsd(9.7, decimalDigits: 2), r'$9.70');
     });
 
     test('savings vs starter pack are calculated correctly', () {
@@ -54,7 +61,10 @@ void main() {
       expect(CarPackType.plus.savingsDollarsVsStarter, closeTo(11.33, 0.1));
 
       // Best Value: (15.67 - 9.70) * 10 = $59.67
-      expect(CarPackType.bestValue.savingsDollarsVsStarter, closeTo(59.67, 0.1));
+      expect(
+        CarPackType.bestValue.savingsDollarsVsStarter,
+        closeTo(59.67, 0.1),
+      );
     });
 
     test('CTA text is formatted correctly', () {
@@ -72,7 +82,10 @@ void main() {
     test('product ids map back to packs', () {
       expect(CarPackType.fromProductId('drevvy_pack_3'), CarPackType.starter);
       expect(CarPackType.fromProductId('drevvy_pack_5'), CarPackType.plus);
-      expect(CarPackType.fromProductId('drevvy_pack_10'), CarPackType.bestValue);
+      expect(
+        CarPackType.fromProductId('drevvy_pack_10'),
+        CarPackType.bestValue,
+      );
       expect(CarPackType.fromProductId('unknown'), isNull);
     });
   });
@@ -234,7 +247,7 @@ void main() {
 
     test('isProductAvailable returns true for valid products', () async {
       final service = FakePurchaseService(simulateDelay: Duration.zero);
-      
+
       expect(await service.isProductAvailable('drevvy_pack_3'), true);
       expect(await service.isProductAvailable('drevvy_pack_5'), true);
       expect(await service.isProductAvailable('drevvy_pack_10'), true);

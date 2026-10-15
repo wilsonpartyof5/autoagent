@@ -3,19 +3,31 @@ import 'dart:async';
 import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 
 import 'cars_balance_placement.dart';
+import 'packs_offering.dart';
 import 'purchase_config.dart';
 
-/// Local sheet until a Superwall key exists, then placement `cars_balance_empty`.
-CarsBalancePlacement carsBalancePlacementFor(PurchaseConfig config) {
+/// Local sheet until a Superwall key exists.
+///
+/// [placementName] defaults to [unlockMyPricePlacement], the placement
+/// registered when Unlock my price is tapped at a zero balance. Pass
+/// [CarsBalancePlacement.name] for the older empty-balance campaign.
+CarsBalancePlacement carsBalancePlacementFor(
+  PurchaseConfig config, {
+  String placementName = unlockMyPricePlacement,
+}) {
   if (!config.usesSuperwall) return const LocalCarsBalancePlacement();
-  return SuperwallCarsBalancePlacement();
+  return SuperwallCarsBalancePlacement(placementName: placementName);
 }
 
-/// Registers [CarsBalancePlacement.name] when Superwall is configured.
+/// Registers [placementName] when Superwall is configured.
 ///
-/// If Superwall has no campaign for the placement, the local Out of cars
-/// sheet is presented so the pack copy stays in the app.
+/// If Superwall has no campaign for the placement, the local pack sheet is
+/// presented so the dollar prices stay in the app.
 class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
+  SuperwallCarsBalancePlacement({this.placementName = unlockMyPricePlacement});
+
+  final String placementName;
+
   @override
   Future<void> register({
     required void Function() presentLocalPaywall,
@@ -42,14 +54,15 @@ class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
       ..onSkip((_) => showLocal())
       ..onError((_) => showLocal())
       ..onDismiss((_, result) async {
-        if (result is PurchasedPaywallResult || result is RestoredPaywallResult) {
+        if (result is PurchasedPaywallResult ||
+            result is RestoredPaywallResult) {
           await continueAfterPurchase();
         }
       });
 
     try {
       await Superwall.shared.registerPlacement(
-        CarsBalancePlacement.name,
+        placementName,
         handler: handler,
         feature: () {
           if (presented) {

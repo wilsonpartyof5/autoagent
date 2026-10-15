@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:drevvy_app/core/onboarding/onboarding_gate.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
@@ -12,7 +13,10 @@ void main() {
       // Using runAsync to handle repository timers properly
       await tester.runAsync(() async {
         await tester.pumpWidget(
-          const ProviderScope(child: DrevvyApp()),
+          ProviderScope(
+            overrides: [onboardingCompleteProvider.overrideWith((ref) => true)],
+            child: const DrevvyApp(),
+          ),
         );
 
         // Allow async operations to complete
@@ -28,10 +32,15 @@ void main() {
       expect(find.text('Saved'), findsOneWidget);
     });
 
-    testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
+    testWidgets('App launches on Shop tab (v1.6.1)', (
+      WidgetTester tester,
+    ) async {
       await tester.runAsync(() async {
         await tester.pumpWidget(
-          const ProviderScope(child: DrevvyApp()),
+          ProviderScope(
+            overrides: [onboardingCompleteProvider.overrideWith((ref) => true)],
+            child: const DrevvyApp(),
+          ),
         );
 
         // Allow async operations to complete
@@ -82,7 +91,9 @@ void main() {
       }
     });
 
-    testWidgets('noLongerListed status shows correct label', (WidgetTester tester) async {
+    testWidgets('noLongerListed status shows correct label', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: drevvyTheme(Brightness.light),
@@ -99,11 +110,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: drevvyTheme(Brightness.light),
-          home: Scaffold(
-            body: GlassCard(
-              child: Text('Card Content'),
-            ),
-          ),
+          home: Scaffold(body: GlassCard(child: Text('Card Content'))),
         ),
       );
 
