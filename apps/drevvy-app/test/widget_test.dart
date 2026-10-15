@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:drevvy_app/features/onboarding/onboarding_controller.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
@@ -12,7 +13,12 @@ void main() {
       // Using runAsync to handle repository timers properly
       await tester.runAsync(() async {
         await tester.pumpWidget(
-          const ProviderScope(child: DrevvyApp()),
+          ProviderScope(
+            overrides: [
+              onboardingCompleteProvider.overrideWith((ref) => true),
+            ],
+            child: const DrevvyApp(),
+          ),
         );
 
         // Allow async operations to complete
@@ -31,7 +37,12 @@ void main() {
     testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
       await tester.runAsync(() async {
         await tester.pumpWidget(
-          const ProviderScope(child: DrevvyApp()),
+          ProviderScope(
+            overrides: [
+              onboardingCompleteProvider.overrideWith((ref) => true),
+            ],
+            child: const DrevvyApp(),
+          ),
         );
 
         // Allow async operations to complete

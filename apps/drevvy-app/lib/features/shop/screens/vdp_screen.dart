@@ -14,14 +14,12 @@ import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/cars_balance_placement.dart';
 import '../../../data/services/purchase_config.dart';
-import '../../../data/services/purchase_service.dart';
 import '../../../data/services/superwall_placement.dart';
 import '../../deals/widgets/notification_preprompt_sheet.dart';
 import '../widgets/add_to_drevvy_sheet.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
-import '../widgets/pack_picker_sheet.dart';
-import '../widgets/out_of_cars_sheet.dart';
+import '../widgets/unlock_paywall.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
 /// v1.7: Uses car credit balance instead of Pro subscription.
@@ -153,110 +151,25 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     );
   }
 
-  /// v1.7: Show PackPickerSheet when user has no credits (first-time paywall).
-  void _showPackPickerSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => PackPickerSheet(
-        listing: _listing!,
-        avgSavings: _avgSavings,
-        onPurchase: (packType) => _onPackPurchase(context, packType),
-        onRestore: () => _onRestore(context),
-        onKeepShopping: () {
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-
-  /// v1.7: Show OutOfCarsSheet when user's balance is 0.
-  /// Superwall placement: cars_balance_empty. The local sheet keeps the pack copy.
-  void _showOutOfCarsSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => OutOfCarsSheet(
-        listing: _listing!,
-        onPurchase: (packType) => _onPackPurchase(context, packType),
-        onNotNow: () {
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-
-  Future<void> _onPackPurchase(BuildContext sheetContext, CarPackType packType) async {
-    final result = await _repo.purchasePack(packType);
-    if (!mounted) return;
-    if (result is PurchaseSuccess) {
-      final newBalance = await _repo.getCreditBalance();
-      if (!mounted) return;
-      setState(() => _creditBalance = newBalance);
-      if (!sheetContext.mounted) return;
-      Navigator.pop(sheetContext);
-      _showAddSheet();
-      return;
-    }
-    if (result is PurchasePending) {
-      _showMessage('Payment is pending. Cars are added when it completes.');
-      return;
-    }
-    if (result is PurchaseError) {
-      _showMessage(result.message);
-    }
-  }
-
-  Future<void> _onRestore(BuildContext sheetContext) async {
-    final result = await _repo.restorePurchases();
-    if (!mounted) return;
-    final newBalance = await _repo.getCreditBalance();
-    if (!mounted) return;
-    setState(() => _creditBalance = newBalance);
-    if (sheetContext.mounted) Navigator.pop(sheetContext);
-    final message = switch (result) {
-      RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-        'Restored $creditsRestored cars.',
-      RestoreSuccess() => 'Purchases restored.',
-      RestoreNoPurchases() => 'No purchases to restore.',
-      RestoreError(:final message) => message,
-    };
-    _showMessage(message);
-    if (result is RestoreSuccess && result.creditsRestored > 0 && newBalance.canUnlock) {
-      _showAddSheet();
-    }
-  }
-
-  Future<void> _reloadBalanceAndContinue() async {
-    final newBalance = await _repo.getCreditBalance();
-    if (!mounted) return;
-    setState(() => _creditBalance = newBalance);
-    if (newBalance.canUnlock) _showAddSheet();
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  /// v1.7: Determine which sheet to show based on credit balance.
+  /// Paywall at Unlock my price only when the car balance is 0.
+  /// Ask and Shop never reach this. Superwall placement: cars_balance_empty.
   void _handleUnlockTap() {
-    final balance = _creditBalance!;
-    if (balance.canUnlock) {
-      // Has credits: show add sheet directly
-      _showAddSheet();
-    } else if (balance.totalPurchased == 0) {
-      // Never purchased: show pack picker (first-time paywall)
-      _showPackPickerSheet();
-    } else {
-      // Had credits but used them all: Superwall placement cars_balance_empty.
-      unawaited(_carsBalancePlacement.register(
-        presentLocalPaywall: _showOutOfCarsSheet,
-        onPurchased: _reloadBalanceAndContinue,
-      ));
-    }
+    final listing = _listing;
+    final balance = _creditBalance;
+    if (listing == null || balance == null) return;
+    unawaited(showUnlockPaywall(
+      context: context,
+      listing: listing,
+      balance: balance,
+      repo: _repo,
+      avgSavings: _avgSavings,
+      placement: _carsBalancePlacement,
+      onCanUnlock: (next) async {
+        if (!mounted) return;
+        setState(() => _creditBalance = next);
+        _showAddSheet();
+      },
+    ));
   }
 
   @override

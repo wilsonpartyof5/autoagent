@@ -1,42 +1,139 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
-import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
+import '../../../data/models/money_format.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/cars_balance_placement.dart';
+import '../../../data/services/purchase_config.dart';
+import '../../../data/services/purchase_service.dart';
+import '../../../data/services/superwall_placement.dart';
+import '../../shop/widgets/pack_option_card.dart';
+import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
-/// Screen S10: Soft paywall (onboarding or in-context).
-/// v1.7: Updated from monthly subscription to one-time car packs.
-/// 
-/// Copy: "From $9.70/car · Car packs 3 · 5 · 10 · One-time. Never expire."
-class PaywallScreen extends StatefulWidget {
-  const PaywallScreen({super.key, this.from});
+/// First-run and in-context car-pack paywall.
+///
+/// Superwall placement `onboarding_paywall` can replace this screen when a
+/// key exists. With no store keys, the three demo packs render here:
+/// 3 cars $47, 5 cars $67, 10 cars $97. Best value is 10 at $9.70 per car.
+/// Asking and shopping stay free; this screen can be skipped.
+class PaywallScreen extends ConsumerStatefulWidget {
+  const PaywallScreen({
+    super.key,
+    this.from,
+    this.placement,
+    this.repository,
+  });
 
   final String? from;
+  final CarsBalancePlacement? placement;
+  final DemoRepository? repository;
 
   @override
-  State<PaywallScreen> createState() => _PaywallScreenState();
+  ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
 }
 
-class _PaywallScreenState extends State<PaywallScreen> {
+class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   bool get isOnboarding => widget.from == 'onboarding';
-  AvgSavingsConfig? _avgSavings;
+
+  CarPackType _selected = CarPackType.bestValue;
+  Map<CarPackType, CarPackOffering> _offerings = const {};
+  bool _buying = false;
+
+  DemoRepository get _repo => widget.repository ?? DemoRepository.instance;
 
   @override
   void initState() {
     super.initState();
-    _loadConfig();
+    unawaited(_loadOfferings());
+    if (isOnboarding) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final placement = widget.placement ??
+            onboardingPaywallPlacementFor(PurchaseConfig.fromEnvironment());
+        unawaited(placement.register(
+          presentLocalPaywall: () {},
+          onPurchased: _continueAfterStorePaywall,
+        ));
+      });
+    }
   }
 
-  Future<void> _loadConfig() async {
-    final config = await DemoRepository.instance.getAvgSavingsConfig();
-    if (mounted) {
-      setState(() => _avgSavings = config);
+  Future<void> _loadOfferings() async {
+    try {
+      final offerings = await _repo.purchaseService.getOfferings();
+      if (!mounted || offerings == null) return;
+      setState(() {
+        _offerings = {for (final offering in offerings) offering.packType: offering};
+      });
+    } catch (_) {
+      // Demo catalog prices stay on screen.
     }
+  }
+
+  String _totalLabel(CarPackType pack) {
+    final offering = _offerings[pack];
+    if (offering == null || offering.currencyCode == 'USD') {
+      return formatUsd(offering?.priceAmount ?? pack.priceUsd);
+    }
+    return offering.localizedPrice;
+  }
+
+  String _perCarLabel(CarPackType pack) {
+    final offering = _offerings[pack];
+    if (offering != null && offering.currencyCode != 'USD') {
+      return offering.localizedPrice;
+    }
+    final amount = offering?.priceAmount ?? pack.priceUsd.toDouble();
+    return '${formatUsd(amount / pack.cars, cents: true)}/car';
+  }
+
+  String _cta(CarPackType pack) => 'Get ${pack.cars} cars for ${_totalLabel(pack)}';
+
+  Future<void> _continueAfterStorePaywall() async {
+    if (!mounted) return;
+    if (isOnboarding) {
+      context.push('/account/create');
+    } else if (context.canPop()) {
+      context.pop();
+    }
+  }
+
+  Future<void> _buy() async {
+    setState(() => _buying = true);
+    final result = await _repo.purchasePack(_selected);
+    if (!mounted) return;
+    setState(() => _buying = false);
+    if (result is PurchaseSuccess) {
+      await _continueAfterStorePaywall();
+      return;
+    }
+    final message = switch (result) {
+      PurchasePending() => 'Payment is pending. Cars are added when it completes.',
+      PurchaseError(:final message) => message,
+      PurchaseCancelled() => null,
+      PurchaseSuccess() => null,
+    };
+    if (message != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _startShoppingFree() async {
+    if (isOnboarding) {
+      context.push('/account/create');
+      return;
+    }
+    context.go('/shop');
   }
 
   @override
@@ -52,21 +149,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Top bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s2),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (!isOnboarding)
-                        const SizedBox(width: 48)
-                      else
+                      if (isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.chevronLeft, color: colors.ink),
                           onPressed: () => context.pop(),
-                        ),
+                        )
+                      else
+                        const SizedBox(width: 48),
                       if (isOnboarding)
-                        const ProgressDots(current: 9, total: 10),
+                        const ProgressDots(current: 4, total: onboardingStepCount),
                       if (!isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.x, color: colors.ink),
@@ -77,162 +173,52 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     ],
                   ),
                 ),
-                
-                const SizedBox(height: DrevvySpace.s4),
-                
-                // Drevvy logo
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        gradient: DrevvyColors.brandGradient,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'D',
-                          style: text.bodyStrong.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: DrevvySpace.s2),
-                    Text('Drevvy', style: text.bodyStrong),
-                  ],
-                ),
-                
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
                     child: Column(
                       children: [
-                        const SizedBox(height: DrevvySpace.s6),
-                        
-                        // Headline
+                        const SizedBox(height: DrevvySpace.s4),
                         Text(
-                          'Your next car. Fewer surprises.',
+                          'Market data, then a written price.',
                           style: text.headline,
                           textAlign: TextAlign.center,
                         ),
-                        
                         const SizedBox(height: DrevvySpace.s3),
-                        
-                        // Subtitle
                         Text(
-                          'Shop free. When you find the one, let Drevvy handle the dealer conversation.',
+                          'Drevvy is a transparency layer. It uses market data to ask the dealer for an itemized out-the-door quote.',
                           style: text.body.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),
-                        
-                        const SizedBox(height: DrevvySpace.s6),
-                        
-                        // v1.7: Pack pricing card
-                        GlassCard(
-                          padding: const EdgeInsets.all(DrevvySpace.s5),
-                          child: Column(
-                            children: [
-                              // Price headline
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                                    textBaseline: TextBaseline.alphabetic,
-                                    children: [
-                                      Text('From ', style: text.body),
-                                      Text('\$9.70', style: text.figureM),
-                                      Text('/car', style: text.body),
-                                    ],
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'Car packs: 3 · 5 · 10',
-                                        style: text.callout.copyWith(color: colors.muted),
-                                      ),
-                                      Text(
-                                        'One-time. Never expire.',
-                                        style: text.callout.copyWith(color: colors.muted),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              
-                              const SizedBox(height: DrevvySpace.s5),
-                              
-                              // Benefits list (updated copy, no "negotiate")
-                              _ValueProp(
-                                icon: LucideIcons.check,
-                                text: 'Drevvy handles the conversation with each selected vehicle\'s dealer.',
-                              ),
-                              const SizedBox(height: DrevvySpace.s3),
-                              _ValueProp(
-                                icon: LucideIcons.check,
-                                text: 'Works to get a written out-the-door quote with taxes, fees, and any add-ons.',
-                              ),
-                              const SizedBox(height: DrevvySpace.s3),
-                              _ValueProp(
-                                icon: LucideIcons.check,
-                                text: 'Keeps your personal phone number private from dealerships.',
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: DrevvySpace.s5),
-                        
-                        // Avg savings stat (hidden if unavailable)
-                        if (_avgSavings != null)
-                          Container(
-                            padding: const EdgeInsets.all(DrevvySpace.s4),
-                            decoration: BoxDecoration(
-                              color: colors.mintTint,
-                              borderRadius: BorderRadius.circular(DrevvyRadius.md),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _avgSavings!.value,
-                                  style: text.bodyStrong.copyWith(color: colors.mint),
-                                ),
-                                const SizedBox(height: DrevvySpace.s1),
-                                Text(
-                                  _avgSavings!.label,
-                                  style: text.callout.copyWith(color: colors.mint),
-                                ),
-                                const SizedBox(height: DrevvySpace.s1),
-                                Text(
-                                  'Source: ${_avgSavings!.source}.',
-                                  style: text.micro.copyWith(color: colors.muted),
-                                ),
-                              ],
-                            ),
-                          ),
-                        
-                        const SizedBox(height: DrevvySpace.s6),
-                        
-                        // Bottom text
+                        const SizedBox(height: DrevvySpace.s3),
                         Text(
-                          'Asking and shopping stay free. Buy a car pack only when you want Drevvy to reach out. Packs are one-time and never expire.',
+                          'From \$9.70/car · Car packs 3 · 5 · 10 · One-time. Never expire.',
+                          style: text.callout.copyWith(color: colors.ink),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: DrevvySpace.s5),
+                        for (final pack in CarPackType.values) ...[
+                          PackOptionCard(
+                            pack: pack,
+                            isSelected: _selected == pack,
+                            showBadge: pack == CarPackType.bestValue,
+                            totalLabel: _totalLabel(pack),
+                            perCarLabel: _perCarLabel(pack),
+                            onTap: () => setState(() => _selected = pack),
+                          ),
+                          const SizedBox(height: DrevvySpace.s3),
+                        ],
+                        const SizedBox(height: DrevvySpace.s2),
+                        Text(
+                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0. Packs are one-time and never expire.',
                           style: text.callout.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),
-                        
-                        const SizedBox(height: DrevvySpace.s8),
+                        const SizedBox(height: DrevvySpace.s6),
                       ],
                     ),
                   ),
                 ),
-                
-                // CTAs
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     DrevvySpace.gutter,
@@ -244,48 +230,22 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     children: [
                       DrevvyButton(
                         label: 'Start shopping free',
-                        onPressed: () {
-                          if (isOnboarding) {
-                            context.push('/account/create');
-                          } else {
-                            context.go('/shop');
-                          }
-                        },
+                        onPressed: _buying ? null : _startShoppingFree,
                         isFullWidth: true,
                       ),
                       const SizedBox(height: DrevvySpace.s3),
-                      DrevvyGhostButton(
-                        label: 'See how it works',
-                        onPressed: () {
-                          // TODO: Show how it works sheet
-                          context.pop();
-                        },
-                        color: colors.ink,
+                      DrevvyButton(
+                        label: _cta(_selected),
+                        variant: DrevvyButtonVariant.secondary,
+                        onPressed: _buying ? null : _buy,
+                        isLoading: _buying,
+                        isFullWidth: true,
                       ),
-                      const SizedBox(height: DrevvySpace.s4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              // TODO: Terms
-                            },
-                            child: Text(
-                              'Terms',
-                              style: text.callout.copyWith(color: colors.muted),
-                            ),
-                          ),
-                          Text(' · ', style: text.callout.copyWith(color: colors.muted)),
-                          TextButton(
-                            onPressed: () {
-                              // TODO: Privacy
-                            },
-                            child: Text(
-                              'Privacy',
-                              style: text.callout.copyWith(color: colors.muted),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: DrevvySpace.s2),
+                      Text(
+                        'One-time purchase. No recurring charges.',
+                        style: text.micro.copyWith(color: colors.muted),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -298,35 +258,3 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 }
-
-/// Value proposition row with check icon.
-class _ValueProp extends StatelessWidget {
-  const _ValueProp({
-    required this.icon,
-    required this.text,
-  });
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final textStyle = context.drevvyText;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 18, color: colors.mint),
-        ),
-        const SizedBox(width: DrevvySpace.s3),
-        Expanded(
-          child: Text(text, style: textStyle.body),
-        ),
-      ],
-    );
-  }
-}
-

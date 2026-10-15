@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../onboarding_controller.dart';
 import '../widgets/demo_offer_card.dart';
 import '../widgets/progress_dots.dart';
 
 /// Screen 02: Onboarding Welcome
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends ConsumerWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -29,7 +31,7 @@ class WelcomeScreen extends StatelessWidget {
                   const SizedBox(height: DrevvySpace.s8),
                   
                   // Progress dots
-                  const ProgressDots(current: 0, total: 5),
+                  const ProgressDots(current: 0, total: onboardingStepCount),
                   
                   const SizedBox(height: DrevvySpace.s8),
                   
@@ -56,7 +58,7 @@ class WelcomeScreen extends StatelessWidget {
                   const SizedBox(height: DrevvySpace.s3),
                   
                   Text(
-                    'Drevvy asks dealers for an itemized out-the-door\nprice and keeps going until you decide.',
+                    'Drevvy is a transparency layer. It uses market data to show a fair out-the-door price. Asking and shopping stay free.',
                     style: text.body.copyWith(color: colors.muted),
                     textAlign: TextAlign.center,
                   ),
@@ -84,9 +86,9 @@ class WelcomeScreen extends StatelessWidget {
                   
                   DrevvyGhostButton(
                     label: 'I already have an account',
-                    onPressed: () {
-                      // TODO: Navigate to sign in
-                      context.go('/shop');
+                    onPressed: () async {
+                      await completeFirstRun(ref);
+                      if (context.mounted) context.go('/shop');
                     },
                   ),
                   

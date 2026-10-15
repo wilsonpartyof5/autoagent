@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'money_format.dart';
+
 /// One-time car pack purchase options (v1.7).
 /// Packs never expire. RevenueCat products: drevvy_pack_3/5/10.
 enum CarPackType {
@@ -40,8 +42,11 @@ enum CarPackType {
   /// Per-car cost in cents.
   double get perCarCost => priceUsd / cars;
 
-  /// Per-car cost formatted as dollars.
-  String get perCarFormatted => '\$${perCarCost.toStringAsFixed(2)}';
+  /// Per-car cost formatted as dollars, e.g. "$9.70".
+  String get perCarFormatted => formatUsd(perCarCost, cents: true);
+
+  /// Pack price formatted as dollars, e.g. "$97".
+  String get priceFormatted => formatUsd(priceUsd);
 
   /// Display name for the pack.
   String get displayName => switch (this) {
@@ -69,11 +74,11 @@ enum CarPackType {
     final pct = savingsVsStarter;
     if (pct == null) return null;
     final dollars = savingsDollarsVsStarter!;
-    return 'Save ${pct.toStringAsFixed(1)}%/car · \$${dollars.toStringAsFixed(2)} vs Starter';
+    return 'Save ${pct.toStringAsFixed(1)}%/car · ${formatUsd(dollars, cents: true)} vs Starter';
   }
 
   /// CTA button text: "Get X cars for $Y".
-  String get ctaText => 'Get $cars cars for \$$priceUsd';
+  String get ctaText => 'Get $cars cars for $priceFormatted';
 }
 
 /// Reason for a credit balance change in the ledger.

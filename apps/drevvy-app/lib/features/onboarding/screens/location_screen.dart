@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
 /// Screen 04: Onboarding - Location pre-prompt
-class LocationScreen extends StatefulWidget {
+class LocationScreen extends ConsumerStatefulWidget {
   const LocationScreen({super.key});
 
   @override
-  State<LocationScreen> createState() => _LocationScreenState();
+  ConsumerState<LocationScreen> createState() => _LocationScreenState();
 }
 
-class _LocationScreenState extends State<LocationScreen> {
+class _LocationScreenState extends ConsumerState<LocationScreen> {
   final _zipController = TextEditingController();
   bool _showZipInput = false;
 
@@ -52,7 +54,7 @@ class _LocationScreenState extends State<LocationScreen> {
                   
                   const SizedBox(height: DrevvySpace.s4),
                   
-                  const ProgressDots(current: 2, total: 5),
+                  const ProgressDots(current: 2, total: onboardingStepCount),
                   
                   const Spacer(),
                   
@@ -121,13 +123,22 @@ class _LocationScreenState extends State<LocationScreen> {
                           counterText: '',
                         ),
                         style: text.body,
+                        onChanged: (_) => setState(() {}),
                       ),
                     ),
                     const SizedBox(height: DrevvySpace.s4),
                     DrevvyButton(
                       label: 'Continue',
                       onPressed: _zipController.text.length == 5
-                          ? () => context.push('/onboarding/preferences')
+                          ? () {
+                              ref.read(onboardingDraftProvider.notifier).update(
+                                    (draft) => draft.copyWith(
+                                      zip: _zipController.text,
+                                      locationGranted: false,
+                                    ),
+                                  );
+                              context.push('/onboarding/preferences');
+                            }
                           : null,
                       isFullWidth: true,
                     ),
@@ -136,7 +147,9 @@ class _LocationScreenState extends State<LocationScreen> {
                       label: 'Allow location',
                       icon: LucideIcons.mapPin,
                       onPressed: () {
-                        // TODO: Request location permission
+                        ref.read(onboardingDraftProvider.notifier).update(
+                              (draft) => draft.copyWith(locationGranted: true, clearZip: true),
+                            );
                         context.push('/onboarding/preferences');
                       },
                       isFullWidth: true,

@@ -9,8 +9,9 @@ import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
-import '../widgets/saved_car_card.dart';
 import '../../shop/widgets/account_sheet.dart';
+import '../../shop/widgets/unlock_paywall.dart';
+import '../widgets/saved_car_card.dart';
 
 enum SavedSortOption { recentlySaved, price, distance }
 
@@ -143,30 +144,31 @@ class _SavedScreenState extends State<SavedScreen> {
   Future<void> _handleUnlock(SavedCar savedCar) async {
     final listing = _listings[savedCar.listingId];
     if (listing == null) return;
-    
+
     final balance = await _repo.getCreditBalance();
-    
-    if (!balance.canUnlock) {
-      // Show pack picker or out of cars sheet
-      if (!mounted) return;
-      // TODO: Show appropriate sheet based on purchase history
-      return;
-    }
-    
-    // Move to deals
+    if (!mounted) return;
+
+    await showUnlockPaywall(
+      context: context,
+      listing: listing,
+      balance: balance,
+      repo: _repo,
+      onCanUnlock: (_) => _moveSavedToDeals(savedCar, listing),
+    );
+  }
+
+  Future<void> _moveSavedToDeals(SavedCar savedCar, Listing listing) async {
     final deal = await _repo.moveToDeals(savedCar.id);
-    if (deal == null) return;
-    
+    if (deal == null || !mounted) return;
+
     setState(() {
       _savedCars = _savedCars.where((sc) => sc.id != savedCar.id).toList();
     });
-    
+
     final newBalance = await _repo.getCreditBalance();
-    
     if (!mounted) return;
-    
+
     HapticFeedback.mediumImpact();
-    
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

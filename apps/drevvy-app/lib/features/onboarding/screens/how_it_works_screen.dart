@@ -1,41 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
 /// Screen 03: Onboarding - How it works
-class HowItWorksScreen extends StatelessWidget {
+class HowItWorksScreen extends ConsumerWidget {
   const HowItWorksScreen({super.key});
 
   static const _steps = [
     (
       icon: LucideIcons.search,
-      title: 'Find a car you like',
-      body: 'Browse or ask Drevvy for recommendations based on your needs.',
+      title: 'Ask or shop, free',
+      body: 'Asking and shopping stay unlimited. Browse market data with no car pack required.',
     ),
     (
-      icon: LucideIcons.plus,
-      title: 'Add it to Drevvy',
-      body: 'Tap "Add to Drevvy" and we\'ll reach out to the dealer for you.',
+      icon: LucideIcons.receipt,
+      title: 'Compare with market data',
+      body: 'Each car shows how its listed price sits against market data.',
     ),
     (
-      icon: LucideIcons.messageSquare,
-      title: 'We do the work',
-      body: 'Drevvy asks for an itemized out-the-door price and keeps going.',
+      icon: LucideIcons.sparkles,
+      title: 'Unlock my price',
+      body: 'When you want a written out-the-door quote, tap Unlock my price. That uses one car.',
     ),
     (
       icon: LucideIcons.check,
       title: 'You decide',
-      body: 'Review each offer and accept when you\'re ready. We never accept for you.',
+      body: 'Review the quote. Drevvy never accepts an offer for you.',
     ),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -58,7 +60,10 @@ class HowItWorksScreen extends StatelessWidget {
                       ),
                       const Spacer(),
                       TextButton(
-                        onPressed: () => context.go('/shop'),
+                        onPressed: () async {
+                          await completeFirstRun(ref);
+                          if (context.mounted) context.go('/shop');
+                        },
                         child: Text(
                           'Skip',
                           style: text.bodyStrong.copyWith(color: colors.muted),
@@ -70,7 +75,7 @@ class HowItWorksScreen extends StatelessWidget {
                 
                 const SizedBox(height: DrevvySpace.s4),
                 
-                const ProgressDots(current: 1, total: 5),
+                const ProgressDots(current: 1, total: onboardingStepCount),
                 
                 const SizedBox(height: DrevvySpace.s6),
                 

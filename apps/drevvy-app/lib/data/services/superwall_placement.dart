@@ -5,10 +5,19 @@ import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 import 'cars_balance_placement.dart';
 import 'purchase_config.dart';
 
+/// Superwall placement for the first-run paywall. The local screen is the fallback.
+const onboardingPaywallPlacementName = 'onboarding_paywall';
+
 /// Local sheet until a Superwall key exists, then placement `cars_balance_empty`.
 CarsBalancePlacement carsBalancePlacementFor(PurchaseConfig config) {
   if (!config.usesSuperwall) return const LocalCarsBalancePlacement();
   return SuperwallCarsBalancePlacement();
+}
+
+/// First-run paywall. With no Superwall key the Flutter paywall stays on screen.
+CarsBalancePlacement onboardingPaywallPlacementFor(PurchaseConfig config) {
+  if (!config.usesSuperwall) return const LocalCarsBalancePlacement();
+  return SuperwallCarsBalancePlacement(placementName: onboardingPaywallPlacementName);
 }
 
 /// Registers [CarsBalancePlacement.name] when Superwall is configured.
@@ -16,6 +25,10 @@ CarsBalancePlacement carsBalancePlacementFor(PurchaseConfig config) {
 /// If Superwall has no campaign for the placement, the local Out of cars
 /// sheet is presented so the pack copy stays in the app.
 class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
+  SuperwallCarsBalancePlacement({this.placementName = CarsBalancePlacement.name});
+
+  final String placementName;
+
   @override
   Future<void> register({
     required void Function() presentLocalPaywall,
@@ -49,7 +62,7 @@ class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
 
     try {
       await Superwall.shared.registerPlacement(
-        CarsBalancePlacement.name,
+        placementName,
         handler: handler,
         feature: () {
           if (presented) {

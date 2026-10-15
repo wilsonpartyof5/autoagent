@@ -8,6 +8,7 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/auth/auth_controller.dart';
+import '../onboarding_controller.dart';
 
 /// Screen 15: Create account (before payment)
 class CreateAccountScreen extends ConsumerStatefulWidget {
@@ -33,6 +34,8 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     setState(() => _busy = null);
     switch (result) {
       case AuthSuccess():
+        await completeFirstRun(ref);
+        if (!mounted) return;
         context.go('/shop');
       case AuthCancelled():
         break;
@@ -185,8 +188,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                   DrevvyButton(
                     label: 'Continue with email',
                     onPressed: _canContinue && _busy == null
-                        ? () {
+                        ? () async {
                             // Email OTP is not a consumer auth route. Continue in demo mode.
+                            await completeFirstRun(ref);
+                            if (!context.mounted) return;
                             context.go('/shop');
                           }
                         : null,

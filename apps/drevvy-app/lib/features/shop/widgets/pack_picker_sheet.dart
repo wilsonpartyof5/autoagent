@@ -4,6 +4,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
+import 'pack_option_card.dart';
 
 /// Screen X: Pack picker paywall sheet shown when user taps "Unlock my price".
 /// v1.7: Replaces monthly subscription with one-time car packs.
@@ -131,19 +132,19 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 const SizedBox(height: DrevvySpace.s5),
 
                 // Pack options
-                _PackOption(
+                PackOptionCard(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
                   onTap: () => setState(() => _selectedPack = CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
-                _PackOption(
+                PackOptionCard(
                   pack: CarPackType.plus,
                   isSelected: _selectedPack == CarPackType.plus,
                   onTap: () => setState(() => _selectedPack = CarPackType.plus),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
-                _PackOption(
+                PackOptionCard(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
                   onTap: () => setState(() => _selectedPack = CarPackType.bestValue),
@@ -228,145 +229,6 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
 
           SizedBox(height: bottomPadding + DrevvySpace.s4),
         ],
-      ),
-    );
-  }
-}
-
-/// Individual pack option with radio button.
-class _PackOption extends StatelessWidget {
-  const _PackOption({
-    required this.pack,
-    required this.isSelected,
-    required this.onTap,
-    this.showBadge = false,
-  });
-
-  final CarPackType pack;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final bool showBadge;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(DrevvySpace.s4),
-        decoration: BoxDecoration(
-          color: colors.tile,
-          borderRadius: BorderRadius.circular(DrevvyRadius.md),
-          border: Border.all(
-            color: isSelected ? colors.violet : colors.glassBorder,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Best Value badge
-            if (showBadge) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DrevvySpace.s2,
-                  vertical: DrevvySpace.s1,
-                ),
-                decoration: BoxDecoration(
-                  gradient: DrevvyColors.brandGradient,
-                  borderRadius: BorderRadius.circular(DrevvyRadius.pill),
-                ),
-                child: Text(
-                  'BEST VALUE',
-                  style: text.micro.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(height: DrevvySpace.s2),
-            ],
-
-            Row(
-              children: [
-                // Radio button
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected ? colors.violet : colors.track,
-                      width: 2,
-                    ),
-                    color: isSelected ? colors.violet : Colors.transparent,
-                  ),
-                  child: isSelected
-                      ? Icon(
-                          LucideIcons.check,
-                          size: 14,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-
-                const SizedBox(width: DrevvySpace.s3),
-
-                // Pack details
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            '${pack.cars} cars',
-                            style: text.bodyStrong,
-                          ),
-                          Text(
-                            ' · ${pack.displayName}',
-                            style: text.body.copyWith(color: colors.muted),
-                          ),
-                        ],
-                      ),
-                      if (pack.savingsText != null)
-                        Text(
-                          pack.savingsText!,
-                          style: text.callout.copyWith(color: colors.mint),
-                        )
-                      else
-                        Text(
-                          'One-time · never expires',
-                          style: text.callout.copyWith(color: colors.muted),
-                        ),
-                    ],
-                  ),
-                ),
-
-                // Price
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '\$${pack.priceUsd}',
-                      style: text.cardTitle,
-                    ),
-                    Text(
-                      '${pack.perCarFormatted}/car',
-                      style: text.callout.copyWith(
-                        color: isSelected && pack == CarPackType.bestValue
-                            ? colors.mint
-                            : colors.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

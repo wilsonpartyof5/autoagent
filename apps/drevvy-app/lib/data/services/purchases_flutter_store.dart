@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as rc;
 
 import '../models/car_pack.dart';
+import 'pack_offering.dart';
 import 'purchase_config.dart';
 import 'purchase_service.dart';
 import 'store_gateway.dart';
@@ -39,11 +40,7 @@ class PurchasesFlutterStore implements StoreGateway {
   Future<List<CarPackOffering>> getOfferings() async {
     final offerings = await rc.Purchases.getOfferings();
     final matched = <CarPackType, CarPackOffering>{};
-
-    final packages = <rc.Package>[
-      ...?offerings.current?.availablePackages,
-      for (final offering in offerings.all.values) ...offering.availablePackages,
-    ];
+    final packages = _packages(offerings);
     for (final package in packages) {
       final pack = CarPackType.fromProductId(package.storeProduct.identifier) ??
           CarPackType.fromProductId(package.identifier);
@@ -155,12 +152,18 @@ class PurchasesFlutterStore implements StoreGateway {
     return products.isNotEmpty;
   }
 
+  List<rc.Package> _packages(rc.Offerings offerings) {
+    return selectPackPackages<rc.Package>(
+      byOfferingId: {
+        for (final entry in offerings.all.entries) entry.key: entry.value.availablePackages,
+      },
+      currentPackages: offerings.current?.availablePackages,
+    );
+  }
+
   Future<rc.Package?> _packageFor(CarPackType packType) async {
     final offerings = await rc.Purchases.getOfferings();
-    final packages = <rc.Package>[
-      ...?offerings.current?.availablePackages,
-      for (final offering in offerings.all.values) ...offering.availablePackages,
-    ];
+    final packages = _packages(offerings);
     for (final package in packages) {
       final pack = CarPackType.fromProductId(package.storeProduct.identifier) ??
           CarPackType.fromProductId(package.identifier);
