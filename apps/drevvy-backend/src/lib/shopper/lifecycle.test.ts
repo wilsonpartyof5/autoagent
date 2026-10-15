@@ -13,6 +13,8 @@ import {
   type ShopperDealRepository,
   type ShopperDealRow,
 } from './deals';
+import type { ShopperPush } from '@/lib/push/events';
+
 import {
   addShopperCar,
   answerOutcome,
@@ -529,6 +531,50 @@ test('cron auth stays closed until the secret is set and lifecycle storage is op
   assert.equal(cron.includes('requireShopperAuth'), false);
   const admin = readFileSync(join(HERE, '../../app/api/admin/outcomes/route.ts'), 'utf8');
   assert.match(admin, /requireAdminApi/);
+});
+
+test('official offer, a sold car, and the day after pickup send push events once', async () => {
+  const box = harness('2026-10-12T15:00:00.000Z');
+  const pushes: ShopperPush[] = [];
+  box.deps.notify = async (push) => {
+    pushes.push(push);
+  };
+  const visited = await addCar(box, 'mc-listing-1');
+  const offer = {
+    latitude: 35.19,
+    longitude: -80.91,
+    radiusMeters: 150,
+    expectedPickupDate: '2026-10-12',
+    locationGranted: true,
+  };
+  await forwardOffer('shopper-1', visited.deal.id, offer, box.deps);
+  await forwardOffer('shopper-1', visited.deal.id, offer, box.deps);
+  await exitGeofence('shopper-1', visited.deal.id, box.deps);
+
+  const waiting = await addCar(box, 'mc-listing-2');
+  await forwardOffer('shopper-1', waiting.deal.id, { ...offer, locationGranted: false }, box.deps);
+
+  box.deps.now = new Date('2026-10-13T15:00:00.000Z');
+  await runLifecycleSchedule(box.deps);
+  await runLifecycleSchedule(box.deps);
+  await applyAgentEvent({
+    type: 'end',
+    dealId: waiting.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-13T16:00:00.000Z',
+  }, box.deps);
+  await applyAgentEvent({
+    type: 'end',
+    dealId: waiting.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-13T17:00:00.000Z',
+  }, box.deps);
+
+  assert.deepEqual(pushes.map((push) => push.event), ['official_offer', 'official_offer', 'did_you_buy', 'car_sold']);
+  assert.equal(pushes.every((push) => push.userId === 'shopper-1'), true);
+  assert.equal(/negotiat/i.test(JSON.stringify(pushes)), false);
 });
 
 function liveVehicle(listingId: string): LiveVehicle {

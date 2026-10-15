@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:shopper": "tsx --test src/lib/shopper/*.test.ts src/lib/consumer/*.test.ts",
+    "test:shopper": "tsx --test src/lib/shopper/*.test.ts src/lib/consumer/*.test.ts src/lib/push/*.test.ts",
     "test:get": "tsx --test src/lib/store-links.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
     "test:admin": "tsx --test src/lib/admin/*.test.ts",
