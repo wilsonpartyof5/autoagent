@@ -22,16 +22,19 @@ create index if not exists idx_leads_created_at on leads(created_at desc);
 alter table leads enable row level security;
 
 -- Users can view their own leads (scoped by user_id)
+drop policy if exists "Users can view own leads" on leads;
 create policy "Users can view own leads"
   on leads for select
   using (auth.uid() = user_id);
 
 -- System can insert leads (for lead ingestion)
+drop policy if exists "System can insert leads" on leads;
 create policy "System can insert leads"
   on leads for insert
   with check (true);
 
 -- Users can update their own leads
+drop policy if exists "Users can update own leads" on leads;
 create policy "Users can update own leads"
   on leads for update
   using (auth.uid() = user_id);

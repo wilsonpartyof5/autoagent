@@ -6,7 +6,8 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/shopper_session_store.dart';
-import '../../profile/widgets/memory_edit_sheet.dart';
+import '../../account/widgets/memory_facts_sheet.dart';
+import '../../account/widgets/recent_searches_sheet.dart';
 import 'pack_picker_sheet.dart';
 
 /// Account sheet per spec §6.16 (v1.8).
@@ -35,7 +36,7 @@ class _AccountSheetState extends State<AccountSheet> {
     final user = await _repo.getCurrentUser();
     final searchProfile = await _repo.getSearchProfile();
     final balance = await _repo.getCreditBalance();
-    
+
     setState(() {
       _user = user;
       _searchProfile = searchProfile;
@@ -78,9 +79,8 @@ class _AccountSheetState extends State<AccountSheet> {
     await ShopperSessionStore.instance.clear();
     if (!mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Signed out (demo)')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Signed out (demo)')));
   }
 
   void _handleDeleteAccount() {
@@ -99,7 +99,10 @@ class _AccountSheetState extends State<AccountSheet> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text('Cancel', style: text.body.copyWith(color: colors.muted)),
+              child: Text(
+                'Cancel',
+                style: text.body.copyWith(color: colors.muted),
+              ),
             ),
             TextButton(
               onPressed: () {
@@ -109,7 +112,10 @@ class _AccountSheetState extends State<AccountSheet> {
                   const SnackBar(content: Text('Account deleted (demo)')),
                 );
               },
-              child: Text('Delete', style: text.body.copyWith(color: colors.danger)),
+              child: Text(
+                'Delete',
+                style: text.body.copyWith(color: colors.danger),
+              ),
             ),
           ],
         );
@@ -117,63 +123,46 @@ class _AccountSheetState extends State<AccountSheet> {
     );
   }
 
-  void _showClearHistoryConfirm() {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Clear history?', style: text.title),
-        content: Text(
-          'Clear your chat history and search profile? Deals and offers are not affected.',
-          style: text.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('Cancel', style: text.body.copyWith(color: colors.muted)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _repo.clearHistory();
-              setState(() {
-                _searchProfile = _searchProfile!.copyWith(
-                  items: _searchProfile!.items.where((i) => i.source == MemorySource.explicit).toList(),
-                  searches: [],
-                  viewed: [],
-                );
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('History cleared')),
-              );
-            },
-            child: Text('Clear', style: text.body.copyWith(color: colors.danger)),
-          ),
-        ],
-      ),
+  Future<void> _openMemoryFacts() async {
+    final items = _searchProfile?.items ?? const <MemoryItem>[];
+    await MemoryFactsSheet.show(
+      context,
+      items: items,
+      onChanged: (next) {
+        final updated = _searchProfile?.copyWith(items: next);
+        if (updated == null) return;
+        setState(() => _searchProfile = updated);
+        _repo.updateSearchProfile(updated);
+      },
     );
   }
 
-  void _editMemoryItem(MemoryItem item) {
-    MemoryEditSheet.show(
-      context,
-      item: item,
-      onSave: (updatedItem) {
-        setState(() {
-          _searchProfile = _searchProfile?.copyWith(
-            items: _searchProfile!.items.map((i) {
-              return i.id == updatedItem.id ? updatedItem : i;
-            }).toList(),
-          );
-        });
-        _repo.updateSearchProfile(_searchProfile!);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${updatedItem.kind.label} updated')),
-        );
-      },
+  Future<void> _openRecentSearches() async {
+    final searches = List<SavedSearch>.from(
+      _searchProfile?.searches ?? const [],
     );
+    final ran = await RecentSearchesSheet.show(
+      context,
+      searches: searches,
+      onRun: (search) {
+        _repo.markSavedSearchRun(search.id);
+      },
+      onDelete: (search) {
+        _repo.deleteSavedSearch(search.id);
+      },
+      onRestore: (search, index) {
+        _repo.restoreSavedSearch(search, index);
+      },
+      onClearAll: _repo.clearSavedSearches,
+    );
+    if (!mounted) return;
+    if (ran) {
+      Navigator.pop(context);
+      return;
+    }
+    final profile = await _repo.getSearchProfile();
+    if (!mounted) return;
+    setState(() => _searchProfile = profile);
   }
 
   @override
@@ -214,7 +203,10 @@ class _AccountSheetState extends State<AccountSheet> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Padding(
-                    padding: const EdgeInsets.only(right: DrevvySpace.s3, top: DrevvySpace.s2),
+                    padding: const EdgeInsets.only(
+                      right: DrevvySpace.s3,
+                      top: DrevvySpace.s2,
+                    ),
                     child: IconButton(
                       icon: Icon(LucideIcons.x, color: colors.muted),
                       onPressed: () => Navigator.pop(context),
@@ -224,7 +216,9 @@ class _AccountSheetState extends State<AccountSheet> {
 
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.gutter,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -269,7 +263,7 @@ class _AccountSheetState extends State<AccountSheet> {
 
   Widget _buildAccountHeader(DrevvyColors colors, DrevvyText text) {
     final user = _user!;
-    
+
     return Row(
       children: [
         Container(
@@ -326,7 +320,9 @@ class _AccountSheetState extends State<AccountSheet> {
               ),
               Text(
                 'cars left · packs never expire',
-                style: text.callout.copyWith(color: Colors.white.withValues(alpha: 0.8)),
+                style: text.callout.copyWith(
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
               ),
             ],
           ),
@@ -353,11 +349,12 @@ class _AccountSheetState extends State<AccountSheet> {
     );
   }
 
-  Widget _buildSectionLabel(DrevvyText text, DrevvyColors colors, String label) {
-    return Text(
-      label,
-      style: text.label.copyWith(color: colors.muted),
-    );
+  Widget _buildSectionLabel(
+    DrevvyText text,
+    DrevvyColors colors,
+    String label,
+  ) {
+    return Text(label, style: text.label.copyWith(color: colors.muted));
   }
 
   Widget _buildSearchProfile(DrevvyColors colors, DrevvyText text) {
@@ -378,9 +375,8 @@ class _AccountSheetState extends State<AccountSheet> {
           ),
           Divider(height: 1, color: colors.line),
 
-          // Budget, body, makes, location summary
           _SettingsRow(
-            label: 'Budget, body, makes, location',
+            label: 'Remembered facts',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -390,29 +386,21 @@ class _AccountSheetState extends State<AccountSheet> {
               ],
             ),
             subtitle: _buildPreferencesSummary(),
-            onTap: () {
-              if (profile.items.isNotEmpty) {
-                _editMemoryItem(profile.items.first);
-              }
-            },
+            onTap: _openMemoryFacts,
           ),
           Divider(height: 1, color: colors.line),
 
-          // Recent searches
           _SettingsRow(
             label: 'Recent searches',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${profile.searches.length} searches · Clear history',
-                  style: text.label.copyWith(color: colors.muted),
-                ),
-                const SizedBox(width: 4),
-                Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
-              ],
+            subtitle: profile.searches.isEmpty
+                ? 'Run again, delete, or clear all'
+                : '${profile.searches.length} saved',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
             ),
-            onTap: _showClearHistoryConfirm,
+            onTap: _openRecentSearches,
           ),
         ],
       ),
@@ -420,20 +408,9 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   String _buildPreferencesSummary() {
-    final prefs = _user?.prefs;
-    if (prefs == null) return '';
-    
-    final parts = <String>[];
-    if (prefs.budgetOtd != null) {
-      parts.add('Under \$${(prefs.budgetOtd! / 1000).round()},000');
-    }
-    if (prefs.bodyTypes.isNotEmpty) {
-      parts.add(prefs.bodyTypes.first);
-    }
-    parts.add('Toyota, Honda');
-    parts.add(_user?.zipCode ?? '30301');
-    
-    return parts.join(' · ');
+    final items = _searchProfile?.items ?? const <MemoryItem>[];
+    if (items.isEmpty) return 'Add facts Drevvy should remember';
+    return items.map((item) => item.displayValue).join(' · ');
   }
 
   Widget _buildSettings(DrevvyColors colors, DrevvyText text) {
@@ -444,7 +421,11 @@ class _AccountSheetState extends State<AccountSheet> {
             icon: LucideIcons.bell,
             label: 'Notifications',
             subtitle: 'Price drops, offers, official offer',
-            trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
             onTap: () {},
           ),
           Divider(height: 1, color: colors.line),
@@ -452,14 +433,22 @@ class _AccountSheetState extends State<AccountSheet> {
             icon: LucideIcons.mapPin,
             label: 'Location',
             subtitle: 'While using · pickup check off',
-            trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
             onTap: () {},
           ),
           Divider(height: 1, color: colors.line),
           _SettingsRow(
             icon: LucideIcons.rotateCcw,
             label: 'Restore purchases',
-            trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
             onTap: () async {
               await _repo.restorePurchases();
               if (mounted) {
@@ -490,10 +479,7 @@ class _AccountSheetState extends State<AccountSheet> {
       children: [
         GestureDetector(
           onTap: _handleSignOut,
-          child: Text(
-            'Sign out',
-            style: text.body.copyWith(color: colors.ink),
-          ),
+          child: Text('Sign out', style: text.body.copyWith(color: colors.ink)),
         ),
         const SizedBox(height: DrevvySpace.s4),
         GestureDetector(
@@ -549,6 +535,8 @@ class _SettingsRow extends StatelessWidget {
                       Text(
                         subtitle!,
                         style: text.callout.copyWith(color: colors.muted),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                   ],
                 ),

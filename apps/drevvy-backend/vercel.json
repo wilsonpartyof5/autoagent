@@ -3,5 +3,18 @@
   "outputDirectory": ".next",
   "installCommand": "cd ../.. && npx -y pnpm@8.15.0 install --filter @drevvy/backend... --no-frozen-lockfile",
   "framework": "nextjs",
-  "crons": []
+  "crons": [
+    {
+      "path": "/api/cron/vendor-status",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/brain-health",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/brain-digest",
+      "schedule": "0 12 * * *"
+    }
+  ]
 }

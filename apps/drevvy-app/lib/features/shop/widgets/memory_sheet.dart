@@ -13,15 +13,18 @@ class MemorySheet extends StatefulWidget {
   const MemorySheet({
     super.key,
     required this.items,
+    this.enabledItemIds,
     required this.onItemsChanged,
   });
 
   final List<MemoryItem> items;
+  final Set<String>? enabledItemIds;
   final ValueChanged<Set<String>> onItemsChanged;
 
   static Future<void> show(
     BuildContext context, {
     required List<MemoryItem> items,
+    Set<String>? enabledItemIds,
     required ValueChanged<Set<String>> onItemsChanged,
   }) {
     return showModalBottomSheet(
@@ -30,6 +33,7 @@ class MemorySheet extends StatefulWidget {
       backgroundColor: Colors.transparent,
       builder: (context) => MemorySheet(
         items: items,
+        enabledItemIds: enabledItemIds,
         onItemsChanged: onItemsChanged,
       ),
     );
@@ -45,7 +49,9 @@ class _MemorySheetState extends State<MemorySheet> {
   @override
   void initState() {
     super.initState();
-    _enabledItemIds = widget.items.map((i) => i.id).toSet();
+    _enabledItemIds = Set<String>.of(
+      widget.enabledItemIds ?? widget.items.map((item) => item.id),
+    );
   }
 
   void _toggleItem(String itemId) {

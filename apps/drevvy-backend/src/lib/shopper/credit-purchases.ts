@@ -1,0 +1,146 @@
+/**
+ * Car-pack purchases. The client may send a credit count; the server ignores it
+ * and maps productId to the pack. Credits are granted only after RevenueCat
+ * confirms the transaction, or from an authenticated RevenueCat webhook.
+ */
+
+import { tokensEqual } from '@/lib/auth/tokens';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import {
+  purchaseCredits,
+  reversePurchaseCredits,
+  type ShopperCredits,
+} from './credits';
+
+export const CREDIT_PRODUCTS = {
+  drevvy_pack_3: { size: 3, priceUsd: 47 },
+  drevvy_pack_5: { size: 5, priceUsd: 67 },
+  drevvy_pack_10: { size: 10, priceUsd: 97 },
+} as const;
+
+export type CreditProductId = keyof typeof CREDIT_PRODUCTS;
+
+export type CreditBalanceData = {
+  balance: number;
+  lifetimePurchased: number;
+  lifetimeUsed: number;
+  lifetimeRefunded: number;
+};
+
+export type RevenueCatPurchaseRecord = {
+  id?: string | null;
+  store_transaction_id?: string | null;
+  transaction_id?: string | null;
+};
+
+export type RevenueCatSubscriber = {
+  non_subscriptions?: Record<string, RevenueCatPurchaseRecord[] | null> | null;
+};
+
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function packForProductId(productId: string): { productId: CreditProductId; size: number; priceUsd: number } | null {
+  if (Object.prototype.hasOwnProperty.call(CREDIT_PRODUCTS, productId)) {
+    const id = productId as CreditProductId;
+    return { productId: id, ...CREDIT_PRODUCTS[id] };
+  }
+  return null;
+}
+
+export function creditBalanceData(credits: ShopperCredits): CreditBalanceData {
+  return {
+    balance: credits.balance,
+    lifetimePurchased: credits.lifetimePurchased,
+    lifetimeUsed: credits.lifetimeUsed,
+    lifetimeRefunded: credits.lifetimeRefunded,
+  };
+}
+
+export function purchasesConfigured(apiKey: string | undefined): boolean {
+  return typeof apiKey === 'string' && apiKey.trim() !== '';
+}
+
+export function webhookAuthorized(authorization: string | null, secret: string | undefined): boolean {
+  if (!secret) return false;
+  if (tokensEqual(authorization, secret)) return true;
+  return tokensEqual(authorization, `Bearer ${secret}`);
+}
+
+export function findVerifiedPurchase(
+  subscriber: RevenueCatSubscriber,
+  transactionId: string,
+  expectedProductId?: string,
+): { productId: CreditProductId; size: number; priceUsd: number } | null {
+  const expected = expectedProductId ? packForProductId(expectedProductId) : null;
+  if (expectedProductId && !expected) return null;
+  const groups = subscriber.non_subscriptions ?? {};
+  for (const [productId, purchases] of Object.entries(groups)) {
+    const pack = packForProductId(productId);
+    if (!pack) continue;
+    if (expected && expected.productId !== pack.productId) continue;
+    for (const purchase of purchases ?? []) {
+      const ids = [purchase.id, purchase.store_transaction_id, purchase.transaction_id];
+      if (ids.includes(transactionId)) return pack;
+    }
+  }
+  return null;
+}
+
+export async function fetchRevenueCatSubscriber(
+  appUserId: string,
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: true; subscriber: RevenueCatSubscriber } | { ok: false; status: number }> {
+  const response = await fetchImpl(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+  if (response.status === 404) return { ok: true, subscriber: { non_subscriptions: {} } };
+  if (!response.ok) return { ok: false, status: response.status };
+  const body = await response.json() as { subscriber?: RevenueCatSubscriber };
+  return { ok: true, subscriber: body.subscriber ?? { non_subscriptions: {} } };
+}
+
+export function isConsumerUserId(value: string): boolean {
+  return USER_ID.test(value);
+}
+
+export type RevenueCatWebhookEvent = {
+  type?: string;
+  app_user_id?: string;
+  product_id?: string;
+  transaction_id?: string;
+  id?: string;
+};
+
+export async function applyRevenueCatEvent(
+  supabase: SupabaseClient,
+  event: RevenueCatWebhookEvent,
+): Promise<{ applied: 'granted' | 'reversed' | 'ignored'; credits: ShopperCredits | null }> {
+  const type = event.type ?? '';
+  const userId = event.app_user_id ?? '';
+  const transactionId = event.transaction_id ?? '';
+  const pack = event.product_id ? packForProductId(event.product_id) : null;
+  if (!isConsumerUserId(userId) || !transactionId || !pack) {
+    return { applied: 'ignored', credits: null };
+  }
+
+  if (type === 'NON_RENEWING_PURCHASE') {
+    const result = await purchaseCredits(supabase, userId, pack.size, pack.priceUsd, transactionId);
+    return { applied: result.success ? 'granted' : 'ignored', credits: result.credits };
+  }
+
+  if (type === 'REFUND' || type === 'CANCELLATION') {
+    const result = await reversePurchaseCredits(supabase, userId, pack.size, transactionId);
+    return { applied: result.success ? 'reversed' : 'ignored', credits: result.credits };
+  }
+
+  return { applied: 'ignored', credits: null };
+}

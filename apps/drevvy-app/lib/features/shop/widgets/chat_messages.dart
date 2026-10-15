@@ -14,6 +14,7 @@ class ChatMessages extends StatelessWidget {
     required this.isLoading,
     required this.onShopTap,
     this.memoryItems,
+    this.enabledMemoryIds,
     this.onMemoryItemsChanged,
   });
 
@@ -21,6 +22,7 @@ class ChatMessages extends StatelessWidget {
   final bool isLoading;
   final ValueChanged<String> onShopTap;
   final List<MemoryItem>? memoryItems;
+  final Set<String>? enabledMemoryIds;
   final ValueChanged<Set<String>>? onMemoryItemsChanged;
 
   void _showMemorySheet(BuildContext context) {
@@ -29,6 +31,7 @@ class ChatMessages extends StatelessWidget {
     MemorySheet.show(
       context,
       items: memoryItems!,
+      enabledItemIds: enabledMemoryIds,
       onItemsChanged: onMemoryItemsChanged ?? (_) {},
     );
   }

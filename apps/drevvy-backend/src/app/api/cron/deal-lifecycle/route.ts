@@ -13,7 +13,8 @@ import { getLifecycleRepository } from '@/lib/shopper/lifecycle-store';
  * pickup when no geofence exit was recorded or location was not granted,
  * and marks open deals ended_no_response five days after the first outreach
  * with no reply. Requires Authorization: Bearer $DREVVY_CRON_SECRET.
- * Responds 404 when that secret is unset. Push delivery is recorded only.
+ * Responds 404 when that secret is unset. The day-after-pickup prompt also
+ * sends did_you_buy. That send is a no-op until FCM env vars are set.
  */
 
 export const dynamic = 'force-dynamic';

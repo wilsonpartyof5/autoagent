@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const auth = await requireShopperAuth(request);
     const deps = await shopperDeps(auth.userId);
     const result = await listShopperCars(auth.userId, deps);
-    return NextResponse.json({ success: true, data: result.deals, quota: result.quota });
+    return NextResponse.json({ success: true, data: result.deals, credits: result.credits });
   } catch (error) {
     return shopperDealErrorResponse(error);
   }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const input = readCreateDealInput(body);
     const deps = await shopperDeps(auth.userId);
     const result = await addShopperCar(auth.userId, input, deps);
-    return NextResponse.json({ success: true, data: result.deal, quota: result.quota });
+    return NextResponse.json({ success: true, data: result.deal, credits: result.credits });
   } catch (error) {
     return shopperDealErrorResponse(error);
   }

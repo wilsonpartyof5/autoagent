@@ -12,12 +12,12 @@ void main() {
       final now = DateTime.now();
       return DateTime(now.year, now.month, now.day, hour);
     }
-    
+
     DateTime yesterdayAt(int hour) {
       final today = todayAt(hour);
       return today.subtract(const Duration(days: 1));
     }
-    
+
     DateTime daysAgoAt(int days, int hour) {
       final today = todayAt(hour);
       return today.subtract(Duration(days: days));
@@ -64,10 +64,7 @@ void main() {
       newChatCalled = false;
     });
 
-    Widget buildTestWidget({
-      List<ChatThread>? chats,
-      String? currentChatId,
-    }) {
+    Widget buildTestWidget({List<ChatThread>? chats, String? currentChatId}) {
       return MaterialApp(
         theme: drevvyTheme(Brightness.light),
         home: Scaffold(
@@ -172,7 +169,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No chats yet.'), findsOneWidget);
-      expect(find.text('Your conversations will show up here.'), findsOneWidget);
+      expect(
+        find.text('Your conversations will show up here.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Footer note about deals is shown', (tester) async {
@@ -181,7 +181,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Chats about a car you added live in that deal, under Deals.'),
+        find.text(
+          'Chats about a car you added live in that deal, under Deals.',
+        ),
         findsOneWidget,
       );
     });
@@ -216,6 +218,42 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Ask ·'), findsWidgets);
+    });
+
+    testWidgets('Recent searches row opens from the menu', (tester) async {
+      var opened = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: Scaffold(
+            drawer: ChatHistoryDrawer(
+              chats: testChats,
+              currentChatId: null,
+              onNewChat: () {},
+              onSelectChat: (_) {},
+              onDeleteChat: (_) {},
+              onRenameChat: (_, _) {},
+              onRecentSearches: () => opened = true,
+              recentSearchCount: 2,
+            ),
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.text('Recent searches'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+
+      await tester.tap(find.text('Recent searches'));
+      await tester.pumpAndSettle();
+      expect(opened, isTrue);
     });
 
     testWidgets('Drawer has correct width (max 318)', (tester) async {

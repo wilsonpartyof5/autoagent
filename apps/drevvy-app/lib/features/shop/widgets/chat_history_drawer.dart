@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
@@ -19,6 +20,8 @@ class ChatHistoryDrawer extends StatefulWidget {
     required this.onSelectChat,
     required this.onDeleteChat,
     required this.onRenameChat,
+    this.onRecentSearches,
+    this.recentSearchCount,
   });
 
   final List<ChatThread> chats;
@@ -27,6 +30,8 @@ class ChatHistoryDrawer extends StatefulWidget {
   final ValueChanged<ChatThread> onSelectChat;
   final ValueChanged<String> onDeleteChat;
   final void Function(String chatId, String newTitle) onRenameChat;
+  final VoidCallback? onRecentSearches;
+  final int? recentSearchCount;
 
   @override
   State<ChatHistoryDrawer> createState() => _ChatHistoryDrawerState();
@@ -96,15 +101,27 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
 
   String _monthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[month - 1];
   }
 
   String _formatTime(DateTime? date) {
     if (date == null) return '';
-    final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
+    final hour = date.hour > 12
+        ? date.hour - 12
+        : (date.hour == 0 ? 12 : date.hour);
     final period = date.hour >= 12 ? 'PM' : 'AM';
     final minute = date.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';
@@ -130,7 +147,10 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
             ),
             ListTile(
               leading: Icon(LucideIcons.trash2, color: colors.danger),
-              title: Text('Delete', style: text.body.copyWith(color: colors.danger)),
+              title: Text(
+                'Delete',
+                style: text.body.copyWith(color: colors.danger),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 widget.onDeleteChat(chat.id);
@@ -212,7 +232,9 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
 
             // Search field
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+              padding: const EdgeInsets.symmetric(
+                horizontal: DrevvySpace.gutter,
+              ),
               child: SizedBox(
                 height: DrevvySpace.minTap,
                 child: TextField(
@@ -221,7 +243,11 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                   decoration: InputDecoration(
                     hintText: 'Search chats',
                     hintStyle: text.body.copyWith(color: colors.placeholder),
-                    prefixIcon: Icon(LucideIcons.search, color: colors.muted, size: 18),
+                    prefixIcon: Icon(
+                      LucideIcons.search,
+                      color: colors.muted,
+                      size: 18,
+                    ),
                     filled: true,
                     fillColor: colors.tile,
                     border: OutlineInputBorder(
@@ -238,7 +264,9 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
 
             // New chat button
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+              padding: const EdgeInsets.symmetric(
+                horizontal: DrevvySpace.gutter,
+              ),
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
@@ -249,7 +277,9 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                   borderRadius: BorderRadius.circular(DrevvyRadius.sm),
                   child: Container(
                     height: DrevvySpace.minTap,
-                    padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.s3,
+                    ),
                     decoration: BoxDecoration(
                       color: colors.lilacTint,
                       borderRadius: BorderRadius.circular(DrevvyRadius.sm),
@@ -269,6 +299,60 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
               ),
             ),
 
+            if (widget.onRecentSearches != null) ...[
+              const SizedBox(height: DrevvySpace.s2),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: DrevvySpace.gutter,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onRecentSearches!();
+                    },
+                    borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minHeight: DrevvySpace.minTap,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DrevvySpace.s3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.tile,
+                        borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            LucideIcons.history,
+                            color: colors.violet,
+                            size: 18,
+                          ),
+                          const SizedBox(width: DrevvySpace.s2),
+                          Expanded(
+                            child: Text(
+                              'Recent searches',
+                              style: text.bodyStrong.copyWith(
+                                color: colors.ink,
+                              ),
+                            ),
+                          ),
+                          if (widget.recentSearchCount != null)
+                            Text(
+                              '${widget.recentSearchCount}',
+                              style: text.label.copyWith(color: colors.muted),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
             const SizedBox(height: DrevvySpace.s4),
 
             // Chat list
@@ -276,10 +360,14 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
               child: filteredChats.isEmpty
                   ? _EmptyState()
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DrevvySpace.gutter,
+                      ),
                       itemCount: groupedChats.keys.length,
                       itemBuilder: (context, groupIndex) {
-                        final groupName = groupedChats.keys.elementAt(groupIndex);
+                        final groupName = groupedChats.keys.elementAt(
+                          groupIndex,
+                        );
                         final groupChats = groupedChats[groupName]!;
 
                         return Column(
@@ -295,16 +383,19 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                                 style: text.label.copyWith(color: colors.muted),
                               ),
                             ),
-                            ...groupChats.map((chat) => _ChatRow(
-                              chat: chat,
-                              isSelected: chat.id == widget.currentChatId,
-                              onTap: () {
-                                Navigator.pop(context);
-                                widget.onSelectChat(chat);
-                              },
-                              onLongPress: () => _showChatOptions(context, chat),
-                              formatTime: _formatTime,
-                            )),
+                            ...groupChats.map(
+                              (chat) => _ChatRow(
+                                chat: chat,
+                                isSelected: chat.id == widget.currentChatId,
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  widget.onSelectChat(chat);
+                                },
+                                onLongPress: () =>
+                                    _showChatOptions(context, chat),
+                                formatTime: _formatTime,
+                              ),
+                            ),
                           ],
                         );
                       },
@@ -347,9 +438,12 @@ class _ChatRow extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
 
-    final modeIcon = chat.mode == ChatMode.ask ? LucideIcons.sparkles : LucideIcons.messageSquare;
+    final modeIcon = chat.mode == ChatMode.ask
+        ? LucideIcons.sparkles
+        : LucideIcons.messageSquare;
     final modeLabel = chat.mode == ChatMode.ask ? 'Ask' : 'Shop';
-    final timeOrResults = chat.mode == ChatMode.shop && chat.sourcesCount != null
+    final timeOrResults =
+        chat.mode == ChatMode.shop && chat.sourcesCount != null
         ? '${chat.sourcesCount} results'
         : formatTime(chat.updatedAt ?? chat.createdAt);
 
