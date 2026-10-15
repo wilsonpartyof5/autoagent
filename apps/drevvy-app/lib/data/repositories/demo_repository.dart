@@ -1,5 +1,8 @@
 import '../models/models.dart';
+import '../services/credits_endpoint.dart';
+import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
+import '../services/purchase_service_factory.dart';
 import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
@@ -17,15 +20,33 @@ import '../../core/theme/drevvy_tokens.dart';
 /// - Supabase auth
 /// - RevenueCat/Superwall for billing (products: drevvy_pack_3/5/10)
 class DemoRepository {
-  DemoRepository._();
-  static final instance = DemoRepository._();
+  DemoRepository({
+    PurchaseConfig? config,
+    PurchaseService? purchaseService,
+    CreditsEndpoint? credits,
+    this._networkDelay = const Duration(milliseconds: 500),
+    CarCreditBalance? initialBalance,
+  }) {
+    final resolved = config ?? PurchaseConfig.fromEnvironment();
+    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _purchaseService = purchaseService ?? buildPurchaseService(resolved);
+    if (initialBalance != null) {
+      _creditBalance = initialBalance;
+    }
+  }
+
+  static final instance = DemoRepository();
+
+  final Duration _networkDelay;
+  late final CreditsEndpoint _credits;
+  late final PurchaseService _purchaseService;
 
   /// Shop listens so "Run again" from the menu or account sheet opens results.
   void Function(SavedSearch search)? onSavedSearchRun;
 
   // Simulated delay for realistic loading states
-  Future<T> _delay<T>(T value, [Duration duration = const Duration(milliseconds: 500)]) async {
-    await Future.delayed(duration);
+  Future<T> _delay<T>(T value, [Duration? duration]) async {
+    await Future.delayed(duration ?? _networkDelay);
     return value;
   }
 
@@ -84,13 +105,6 @@ class DemoRepository {
     kind: 'market',
   );
   
-  /// Purchase service for car packs.
-  late final PurchaseService _purchaseService = FakePurchaseService(
-    onPurchaseComplete: (packType, credits) {
-      _addCredits(credits, CreditReason.purchase, packType: packType);
-    },
-  );
-  
   /// Get current car credit balance.
   Future<CarCreditBalance> getCreditBalance() async {
     return _delay(_creditBalance);
@@ -109,10 +123,14 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
   
-  /// Purchase a car pack. Returns the result and updates balance.
+  /// Purchase a car pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     await _purchaseService.initialize();
-    return _purchaseService.purchasePack(packType);
+    final result = await _purchaseService.purchasePack(packType);
+    if (result is PurchaseSuccess) {
+      await _recordPurchase(result);
+    }
+    return result;
   }
   
   /// Spend 1 credit for "Unlock my price".
@@ -166,15 +184,57 @@ class DemoRepository {
     return true;
   }
   
+  /// Record a store purchase. Server balance wins when the credits route exists.
+  Future<void> _recordPurchase(PurchaseSuccess result) async {
+    if (_hasTransaction(result.transactionId)) return;
+
+    final remote = await _credits.grantPurchase(
+      productId: result.packType.productId,
+      transactionId: result.transactionId,
+    );
+    if (remote != null) {
+      _rememberTransaction(result.transactionId, result.creditsAdded, result.packType);
+      _creditBalance = remote;
+      return;
+    }
+    _addCredits(
+      result.creditsAdded,
+      CreditReason.purchase,
+      packType: result.packType,
+      rcEventId: result.transactionId,
+    );
+  }
+
+  bool _hasTransaction(String transactionId) {
+    return _creditLedger.any((entry) => entry.rcEventId == transactionId);
+  }
+
+  void _rememberTransaction(String transactionId, int credits, CarPackType packType) {
+    if (_hasTransaction(transactionId)) return;
+    _creditLedger.add(
+      CreditLedgerEntry(
+        id: 'ledger_$transactionId',
+        userId: _currentUser?.id ?? 'user_demo_001',
+        delta: credits,
+        reason: CreditReason.purchase,
+        createdAt: DateTime.now(),
+        packType: packType,
+        rcEventId: transactionId,
+      ),
+    );
+  }
+
   /// Add credits (from purchase).
-  void _addCredits(int credits, CreditReason reason, {CarPackType? packType}) {
+  void _addCredits(int credits, CreditReason reason, {CarPackType? packType, String? rcEventId}) {
+    if (rcEventId != null && _hasTransaction(rcEventId)) return;
     final entry = CreditLedgerEntry(
-      id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'ledger_${rcEventId ?? DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
       delta: credits,
       reason: reason,
       createdAt: DateTime.now(),
       packType: packType,
+      rcEventId: rcEventId,
     );
     _creditLedger.add(entry);
     
@@ -197,9 +257,42 @@ class DemoRepository {
     return _purchaseService.getOfferings();
   }
   
-  /// Restore purchases.
+  /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
-    return _purchaseService.restorePurchases();
+    await _purchaseService.initialize();
+    final result = await _purchaseService.restorePurchases();
+    if (result is RestoreError) return result;
+
+    final transactions = switch (result) {
+      RestoreSuccess(:final transactions) => transactions,
+      _ => const <RestoredTransaction>[],
+    };
+    final remote = await _credits.restorePurchases(
+      transactionIds: [for (final transaction in transactions) transaction.transactionId],
+    );
+    if (remote != null) {
+      for (final transaction in transactions) {
+        _rememberTransaction(transaction.transactionId, transaction.packType.cars, transaction.packType);
+      }
+      _creditBalance = remote;
+      if (transactions.isEmpty) return const RestoreNoPurchases();
+      return RestoreSuccess(creditsRestored: remote.balance, transactions: transactions);
+    }
+
+    if (transactions.isEmpty) return const RestoreNoPurchases();
+
+    var added = 0;
+    for (final transaction in transactions) {
+      final before = _creditBalance.balance;
+      _addCredits(
+        transaction.packType.cars,
+        CreditReason.purchase,
+        packType: transaction.packType,
+        rcEventId: transaction.transactionId,
+      );
+      added += _creditBalance.balance - before;
+    }
+    return RestoreSuccess(creditsRestored: added, transactions: transactions);
   }
 
   // ============== LISTINGS ==============

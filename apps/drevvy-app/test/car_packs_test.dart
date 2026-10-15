@@ -68,6 +68,13 @@ void main() {
       expect(CarPackType.plus.displayName, 'Plus');
       expect(CarPackType.bestValue.displayName, 'Best Value');
     });
+
+    test('product ids map back to packs', () {
+      expect(CarPackType.fromProductId('drevvy_pack_3'), CarPackType.starter);
+      expect(CarPackType.fromProductId('drevvy_pack_5'), CarPackType.plus);
+      expect(CarPackType.fromProductId('drevvy_pack_10'), CarPackType.bestValue);
+      expect(CarPackType.fromProductId('unknown'), isNull);
+    });
   });
 
   group('CarCreditBalance', () {

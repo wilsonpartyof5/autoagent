@@ -5,6 +5,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/shopper_session_store.dart';
 import '../../account/widgets/memory_facts_sheet.dart';
 import '../../account/widgets/recent_searches_sheet.dart';
 import 'pack_picker_sheet.dart';
@@ -74,7 +75,9 @@ class _AccountSheetState extends State<AccountSheet> {
     );
   }
 
-  void _handleSignOut() {
+  Future<void> _handleSignOut() async {
+    await ShopperSessionStore.instance.clear();
+    if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Signed out (demo)')));

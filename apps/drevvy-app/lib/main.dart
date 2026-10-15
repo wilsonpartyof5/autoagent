@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
+import 'data/services/purchase_bootstrap.dart';
+import 'data/services/purchase_config.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await PurchaseBootstrap.start(PurchaseConfig.fromEnvironment());
   runApp(const ProviderScope(child: DrevvyApp()));
 }
 
