@@ -1,5 +1,8 @@
 import '../models/models.dart';
+import '../services/credits_endpoint.dart';
+import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
+import '../services/purchase_service_factory.dart';
 import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
@@ -17,12 +20,33 @@ import '../../core/theme/drevvy_tokens.dart';
 /// - Supabase auth
 /// - RevenueCat/Superwall for billing (products: drevvy_pack_3/5/10)
 class DemoRepository {
-  DemoRepository._();
-  static final instance = DemoRepository._();
+  DemoRepository({
+    PurchaseConfig? config,
+    PurchaseService? purchaseService,
+    CreditsEndpoint? credits,
+    this._networkDelay = const Duration(milliseconds: 500),
+    CarCreditBalance? initialBalance,
+  }) {
+    final resolved = config ?? PurchaseConfig.fromEnvironment();
+    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _purchaseService = purchaseService ?? buildPurchaseService(resolved);
+    if (initialBalance != null) {
+      _creditBalance = initialBalance;
+    }
+  }
+
+  static final instance = DemoRepository();
+
+  final Duration _networkDelay;
+  late final CreditsEndpoint _credits;
+  late final PurchaseService _purchaseService;
+
+  /// Shop listens so "Run again" from the menu or account sheet opens results.
+  void Function(SavedSearch search)? onSavedSearchRun;
 
   // Simulated delay for realistic loading states
-  Future<T> _delay<T>(T value, [Duration duration = const Duration(milliseconds: 500)]) async {
-    await Future.delayed(duration);
+  Future<T> _delay<T>(T value, [Duration? duration]) async {
+    await Future.delayed(duration ?? _networkDelay);
     return value;
   }
 
@@ -81,13 +105,6 @@ class DemoRepository {
     kind: 'market',
   );
   
-  /// Purchase service for car packs.
-  late final PurchaseService _purchaseService = FakePurchaseService(
-    onPurchaseComplete: (packType, credits) {
-      _addCredits(credits, CreditReason.purchase, packType: packType);
-    },
-  );
-  
   /// Get current car credit balance.
   Future<CarCreditBalance> getCreditBalance() async {
     return _delay(_creditBalance);
@@ -106,10 +123,14 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
   
-  /// Purchase a car pack. Returns the result and updates balance.
+  /// Purchase a car pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     await _purchaseService.initialize();
-    return _purchaseService.purchasePack(packType);
+    final result = await _purchaseService.purchasePack(packType);
+    if (result is PurchaseSuccess) {
+      await _recordPurchase(result);
+    }
+    return result;
   }
   
   /// Spend 1 credit for "Unlock my price".
@@ -163,15 +184,57 @@ class DemoRepository {
     return true;
   }
   
+  /// Record a store purchase. Server balance wins when the credits route exists.
+  Future<void> _recordPurchase(PurchaseSuccess result) async {
+    if (_hasTransaction(result.transactionId)) return;
+
+    final remote = await _credits.grantPurchase(
+      productId: result.packType.productId,
+      transactionId: result.transactionId,
+    );
+    if (remote != null) {
+      _rememberTransaction(result.transactionId, result.creditsAdded, result.packType);
+      _creditBalance = remote;
+      return;
+    }
+    _addCredits(
+      result.creditsAdded,
+      CreditReason.purchase,
+      packType: result.packType,
+      rcEventId: result.transactionId,
+    );
+  }
+
+  bool _hasTransaction(String transactionId) {
+    return _creditLedger.any((entry) => entry.rcEventId == transactionId);
+  }
+
+  void _rememberTransaction(String transactionId, int credits, CarPackType packType) {
+    if (_hasTransaction(transactionId)) return;
+    _creditLedger.add(
+      CreditLedgerEntry(
+        id: 'ledger_$transactionId',
+        userId: _currentUser?.id ?? 'user_demo_001',
+        delta: credits,
+        reason: CreditReason.purchase,
+        createdAt: DateTime.now(),
+        packType: packType,
+        rcEventId: transactionId,
+      ),
+    );
+  }
+
   /// Add credits (from purchase).
-  void _addCredits(int credits, CreditReason reason, {CarPackType? packType}) {
+  void _addCredits(int credits, CreditReason reason, {CarPackType? packType, String? rcEventId}) {
+    if (rcEventId != null && _hasTransaction(rcEventId)) return;
     final entry = CreditLedgerEntry(
-      id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'ledger_${rcEventId ?? DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
       delta: credits,
       reason: reason,
       createdAt: DateTime.now(),
       packType: packType,
+      rcEventId: rcEventId,
     );
     _creditLedger.add(entry);
     
@@ -194,9 +257,42 @@ class DemoRepository {
     return _purchaseService.getOfferings();
   }
   
-  /// Restore purchases.
+  /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
-    return _purchaseService.restorePurchases();
+    await _purchaseService.initialize();
+    final result = await _purchaseService.restorePurchases();
+    if (result is RestoreError) return result;
+
+    final transactions = switch (result) {
+      RestoreSuccess(:final transactions) => transactions,
+      _ => const <RestoredTransaction>[],
+    };
+    final remote = await _credits.restorePurchases(
+      transactionIds: [for (final transaction in transactions) transaction.transactionId],
+    );
+    if (remote != null) {
+      for (final transaction in transactions) {
+        _rememberTransaction(transaction.transactionId, transaction.packType.cars, transaction.packType);
+      }
+      _creditBalance = remote;
+      if (transactions.isEmpty) return const RestoreNoPurchases();
+      return RestoreSuccess(creditsRestored: remote.balance, transactions: transactions);
+    }
+
+    if (transactions.isEmpty) return const RestoreNoPurchases();
+
+    var added = 0;
+    for (final transaction in transactions) {
+      final before = _creditBalance.balance;
+      _addCredits(
+        transaction.packType.cars,
+        CreditReason.purchase,
+        packType: transaction.packType,
+        rcEventId: transaction.transactionId,
+      );
+      added += _creditBalance.balance - before;
+    }
+    return RestoreSuccess(creditsRestored: added, transactions: transactions);
   }
 
   // ============== LISTINGS ==============
@@ -207,8 +303,57 @@ class DemoRepository {
     List<String>? bodyTypes,
     int? radius,
     int limit = 10,
+    SearchFilters? filters,
   }) async {
-    return _delay(_demoListings);
+    if (filters == null &&
+        maxPrice == null &&
+        (bodyTypes == null || bodyTypes.isEmpty) &&
+        radius == null) {
+      return _delay(_demoListings);
+    }
+
+    final effective = filters ??
+        SearchFilters(
+          priceMax: maxPrice,
+          bodyTypes: bodyTypes ?? const [],
+          radiusMi: radius,
+        );
+    final matches = _demoListings
+        .where((listing) => _listingMatches(listing, effective))
+        .take(limit)
+        .toList();
+    return _delay(matches);
+  }
+
+  bool _listingMatches(Listing listing, SearchFilters filters) {
+    bool includes(List<String> values, String? candidate) {
+      if (values.isEmpty) return true;
+      final value = candidate?.toLowerCase() ?? '';
+      return values.any((item) => item.toLowerCase() == value);
+    }
+
+    if (!includes(filters.makes, listing.build.make)) return false;
+    if (!includes(filters.models, listing.build.model)) return false;
+    if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
+    if (!includes(filters.fuel, listing.build.powertrainType)) return false;
+    if (filters.priceMax != null && listing.price > filters.priceMax!) {
+      return false;
+    }
+    if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
+      return false;
+    }
+    if (filters.yearMin != null && listing.build.year < filters.yearMin!) {
+      return false;
+    }
+    if (filters.yearMax != null && listing.build.year > filters.yearMax!) {
+      return false;
+    }
+    if (filters.radiusMi != null &&
+        listing.dist != null &&
+        listing.dist! > filters.radiusMi!) {
+      return false;
+    }
+    return true;
   }
 
   Future<Listing> getListingById(String id) async {
@@ -520,7 +665,10 @@ class DemoRepository {
     ),
   ];
 
-  Future<ChatThread> sendMessage(String text) async {
+  Future<ChatThread> sendMessage(
+    String text, {
+    Set<String>? enabledMemoryIds,
+  }) async {
     final userMsg = ChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       role: MessageRole.user,
@@ -536,12 +684,14 @@ class DemoRepository {
     // Simulate agent response
     await Future.delayed(const Duration(milliseconds: 1500));
 
+    final memory = chatMemoryItems(enabledMemoryIds);
     final agentMsg = ChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}_agent',
       role: MessageRole.agent,
       contentType: MessageContentType.text,
-      text: _getDemoResponse(text),
+      text: _getDemoResponse(text, memory),
       timestamp: DateTime.now(),
+      memoryItemIds: memory.map((item) => item.id).toList(),
     );
 
     _chatThread = _chatThread.copyWith(
@@ -552,18 +702,62 @@ class DemoRepository {
     return _chatThread;
   }
 
+  /// Rewrites the latest answer so toggles in the memory sheet apply to this chat only.
+  Future<ChatThread> applyChatMemory(Set<String> enabledIds) async {
+    final messages = List<ChatMessage>.from(_chatThread.messages);
+    final agentIndex = messages.lastIndexWhere((message) => message.isAgent);
+    if (agentIndex < 0) return _chatThread;
+
+    var userText = '';
+    for (var index = agentIndex - 1; index >= 0; index--) {
+      final message = messages[index];
+      if (message.isUser && message.text != null) {
+        userText = message.text!;
+        break;
+      }
+    }
+
+    final memory = chatMemoryItems(enabledIds);
+    final current = messages[agentIndex];
+    messages[agentIndex] = ChatMessage(
+      id: current.id,
+      chatId: current.chatId,
+      role: current.role,
+      contentType: current.contentType,
+      text: _getDemoResponse(userText, memory),
+      listings: current.listings,
+      handoff: current.handoff,
+      timestamp: DateTime.now(),
+      memoryItemIds: memory.map((item) => item.id).toList(),
+    );
+    _chatThread = _chatThread.copyWith(messages: messages);
+    return _chatThread;
+  }
+
   Future<ChatThread> switchMode(ChatMode mode) async {
     _chatThread = _chatThread.copyWith(mode: mode);
     return _delay(_chatThread);
   }
 
-  String _getDemoResponse(String input) {
+  String _getDemoResponse(String input, [List<MemoryItem> memory = const []]) {
+    final String answer;
     if (input.toLowerCase().contains('rav4')) {
-      return 'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
+      answer = 'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
           'Based on 214 listings nearby, the median price for a 2024 RAV4 Hybrid XLE '
           'is around \$34,600. With your budget, you have several good options within 50 miles.';
+    } else {
+      answer = 'I can help you find the right car. What features are most important to you?';
     }
-    return 'I can help you find the right car. What features are most important to you?';
+    if (memory.isEmpty) return answer;
+
+    final remembered = memory
+        .map((item) => '${item.kind.label.toLowerCase()} ${item.displayValue}')
+        .join(', ');
+    final search = latestSearchTitle();
+    final intro = search == null
+        ? 'Using what you saved: $remembered.'
+        : 'You searched $search. Using $remembered.';
+    return '$intro $answer';
   }
 
   // ============== STATS ==============
@@ -1200,8 +1394,8 @@ class DealStats {
 
 // ============== SEARCH PROFILE (v1.6.1) ==============
 
-extension DemoRepositorySearchProfile on DemoRepository {
-  static SearchProfile _searchProfile = SearchProfile(
+SearchProfile _newDemoSearchProfile() {
+  return SearchProfile(
     userId: 'user_demo_001',
     personalize: true,
     items: [
@@ -1270,6 +1464,60 @@ extension DemoRepositorySearchProfile on DemoRepository {
       ),
     ],
   );
+}
+
+extension DemoRepositorySearchProfile on DemoRepository {
+  static SearchProfile _searchProfile = _newDemoSearchProfile();
+
+  /// Restores the in-memory demo search profile between tests.
+  void resetDemoSearchProfile() {
+    _searchProfile = _newDemoSearchProfile();
+  }
+
+  List<MemoryItem> chatMemoryItems(Set<String>? enabledIds) {
+    if (!_searchProfile.personalize) return const [];
+    if (enabledIds == null) return List<MemoryItem>.from(_searchProfile.items);
+    return _searchProfile.items.where((item) => enabledIds.contains(item.id)).toList();
+  }
+
+  String? latestSearchTitle() {
+    if (_searchProfile.searches.isEmpty) return null;
+    return _searchProfile.searches.first.displayTitle;
+  }
+
+  void markSavedSearchRun(String searchId) {
+    SavedSearch? updated;
+    final searches = _searchProfile.searches.map((search) {
+      if (search.id != searchId) return search;
+      final next = search.copyWith(
+        lastRunAt: DateTime.now(),
+        runCount: search.runCount + 1,
+      );
+      updated = next;
+      return next;
+    }).toList()
+      ..sort((a, b) => b.lastRunAt.compareTo(a.lastRunAt));
+    _searchProfile = _searchProfile.copyWith(searches: searches);
+    final ran = updated;
+    if (ran != null) onSavedSearchRun?.call(ran);
+  }
+
+  void deleteSavedSearch(String searchId) {
+    _searchProfile = _searchProfile.copyWith(
+      searches: _searchProfile.searches.where((search) => search.id != searchId).toList(),
+    );
+  }
+
+  void restoreSavedSearch(SavedSearch search, int index) {
+    if (_searchProfile.searches.any((item) => item.id == search.id)) return;
+    final searches = List<SavedSearch>.from(_searchProfile.searches);
+    searches.insert(index.clamp(0, searches.length), search);
+    _searchProfile = _searchProfile.copyWith(searches: searches);
+  }
+
+  void clearSavedSearches() {
+    _searchProfile = _searchProfile.copyWith(searches: const []);
+  }
 
   Future<SearchProfile> getSearchProfile() async {
     await Future.delayed(const Duration(milliseconds: 300));
@@ -1277,8 +1525,8 @@ extension DemoRepositorySearchProfile on DemoRepository {
   }
 
   Future<SearchProfile> updateSearchProfile(SearchProfile profile) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     _searchProfile = profile;
+    await Future.delayed(const Duration(milliseconds: 300));
     return _searchProfile;
   }
 

@@ -1,4 +1,4 @@
-import '../notifications/device_registration.dart';
+import '../services/shopper_session_store.dart';
 import 'auth_api.dart';
 import 'auth_exception.dart';
 import 'consumer_session.dart';
@@ -33,11 +33,7 @@ class AuthController {
     required this._google,
     DateTime Function()? now,
     this._onSignedIn,
-    this._devices,
-    this._deviceToken,
-    String Function()? platform,
-  }) : _now = now ?? DateTime.now,
-       _platform = platform ?? (() => 'other');
+  }) : _now = now ?? DateTime.now;
 
   final AuthApi _api;
   final SessionStore _store;
@@ -45,9 +41,6 @@ class AuthController {
   final IdentityClient _google;
   final DateTime Function() _now;
   final Future<void> Function(ConsumerSession session)? _onSignedIn;
-  final DeviceRegistrar? _devices;
-  final Future<String?> Function()? _deviceToken;
-  final String Function() _platform;
 
   Future<AuthResult> signInWithApple() => _signIn(_apple, _api.signInWithApple);
 
@@ -61,32 +54,32 @@ class AuthController {
     try {
       final refreshed = await _api.refresh(stored.refreshToken);
       await _store.write(refreshed);
+      await _publish(refreshed);
       return refreshed;
     } on AuthException {
       await _store.clear();
+      if (ShopperSessionStore.instance.accessToken == stored.accessToken) {
+        ShopperSessionStore.instance.session = null;
+      }
       return null;
     }
   }
 
+  /// Ends in [ShopperSessionStore.clear], which drops the device token and
+  /// logs RevenueCat out. The account sheet calls that store directly.
   Future<void> signOut() async {
+    final shopper = ShopperSessionStore.instance;
     final stored = await _store.read();
-    if (stored != null) {
-      final token = await _deviceToken?.call();
-      final devices = _devices;
-      if (devices != null) {
-        await devices.unregister(
-          session: stored,
-          token: token,
-          platform: _platform(),
-        );
-      }
-      try {
-        await _api.signOut(stored.accessToken);
-      } on AuthException {
-        // Local sign-out still proceeds so demo mode can continue.
-      }
+    if (stored != null && shopper.session == null) {
+      shopper.session = ShopperSession(
+        accessToken: stored.accessToken,
+        refreshToken: stored.refreshToken,
+        consumerUserId: stored.consumerUserId,
+      );
     }
-    await _store.clear();
+    shopper.secureSessions = _store;
+    shopper.authApi = _api;
+    await shopper.clear();
   }
 
   Future<AuthResult> _signIn(
@@ -98,6 +91,7 @@ class AuthController {
       final session = await exchange(identityToken: identity.identityToken, nonce: identity.nonce);
       await _api.fetchProfile(session.accessToken);
       await _store.write(session);
+      await _publish(session);
       await _onSignedIn?.call(session);
       return AuthSuccess(session);
     } on AuthCancelledException {
@@ -107,5 +101,16 @@ class AuthController {
     } catch (_) {
       return const AuthFailure('Drevvy could not reach the server.');
     }
+  }
+
+  Future<void> _publish(ConsumerSession session) {
+    return ShopperSessionStore.instance.save(ShopperSession(
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: session.expiresAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000, isUtc: true),
+      consumerUserId: session.consumerUserId,
+    ));
   }
 }

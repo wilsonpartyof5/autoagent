@@ -255,7 +255,7 @@ test('deal routes require a shopper session', () => {
 
 test('the shopper deal migration does not depend on dealer inventory tables', () => {
   const here = dirname(fileURLToPath(import.meta.url));
-  const sql = readFileSync(join(here, '../../../../../supabase/migrations/20261001_shopper_deals.sql'), 'utf8');
+  const sql = readFileSync(join(here, '../../../../../supabase/migrations/20261001172106_shopper_deals.sql'), 'utf8');
   assert.match(sql, /outreach_locked_until_paid/);
   assert.match(sql, /Shoppers read own deals/);
   assert.equal(sql.includes('uvs_vehicles'), false);

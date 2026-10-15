@@ -7,9 +7,12 @@ import 'core/platform/flutter_test_env.dart';
 import 'core/providers/app_services.dart';
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
+import 'data/services/purchase_bootstrap.dart';
+import 'data/services/purchase_config.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await PurchaseBootstrap.start(PurchaseConfig.fromEnvironment());
   final container = ProviderContainer();
   runApp(UncontrolledProviderScope(
     container: container,

@@ -95,7 +95,7 @@ test('sample insights stay labeled and do not change the book', () => {
 
 test('outreach migration locks the log to the service role', () => {
   const here = dirname(fileURLToPath(import.meta.url));
-  const sql = readFileSync(join(here, '../../../../../supabase/migrations/20261010_outreach_events.sql'), 'utf8');
+  const sql = readFileSync(join(here, '../../../../../supabase/migrations/20261012183255_outreach_events.sql'), 'utf8');
   for (const field of ['deal_id', 'touchpoint', 'variant', 'channel', 'sent_at', 'dealer_local_time', 'call_outcome', 'call_duration_s', 'captured_number', 'opt_out', 'transcript']) {
     assert.equal(sql.includes(field), true, field);
   }

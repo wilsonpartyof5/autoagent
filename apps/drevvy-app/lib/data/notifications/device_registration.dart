@@ -68,11 +68,11 @@ class DeviceRegistrar {
 
   /// Removes this device before the session is cleared. A missing route is ignored.
   Future<DeviceRegistrationResult> unregister({
-    required ConsumerSession? session,
+    required String? accessToken,
     required String? token,
     required String platform,
   }) async {
-    if (session == null || token == null || token.isEmpty) {
+    if (accessToken == null || accessToken.isEmpty || token == null || token.isEmpty) {
       return const DeviceRegistrationResult(DeviceRegistrationStatus.skipped);
     }
 
@@ -82,7 +82,7 @@ class DeviceRegistrar {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': 'Bearer ${session.accessToken}',
+          'Authorization': 'Bearer $accessToken',
         },
         body: jsonEncode({
           'token': token,

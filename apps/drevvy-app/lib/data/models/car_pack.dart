@@ -29,6 +29,14 @@ enum CarPackType {
   final int priceUsd;
   final String productId;
 
+  /// Consumable store product for this pack. Credits from a pack never expire.
+  static CarPackType? fromProductId(String productId) {
+    for (final pack in values) {
+      if (pack.productId == productId) return pack;
+    }
+    return null;
+  }
+
   /// Per-car cost in cents.
   double get perCarCost => priceUsd / cars;
 

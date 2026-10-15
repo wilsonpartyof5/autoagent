@@ -94,7 +94,7 @@ export type OutcomeInput = {
 export type DealAgentEvent =
   | { type: 'outreach'; dealId: string; consumerUserId: string; channel: OutreachChannel; sentAt: string }
   | { type: 'reply'; dealId: string; consumerUserId: string; sentAt: string }
-  | { type: 'end'; dealId: string; consumerUserId: string; endState: 'sold' | 'ended_no_response'; sentAt: string };
+  | { type: 'end'; dealId: string; consumerUserId: string; endState: 'sold' | 'ended_no_response' | 'dealer_declined'; sentAt: string };
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -161,7 +161,7 @@ export function presentDeal(deal: ShopperDeal, record: LifecycleRecord | null): 
 }
 
 export function canFindSimilar(endState: DealEndState): boolean {
-  return endState === 'sold' || endState === 'ended_no_response';
+  return endState === 'sold' || endState === 'ended_no_response' || endState === 'dealer_declined';
 }
 
 export function visitFence(record: LifecycleRecord): DealVisit | null {
@@ -200,8 +200,8 @@ export function noteReply(record: LifecycleRecord, sentAt: string): LifecycleRec
   return { ...record, repliedAt: sentAt };
 }
 
-export function endDeal(record: LifecycleRecord, endState: 'sold' | 'ended_no_response', at: string): LifecycleRecord {
-  if (record.endState === 'sold' || record.endState === 'ended_no_response') return record;
+export function endDeal(record: LifecycleRecord, endState: 'sold' | 'ended_no_response' | 'dealer_declined', at: string): LifecycleRecord {
+  if (record.endState === 'sold' || record.endState === 'ended_no_response' || record.endState === 'dealer_declined') return record;
   return { ...record, endState, endedAt: record.endedAt ?? at };
 }
 
@@ -393,7 +393,7 @@ export function readAgentEvent(body: unknown, nowIso: string): DealAgentEvent {
     return { type: 'outreach', dealId, consumerUserId, channel: record.channel, sentAt };
   }
   if (record.type === 'reply') return { type: 'reply', dealId, consumerUserId, sentAt };
-  if (record.type === 'end' && (record.endState === 'sold' || record.endState === 'ended_no_response')) {
+  if (record.type === 'end' && (record.endState === 'sold' || record.endState === 'ended_no_response' || record.endState === 'dealer_declined')) {
     return { type: 'end', dealId, consumerUserId, endState: record.endState, sentAt };
   }
   throw new ShopperDealError('Event type must be outreach, reply, or end.', 400, 'invalid_event');

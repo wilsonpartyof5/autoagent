@@ -776,6 +776,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.2"
+  pigeon:
+    dependency: transitive
+    description:
+      name: pigeon
+      sha256: "5889b1a88204ed646229447a898e8c3389a8f906b087ea1d3d4b09338730b3c9"
+      url: "https://pub.dev"
+    source: hosted
+    version: "25.5.0"
   platform:
     dependency: transitive
     description:
@@ -816,6 +824,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.6.0"
+  purchases_flutter:
+    dependency: "direct main"
+    description:
+      name: purchases_flutter
+      sha256: e258a5a6b284961c688eb49d8661f2441f28469c3e73a1b9732a47cb8ce537a8
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.15.2"
   record_use:
     dependency: transitive
     description:
@@ -1069,6 +1085,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  superwallkit_flutter:
+    dependency: "direct main"
+    description:
+      name: superwallkit_flutter
+      sha256: "2361206835212881ea19bcd7c9d72192dbc631b46ee32d066b42c81989ab85f3"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.4.9"
   synchronized:
     dependency: transitive
     description:

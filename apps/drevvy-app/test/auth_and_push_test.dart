@@ -15,6 +15,7 @@ import 'package:drevvy_app/data/notifications/push_deep_link.dart';
 import 'package:drevvy_app/data/notifications/push_messaging.dart';
 import 'package:drevvy_app/data/notifications/push_notification_service.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
+import 'package:drevvy_app/data/services/shopper_session_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -243,50 +244,41 @@ void main() {
     });
 
     test('sign-out deletes the device token before clearing the session', () async {
-      final store = MemorySessionStore();
+      final flags = MemoryFlags();
+      await flags.setString(PushFlags.token, 'fcm-token');
       final calls = <http.Request>[];
       var sessionPresentAtDelete = false;
-      final client = _ScriptedClient((request) async {
-        calls.add(request);
-        if (request.method == 'DELETE' && request.url.path == DrevvyConfig.devicesPath) {
-          sessionPresentAtDelete = await store.read() != null;
+      final shopper = ShopperSessionStore()
+        ..deviceFlags = flags
+        ..devicePlatform = (() => 'ios')
+        ..secureSessions = MemorySessionStore();
+      shopper.devices = DeviceRegistrar(
+        baseUrl: 'https://drevvy.test',
+        client: _ScriptedClient((request) async {
+          calls.add(request);
+          sessionPresentAtDelete = shopper.session != null;
           return http.Response('missing', 404);
-        }
-        if (request.url.path == DrevvyConfig.profilePath) {
-          return http.Response(jsonEncode({'success': true, 'data': {}}), 200);
-        }
-        if (request.url.path == DrevvyConfig.signOutPath) {
-          return http.Response(jsonEncode({'success': true}), 200);
-        }
-        return http.Response(jsonEncode(sessionJson), 200);
-      });
-      final controller = AuthController(
-        api: AuthApi(baseUrl: 'https://drevvy.test', client: client),
-        store: store,
-        apple: _FixedIdentity(const ProviderIdentity(identityToken: 'a.b.c', nonce: 'nonce')),
-        google: _FixedIdentity(const ProviderIdentity(identityToken: 'unused')),
-        devices: DeviceRegistrar(baseUrl: 'https://drevvy.test', client: client),
-        deviceToken: () async => 'fcm-token',
-        platform: () => 'ios',
+        }),
+      );
+      shopper.session = const ShopperSession(
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        consumerUserId: 'user-1',
       );
 
-      await controller.signInWithApple();
-      await controller.signOut();
+      await shopper.clear();
 
-      final deleteIndex = calls.indexWhere(
-        (request) => request.method == 'DELETE' && request.url.path == DrevvyConfig.devicesPath,
-      );
-      final signOutIndex = calls.indexWhere((request) => request.url.path == DrevvyConfig.signOutPath);
-      expect(deleteIndex, greaterThanOrEqualTo(0));
-      expect(signOutIndex, greaterThan(deleteIndex));
+      expect(calls, hasLength(1));
+      expect(calls.single.method, 'DELETE');
+      expect(calls.single.url.path, DrevvyConfig.devicesPath);
       expect(sessionPresentAtDelete, isTrue);
-      expect(calls[deleteIndex].headers['Authorization'], 'Bearer access-token');
-      expect(jsonDecode(calls[deleteIndex].body), {
+      expect(shopper.session, isNull);
+      expect(calls.single.headers['Authorization'], 'Bearer access-token');
+      expect(jsonDecode(calls.single.body), {
         'token': 'fcm-token',
         'platform': 'ios',
         'provider': 'fcm',
       });
-      expect(await store.read(), isNull);
     });
 
     test('an expired session is refreshed', () async {

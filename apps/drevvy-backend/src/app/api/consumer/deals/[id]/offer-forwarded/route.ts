@@ -9,6 +9,7 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  * POST /api/consumer/deals/[id]/offer-forwarded
  *
  * Called when the official offer is forwarded and the dealer is revealed.
+ * The first forward sends the official_offer push. FCM is a no-op when unset.
  * Body: { latitude, longitude, radiusMeters?, expectedPickupDate?, locationGranted? }
  * Street address is not stored. Later deal reads include `visit` for the geofence.
  */

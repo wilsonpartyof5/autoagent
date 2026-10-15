@@ -1,111 +1,62 @@
 import Link from 'next/link';
 import { LEGAL } from '@/lib/legal-constants';
+import { Logo } from '@/components/landing/logo';
 
-function SparkleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2L13.09 8.26L18 6L15.74 10.91L22 12L15.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L8.26 13.09L2 12L8.26 10.91L6 6L10.91 8.26L12 2Z" />
-    </svg>
-  );
-}
+const linkClass =
+  'flex min-h-11 items-center text-base font-semibold text-[#171A2C]/80 transition-colors hover:text-[#171A2C] lg:min-h-0 lg:text-sm';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-[hsl(var(--foreground))] text-white py-12 md:py-16">
-      <div className="container mx-auto px-4 md:px-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-          <div className="col-span-2 md:col-span-1">
-            <Link href="/" className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
-                <SparkleIcon className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold">Drevvy</span>
-            </Link>
-            <p className="text-sm text-white/70">
-              The car-buying app that gets you the real out-the-door price.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Product</h3>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li>
-                <Link href="/#how-it-works" className="hover:text-white transition-colors">
-                  How it works
-                </Link>
-              </li>
-              <li>
-                <Link href="/#pricing" className="hover:text-white transition-colors">
-                  Pricing
-                </Link>
-              </li>
-              <li>
-                <Link href="/#faq" className="hover:text-white transition-colors">
-                  FAQ
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Legal</h3>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li>
-                <Link href="/privacy" className="hover:text-white transition-colors">
-                  Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/terms" className="hover:text-white transition-colors">
-                  Terms of Service
-                </Link>
-              </li>
-              <li>
-                <Link href="/sms" className="hover:text-white transition-colors">
-                  SMS Program
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Contact</h3>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li>
-                <Link href="/dealers" className="hover:text-white transition-colors">
-                  For Dealers
-                </Link>
-              </li>
-              <li>
-                <a
-                  href={`mailto:${LEGAL.SUPPORT_EMAIL}`}
-                  className="hover:text-white transition-colors"
-                >
-                  {LEGAL.SUPPORT_EMAIL}
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="border-t border-white/20 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-white/60">
-            &copy; {currentYear} {LEGAL.ENTITY_NAME}. All rights reserved.
+    <footer className="border-t border-[#E4E8F1] bg-white text-[#171A2C]">
+      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1.4fr)] lg:gap-10 lg:px-20 lg:pb-8 lg:pt-14">
+        <div className="sm:col-span-2 lg:col-span-1">
+          <Logo gradientId="logo-footer" />
+          <p className="mt-3 max-w-[260px] text-base leading-relaxed text-[#171A2C]/70 lg:text-sm">
+            The car-buying app that gets you the real out-the-door price.
           </p>
-          <div className="flex gap-6 text-sm text-white/60">
-            <Link href="/privacy" className="hover:text-white transition-colors">
-              Privacy
-            </Link>
-            <Link href="/terms" className="hover:text-white transition-colors">
-              Terms
-            </Link>
-            <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className="hover:text-white transition-colors">
-              Contact
-            </a>
-          </div>
         </div>
+
+        <div className="flex flex-col gap-2.5">
+          <h2 className="text-base font-extrabold uppercase tracking-[0.06em] text-[#171A2C]/60 lg:text-[13px]">Product</h2>
+          <Link href="/#how-it-works" className={linkClass}>
+            How it works
+          </Link>
+          <Link href="/#pricing" className={linkClass}>
+            Pricing
+          </Link>
+          <Link href="/#faq" className={linkClass}>
+            FAQ
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          <h2 className="text-base font-extrabold uppercase tracking-[0.06em] text-[#171A2C]/60 lg:text-[13px]">Legal</h2>
+          <Link href="/privacy" className={linkClass}>
+            Privacy
+          </Link>
+          <Link href="/terms" className={linkClass}>
+            Terms
+          </Link>
+          <Link href="/sms" className={linkClass}>
+            SMS Program
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          <h2 className="text-base font-extrabold uppercase tracking-[0.06em] text-[#171A2C]/60 lg:text-[13px]">Contact</h2>
+          <Link href="/dealers" className={linkClass}>
+            For Dealers
+          </Link>
+          <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`} className={linkClass}>
+            {LEGAL.SUPPORT_EMAIL}
+          </a>
+        </div>
+
+        <p className="col-span-full border-t border-[#E4E8F1] pt-5 text-base text-[#171A2C]/55 lg:text-[13px]">
+          &copy; {currentYear} {LEGAL.ENTITY_NAME}. All rights reserved.
+        </p>
       </div>
     </footer>
   );

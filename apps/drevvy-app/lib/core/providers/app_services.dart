@@ -57,9 +57,6 @@ final authControllerProvider = Provider<AuthController>((ref) {
     store: ref.watch(sessionStoreProvider),
     apple: ref.watch(appleIdentityProvider),
     google: ref.watch(googleIdentityProvider),
-    devices: ref.watch(deviceRegistrarProvider),
-    deviceToken: () => ref.read(localFlagsProvider).getString(PushFlags.token),
-    platform: pushPlatformLabel,
     onSignedIn: (_) {
       return ref.read(pushNotificationServiceProvider).registerCurrentToken();
     },

@@ -32,6 +32,9 @@ dependencies:
   uuid: ^4.5.1
   http: ^1.5.0
   crypto: ^3.0.6
+  purchases_flutter: ^10.15.2
+  # 2.4.10+ requires a pigeon/analyzer newer than riverpod_generator 2.6.
+  superwallkit_flutter: 2.4.9
 
   # Auth — session lives in the platform keychain / keystore.
   flutter_secure_storage: ^10.0.0
