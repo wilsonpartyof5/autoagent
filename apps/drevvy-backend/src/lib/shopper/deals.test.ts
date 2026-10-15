@@ -98,6 +98,10 @@ function memoryRepo(): ShopperDealRepository & { rows: ShopperDealRow[] } {
       }
       return row;
     },
+    async discard(consumerUserId, dealId) {
+      const index = rows.findIndex((item) => item.consumerUserId === consumerUserId && item.id === dealId);
+      if (index >= 0) rows.splice(index, 1);
+    },
   };
 }
 

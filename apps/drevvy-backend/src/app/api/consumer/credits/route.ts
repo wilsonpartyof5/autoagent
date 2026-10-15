@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
 import {
   creditBalanceData,
   fetchRevenueCatSubscriber,
   findVerifiedPurchase,
+  grantVerifiedPurchase,
   packForProductId,
   purchasesConfigured,
 } from '@/lib/shopper/credit-purchases';
-import { getShopperCredits, purchaseCredits } from '@/lib/shopper/credits';
+import { getShopperCredits } from '@/lib/shopper/credits';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -26,14 +28,27 @@ function notConfigured() {
   );
 }
 
-export async function GET(request: NextRequest) {
+export async function handleGetCreditBalance(
+  request: Request,
+  deps: {
+    requireAuth: (request: Request) => Promise<{ userId: string }>;
+    supabase: () => SupabaseClient;
+  },
+): Promise<NextResponse> {
   try {
-    const auth = await requireConsumerAuth(request);
-    const credits = await getShopperCredits(createAdminClient(), auth.userId);
+    const auth = await deps.requireAuth(request);
+    const credits = await getShopperCredits(deps.supabase(), auth.userId);
     return balanceResponse(credits);
   } catch (error) {
     return consumerAuthErrorResponse(error);
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handleGetCreditBalance(request, {
+    requireAuth: requireConsumerAuth,
+    supabase: createAdminClient,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -68,13 +83,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const granted = await purchaseCredits(
-      createAdminClient(),
-      auth.userId,
-      verified.size,
-      verified.priceUsd,
-      transactionId,
-    );
+    const granted = await grantVerifiedPurchase(createAdminClient(), auth.userId, verified);
     if (!granted.success) {
       return NextResponse.json(
         { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these credits.' } },

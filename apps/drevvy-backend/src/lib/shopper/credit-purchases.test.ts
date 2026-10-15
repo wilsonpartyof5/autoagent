@@ -6,16 +6,19 @@ import { fileURLToPath } from 'node:url';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { handleGetCreditBalance, GET as getCreditBalance } from '../../app/api/consumer/credits/route';
+import { handleRevenueCatWebhook, POST as postRevenueCatWebhook } from '../../app/api/webhooks/revenuecat/route';
 import {
   applyRevenueCatEvent,
   creditBalanceData,
   fetchRevenueCatSubscriber,
   findVerifiedPurchase,
+  grantVerifiedPurchase,
   packForProductId,
   purchasesConfigured,
   webhookAuthorized,
 } from './credit-purchases';
-import { purchaseCredits, purchaseIdempotencyKey, reversePurchaseCredits } from './credits';
+import { consumeCredit, purchaseCredits, purchaseIdempotencyKey, reversePurchaseCredits } from './credits';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +41,20 @@ test('verification uses the RevenueCat product, not a client credit count', () =
   assert.equal(verified?.priceUsd, 47);
   assert.equal(findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_10'), null);
   assert.equal(findVerifiedPurchase(subscriber, 'missing', 'drevvy_pack_3'), null);
+});
+
+test('a client alias and the webhook share the store transaction id', () => {
+  const subscriber = {
+    non_subscriptions: {
+      drevvy_pack_3: [{ id: 'rc_3', store_transaction_id: 'store_3' }],
+    },
+  };
+  const byAlias = findVerifiedPurchase(subscriber, 'rc_3', 'drevvy_pack_3');
+  const byStore = findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_3');
+  assert.equal(byAlias?.transactionId, 'store_3');
+  assert.equal(byStore?.transactionId, 'store_3');
+  assert.equal(byAlias?.size, 3);
+  assert.equal(byAlias?.priceUsd, 47);
 });
 
 test('restore finds the pack from the transaction when the client sends no product', () => {
@@ -177,12 +194,153 @@ test('webhook ignores anonymous users and unknown products', async () => {
   assert.equal(unknown.applied, 'ignored');
 });
 
+test('balance credits exactly once per purchase transaction id', async () => {
+  const supabase = memoryCredits();
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const subscriber = {
+    non_subscriptions: {
+      drevvy_pack_10: [{ id: 'rc_10', store_transaction_id: 'store_10' }],
+    },
+  };
+  const verified = findVerifiedPurchase(subscriber, 'rc_10', 'drevvy_pack_10');
+  assert.ok(verified);
+  const clientGrant = await grantVerifiedPurchase(supabase, userId, verified);
+  const webhookGrant = await applyRevenueCatEvent(supabase, {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_10',
+    transaction_id: 'store_10',
+  });
+  const restoreAlias = await grantVerifiedPurchase(supabase, userId, verified);
+  assert.equal(clientGrant.granted, true);
+  assert.equal(clientGrant.credits.balance, 10);
+  assert.equal(webhookGrant.applied, 'granted');
+  assert.equal(webhookGrant.credits?.balance, 10);
+  assert.equal(restoreAlias.alreadyGranted, true);
+  assert.equal(restoreAlias.credits.balance, 10);
+  assert.equal(restoreAlias.credits.lifetimePurchased, 10);
+});
+
+test('refunds deduct each pack once and do not go below zero', async () => {
+  const supabase = memoryCredits();
+  const userId = '11111111-1111-4111-8111-111111111111';
+  await purchaseCredits(supabase, userId, 3, 47, 'txn_3');
+  await consumeCredit(supabase, userId, '22222222-2222-4222-8222-222222222222');
+  await consumeCredit(supabase, userId, '33333333-3333-4333-8333-333333333333');
+  const refund = await applyRevenueCatEvent(supabase, {
+    type: 'REFUND',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_3',
+    transaction_id: 'txn_3',
+  });
+  assert.equal(refund.applied, 'reversed');
+  assert.equal(refund.credits?.balance, 0);
+  assert.equal(refund.credits?.lifetimeRefunded, 3);
+
+  const again = await applyRevenueCatEvent(supabase, {
+    type: 'CANCELLATION',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_3',
+    transaction_id: 'txn_3',
+  });
+  assert.equal(again.credits?.balance, 0);
+  assert.equal(again.credits?.lifetimeRefunded, 3);
+
+  await purchaseCredits(supabase, userId, 5, 67, 'txn_5');
+  const pack5 = await reversePurchaseCredits(supabase, userId, 5, 'txn_5');
+  assert.equal(pack5.reversed, true);
+  assert.equal(pack5.credits.balance, 0);
+  assert.equal(pack5.credits.lifetimeRefunded, 8);
+  await purchaseCredits(supabase, userId, 10, 97, 'txn_10');
+  const pack10 = await reversePurchaseCredits(supabase, userId, 10, 'txn_10');
+  assert.equal(pack10.reversed, true);
+  assert.equal(pack10.credits.balance, 0);
+  const pack10Again = await reversePurchaseCredits(supabase, userId, 10, 'txn_10');
+  assert.equal(pack10Again.alreadyReversed, true);
+  assert.equal(pack10Again.credits.balance, 0);
+  assert.equal(pack10Again.credits.lifetimeRefunded, 18);
+});
+
+test('GET /api/consumer/credits returns the car balance for the signed-in shopper', async () => {
+  const supabase = memoryCredits();
+  const userId = '11111111-1111-4111-8111-111111111111';
+  await purchaseCredits(supabase, userId, 5, 67, 'txn_balance');
+  const response = await handleGetCreditBalance(new Request('http://localhost/api/consumer/credits'), {
+    requireAuth: async () => ({ userId }),
+    supabase: () => supabase,
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    data: {
+      balance: 5,
+      lifetimePurchased: 5,
+      lifetimeUsed: 0,
+      lifetimeRefunded: 0,
+    },
+  });
+
+  const missing = await getCreditBalance(new Request('http://localhost/api/consumer/credits') as never);
+  assert.equal(missing.status, 401);
+  const body = await missing.json() as { error?: { code?: string } };
+  assert.equal(body.error?.code, 'unauthorized');
+});
+
+test('the RevenueCat webhook credits once, deducts a refund, and retries a failed write', async () => {
+  const supabase = memoryCredits();
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const event = {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_5',
+    transaction_id: 'txn_hook',
+  };
+  const first = await handleRevenueCatWebhook(jsonRequest(event), { secret: 'secret', supabase });
+  const second = await handleRevenueCatWebhook(jsonRequest(event), { secret: 'secret', supabase });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal((await readBalance(supabase, userId)).balance, 5);
+
+  const refund = await handleRevenueCatWebhook(jsonRequest({
+    type: 'REFUND',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_5',
+    transaction_id: 'txn_hook',
+  }), { secret: 'secret', supabase });
+  assert.equal(refund.status, 200);
+  assert.equal((await readBalance(supabase, userId)).balance, 0);
+
+  const unauthorized = await postRevenueCatWebhook(jsonRequest(event) as never);
+  assert.equal(unauthorized.status, 401);
+  const invalid = await handleRevenueCatWebhook(new Request('http://localhost/api/webhooks/revenuecat', {
+    method: 'POST',
+    headers: { authorization: 'secret' },
+    body: '{',
+  }), { secret: 'secret', supabase });
+  assert.equal(invalid.status, 400);
+
+  const down = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: { message: 'db down' } }),
+        }),
+      }),
+    }),
+    rpc: async () => ({ data: null, error: { message: 'db down' } }),
+  } as unknown as SupabaseClient;
+  const retry = await handleRevenueCatWebhook(jsonRequest(event), { secret: 'secret', supabase: down });
+  assert.equal(retry.status, 500);
+});
+
 test('credit routes require consumer auth and the purchase RPC is service-role only', () => {
   const creditsRoute = readFileSync(join(HERE, '../../app/api/consumer/credits/route.ts'), 'utf8');
   const restoreRoute = readFileSync(join(HERE, '../../app/api/consumer/credits/restore/route.ts'), 'utf8');
   const webhookRoute = readFileSync(join(HERE, '../../app/api/webhooks/revenuecat/route.ts'), 'utf8');
   assert.match(creditsRoute, /requireConsumerAuth/);
+  assert.match(creditsRoute, /export async function GET/);
+  assert.match(creditsRoute, /grantVerifiedPurchase/);
   assert.match(restoreRoute, /requireConsumerAuth/);
+  assert.match(restoreRoute, /grantVerifiedPurchase/);
   assert.match(creditsRoute, /purchases not configured/);
   assert.match(restoreRoute, /purchases not configured/);
   assert.match(webhookRoute, /REVENUECAT_WEBHOOK_SECRET/);
@@ -195,17 +353,54 @@ test('credit routes require consumer auth and the purchase RPC is service-role o
   assert.match(sql, /greatest\(balance - p_amount, 0\)/);
   assert.match(sql, /revoke execute on function public.purchase_credits_atomic/);
   assert.match(sql, /to service_role/);
+
+  const consumeSql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261018000001_consume_credit_atomic.sql'), 'utf8');
+  assert.match(consumeSql, /consume_credit_atomic/);
+  assert.match(consumeSql, /use:' \|\| p_deal_id::text/);
+  assert.match(consumeSql, /for update/);
+  assert.match(consumeSql, /balance - 1/);
+  assert.match(consumeSql, /revoke execute on function public.consume_credit_atomic/);
+  assert.match(consumeSql, /to service_role/);
 });
+
+function jsonRequest(event: Record<string, unknown>): Request {
+  return new Request('http://localhost/api/webhooks/revenuecat', {
+    method: 'POST',
+    headers: { authorization: 'secret', 'content-type': 'application/json' },
+    body: JSON.stringify({ event }),
+  });
+}
+
+async function readBalance(supabase: SupabaseClient, userId: string) {
+  const response = await handleGetCreditBalance(new Request('http://localhost/api/consumer/credits'), {
+    requireAuth: async () => ({ userId }),
+    supabase: () => supabase,
+  });
+  const body = await response.json() as { data: { balance: number } };
+  return body.data;
+}
 
 function memoryCredits(): SupabaseClient {
   const balances = new Map<string, { balance: number; lifetime_purchased: number; lifetime_used: number; lifetime_refunded: number }>();
   const events = new Map<string, Set<string>>();
 
-  return {
+  const client = {
+    from: (table: string) => ({
+      select: (_cols?: string) => ({
+        eq: (_col: string, userId: string) => ({
+          maybeSingle: async () => {
+            if (table !== 'shopper_credits') return { data: null, error: null };
+            const row = balances.get(userId);
+            return { data: row ? { ...row, user_id: userId } : null, error: null };
+          },
+        }),
+      }),
+    }),
     rpc: async (fnName: string, params: {
       p_user_id?: string;
       p_pack_size?: number;
       p_amount?: number;
+      p_deal_id?: string;
       p_idempotency_key?: string;
       p_reversal_key?: string;
       p_purchase_key?: string;
@@ -248,7 +443,22 @@ function memoryCredits(): SupabaseClient {
         return { data: [{ reversed: true, already_reversed: false, ...row }], error: null };
       }
 
+      if (fnName === 'consume_credit_atomic') {
+        const key = `use:${params.p_deal_id ?? ''}`;
+        if (keys.has(key)) {
+          return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
+        }
+        if (row.balance <= 0) {
+          return { data: [{ consumed: false, already_consumed: false, ...row }], error: null };
+        }
+        keys.add(key);
+        row.balance -= 1;
+        row.lifetime_used += 1;
+        return { data: [{ consumed: true, already_consumed: false, ...row }], error: null };
+      }
+
       return { data: null, error: { message: 'unknown rpc' } };
     },
-  } as unknown as SupabaseClient;
+  };
+  return client as unknown as SupabaseClient;
 }

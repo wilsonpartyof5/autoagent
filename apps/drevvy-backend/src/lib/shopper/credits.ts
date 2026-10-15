@@ -92,92 +92,25 @@ export async function consumeCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
-): Promise<{ success: boolean; newBalance: number; error?: string }> {
-  const idempotencyKey = `use:${dealId}`;
-
-  const { data: existing } = await supabase
-    .from('shopper_credit_events')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle();
-
-  if (existing) {
-    const credits = await getShopperCredits(supabase, userId);
-    return { success: true, newBalance: credits.balance };
-  }
-
-  const { error: upsertError } = await supabase
-    .from('shopper_credits')
-    .upsert(
-      {
-        user_id: userId,
-        balance: 0,
-        lifetime_purchased: 0,
-        lifetime_used: 0,
-        lifetime_refunded: 0,
-      },
-      { onConflict: 'user_id', ignoreDuplicates: true },
-    );
-
-  if (upsertError) {
-    return { success: false, newBalance: 0, error: upsertError.message };
-  }
-
-  const { data: credits, error: selectError } = await supabase
-    .from('shopper_credits')
-    .select('balance')
-    .eq('user_id', userId)
-    .single();
-
-  if (selectError || !credits) {
-    return { success: false, newBalance: 0, error: selectError?.message ?? 'Credits not found' };
-  }
-
-  if (credits.balance <= 0) {
-    return { success: false, newBalance: 0, error: 'No credits available' };
-  }
-
-  const { error: eventError } = await supabase.from('shopper_credit_events').insert({
-    user_id: userId,
-    event_type: 'use',
-    amount: 1,
-    deal_id: dealId,
-    idempotency_key: idempotencyKey,
+): Promise<{ success: boolean; newBalance: number; alreadyConsumed: boolean; error?: 'no_credits' | 'credit_failed' }> {
+  const { data, error } = await supabase.rpc('consume_credit_atomic', {
+    p_user_id: userId,
+    p_deal_id: dealId,
   });
 
-  if (eventError) {
-    if (eventError.code === '23505') {
-      const updatedCredits = await getShopperCredits(supabase, userId);
-      return { success: true, newBalance: updatedCredits.balance };
-    }
-    return { success: false, newBalance: credits.balance, error: eventError.message };
+  if (error) {
+    console.error('[credits] Error calling consume_credit_atomic:', error.message);
+    return { success: false, newBalance: 0, alreadyConsumed: false, error: 'credit_failed' };
   }
 
-  const { data: currentRow } = await supabase
-    .from('shopper_credits')
-    .select('balance, lifetime_used')
-    .eq('user_id', userId)
-    .single();
-
-  const currentBalance = currentRow?.balance ?? credits.balance;
-  const currentUsed = currentRow?.lifetime_used ?? 0;
-
-  const { error: updateError } = await supabase
-    .from('shopper_credits')
-    .update({
-      balance: currentBalance - 1,
-      lifetime_used: currentUsed + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId);
-
-  if (updateError) {
-    return { success: false, newBalance: credits.balance, error: updateError.message };
+  const row = Array.isArray(data) ? data[0] : data;
+  const consumed = row?.consumed === true;
+  const alreadyConsumed = row?.already_consumed === true;
+  const newBalance = row?.balance ?? 0;
+  if (!consumed && !alreadyConsumed) {
+    return { success: false, newBalance, alreadyConsumed: false, error: 'no_credits' };
   }
-
-  const updatedCredits = await getShopperCredits(supabase, userId);
-  return { success: true, newBalance: updatedCredits.balance };
+  return { success: true, newBalance, alreadyConsumed };
 }
 
 export async function refundCredit(
@@ -258,7 +191,7 @@ export async function purchaseCredits(
   packSize: number,
   packPriceUsd: number,
   transactionId: string,
-): Promise<{ success: boolean; credits: ShopperCredits; alreadyGranted: boolean; error?: string }> {
+): Promise<{ success: boolean; credits: ShopperCredits; granted: boolean; alreadyGranted: boolean; error?: string }> {
   const { data, error } = await supabase.rpc('purchase_credits_atomic', {
     p_user_id: userId,
     p_pack_size: packSize,
@@ -269,14 +202,15 @@ export async function purchaseCredits(
 
   if (error) {
     const credits = await getShopperCredits(supabase, userId);
-    return { success: false, credits, alreadyGranted: false, error: error.message };
+    return { success: false, credits, granted: false, alreadyGranted: false, error: error.message };
   }
 
   const row = atomicCreditRow(data);
   return {
     success: true,
     credits: creditsFromAtomicRow(userId, row),
-    alreadyGranted: row.already_granted === true || row.granted !== true,
+    granted: row.granted === true,
+    alreadyGranted: row.already_granted === true,
   };
 }
 

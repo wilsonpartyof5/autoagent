@@ -81,6 +81,16 @@ export function supabaseShopperDealRepository(): ShopperDealRepository {
       return data ? toRow(data as DealTableRow) : null;
     },
 
+    async discard(consumerUserId, dealId) {
+      const admin = createAdminClient();
+      const { error } = await admin
+        .from('shopper_deals')
+        .delete()
+        .eq('consumer_user_id', consumerUserId)
+        .eq('id', dealId);
+      if (error) throw storageError(error.message);
+    },
+
     async close(consumerUserId, dealId) {
       const admin = createAdminClient();
       const { data, error } = await admin

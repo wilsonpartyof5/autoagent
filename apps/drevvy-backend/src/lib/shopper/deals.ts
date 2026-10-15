@@ -59,6 +59,7 @@ export interface ShopperDealRepository {
   list(consumerUserId: string): Promise<ShopperDealRow[]>;
   get(consumerUserId: string, dealId: string): Promise<ShopperDealRow | null>;
   close(consumerUserId: string, dealId: string): Promise<ShopperDealRow | null>;
+  discard(consumerUserId: string, dealId: string): Promise<void>;
 }
 
 export class ShopperDealError extends Error {
@@ -124,14 +125,14 @@ export function readCreateDealInput(body: unknown): { listingId: unknown; vehicl
   return { listingId: record.listingId, vehicle: record.vehicle };
 }
 
-export async function createShopperDeal(
+export async function provisionShopperDeal(
   repo: ShopperDealRepository,
   input: { consumerUserId: string; listingId: unknown; vehicle: unknown },
-): Promise<ShopperDeal> {
+): Promise<{ deal: ShopperDeal; created: boolean }> {
   const listingId = parseListingId(input.listingId);
   const vehicle = parseVehicleSnapshot(input.vehicle, 'request');
   const existing = await repo.findOpen(input.consumerUserId, listingId);
-  if (existing) return toShopperDeal(existing);
+  if (existing) return { deal: toShopperDeal(existing), created: false };
 
   try {
     const created = await repo.insert({
@@ -141,13 +142,21 @@ export async function createShopperDeal(
       outreachLockedUntilPaid: true,
       vehicle,
     });
-    return toShopperDeal(created);
+    return { deal: toShopperDeal(created), created: true };
   } catch (error) {
     if (!(error instanceof ShopperDealConflict)) throw error;
     const again = await repo.findOpen(input.consumerUserId, listingId);
-    if (again) return toShopperDeal(again);
+    if (again) return { deal: toShopperDeal(again), created: false };
     throw error;
   }
+}
+
+export async function createShopperDeal(
+  repo: ShopperDealRepository,
+  input: { consumerUserId: string; listingId: unknown; vehicle: unknown },
+): Promise<ShopperDeal> {
+  const { deal } = await provisionShopperDeal(repo, input);
+  return deal;
 }
 
 export async function listShopperDeals(
