@@ -575,6 +575,43 @@ test('official offer, a sold car, and the day after pickup send push events once
   assert.deepEqual(pushes.map((push) => push.event), ['official_offer', 'official_offer', 'did_you_buy', 'car_sold']);
   assert.equal(pushes.every((push) => push.userId === 'shopper-1'), true);
   assert.equal(/negotiat/i.test(JSON.stringify(pushes)), false);
+  const sold = pushes.find((push) => push.event === 'car_sold');
+  assert.match(sold?.body ?? '', /add another/i);
+  assert.equal(/just sold/i.test(sold?.body ?? ''), false);
+  assert.equal(sold?.prompt, 'add_another');
+  const buy = pushes.find((push) => push.event === 'did_you_buy');
+  assert.equal(buy?.title, 'Did you buy it?');
+  assert.equal((buy?.body ?? '').toLowerCase().includes('transparency'), true);
+});
+
+test('the official offer push can name the dealer and the deal cannot', async () => {
+  const box = harness('2026-10-12T15:00:00.000Z');
+  const pushes: ShopperPush[] = [];
+  box.deps.notify = async (push) => {
+    pushes.push(push);
+  };
+  const created = await addCar(box, 'mc-listing-1');
+  const revealed = await forwardOffer('shopper-1', created.deal.id, {
+    latitude: 35.19,
+    longitude: -80.91,
+    radiusMeters: 150,
+    expectedPickupDate: '2026-10-12',
+    locationGranted: true,
+  }, box.deps, 'Lakeside Toyota');
+  assert.equal(JSON.stringify(revealed).includes('Lakeside'), false);
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0]?.event, 'official_offer');
+  assert.match(pushes[0]?.body ?? '', /Lakeside Toyota/);
+  assert.equal((pushes[0]?.body ?? '').toLowerCase().includes('transparency'), true);
+  assert.equal(/negotiat/i.test(JSON.stringify(pushes)), false);
+  await forwardOffer('shopper-1', created.deal.id, {
+    latitude: 35.19,
+    longitude: -80.91,
+    radiusMeters: 150,
+    expectedPickupDate: '2026-10-12',
+    locationGranted: true,
+  }, box.deps, 'Lakeside Toyota');
+  assert.equal(pushes.length, 1);
 });
 
 function liveVehicle(listingId: string): LiveVehicle {

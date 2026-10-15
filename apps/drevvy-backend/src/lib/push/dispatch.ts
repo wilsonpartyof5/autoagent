@@ -1,5 +1,6 @@
-import { pushCopy, pushData, type ShopperPush } from './events';
+import { pushData, type ShopperPush } from './events';
 import { sendPush, type SendPushResult } from './send';
+import { sealPushCopy } from './triggers';
 import { listDeviceTokens } from './tokens';
 
 export type PushDeliveryReport = {
@@ -8,7 +9,7 @@ export type PushDeliveryReport = {
   body: string;
   targeted: number;
   delivered: number;
-  reason: 'no_devices' | 'unconfigured' | 'sent' | 'rejected' | 'unavailable';
+  reason: 'no_devices' | 'unconfigured' | 'sent' | 'rejected' | 'unavailable' | 'disabled';
 };
 
 export type PushDeliveryDeps = {
@@ -17,7 +18,7 @@ export type PushDeliveryDeps = {
 };
 
 export async function deliverShopperPush(push: ShopperPush, deps: PushDeliveryDeps): Promise<PushDeliveryReport> {
-  const copy = pushCopy(push.event);
+  const copy = sealPushCopy(push);
   try {
     const tokens = await deps.tokens(push.userId);
     if (tokens.length === 0) {

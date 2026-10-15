@@ -3,14 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { forwardOffer, readRequestJson, shopperDeps } from '@/lib/shopper/deal-actions';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
 import { readOfferBody } from '@/lib/shopper/lifecycle';
+import { readOptionalDealerName } from '@/lib/push/triggers';
 import { requireShopperAuth } from '@/lib/shopper/session';
 
 /**
  * POST /api/consumer/deals/[id]/offer-forwarded
  *
  * Called when the official offer is forwarded and the dealer is revealed.
- * The first forward sends the official_offer push. FCM is a no-op when unset.
- * Body: { latitude, longitude, radiusMeters?, expectedPickupDate?, locationGranted? }
+ * The first forward sends the official_offer push. A dealer name in the body
+ * may appear on that push only. It is not stored on the deal. FCM is a no-op
+ * when unset.
+ * Body: { latitude, longitude, radiusMeters?, expectedPickupDate?, locationGranted?, dealerName? }
  * Street address is not stored. Later deal reads include `visit` for the geofence.
  */
 
@@ -23,9 +26,11 @@ export async function POST(
   try {
     const auth = await requireShopperAuth(request);
     const { id } = await params;
-    const input = readOfferBody(await readRequestJson(request));
+    const body = await readRequestJson(request);
+    const input = readOfferBody(body);
+    const dealerName = readOptionalDealerName(body);
     const deps = await shopperDeps(auth.userId);
-    const data = await forwardOffer(auth.userId, id, input, deps);
+    const data = await forwardOffer(auth.userId, id, input, deps, dealerName);
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return shopperDealErrorResponse(error);

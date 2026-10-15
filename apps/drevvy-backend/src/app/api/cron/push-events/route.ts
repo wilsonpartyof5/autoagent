@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import { readCronAuth } from '@/lib/shopper/lifecycle';
 import { deliverShopperPushLive } from '@/lib/push/dispatch';
-import { readCronPush } from '@/lib/push/events';
+import { pushCopy, readCronPush } from '@/lib/push/events';
 import { pushErrorResponse } from '@/lib/push/http';
+import { getPushLedger } from '@/lib/push/ledger';
+import { priceDropsEnabled } from '@/lib/push/triggers';
 
 /**
  * POST /api/cron/push-events
@@ -13,7 +15,9 @@ import { pushErrorResponse } from '@/lib/push/http';
  * did_you_buy. Requires Authorization: Bearer $DREVVY_CRON_SECRET.
  * Responds 404 when that secret is unset. FCM is a no-op when unset.
  * did_you_buy is also sent by the daily lifecycle schedule, the day after
- * the expected pickup.
+ * the expected pickup. The geofence variant stays on the phone.
+ * price_drop is skipped when the shopper has turned that category off.
+ * The default, including a shopper with no saved preference, is on.
  */
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +33,12 @@ export async function POST(request: NextRequest) {
   }
   try {
     const push = readCronPush(await readRequestJson(request));
+    if (push.event === 'price_drop' && !priceDropsEnabled(await getPushLedger().getPreference(push.userId))) {
+      return NextResponse.json({
+        success: true,
+        data: { event: 'price_drop', ...pushCopy('price_drop'), targeted: 0, delivered: 0, reason: 'disabled' },
+      });
+    }
     const data = await deliverShopperPushLive(push);
     return NextResponse.json({ success: true, data });
   } catch (error) {

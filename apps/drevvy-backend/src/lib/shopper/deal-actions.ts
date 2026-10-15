@@ -1,6 +1,7 @@
 import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
 import { deliverShopperPushLive } from '@/lib/push/dispatch';
 import type { ShopperPush } from '@/lib/push/events';
+import { composeShopperPush, didYouBuyOnServer, type VehicleHint } from '@/lib/push/triggers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseShopperDealRepository } from './deal-store';
@@ -215,6 +216,7 @@ export async function forwardOffer(
   dealId: string,
   input: OfferInput,
   deps: DealDeps,
+  dealerName?: string | null,
 ): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const current = (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId);
@@ -222,17 +224,23 @@ export async function forwardOffer(
   const revealed = revealDealerVisit(current, input, deps.now.toISOString());
   await deps.lifecycle.save(revealed);
   if (firstForward) {
-    await emitPush(deps, {
+    await emitPush(deps, composeShopperPush({
       event: 'official_offer',
       userId,
       dealId: deal.id,
       listingId: deal.listingId,
-    });
+    }, {
+      offerForwarded: true,
+      dealerName,
+      vehicle: vehicleHint(deal),
+    }));
   }
   return presentDeal(deal, revealed);
 }
 
 export async function exitGeofence(userId: string, dealId: string, deps: DealDeps) {
+  // The geofence "Did you buy it?" prompt is sent by the phone. The server
+  // records the exit and does not send that push.
   const deal = await requireDeal(userId, dealId, deps);
   const current = await deps.lifecycle.get(userId, deal.id);
   if (!current) {
@@ -298,12 +306,16 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
     }
   }
   if (soldNow) {
-    await emitPush(deps, {
+    const vehicle = await vehicleHintFor(deps, next.consumerUserId, next.dealId);
+    await emitPush(deps, composeShopperPush({
       event: 'car_sold',
       userId: next.consumerUserId,
       dealId: next.dealId,
       listingId: next.listingId,
-    });
+    }, {
+      offerForwarded: Boolean(next.offerForwardedAt),
+      vehicle,
+    }));
   }
   return next;
 }
@@ -350,15 +362,19 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
     }
   }
   for (const prompt of result.buyPrompts) {
-    if (prompt.source !== 'pickup_fallback') continue;
+    if (!didYouBuyOnServer(prompt.source)) continue;
     const record = result.records.find((item) => item.dealId === prompt.dealId);
     if (!record) continue;
-    await emitPush(deps, {
+    const vehicle = await vehicleHintFor(deps, record.consumerUserId, record.dealId);
+    await emitPush(deps, composeShopperPush({
       event: 'did_you_buy',
       userId: record.consumerUserId,
       dealId: record.dealId,
       listingId: record.listingId,
-    });
+    }, {
+      offerForwarded: Boolean(record.offerForwardedAt),
+      vehicle,
+    }));
   }
   return {
     endedNoResponse: result.endedNoResponse.length,
@@ -406,6 +422,28 @@ async function creditSummaryFor(supabase: SupabaseClient, userId: string): Promi
 
 function findRecord(records: LifecycleRecord[], dealId: string): LifecycleRecord | null {
   return records.find((record) => record.dealId === dealId) ?? null;
+}
+
+function vehicleHint(deal: ShopperDeal): VehicleHint {
+  return { year: deal.vehicle.year, make: deal.vehicle.make, model: deal.vehicle.model };
+}
+
+async function vehicleHintFor(
+  deps: { deals: ShopperDealRepository },
+  userId: string,
+  dealId: string,
+): Promise<VehicleHint | null> {
+  try {
+    const row = await deps.deals.get(userId, dealId);
+    if (!row) return null;
+    return vehicleHint(toShopperDeal(row));
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'shopper_push_vehicle_unreadable',
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
+    return null;
+  }
 }
 
 async function emitPush(deps: { notify?: (push: ShopperPush) => Promise<void> }, push: ShopperPush): Promise<void> {

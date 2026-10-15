@@ -7,6 +7,11 @@ export type ShopperPush = {
   userId: string;
   dealId?: string;
   listingId?: string;
+  /** Server-composed alert. Client parsers never copy a caller-supplied title or body. */
+  title?: string;
+  body?: string;
+  /** Car-sold pushes ask the shopper to add another car. */
+  prompt?: 'add_another';
 };
 
 export type PushCopy = {
@@ -84,6 +89,7 @@ export function pushData(push: ShopperPush): Record<string, string> {
   const data: Record<string, string> = { event: push.event };
   if (push.dealId) data.dealId = push.dealId;
   if (push.listingId) data.listingId = push.listingId;
+  if (push.event === 'car_sold') data.prompt = 'add_another';
   return data;
 }
 
