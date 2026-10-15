@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/shell_scaffold.dart';
@@ -26,16 +27,26 @@ class _DealsScreenState extends State<DealsScreen> {
   bool _isLoading = true;
   String? _dismissedBannerId;
 
+  int _loadGeneration = 0;
+
   @override
   void initState() {
     super.initState();
+    _repo.savedDealsTick.addListener(_loadData);
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _repo.savedDealsTick.removeListener(_loadData);
+    super.dispose();
+  }
+
   Future<void> _loadData() async {
+    final generation = ++_loadGeneration;
     final deals = await _repo.getDeals();
     final stats = await _repo.getDealStats();
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _deals = deals;
       _stats = stats;
@@ -77,8 +88,8 @@ class _DealsScreenState extends State<DealsScreen> {
       (d) => d.status.isEnded && d.id != _dismissedBannerId,
       orElse: () => deals.isNotEmpty ? deals.first : deals.first,
     );
-    final showEndedBanner = endedDeal.status.isEnded && 
-        endedDeal.id != _dismissedBannerId;
+    final showEndedBanner =
+        endedDeal.status.isEnded && endedDeal.id != _dismissedBannerId;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -89,35 +100,15 @@ class _DealsScreenState extends State<DealsScreen> {
             : NotificationListener<ScrollUpdateNotification>(
                 onNotification: (notification) {
                   final hideOnScroll = HideOnScroll.of(context);
-                  if (hideOnScroll != null && notification.scrollDelta != null) {
+                  if (hideOnScroll != null &&
+                      notification.scrollDelta != null) {
                     hideOnScroll.setFromScroll(notification.scrollDelta!);
                   }
                   return false;
                 },
                 child: CustomScrollView(
-                slivers: [
-                  // Header with avatar button (v1.8)
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      DrevvySpace.gutter,
-                      DrevvySpace.s4,
-                      DrevvySpace.gutter,
-                      0,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text('Deals', style: text.display),
-                          ),
-                          _AvatarButton(onTap: _showAccountSheet),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Ended deal banner
-                  if (showEndedBanner)
+                  slivers: [
+                    // Header with avatar button (v1.8)
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(
                         DrevvySpace.gutter,
@@ -126,30 +117,48 @@ class _DealsScreenState extends State<DealsScreen> {
                         0,
                       ),
                       sliver: SliverToBoxAdapter(
-                        child: _EndedBanner(
-                          deal: endedDeal,
-                          onDismiss: () => _dismissBanner(endedDeal.id),
+                        child: Row(
+                          children: [
+                            Expanded(child: Text('Deals', style: text.display)),
+                            _AvatarButton(onTap: _showAccountSheet),
+                          ],
                         ),
                       ),
                     ),
 
-                  // Stat hero
-                  if (stats != null)
-                    SliverPadding(
-                      padding: const EdgeInsets.all(DrevvySpace.gutter),
-                      sliver: SliverToBoxAdapter(
-                        child: StatHero(stats: stats),
+                    // Ended deal banner
+                    if (showEndedBanner)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          DrevvySpace.gutter,
+                          DrevvySpace.s4,
+                          DrevvySpace.gutter,
+                          0,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: _EndedBanner(
+                            deal: endedDeal,
+                            onDismiss: () => _dismissBanner(endedDeal.id),
+                          ),
+                        ),
                       ),
-                    ),
 
-                  // Deals list
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DrevvySpace.gutter,
-                    ),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
+                    // Stat hero
+                    if (stats != null)
+                      SliverPadding(
+                        padding: const EdgeInsets.all(DrevvySpace.gutter),
+                        sliver: SliverToBoxAdapter(
+                          child: StatHero(stats: stats),
+                        ),
+                      ),
+
+                    // Deals list
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DrevvySpace.gutter,
+                      ),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
                           final deal = deals[index];
                           return Padding(
                             padding: const EdgeInsets.only(
@@ -157,7 +166,8 @@ class _DealsScreenState extends State<DealsScreen> {
                             ),
                             child: DealCard(
                               deal: deal,
-                              showUndoHint: deal.status == DealStatus.reachingOut,
+                              showUndoHint:
+                                  deal.status == DealStatus.reachingOut,
                               onTap: () {
                                 context.push('/deal/${deal.id}');
                               },
@@ -167,21 +177,21 @@ class _DealsScreenState extends State<DealsScreen> {
                               },
                             ),
                           );
-                        },
-                        childCount: deals.length,
+                        }, childCount: deals.length),
                       ),
                     ),
-                  ),
 
-                  // Bottom padding per spec §6.5a: tabBarHeight + safeArea.bottom + composerHeight + 24
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: DrevvySpace.contentBottomInset + MediaQuery.of(context).padding.bottom,
+                    // Bottom padding per spec §6.5a: tabBarHeight + safeArea.bottom + composerHeight + 24
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height:
+                            DrevvySpace.contentBottomInset +
+                            MediaQuery.of(context).padding.bottom,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
       ),
     );
   }
@@ -207,39 +217,33 @@ class _EmptyDeals extends StatelessWidget {
           // Header with avatar button (v1.8)
           Row(
             children: [
-              Expanded(
-                child: Text('Deals', style: text.display),
-              ),
+              Expanded(child: Text('Deals', style: text.display)),
               if (onAvatarTap != null) _AvatarButton(onTap: onAvatarTap!),
             ],
           ),
-          
+
           const SizedBox(height: DrevvySpace.s6),
-          
+
           // Mini stat hero (0/10)
-          if (stats != null)
-            StatHero(stats: stats!, isEmpty: true),
-          
+          if (stats != null) StatHero(stats: stats!, isEmpty: true),
+
           const SizedBox(height: DrevvySpace.s6),
-          
+
           // Empty state card
           GlassCard(
             padding: const EdgeInsets.all(DrevvySpace.s5),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Get started',
-                  style: text.title,
-                ),
+                Text('Get started', style: text.title),
                 const SizedBox(height: DrevvySpace.s4),
-                
+
                 _StepRow(number: '1', text: 'Find a car you like'),
                 _StepRow(number: '2', text: 'Add it to Drevvy'),
                 _StepRow(number: '3', text: 'Drevvy finds your best price'),
-                
+
                 const SizedBox(height: DrevvySpace.s5),
-                
+
                 Row(
                   children: [
                     Expanded(
@@ -360,10 +364,7 @@ class _AvatarButton extends StatelessWidget {
 }
 
 class _EndedBanner extends StatelessWidget {
-  const _EndedBanner({
-    required this.deal,
-    required this.onDismiss,
-  });
+  const _EndedBanner({required this.deal, required this.onDismiss});
 
   final Deal deal;
   final VoidCallback onDismiss;

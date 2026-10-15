@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
 import '../services/purchase_config.dart';
@@ -7,14 +9,14 @@ import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
-/// 
+///
 /// v1.7: Uses one-time car packs instead of monthly subscription.
 /// Car credits are spent on "Unlock my price" and refunded for:
 /// - No response from dealer
 /// - Car no longer listed (sold)
 /// - Dealer decline
 /// - Removal within 30 minutes before outreach
-/// 
+///
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
@@ -43,6 +45,13 @@ class DemoRepository {
 
   /// Shop listens so "Run again" from the menu or account sheet opens results.
   void Function(SavedSearch search)? onSavedSearchRun;
+
+  /// Saved and Deals tabs listen so a heart tap or unlock shows up immediately.
+  final ValueNotifier<int> savedDealsTick = ValueNotifier<int>(0);
+
+  void _bumpLists() {
+    savedDealsTick.value++;
+  }
 
   // Simulated delay for realistic loading states
   Future<T> _delay<T>(T value, [Duration? duration]) async {
@@ -73,7 +82,8 @@ class DemoRepository {
     id: 'user_demo_001',
     firstName: 'Dana',
     email: 'dana.w@example.com',
-    entitlement: Entitlement.free, // v1.7: No longer uses Pro; credits gate unlock
+    entitlement:
+        Entitlement.free, // v1.7: No longer uses Pro; credits gate unlock
     usage: Usage(
       used: 0,
       cap: 0,
@@ -95,13 +105,13 @@ class DemoRepository {
   );
 
   // ============== CAR CREDITS (v1.7) ==============
-  
+
   /// Credit ledger for audit trail.
   final List<CreditLedgerEntry> _creditLedger = [];
-  
+
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
-  
+
   /// Server-driven avg_savings config shown beside car packs.
   final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
@@ -109,25 +119,25 @@ class DemoRepository {
     source: 'CarEdge, State of Dealer Fees 2026',
     kind: 'market',
   );
-  
+
   /// Get current car credit balance.
   Future<CarCreditBalance> getCreditBalance() async {
     return _delay(_creditBalance);
   }
-  
+
   /// Get credit ledger entries for this user.
   Future<List<CreditLedgerEntry>> getCreditLedger() async {
     return _delay(List.unmodifiable(_creditLedger));
   }
-  
+
   /// Get avg_savings config. Returns null if unavailable (hide stat in UI).
   Future<AvgSavingsConfig?> getAvgSavingsConfig() async {
     return _delay(_avgSavingsConfig);
   }
-  
+
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
-  
+
   /// Purchase a car pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     await _purchaseService.initialize();
@@ -137,12 +147,12 @@ class DemoRepository {
     }
     return result;
   }
-  
+
   /// Spend 1 credit for "Unlock my price".
   /// Returns true if successful, false if no credits.
   bool spendCredit(String dealId) {
     if (!_creditBalance.canUnlock) return false;
-    
+
     final entry = CreditLedgerEntry(
       id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -152,25 +162,25 @@ class DemoRepository {
       dealId: dealId,
     );
     _creditLedger.add(entry);
-    
+
     _creditBalance = _creditBalance.copyWith(
       balance: _creditBalance.balance - 1,
       totalSpent: _creditBalance.totalSpent + 1,
     );
-    
+
     return true;
   }
-  
+
   /// Refund 1 credit for a deal. Returns true if successful.
   bool refundCredit(String dealId, CreditReason reason) {
     assert(
       reason == CreditReason.refundNoResponse ||
-      reason == CreditReason.refundNoLongerListed ||
-      reason == CreditReason.refundDealerDecline ||
-      reason == CreditReason.refundEarlyRemoval,
+          reason == CreditReason.refundNoLongerListed ||
+          reason == CreditReason.refundDealerDecline ||
+          reason == CreditReason.refundEarlyRemoval,
       'Invalid refund reason: $reason',
     );
-    
+
     final entry = CreditLedgerEntry(
       id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -180,15 +190,15 @@ class DemoRepository {
       dealId: dealId,
     );
     _creditLedger.add(entry);
-    
+
     _creditBalance = _creditBalance.copyWith(
       balance: _creditBalance.balance + 1,
       totalRefunded: _creditBalance.totalRefunded + 1,
     );
-    
+
     return true;
   }
-  
+
   /// Record a store purchase. Server balance wins when the credits route exists.
   Future<void> _recordPurchase(PurchaseSuccess result) async {
     if (_hasTransaction(result.transactionId)) return;
@@ -198,7 +208,11 @@ class DemoRepository {
       transactionId: result.transactionId,
     );
     if (remote != null) {
-      _rememberTransaction(result.transactionId, result.creditsAdded, result.packType);
+      _rememberTransaction(
+        result.transactionId,
+        result.creditsAdded,
+        result.packType,
+      );
       _creditBalance = remote;
       return;
     }
@@ -214,7 +228,11 @@ class DemoRepository {
     return _creditLedger.any((entry) => entry.rcEventId == transactionId);
   }
 
-  void _rememberTransaction(String transactionId, int credits, CarPackType packType) {
+  void _rememberTransaction(
+    String transactionId,
+    int credits,
+    CarPackType packType,
+  ) {
     if (_hasTransaction(transactionId)) return;
     _creditLedger.add(
       CreditLedgerEntry(
@@ -230,7 +248,12 @@ class DemoRepository {
   }
 
   /// Add credits (from purchase).
-  void _addCredits(int credits, CreditReason reason, {CarPackType? packType, String? rcEventId}) {
+  void _addCredits(
+    int credits,
+    CreditReason reason, {
+    CarPackType? packType,
+    String? rcEventId,
+  }) {
     if (rcEventId != null && _hasTransaction(rcEventId)) return;
     final entry = CreditLedgerEntry(
       id: 'ledger_${rcEventId ?? DateTime.now().millisecondsSinceEpoch}',
@@ -242,26 +265,26 @@ class DemoRepository {
       rcEventId: rcEventId,
     );
     _creditLedger.add(entry);
-    
+
     _creditBalance = _creditBalance.copyWith(
       balance: _creditBalance.balance + credits,
       totalPurchased: _creditBalance.totalPurchased + credits,
     );
   }
-  
+
   /// Check if a deal qualifies for early removal refund (within 30 minutes, before outreach).
   bool canGetEarlyRemovalRefund(Deal deal) {
     if (deal.status != DealStatus.reachingOut) return false;
     final elapsed = DateTime.now().difference(deal.addedAt);
     return elapsed.inMinutes < 30;
   }
-  
+
   /// Get available pack offerings.
   Future<List<CarPackOffering>?> getPackOfferings() async {
     await _purchaseService.initialize();
     return _purchaseService.getOfferings();
   }
-  
+
   /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
     await _purchaseService.initialize();
@@ -273,15 +296,24 @@ class DemoRepository {
       _ => const <RestoredTransaction>[],
     };
     final remote = await _credits.restorePurchases(
-      transactionIds: [for (final transaction in transactions) transaction.transactionId],
+      transactionIds: [
+        for (final transaction in transactions) transaction.transactionId,
+      ],
     );
     if (remote != null) {
       for (final transaction in transactions) {
-        _rememberTransaction(transaction.transactionId, transaction.packType.cars, transaction.packType);
+        _rememberTransaction(
+          transaction.transactionId,
+          transaction.packType.cars,
+          transaction.packType,
+        );
       }
       _creditBalance = remote;
       if (transactions.isEmpty) return const RestoreNoPurchases();
-      return RestoreSuccess(creditsRestored: remote.balance, transactions: transactions);
+      return RestoreSuccess(
+        creditsRestored: remote.balance,
+        transactions: transactions,
+      );
     }
 
     if (transactions.isEmpty) return const RestoreNoPurchases();
@@ -317,7 +349,8 @@ class DemoRepository {
       return _delay(_demoListings);
     }
 
-    final effective = filters ??
+    final effective =
+        filters ??
         SearchFilters(
           priceMax: maxPrice,
           bodyTypes: bodyTypes ?? const [],
@@ -362,57 +395,61 @@ class DemoRepository {
   }
 
   Future<Listing> getListingById(String id) async {
-    final listing = _demoListings.firstWhere(
-      (l) => l.id == id,
-      orElse: () => _demoListings.first,
-    );
-    return _delay(listing);
+    for (final listing in [..._demoListings, ..._retiredListings]) {
+      if (listing.id == id) return _delay(listing);
+    }
+    throw StateError('Listing $id not found');
   }
 
   Future<MarketContext> getMarketContext(Listing listing) async {
     // Mock market context with consistent math per audit
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
-    
+
     if (isNew) {
       final msrp = listing.msrp ?? listing.price + 2000;
       final discount = msrp - listing.price;
-      return _delay(MarketContext(
-        fairVehiclePrice: listing.price,
-        fairOtd: listing.price + 3500, // +fees/tax estimate
-        lowPrice: listing.price - 1500,
-        medianPrice: listing.price + 500,
-        highPrice: msrp + 1000,
-        comparablesCount: 8,
-        daysListedMedian: 25,
-        isNewCar: true,
-        msrp: msrp,
-        msrpDiscount: discount,
-      ));
+      return _delay(
+        MarketContext(
+          fairVehiclePrice: listing.price,
+          fairOtd: listing.price + 3500, // +fees/tax estimate
+          lowPrice: listing.price - 1500,
+          medianPrice: listing.price + 500,
+          highPrice: msrp + 1000,
+          comparablesCount: 8,
+          daysListedMedian: 25,
+          isNewCar: true,
+          msrp: msrp,
+          msrpDiscount: discount,
+        ),
+      );
     }
-    
+
     // Used car: ensure fairVehiclePrice is between low and high
     // Using consistent percentiles (p25/p50/p75)
     final lowPrice = (listing.price * 0.92).round(); // p25
     final medianPrice = (listing.price * 1.02).round(); // p50
     final highPrice = (listing.price * 1.12).round(); // p75
-    final fairVehicle = (listing.price * 1.03).round(); // MC Price between p50-p75
-    
-    return _delay(MarketContext(
-      fairVehiclePrice: fairVehicle,
-      fairOtd: fairVehicle + 3500, // +fees/tax estimate
-      lowPrice: lowPrice,
-      medianPrice: medianPrice,
-      highPrice: highPrice,
-      comparablesCount: 14,
-      daysListedMedian: 38,
-      priceDrops: 2,
-      isNewCar: false,
-    ));
+    final fairVehicle = (listing.price * 1.03)
+        .round(); // MC Price between p50-p75
+
+    return _delay(
+      MarketContext(
+        fairVehiclePrice: fairVehicle,
+        fairOtd: fairVehicle + 3500, // +fees/tax estimate
+        lowPrice: lowPrice,
+        medianPrice: medianPrice,
+        highPrice: highPrice,
+        comparablesCount: 14,
+        daysListedMedian: 38,
+        priceDrops: 2,
+        isNewCar: false,
+      ),
+    );
   }
 
   // ============== SAVED CARS (v1.8) ==============
-  
+
   /// Saved cars list - stores only Drevvy's own data, no MarketCheck listing data.
   /// Per spec §11.2: price changes must come from live data, not stored prices.
   List<SavedCar> _savedCars = [];
@@ -434,6 +471,7 @@ class DemoRepository {
 
   /// Check if a listing is already in Deals.
   bool isListingInDeals(String listingId) {
+    _ensureDealsLoaded();
     return _deals.any((d) => d.listingId == listingId);
   }
 
@@ -449,18 +487,21 @@ class DemoRepository {
       status: SavedCarStatus.active,
     );
     _savedCars = [..._savedCars, savedCar];
+    _bumpLists();
     return _delay(savedCar);
   }
 
   /// Remove a saved car (unsave / swipe to remove).
   Future<void> removeSavedCar(String savedCarId) async {
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
+    _bumpLists();
     return _delay(null);
   }
 
   /// Remove saved car by listing ID.
   Future<void> unsaveByListingId(String listingId) async {
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
+    _bumpLists();
     return _delay(null);
   }
 
@@ -474,62 +515,73 @@ class DemoRepository {
   }
 
   /// Move saved car to Deals (unlock my price flow).
-  /// Removes from saved, creates deal, spends 1 credit in one transaction.
+  /// The car stays in Saved until this runs, then it leaves Saved.
+  /// A car already in Deals is not charged again.
   Future<Deal?> moveToDeals(String savedCarId) async {
+    await getSavedCars();
     final savedCar = _savedCars.firstWhere((sc) => sc.id == savedCarId);
     final listing = await getListingById(savedCar.listingId);
-    
-    // Check if has credits
+    _ensureDealsLoaded();
+
+    if (isListingInDeals(listing.id)) {
+      _savedCars = _savedCars
+          .where((sc) => sc.listingId != listing.id)
+          .toList();
+      _bumpLists();
+      final existing = _deals.firstWhere(
+        (deal) => deal.listingId == listing.id,
+      );
+      return _delay(existing);
+    }
+
     if (!_creditBalance.canUnlock) return null;
-    
-    // Remove from saved
-    _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
-    
-    // Create deal (this also spends credit)
-    final deal = await addDeal(listing);
-    
-    return deal;
+    return addDeal(listing);
   }
 
-  /// Demo saved cars data.
+  /// Demo saved cars. These listings are not already in Deals.
   List<SavedCar> get _demoSavedCars => [
     SavedCar(
       id: 'saved_001',
       userId: 'user_demo_001',
-      listingId: 'listing_001',
-      vin: '2T3P1RFV5RC123456',
+      listingId: 'listing_008',
+      vin: '19XFC2F59NE123456',
       savedAt: DateTime.now().subtract(const Duration(days: 5)),
-      savedPrice: 33995, // Was $33,995 when saved, now $32,995 -> $1,000 drop
+      savedPrice: 23490,
       status: SavedCarStatus.active,
     ),
     SavedCar(
       id: 'saved_002',
       userId: 'user_demo_001',
-      listingId: 'listing_002',
-      vin: '2HKRW2H50NH123456',
+      listingId: 'listing_009',
+      vin: '5XYP3DHC5NG123456',
       savedAt: DateTime.now().subtract(const Duration(days: 3)),
-      savedPrice: 31490, // Same price
+      savedPrice: 26880,
       status: SavedCarStatus.active,
     ),
     SavedCar(
       id: 'saved_003',
       userId: 'user_demo_001',
-      listingId: 'listing_006',
-      vin: 'KM8JBCA19NU123456',
-      savedAt: DateTime.now().subtract(const Duration(days: 2)),
-      savedPrice: 27450, // Was $27,450 when saved, now $27,950 -> $500 increase
-      status: SavedCarStatus.active,
+      listingId: 'listing_sold_010',
+      vin: '4S4BTANC5M3123456',
+      savedAt: DateTime.now().subtract(const Duration(days: 12)),
+      savedPrice: 24800,
+      status: SavedCarStatus.noLongerListed,
     ),
   ];
 
   // ============== DEALS ==============
 
   List<Deal> _deals = [];
+  bool _dealsSeeded = false;
+
+  void _ensureDealsLoaded() {
+    if (_dealsSeeded) return;
+    _deals = List<Deal>.from(_demoDealsList);
+    _dealsSeeded = true;
+  }
 
   Future<List<Deal>> getDeals() async {
-    if (_deals.isEmpty) {
-      _deals = _demoDealsList;
-    }
+    _ensureDealsLoaded();
     return _delay(_deals);
   }
 
@@ -539,6 +591,20 @@ class DemoRepository {
   }
 
   Future<Deal> addDeal(Listing listing) async {
+    _ensureDealsLoaded();
+    for (final deal in _deals) {
+      if (deal.listingId == listing.id) {
+        _savedCars = _savedCars
+            .where((car) => car.listingId != listing.id)
+            .toList();
+        _bumpLists();
+        return _delay(deal);
+      }
+    }
+    if (!_creditBalance.canUnlock) {
+      throw StateError('No cars left');
+    }
+
     final newDeal = Deal(
       id: 'deal_${DateTime.now().millisecondsSinceEpoch}',
       listingId: listing.id,
@@ -550,36 +616,49 @@ class DemoRepository {
       marketContext: await getMarketContext(listing),
     );
     _deals = [..._deals, newDeal];
-    
+    _savedCars = _savedCars
+        .where((car) => car.listingId != listing.id)
+        .toList();
+
     // v1.7: Spend 1 car credit
     spendCredit(newDeal.id);
-    
+    _bumpLists();
+
     return _delay(newDeal);
   }
 
   Future<void> removeDeal(String dealId) async {
+    _ensureDealsLoaded();
     final deal = await getDealById(dealId);
     _deals = _deals.where((d) => d.id != dealId).toList();
-    
+
     // v1.7: Refund credit if within 30 minutes before outreach
     if (canGetEarlyRemovalRefund(deal)) {
       refundCredit(dealId, CreditReason.refundEarlyRemoval);
     }
-    
+    _bumpLists();
+
     return _delay(null);
   }
 
   Future<Deal> acceptOffer(String dealId) async {
+    _ensureDealsLoaded();
     final deal = await getDealById(dealId);
-    final updated = deal.copyWith(status: DealStatus.accepted);
+    final updated = deal.copyWith(
+      status: DealStatus.accepted,
+      acceptedOffer: deal.latestOffer,
+    );
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
+    _bumpLists();
     return _delay(updated);
   }
 
   Future<Deal> keepGoing(String dealId) async {
+    _ensureDealsLoaded();
     final deal = await getDealById(dealId);
     final updated = deal.copyWith(status: DealStatus.findingBestPrice);
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
+    _bumpLists();
     return _delay(updated);
   }
 
@@ -747,7 +826,8 @@ class DemoRepository {
   String _getDemoResponse(String input, [List<MemoryItem> memory = const []]) {
     final String answer;
     if (input.toLowerCase().contains('rav4')) {
-      answer = 'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
+      answer =
+          'The Toyota RAV4 Hybrid is one of the most popular compact SUVs. '
           'Based on 214 listings nearby, the median price for a 2024 RAV4 Hybrid XLE '
           'is around \$34,600. With your budget, you have several good options within 50 miles.';
     } else {
@@ -770,10 +850,10 @@ class DemoRepository {
   Future<DealStats> getDealStats() async {
     final deals = await getDeals();
     final balance = await getCreditBalance();
-    
+
     int totalSavings = 0;
     int offersToReview = 0;
-    
+
     for (final deal in deals) {
       if (deal.savings != null && deal.savings! > 0) {
         totalSavings += deal.savings!;
@@ -782,13 +862,15 @@ class DemoRepository {
         offersToReview++;
       }
     }
-    
+
     // v1.7: Stats now use credit balance, not monthly usage
-    return _delay(DealStats(
-      underListedTotal: totalSavings,
-      offersToReview: offersToReview,
-      carsRemaining: balance.balance,
-    ));
+    return _delay(
+      DealStats(
+        underListedTotal: totalSavings,
+        offersToReview: offersToReview,
+        carsRemaining: balance.balance,
+      ),
+    );
   }
 
   // ============== DEMO DATA ==============
@@ -813,9 +895,7 @@ class DemoRepository {
         highwayMpg: 38,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/rav4b.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/rav4b.jpg']),
       carLocation: CarLocation(
         city: 'Springfield',
         state: 'IL',
@@ -829,12 +909,14 @@ class DemoRepository {
       carfax1Owner: true,
       carfaxCleanTitle: true,
       extra: ListingExtra(
-        highValueFeatures: ['Blind Spot Monitor', 'Apple CarPlay', 'Heated Seats', 'Adaptive Cruise Control'],
+        highValueFeatures: [
+          'Blind Spot Monitor',
+          'Apple CarPlay',
+          'Heated Seats',
+          'Adaptive Cruise Control',
+        ],
       ),
-      colors: ListingColors(
-        exteriorColor: 'Sage Gray',
-        interiorColor: 'Black',
-      ),
+      colors: ListingColors(exteriorColor: 'Sage Gray', interiorColor: 'Black'),
     ),
     const Listing(
       id: 'listing_002',
@@ -855,9 +937,7 @@ class DemoRepository {
         highwayMpg: 34,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/crv.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/crv.jpg']),
       dist: 8,
       domActive: 45,
       inventoryType: 'used',
@@ -888,9 +968,7 @@ class DemoRepository {
         highwayMpg: 40,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/civic.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/civic.jpg']),
       dist: 15,
       domActive: 30,
       inventoryType: 'used',
@@ -918,9 +996,7 @@ class DemoRepository {
         highwayMpg: 29,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/cx50.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/cx50.jpg']),
       dist: 22,
       domActive: 52,
       inventoryType: 'used',
@@ -947,9 +1023,7 @@ class DemoRepository {
         highwayMpg: 126,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/model3.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/model3.jpg']),
       dist: 18,
       domActive: 21,
       inventoryType: 'used',
@@ -977,9 +1051,7 @@ class DemoRepository {
         highwayMpg: 38,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/tucson.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/tucson.jpg']),
       dist: 25,
       domActive: 38,
       inventoryType: 'used',
@@ -1009,19 +1081,97 @@ class DemoRepository {
         highwayMpg: 24,
         seatingCapacity: 5,
       ),
-      media: ListingMedia(
-        photoLinks: ['assets/images/tacoma.jpg'],
-      ),
+      media: ListingMedia(photoLinks: ['assets/images/tacoma.jpg']),
       dist: 15,
       domActive: 12,
       inventoryType: 'new',
       extra: ListingExtra(
-        highValueFeatures: ['TRD Off-Road Package', 'Multi-Terrain Select', 'Panoramic View Monitor'],
+        highValueFeatures: [
+          'TRD Off-Road Package',
+          'Multi-Terrain Select',
+          'Panoramic View Monitor',
+        ],
       ),
       colors: ListingColors(
         exteriorColor: 'Solar Octane',
         interiorColor: 'Black',
       ),
+    ),
+    const Listing(
+      id: 'listing_008',
+      vin: '19XFC2F59NE123456',
+      stockNo: 'H80808',
+      price: 21990,
+      miles: 41200,
+      build: ListingBuild(
+        year: 2022,
+        make: 'Honda',
+        model: 'Civic',
+        trim: 'Sport',
+        bodyType: 'Sedan',
+        drivetrain: 'FWD',
+        powertrainType: 'Gas',
+        engine: '2.0L',
+        cityMpg: 31,
+        highwayMpg: 40,
+        seatingCapacity: 5,
+      ),
+      media: ListingMedia(photoLinks: ['assets/images/civic.jpg']),
+      dist: 9,
+      domActive: 18,
+      inventoryType: 'used',
+      colors: ListingColors(
+        exteriorColor: 'Sonic Gray',
+        interiorColor: 'Black',
+      ),
+    ),
+    const Listing(
+      id: 'listing_009',
+      vin: '5XYP3DHC5NG123456',
+      stockNo: 'K90909',
+      price: 26880,
+      miles: 22140,
+      build: ListingBuild(
+        year: 2023,
+        make: 'Kia',
+        model: 'Sportage',
+        trim: 'LX',
+        bodyType: 'SUV',
+        drivetrain: 'AWD',
+        powertrainType: 'Gas',
+        engine: '2.5L',
+        cityMpg: 23,
+        highwayMpg: 28,
+        seatingCapacity: 5,
+      ),
+      media: ListingMedia(photoLinks: ['assets/images/tucson.jpg']),
+      dist: 14,
+      domActive: 27,
+      inventoryType: 'used',
+      colors: ListingColors(
+        exteriorColor: 'Steel Gray',
+        interiorColor: 'Black',
+      ),
+    ),
+  ];
+
+  /// Still resolvable for Saved, and kept out of Shop because the car is gone.
+  static const _retiredListings = [
+    Listing(
+      id: 'listing_sold_010',
+      vin: '4S4BTANC5M3123456',
+      price: 24800,
+      miles: 48600,
+      build: ListingBuild(
+        year: 2021,
+        make: 'Subaru',
+        model: 'Outback',
+        trim: 'Premium',
+        bodyType: 'SUV',
+        drivetrain: 'AWD',
+      ),
+      media: ListingMedia(photoLinks: []),
+      dist: 31,
     ),
   ];
 
@@ -1068,15 +1218,17 @@ class DemoRepository {
           otd: 35120,
           vehiclePrice: 31200,
           lines: const [
-            OfferLine(key: 'Vehicle price', amount: 31200, subLine: 'Down from \$32,100'),
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 31200,
+              subLine: 'Down from \$32,100',
+            ),
             OfferLine(key: 'Doc fee', amount: 499),
             OfferLine(key: 'Title & registration', amount: 250),
             OfferLine(key: 'Sales tax (6.25%)', amount: 1950),
             OfferLine(key: 'Paint protection', amount: 895),
           ],
-          removedAddOns: const [
-            OfferLine(key: 'Nitrogen fill', amount: 199),
-          ],
+          removedAddOns: const [OfferLine(key: 'Nitrogen fill', amount: 199)],
           validUntil: DateTime.now().add(const Duration(days: 5)),
         ),
         Offer(
@@ -1085,7 +1237,11 @@ class DemoRepository {
           otd: 33415,
           vehiclePrice: 30700,
           lines: const [
-            OfferLine(key: 'Vehicle price', amount: 30700, subLine: 'Down from \$31,200'),
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 30700,
+              subLine: 'Down from \$31,200',
+            ),
             OfferLine(key: 'Doc fee', amount: 399, subLine: 'Down from \$499'),
             OfferLine(key: 'Title & registration', amount: 250),
             OfferLine(key: 'Sales tax (6.25%)', amount: 1919),
@@ -1132,7 +1288,7 @@ class DemoRepository {
         ),
       ],
     ),
-    
+
     // Finding best price
     Deal(
       id: 'deal_002',
@@ -1169,7 +1325,7 @@ class DemoRepository {
       ],
       comms: const DealComms(emails: 4, texts: 2, calls: 0),
     ),
-    
+
     // Reaching out (new, with undo window)
     Deal(
       id: 'deal_003',
@@ -1181,7 +1337,7 @@ class DemoRepository {
       listing: _demoListings[2],
       comms: const DealComms(emails: 0, texts: 0, calls: 0),
     ),
-    
+
     // Official offer received (dealer revealed)
     Deal(
       id: 'deal_004',
@@ -1250,7 +1406,7 @@ class DemoRepository {
         forwardedAt: DateTime.now().subtract(const Duration(hours: 23)),
       ),
     ),
-    
+
     // No longer listed (likely sold)
     Deal(
       id: 'deal_005',
@@ -1277,7 +1433,7 @@ class DemoRepository {
       ),
       comms: const DealComms(emails: 3, texts: 1, calls: 0),
     ),
-    
+
     // No response
     Deal(
       id: 'deal_006',
@@ -1290,7 +1446,7 @@ class DemoRepository {
       listing: _demoListings[5],
       comms: const DealComms(emails: 5, texts: 3, calls: 2),
     ),
-    
+
     // v1.6: Watching for drops
     Deal(
       id: 'deal_007',
@@ -1312,7 +1468,7 @@ class DemoRepository {
       ),
       comms: const DealComms(emails: 3, texts: 1, calls: 0),
     ),
-    
+
     // v1.6: Changed after accepted
     Deal(
       id: 'deal_008',
@@ -1385,14 +1541,14 @@ class DealStats {
 
   final int underListedTotal;
   final int offersToReview;
-  
+
   /// v1.7: Cars remaining from credit balance (no longer monthly usage).
   final int carsRemaining;
 
   /// v1.7: Display text for cars remaining.
-  String get carsRemainingFormatted => 
+  String get carsRemainingFormatted =>
       carsRemaining == 1 ? '1 car left' : '$carsRemaining cars left';
-  
+
   /// v1.7: Whether user can unlock more cars.
   bool get canUnlock => carsRemaining > 0;
 }
@@ -1539,7 +1695,9 @@ extension DemoRepositorySearchProfile on DemoRepository {
   List<MemoryItem> chatMemoryItems(Set<String>? enabledIds) {
     if (!_searchProfile.personalize) return const [];
     if (enabledIds == null) return List<MemoryItem>.from(_searchProfile.items);
-    return _searchProfile.items.where((item) => enabledIds.contains(item.id)).toList();
+    return _searchProfile.items
+        .where((item) => enabledIds.contains(item.id))
+        .toList();
   }
 
   String? latestSearchTitle() {
@@ -1557,8 +1715,7 @@ extension DemoRepositorySearchProfile on DemoRepository {
       );
       updated = next;
       return next;
-    }).toList()
-      ..sort((a, b) => b.lastRunAt.compareTo(a.lastRunAt));
+    }).toList()..sort((a, b) => b.lastRunAt.compareTo(a.lastRunAt));
     _searchProfile = _searchProfile.copyWith(searches: searches);
     final ran = updated;
     if (ran != null) onSavedSearchRun?.call(ran);
@@ -1566,7 +1723,9 @@ extension DemoRepositorySearchProfile on DemoRepository {
 
   void deleteSavedSearch(String searchId) {
     _searchProfile = _searchProfile.copyWith(
-      searches: _searchProfile.searches.where((search) => search.id != searchId).toList(),
+      searches: _searchProfile.searches
+          .where((search) => search.id != searchId)
+          .toList(),
     );
   }
 
@@ -1604,7 +1763,9 @@ extension DemoRepositorySearchProfile on DemoRepository {
     _searchProfile = SearchProfile(
       userId: _searchProfile.userId,
       personalize: _searchProfile.personalize,
-      items: _searchProfile.items.where((i) => i.source == MemorySource.explicit).toList(),
+      items: _searchProfile.items
+          .where((i) => i.source == MemorySource.explicit)
+          .toList(),
       searches: [],
       viewed: [],
     );
@@ -1612,48 +1773,59 @@ extension DemoRepositorySearchProfile on DemoRepository {
 
   Future<List<StarterCard>> getStarters() async {
     await Future.delayed(const Duration(milliseconds: 300));
-    
+
     if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
       return _genericStarters;
     }
-    
+
     final starters = <StarterCard>[];
-    
+
     // Back to search - last saved search
     if (_searchProfile.searches.isNotEmpty) {
       final lastSearch = _searchProfile.searches.first;
-      starters.add(StarterCard(
-        kind: StarterKind.backToSearch,
-        kicker: 'BACK TO YOUR SEARCH',
-        title: lastSearch.displayTitle,
-        action: StarterAction(mode: 'shop', filters: lastSearch.filters),
-      ));
+      starters.add(
+        StarterCard(
+          kind: StarterKind.backToSearch,
+          kicker: 'BACK TO YOUR SEARCH',
+          title: lastSearch.displayTitle,
+          action: StarterAction(mode: 'shop', filters: lastSearch.filters),
+        ),
+      );
     }
-    
+
     // Price drops
-    starters.add(const StarterCard(
-      kind: StarterKind.priceDrops,
-      kicker: 'PRICE DROPS',
-      title: '3 price drops on cars like ones you viewed',
-      action: StarterAction(mode: 'shop'),
-    ));
-    
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.priceDrops,
+        kicker: 'PRICE DROPS',
+        title: '3 price drops on cars like ones you viewed',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+
     // New listings
-    starters.add(const StarterCard(
-      kind: StarterKind.newListings,
-      kicker: 'NEW LISTINGS',
-      title: '5 new CR-V Hybrids within 30 mi',
-      action: StarterAction(mode: 'shop'),
-    ));
-    
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.newListings,
+        kicker: 'NEW LISTINGS',
+        title: '5 new CR-V Hybrids within 30 mi',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+
     // Fair price
-    starters.add(const StarterCard(
-      kind: StarterKind.fairPrice,
-      kicker: 'FAIR PRICE',
-      title: 'Is \$32,995 fair for the RAV4 you viewed?',
-      action: StarterAction(mode: 'ask', prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?'),
-    ));
-    
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.fairPrice,
+        kicker: 'FAIR PRICE',
+        title: 'Is \$32,995 fair for the RAV4 you viewed?',
+        action: StarterAction(
+          mode: 'ask',
+          prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?',
+        ),
+      ),
+    );
+
     return starters.take(4).toList();
   }
 
@@ -1662,19 +1834,28 @@ extension DemoRepositorySearchProfile on DemoRepository {
       kind: StarterKind.generic,
       kicker: 'ASK DREVVY',
       title: 'Which hybrid SUV fits a family of four?',
-      action: StarterAction(mode: 'ask', prompt: 'Which hybrid SUV fits a family of four?'),
+      action: StarterAction(
+        mode: 'ask',
+        prompt: 'Which hybrid SUV fits a family of four?',
+      ),
     ),
     StarterCard(
       kind: StarterKind.generic,
       kicker: 'FAIR PRICE',
       title: 'Is \$33k fair for a 2024 RAV4 Hybrid?',
-      action: StarterAction(mode: 'ask', prompt: 'Is \$33k fair for a 2024 RAV4 Hybrid?'),
+      action: StarterAction(
+        mode: 'ask',
+        prompt: 'Is \$33k fair for a 2024 RAV4 Hybrid?',
+      ),
     ),
     StarterCard(
       kind: StarterKind.generic,
       kicker: 'DEALER FEES',
       title: 'Which dealer fees should I never pay?',
-      action: StarterAction(mode: 'ask', prompt: 'Which dealer fees should I never pay?'),
+      action: StarterAction(
+        mode: 'ask',
+        prompt: 'Which dealer fees should I never pay?',
+      ),
     ),
     StarterCard(
       kind: StarterKind.generic,

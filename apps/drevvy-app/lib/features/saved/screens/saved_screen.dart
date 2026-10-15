@@ -9,6 +9,9 @@ import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/cars_balance_placement.dart';
+import '../../../data/services/purchase_config.dart';
+import '../../../data/services/superwall_placement.dart';
 import '../../shop/widgets/account_sheet.dart';
 import '../../shop/widgets/unlock_paywall.dart';
 import '../widgets/saved_car_card.dart';
@@ -25,31 +28,42 @@ class SavedScreen extends StatefulWidget {
 
 class _SavedScreenState extends State<SavedScreen> {
   final _repo = DemoRepository.instance;
+  final CarsBalancePlacement _carsBalancePlacement = carsBalancePlacementFor(
+    PurchaseConfig.fromEnvironment(),
+  );
   List<SavedCar> _savedCars = [];
   Map<String, Listing> _listings = {};
   bool _isLoading = true;
   SavedSortOption _sortOption = SavedSortOption.recentlySaved;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _repo.savedDealsTick.addListener(_loadData);
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _repo.savedDealsTick.removeListener(_loadData);
+    super.dispose();
+  }
+
   Future<void> _loadData() async {
+    final generation = ++_loadGeneration;
     final savedCars = await _repo.getSavedCars();
     final listings = <String, Listing>{};
-    
+
     for (final sc in savedCars) {
       try {
         final listing = await _repo.getListingById(sc.listingId);
         listings[sc.listingId] = listing;
       } catch (_) {
-        // Listing not found - mark as no longer listed
+        // Listing not found - the card shows the sold state.
       }
     }
-    if (!mounted) return;
-
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _savedCars = savedCars;
       _listings = listings;
@@ -59,12 +73,12 @@ class _SavedScreenState extends State<SavedScreen> {
 
   List<SavedCar> get _sortedCars {
     final cars = List<SavedCar>.from(_savedCars);
-    
+
     // No longer listed always sort to top
     cars.sort((a, b) {
       if (a.isNoLongerListed && !b.isNoLongerListed) return -1;
       if (!a.isNoLongerListed && b.isNoLongerListed) return 1;
-      
+
       switch (_sortOption) {
         case SavedSortOption.recentlySaved:
           return b.savedAt.compareTo(a.savedAt);
@@ -78,7 +92,7 @@ class _SavedScreenState extends State<SavedScreen> {
           return distA.compareTo(distB);
       }
     });
-    
+
     return cars;
   }
 
@@ -89,15 +103,15 @@ class _SavedScreenState extends State<SavedScreen> {
   String get _subLine {
     final count = _savedCars.length;
     final noLonger = _noLongerListedCount;
-    
+
     if (count == 0) return '';
-    
+
     final parts = <String>['$count ${count == 1 ? 'car' : 'cars'}'];
     if (noLonger > 0) {
       parts.add('$noLonger no longer listed');
     }
     parts.add('swipe left to remove');
-    
+
     return parts.join(' · ');
   }
 
@@ -112,15 +126,15 @@ class _SavedScreenState extends State<SavedScreen> {
 
   Future<void> _handleRemove(SavedCar savedCar) async {
     final listing = _listings[savedCar.listingId];
-    
+
     setState(() {
       _savedCars = _savedCars.where((sc) => sc.id != savedCar.id).toList();
     });
-    
+
     await _repo.removeSavedCar(savedCar.id);
-    
+
     if (!mounted) return;
-    
+
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -143,7 +157,7 @@ class _SavedScreenState extends State<SavedScreen> {
 
   Future<void> _handleUnlock(SavedCar savedCar) async {
     final listing = _listings[savedCar.listingId];
-    if (listing == null) return;
+    if (listing == null || savedCar.isNoLongerListed) return;
 
     final balance = await _repo.getCreditBalance();
     if (!mounted) return;
@@ -153,6 +167,7 @@ class _SavedScreenState extends State<SavedScreen> {
       listing: listing,
       balance: balance,
       repo: _repo,
+      placement: _carsBalancePlacement,
       onCanUnlock: (_) => _moveSavedToDeals(savedCar, listing),
     );
   }
@@ -212,13 +227,17 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, DrevvyColors colors, DrevvyText text) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
     return Padding(
       padding: const EdgeInsets.all(DrevvySpace.gutter),
       child: Column(
         children: [
           _buildHeader(context, colors, text),
-          
+
           Expanded(
             child: Center(
               child: Column(
@@ -241,28 +260,30 @@ class _SavedScreenState extends State<SavedScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s6),
-                  
+
                   Text(
                     'No saved cars yet',
                     style: text.headline,
                     textAlign: TextAlign.center,
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s3),
-                  
+
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.s8,
+                    ),
                     child: Text(
                       "Tap the heart on any car in Shop to keep it here. We'll show it if the listing price changes.",
                       style: text.body.copyWith(color: colors.muted),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  
+
                   const SizedBox(height: DrevvySpace.s6),
-                  
+
                   DrevvyButton(
                     label: 'Browse cars',
                     icon: LucideIcons.messageSquare,
@@ -272,15 +293,23 @@ class _SavedScreenState extends State<SavedScreen> {
               ),
             ),
           ),
-          
+
           // Bottom padding for tab bar
-          SizedBox(height: DrevvySpace.contentBottomInset + MediaQuery.of(context).padding.bottom),
+          SizedBox(
+            height:
+                DrevvySpace.contentBottomInset +
+                MediaQuery.of(context).padding.bottom,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildList(BuildContext context, DrevvyColors colors, DrevvyText text) {
+  Widget _buildList(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
     final sortedCars = _sortedCars;
 
     // v1.8: Wrap in NotificationListener for hide-on-scroll
@@ -294,33 +323,32 @@ class _SavedScreenState extends State<SavedScreen> {
       },
       child: CustomScrollView(
         slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.all(DrevvySpace.gutter),
-          sliver: SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(context, colors, text),
-                const SizedBox(height: DrevvySpace.s2),
-                Text(
-                  _subLine,
-                  style: text.callout.copyWith(color: colors.muted),
-                ),
-                const SizedBox(height: DrevvySpace.s4),
-                _buildSortChips(context, colors, text),
-              ],
+          SliverPadding(
+            padding: const EdgeInsets.all(DrevvySpace.gutter),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(context, colors, text),
+                  const SizedBox(height: DrevvySpace.s2),
+                  Text(
+                    _subLine,
+                    style: text.callout.copyWith(color: colors.muted),
+                  ),
+                  const SizedBox(height: DrevvySpace.s4),
+                  _buildSortChips(context, colors, text),
+                ],
+              ),
             ),
           ),
-        ),
-        
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
+
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
                 final savedCar = sortedCars[index];
                 final listing = _listings[savedCar.listingId];
-                
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: DrevvySpace.s3),
                   child: SavedCarCard(
@@ -334,41 +362,48 @@ class _SavedScreenState extends State<SavedScreen> {
                         : null,
                   ),
                 );
-              },
-              childCount: sortedCars.length,
+              }, childCount: sortedCars.length),
             ),
           ),
-        ),
-        
-        // Bottom padding for tab bar
-        SliverPadding(
-          padding: EdgeInsets.only(
-            bottom: DrevvySpace.contentBottomInset + MediaQuery.of(context).padding.bottom,
+
+          // Bottom padding for tab bar
+          SliverPadding(
+            padding: EdgeInsets.only(
+              bottom:
+                  DrevvySpace.contentBottomInset +
+                  MediaQuery.of(context).padding.bottom,
+            ),
           ),
-        ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, DrevvyColors colors, DrevvyText text) {
+  Widget _buildHeader(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
     return Row(
       children: [
-        Expanded(
-          child: Text('Saved', style: text.display),
-        ),
+        Expanded(child: Text('Saved', style: text.display)),
         _AvatarButton(onTap: _showAccountSheet),
       ],
     );
   }
 
-  Widget _buildSortChips(BuildContext context, DrevvyColors colors, DrevvyText text) {
+  Widget _buildSortChips(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
     return Row(
       children: [
         _SortChip(
           label: 'Recently saved',
           isSelected: _sortOption == SavedSortOption.recentlySaved,
-          onTap: () => setState(() => _sortOption = SavedSortOption.recentlySaved),
+          onTap: () =>
+              setState(() => _sortOption = SavedSortOption.recentlySaved),
         ),
         const SizedBox(width: DrevvySpace.s2),
         _SortChip(
