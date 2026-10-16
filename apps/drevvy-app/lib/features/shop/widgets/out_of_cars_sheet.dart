@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -8,17 +9,18 @@ import 'pack_option_card.dart';
 
 /// Screen X: Out of cars sheet shown when balance is 0 and user tries to unlock.
 /// v1.7: Replaces monthly_limit_reached / drevvy_extra_10.
-/// 
+///
 /// Superwall placement: cars_balance_empty
 class OutOfCarsSheet extends StatefulWidget {
   const OutOfCarsSheet({
     super.key,
-    required this.listing,
+    this.listing,
     required this.onPurchase,
     required this.onNotNow,
   });
 
-  final Listing listing;
+  /// Car the shopper was trying to unlock. Omitted from the account screen.
+  final Listing? listing;
   final Future<void> Function(CarPackType) onPurchase;
   final VoidCallback onNotNow;
 
@@ -74,7 +76,10 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
           Align(
             alignment: Alignment.topRight,
             child: Padding(
-              padding: const EdgeInsets.only(right: DrevvySpace.s2, top: DrevvySpace.s1),
+              padding: const EdgeInsets.only(
+                right: DrevvySpace.s2,
+                top: DrevvySpace.s1,
+              ),
               child: IconButton(
                 icon: Icon(LucideIcons.x, color: colors.muted),
                 onPressed: () => Navigator.of(context).pop(),
@@ -88,13 +93,13 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Car preview image
-                if (widget.listing.media.primaryPhoto != null)
+                if (widget.listing?.media.primaryPhoto != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(DrevvyRadius.md),
                     child: AspectRatio(
                       aspectRatio: 16 / 9,
                       child: Image.asset(
-                        widget.listing.media.primaryPhoto!,
+                        widget.listing!.media.primaryPhoto!,
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -124,10 +129,7 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 const SizedBox(height: DrevvySpace.s4),
 
                 // Title
-                Text(
-                  "You've used all your cars.",
-                  style: text.headline,
-                ),
+                Text("You've used all your cars.", style: text.headline),
 
                 const SizedBox(height: DrevvySpace.s2),
 
@@ -143,7 +145,8 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 PackOptionCard(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => setState(() => _selectedPack = CarPackType.starter),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 PackOptionCard(
@@ -155,7 +158,8 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 PackOptionCard(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => setState(() => _selectedPack = CarPackType.bestValue),
+                  onTap: () =>
+                      setState(() => _selectedPack = CarPackType.bestValue),
                   showBadge: true,
                 ),
 
@@ -199,4 +203,3 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
     );
   }
 }
-

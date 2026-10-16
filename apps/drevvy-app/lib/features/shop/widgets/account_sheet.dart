@@ -5,9 +5,13 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
+import '../../account/widgets/car_balance_card.dart';
 import '../../account/widgets/memory_facts_sheet.dart';
 import '../../account/widgets/recent_searches_sheet.dart';
+import '../../shop/car_unlock.dart';
+import 'out_of_cars_sheet.dart';
 import 'pack_picker_sheet.dart';
 
 /// Account sheet per spec §6.16 (v1.8).
@@ -55,25 +59,76 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   void _showPackPicker() {
+    final balance = _creditBalance;
+    if (balance == null) return;
+    final host = Navigator.of(context, rootNavigator: true).context;
+    final outOfCars = carUnlockGate(balance) == CarUnlockGate.outOfCars;
     Navigator.pop(context);
-    showModalBottomSheet(
-      context: context,
+    showModalBottomSheet<void>(
+      context: host,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => PackPickerSheet(
-        listing: null, // No specific listing
-        avgSavings: null,
-        onPurchase: (packType) async {
-          await _repo.purchasePack(packType);
-          if (context.mounted) Navigator.pop(context);
-        },
-        onRestore: () async {
-          await _repo.restorePurchases();
-          if (context.mounted) Navigator.pop(context);
-        },
-        onKeepShopping: () => Navigator.pop(context),
-      ),
+      builder: (sheetContext) {
+        if (outOfCars) {
+          return OutOfCarsSheet(
+            onPurchase: (packType) => _buyPack(sheetContext, host, packType),
+            onNotNow: () => Navigator.pop(sheetContext),
+          );
+        }
+        return PackPickerSheet(
+          onPurchase: (packType) => _buyPack(sheetContext, host, packType),
+          onRestore: () async {
+            final result = await _repo.restorePurchases();
+            if (!sheetContext.mounted || !host.mounted) return;
+            Navigator.pop(sheetContext);
+            _showPurchaseMessage(host, _restoreMessage(result));
+          },
+          onKeepShopping: () => Navigator.pop(sheetContext),
+        );
+      },
     );
+  }
+
+  Future<void> _buyPack(
+    BuildContext sheetContext,
+    BuildContext host,
+    CarPackType packType,
+  ) async {
+    final result = await _repo.purchasePack(packType);
+    if (!host.mounted) return;
+    if (result is PurchaseSuccess) {
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
+      _showPurchaseMessage(
+        host,
+        'Added ${result.creditsAdded} cars. Packs never expire.',
+      );
+      return;
+    }
+    if (result is PurchasePending) {
+      _showPurchaseMessage(
+        host,
+        'Payment is pending. Cars are added when it completes.',
+      );
+      return;
+    }
+    if (result is PurchaseError) {
+      _showPurchaseMessage(host, result.message);
+    }
+  }
+
+  String _restoreMessage(RestoreResult result) {
+    return switch (result) {
+      RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+        'Restored $creditsRestored cars.',
+      RestoreSuccess() => 'Purchases restored.',
+      RestoreNoPurchases() => 'No purchases to restore.',
+      RestoreError(:final message) => message,
+    };
+  }
+
+  void _showPurchaseMessage(BuildContext host, String message) {
+    if (!host.mounted) return;
+    ScaffoldMessenger.of(host).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _handleSignOut() async {
@@ -227,8 +282,10 @@ class _AccountSheetState extends State<AccountSheet> {
                         _buildAccountHeader(colors, text),
                         const SizedBox(height: DrevvySpace.s4),
 
-                        // Credit balance card
-                        _buildCreditCard(colors, text),
+                        CarBalanceCard(
+                          balance: _creditBalance!,
+                          onBuy: _showPackPicker,
+                        ),
                         const SizedBox(height: DrevvySpace.s6),
 
                         // Your search profile
@@ -298,55 +355,6 @@ class _AccountSheetState extends State<AccountSheet> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildCreditCard(DrevvyColors colors, DrevvyText text) {
-    final balance = _creditBalance!;
-
-    return Container(
-      padding: const EdgeInsets.all(DrevvySpace.s4),
-      decoration: BoxDecoration(
-        gradient: DrevvyBrand.gradient,
-        borderRadius: BorderRadius.circular(DrevvyRadius.md),
-      ),
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${balance.balance}',
-                style: text.figureM.copyWith(color: Colors.white),
-              ),
-              Text(
-                'cars left · packs never expire',
-                style: text.callout.copyWith(
-                  color: Colors.white.withValues(alpha: 0.8),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: _showPackPicker,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(DrevvyRadius.pill),
-              ),
-              child: Text(
-                'Buy cars',
-                style: text.label.copyWith(
-                  color: colors.violet,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../widgets/accept_confirm_sheet.dart';
 import '../widgets/ask_drevvy_sheet.dart';
+import '../widgets/ended_deal_notice.dart';
+import '../widgets/offer_rounds.dart';
 import '../widgets/outcome_sheet.dart';
 import '../widgets/remove_sheet.dart';
 
@@ -60,9 +64,13 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AcceptSheet(deal: _deal!),
+      builder: (sheetContext) => AcceptConfirmSheet(
+        deal: _deal!,
+        onAccept: () => Navigator.pop(sheetContext, true),
+        onNotYet: () => Navigator.pop(sheetContext, false),
+      ),
     );
-    
+
     if (confirmed == true && mounted) {
       await _repo.acceptOffer(_deal!.id);
       await _loadData();
@@ -85,7 +93,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
 
   Future<void> _showOutcomeSheet() async {
     if (!mounted) return;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -103,7 +111,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
   Future<void> _showRemoveSheet() async {
     final user = await _repo.getCurrentUser();
     if (!mounted) return;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -180,9 +188,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                     onPressed: _showAskDrevvySheet,
                     icon: Icon(LucideIcons.messageCircle, size: 18),
                     label: const Text('Ask'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: colors.violet,
-                    ),
+                    style: TextButton.styleFrom(foregroundColor: colors.violet),
                   ),
                   const SizedBox(width: DrevvySpace.s2),
                 ],
@@ -200,7 +206,9 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                       Stack(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(DrevvyRadius.xl),
+                            borderRadius: BorderRadius.circular(
+                              DrevvyRadius.xl,
+                            ),
                             child: AspectRatio(
                               aspectRatio: 16 / 10,
                               child: listing.media.primaryPhoto != null
@@ -225,50 +233,57 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                           ),
                         ],
                       ),
-                      
+
                       const SizedBox(height: DrevvySpace.s4),
-                      
+
                       // Car info
                       Text(listing.title, style: text.headline),
                       Text(
                         listing.milesFormatted,
                         style: text.callout.copyWith(color: colors.muted),
                       ),
-                      
+
                       const SizedBox(height: DrevvySpace.s6),
-                      
-                      // OTD card (if has offer)
-                      if (hasOffer) ...[
-                        _OtdCard(
-                          deal: deal,
-                          offer: offer,
+
+                      if (deal.status.isEnded) ...[
+                        EndedDealNotice(
+                          status: deal.status,
+                          onFindSimilar: () => context.go('/shop'),
                         ),
-                        
                         const SizedBox(height: DrevvySpace.s6),
-                        
+                      ],
+
+                      // OTD card (if has offer)
+                      if (hasOffer && !deal.status.isEnded) ...[
+                        _OtdCard(deal: deal, offer: offer),
+
+                        const SizedBox(height: DrevvySpace.s6),
+
                         // Itemized breakdown
                         _ItemizedBreakdown(offer: offer),
-                        
+
                         const SizedBox(height: DrevvySpace.s6),
-                        
-                        // Offer history (if multiple offers)
+
                         if (deal.offers.length > 1) ...[
-                          _OfferHistory(offers: deal.offers),
+                          OfferRounds(offers: deal.offers),
                           const SizedBox(height: DrevvySpace.s6),
                         ],
                       ],
-                      
+
                       // Activity timeline
                       _ActivityTimeline(events: deal.events),
-                      
+
                       const SizedBox(height: DrevvySpace.s6),
-                      
+
                       // Communications summary
                       _CommunicationsSummary(comms: deal.comms),
-                      
+
                       // Demo actions for sheets
                       const SizedBox(height: DrevvySpace.s4),
-                      Text('Demo actions', style: text.label.copyWith(color: colors.muted)),
+                      Text(
+                        'Demo actions',
+                        style: text.label.copyWith(color: colors.muted),
+                      ),
                       const SizedBox(height: DrevvySpace.s2),
                       Wrap(
                         spacing: DrevvySpace.s2,
@@ -284,7 +299,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                           ),
                         ],
                       ),
-                      
+
                       // Space for sticky CTA
                       SizedBox(height: showActions ? 160 + bottomPadding : 80),
                     ],
@@ -293,7 +308,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
               ),
             ],
           ),
-          
+
           // Sticky CTA (for Offer received status)
           if (showActions)
             Positioned(
@@ -312,10 +327,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
 }
 
 class _OtdCard extends StatelessWidget {
-  const _OtdCard({
-    required this.deal,
-    required this.offer,
-  });
+  const _OtdCard({required this.deal, required this.offer});
 
   final Deal deal;
   final Offer offer;
@@ -328,7 +340,7 @@ class _OtdCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.drevvy;
     final text = context.drevvyText;
-    
+
     final market = deal.marketContext;
     final fairOtd = market?.fairOtd ?? offer.otd;
     final isBelowFair = offer.otd < fairOtd;
@@ -343,10 +355,7 @@ class _OtdCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                _formatPrice(offer.otd),
-                style: text.figureL,
-              ),
+              Text(_formatPrice(offer.otd), style: text.figureL),
               const SizedBox(width: DrevvySpace.s2),
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -357,9 +366,9 @@ class _OtdCard extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: DrevvySpace.s4),
-          
+
           // Price comparison bars
           _PriceBar(
             label: 'Listed',
@@ -374,9 +383,9 @@ class _OtdCard extends StatelessWidget {
             maxAmount: deal.listedAtStart,
             color: colors.violet,
           ),
-          
+
           const SizedBox(height: DrevvySpace.s4),
-          
+
           // Savings badge
           if (deal.savings != null && deal.savings! > 0)
             Container(
@@ -400,22 +409,28 @@ class _OtdCard extends StatelessWidget {
                 ],
               ),
             ),
-          
+
           const SizedBox(height: DrevvySpace.s3),
-          
+
           // Market comparison line
           Container(
             padding: const EdgeInsets.all(DrevvySpace.s3),
             decoration: BoxDecoration(
-              color: isBelowFair ? colors.marketBelowFill : colors.marketAboveFill,
+              color: isBelowFair
+                  ? colors.marketBelowFill
+                  : colors.marketAboveFill,
               borderRadius: BorderRadius.circular(DrevvyRadius.sm),
             ),
             child: Row(
               children: [
                 Icon(
-                  isBelowFair ? LucideIcons.trendingDown : LucideIcons.trendingUp,
+                  isBelowFair
+                      ? LucideIcons.trendingDown
+                      : LucideIcons.trendingUp,
                   size: 16,
-                  color: isBelowFair ? colors.marketBelowText : colors.marketAboveText,
+                  color: isBelowFair
+                      ? colors.marketBelowText
+                      : colors.marketAboveText,
                 ),
                 const SizedBox(width: DrevvySpace.s2),
                 Text(
@@ -423,7 +438,9 @@ class _OtdCard extends StatelessWidget {
                       ? '${_formatPrice(diff)} below fair OTD'
                       : '${_formatPrice(-diff)} above fair OTD',
                   style: text.callout.copyWith(
-                    color: isBelowFair ? colors.marketBelowText : colors.marketAboveText,
+                    color: isBelowFair
+                        ? colors.marketBelowText
+                        : colors.marketAboveText,
                   ),
                 ),
               ],
@@ -513,13 +530,15 @@ class _ItemizedBreakdown extends StatelessWidget {
         children: [
           Text('Itemized breakdown', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
-          
-          ...offer.lines.map((line) => _LineRow(
-            label: line.key,
-            amount: line.amount,
-            subLine: line.subLine,
-          )),
-          
+
+          ...offer.lines.map(
+            (line) => _LineRow(
+              label: line.key,
+              amount: line.amount,
+              subLine: line.subLine,
+            ),
+          ),
+
           if (offer.removedAddOns.isNotEmpty) ...[
             const SizedBox(height: DrevvySpace.s3),
             Text(
@@ -527,15 +546,17 @@ class _ItemizedBreakdown extends StatelessWidget {
               style: text.label.copyWith(color: colors.muted),
             ),
             const SizedBox(height: DrevvySpace.s2),
-            ...offer.removedAddOns.map((line) => _LineRow(
-              label: line.key,
-              amount: line.amount,
-              isRemoved: true,
-            )),
+            ...offer.removedAddOns.map(
+              (line) => _LineRow(
+                label: line.key,
+                amount: line.amount,
+                isRemoved: true,
+              ),
+            ),
           ],
-          
+
           Divider(height: DrevvySpace.s6, color: colors.line),
-          
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -608,70 +629,6 @@ class _LineRow extends StatelessWidget {
   }
 }
 
-class _OfferHistory extends StatelessWidget {
-  const _OfferHistory({required this.offers});
-
-  final List<Offer> offers;
-
-  String _formatPrice(int price) {
-    return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
-    return GlassCard(
-      padding: const EdgeInsets.all(DrevvySpace.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Offer history', style: text.title),
-          const SizedBox(height: DrevvySpace.s4),
-          
-          Row(
-            children: offers.asMap().entries.map((entry) {
-              final i = entry.key;
-              final offer = entry.value;
-              final isLatest = i == offers.length - 1;
-              
-              return Expanded(
-                child: Container(
-                  margin: EdgeInsets.only(right: i < offers.length - 1 ? 8 : 0),
-                  padding: const EdgeInsets.all(DrevvySpace.s3),
-                  decoration: BoxDecoration(
-                    color: isLatest ? colors.lilacTint : colors.tile,
-                    borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-                    border: isLatest
-                        ? Border.all(color: colors.violet, width: 2)
-                        : null,
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Offer ${i + 1}',
-                        style: text.micro.copyWith(color: colors.muted),
-                      ),
-                      const SizedBox(height: DrevvySpace.s1),
-                      Text(
-                        _formatPrice(offer.otd),
-                        style: text.bodyStrong.copyWith(
-                          color: isLatest ? colors.violet : colors.ink,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ActivityTimeline extends StatelessWidget {
   const _ActivityTimeline({required this.events});
 
@@ -691,7 +648,7 @@ class _ActivityTimeline extends StatelessWidget {
       children: [
         Text('Activity', style: text.title),
         const SizedBox(height: DrevvySpace.s4),
-        
+
         ...events.reversed.map((event) {
           return Padding(
             padding: const EdgeInsets.only(bottom: DrevvySpace.s4),
@@ -714,9 +671,7 @@ class _ActivityTimeline extends StatelessWidget {
                     children: [
                       Text(
                         event.heading,
-                        style: event.isLatest
-                            ? text.bodyStrong
-                            : text.body,
+                        style: event.isLatest ? text.bodyStrong : text.body,
                       ),
                       if (event.detail != null)
                         Text(
@@ -751,9 +706,21 @@ class _CommunicationsSummary extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _CommStat(icon: LucideIcons.mail, count: comms.emails, label: 'Emails'),
-          _CommStat(icon: LucideIcons.messageSquare, count: comms.texts, label: 'Texts'),
-          _CommStat(icon: LucideIcons.phone, count: comms.calls, label: 'Calls'),
+          _CommStat(
+            icon: LucideIcons.mail,
+            count: comms.emails,
+            label: 'Emails',
+          ),
+          _CommStat(
+            icon: LucideIcons.messageSquare,
+            count: comms.texts,
+            label: 'Texts',
+          ),
+          _CommStat(
+            icon: LucideIcons.phone,
+            count: comms.calls,
+            label: 'Calls',
+          ),
         ],
       ),
     );
@@ -788,10 +755,7 @@ class _CommStat extends StatelessWidget {
 }
 
 class _StickyActions extends StatelessWidget {
-  const _StickyActions({
-    required this.onAccept,
-    required this.onKeepGoing,
-  });
+  const _StickyActions({required this.onAccept, required this.onKeepGoing});
 
   final VoidCallback onAccept;
   final VoidCallback onKeepGoing;
@@ -829,156 +793,6 @@ class _StickyActions extends StatelessWidget {
             label: 'Ask Drevvy to keep going',
             onPressed: onKeepGoing,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AcceptSheet extends StatelessWidget {
-  const _AcceptSheet({required this.deal});
-
-  final Deal deal;
-
-  String _formatPrice(int price) {
-    return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final offer = deal.latestOffer!;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.glassSolid,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(DrevvyRadius.sheetTop),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: DrevvySpace.s3),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.track,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          
-          Padding(
-            padding: const EdgeInsets.all(DrevvySpace.gutter),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Accept this offer?', style: text.headline),
-                const SizedBox(height: DrevvySpace.s4),
-                
-                // Summary card
-                Container(
-                  padding: const EdgeInsets.all(DrevvySpace.s4),
-                  decoration: BoxDecoration(
-                    color: colors.acceptTint,
-                    borderRadius: BorderRadius.circular(DrevvyRadius.md),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.car, color: colors.accept, size: 24),
-                      const SizedBox(width: DrevvySpace.s3),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              deal.listing.shortTitle,
-                              style: text.bodyStrong,
-                            ),
-                            Text(
-                              '${_formatPrice(offer.otd)} out the door',
-                              style: text.callout.copyWith(color: colors.accept),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: DrevvySpace.s6),
-                
-                Text('What happens next', style: text.title),
-                const SizedBox(height: DrevvySpace.s3),
-                
-                _StepRow(number: '1', text: 'Drevvy requests an official written offer'),
-                _StepRow(number: '2', text: 'The dealer emails the offer to Drevvy'),
-                _StepRow(number: '3', text: 'Drevvy verifies and forwards it to you'),
-                
-                const SizedBox(height: DrevvySpace.s6),
-                
-                DrevvyButton(
-                  label: 'Accept',
-                  icon: LucideIcons.check,
-                  onPressed: () => Navigator.pop(context, true),
-                  variant: DrevvyButtonVariant.accept,
-                ),
-                const SizedBox(height: DrevvySpace.s3),
-                DrevvyGhostButton(
-                  label: 'Not yet',
-                  onPressed: () => Navigator.pop(context, false),
-                ),
-              ],
-            ),
-          ),
-          
-          SizedBox(height: bottomPadding),
-        ],
-      ),
-    );
-  }
-}
-
-class _StepRow extends StatelessWidget {
-  const _StepRow({required this.number, required this.text});
-
-  final String number;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final textStyle = context.drevvyText;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: DrevvySpace.s3),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: colors.lilacTint,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: textStyle.label.copyWith(
-                  color: colors.violet,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: DrevvySpace.s3),
-          Expanded(child: Text(text, style: textStyle.body)),
         ],
       ),
     );

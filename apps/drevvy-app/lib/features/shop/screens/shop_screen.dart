@@ -48,6 +48,7 @@ class _ShopScreenState extends State<ShopScreen> {
   void initState() {
     super.initState();
     _repo.onSavedSearchRun = _handleSavedSearchRun;
+    _repo.savedDealsTick.addListener(_refreshSavedAndDeals);
     _loadData();
   }
 
@@ -56,7 +57,18 @@ class _ShopScreenState extends State<ShopScreen> {
     if (identical(_repo.onSavedSearchRun, _handleSavedSearchRun)) {
       _repo.onSavedSearchRun = null;
     }
+    _repo.savedDealsTick.removeListener(_refreshSavedAndDeals);
     super.dispose();
+  }
+
+  Future<void> _refreshSavedAndDeals() async {
+    final savedCars = await _repo.getSavedCars();
+    final deals = await _repo.getDeals();
+    if (!mounted) return;
+    setState(() {
+      _savedListingIds = savedCars.map((car) => car.listingId).toSet();
+      _dealsListingIds = deals.map((deal) => deal.listingId).toSet();
+    });
   }
 
   Future<void> _loadData() async {
