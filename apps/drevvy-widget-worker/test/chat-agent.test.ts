@@ -167,7 +167,7 @@ describe('widget chat agent', () => {
     assert.equal(human.sent.length, 1);
   });
 
-  it('stops on a captcha or a widget contact form before typing', async () => {
+  it('stops on a captcha before typing', async () => {
     const captcha = new FakeChatPage(readFixture('captcha-widget.html'));
     const captchaResult = await runWidgetChat({
       vehiclePageUrl: pageUrl,
@@ -178,17 +178,103 @@ describe('widget chat agent', () => {
     });
     assert.equal(captchaResult.status, 'captcha');
     assert.deepEqual(captcha.sent, []);
+    assert.deepEqual(captcha.outreach, []);
+  });
 
-    const form = new FakeChatPage(readFixture('prechat-form.html'));
+  it('fills a pre-chat form with the shopper first name and the Drevvy number, then continues the script', async () => {
+    const form = new FakeChatPage(readFixture('prechat-form.html'), {
+      replies: ['Yes, this unit is still available.', 'Listing price is $24,995.'],
+    });
+    const store = new MemoryAttemptStore();
     const formResult = await runWidgetChat({
       vehiclePageUrl: pageUrl,
       page: form,
       ai: scriptedAi(),
       config: liveConfig,
+      store,
+    });
+    assert.equal(formResult.status, 'price_given');
+    assert.deepEqual(
+      form.outreach.map((fill) => [fill.kind, fill.value]),
+      [
+        ['full_name', 'Maya'],
+        ['phone', '803-555-0148'],
+        ['email', 'deals@drevvy.test'],
+      ],
+    );
+    assert.equal(form.submits.length, 1);
+    assert.equal(form.sent[0], 'Is this unit still available?');
+    assert.equal(JSON.stringify(form.outreach).includes('212-555-0198'), false);
+    assert.equal(store.attempts[0]?.channel, 'prechat');
+    assert.equal(store.attempts[0]?.status, 'submitted');
+    assert.equal(store.attempts.at(-1)?.channel, 'widget');
+    assert.equal(store.attempts[0]?.first_reply_channel, 'widget');
+  });
+
+  it('fills a Podium Text us gate with the first name only', async () => {
+    const page = new FakeChatPage(readFixture('podium-text-us.html'), {
+      replies: ['Yes, this unit is still available.', 'Listing price is $24,995.'],
+    });
+    const result = await runWidgetChat({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: scriptedAi(),
+      config: liveConfig,
       store: new MemoryAttemptStore(),
     });
-    assert.equal(formResult.status, 'contact_form');
-    assert.deepEqual(form.sent, []);
+    assert.deepEqual(
+      page.outreach.map((fill) => [fill.kind, fill.value]),
+      [
+        ['full_name', 'Maya'],
+        ['phone', '803-555-0148'],
+      ],
+    );
+    assert.equal(page.submits.length, 1);
+    assert.equal(page.sent[0], 'Is this unit still available? Stock #H24118');
+    assert.equal(page.sent[1], 'What is the listing price?');
+    assert.equal(result.status, 'price_given');
+  });
+
+  it('logs a pre-chat form during dry run and does not submit it', async () => {
+    const page = new FakeChatPage(readFixture('podium-text-us.html'));
+    const store = new MemoryAttemptStore();
+    const result = await runWidgetChat({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: scriptedAi(),
+      config: { ...liveConfig, dryRun: true, allowlist: [] },
+      store,
+    });
+    assert.equal(result.status, 'dry_run');
+    assert.deepEqual(page.outreach, []);
+    assert.deepEqual(page.submits, []);
+    assert.deepEqual(page.sent, []);
+    assert.deepEqual(
+      store.attempts.map((attempt) => [attempt.channel, attempt.status]),
+      [
+        ['prechat', 'dry_run'],
+        ['widget', 'dry_run'],
+      ],
+    );
+  });
+
+  it('stops a pre-chat form that asks for private information', async () => {
+    const page = new FakeChatPage(readFixture('private-prechat.html'));
+    const store = new MemoryAttemptStore();
+    const result = await runWidgetChat({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: scriptedAi(),
+      config: liveConfig,
+      store,
+    });
+    assert.equal(result.status, 'private_info');
+    assert.equal(result.channel, 'widget');
+    assert.deepEqual(page.outreach, []);
+    assert.deepEqual(page.submits, []);
+    assert.deepEqual(page.sent, []);
+    assert.equal(store.attempts[0]?.channel, 'prechat');
+    assert.equal(store.attempts[0]?.status, 'private_info');
   });
 
   it('does not treat a footer lead form as the chat widget', async () => {
@@ -249,6 +335,7 @@ describe('widget chat agent', () => {
     assert.equal(Array.isArray(user?.content), true);
     assert.equal(result.status, 'sold');
     assert.equal(result.transcript.some((entry) => entry.via === 'screenshot'), true);
+    assert.equal(result.channel, 'widget');
     assert.deepEqual(page.sent, ['Is this unit still available? Stock #H24118']);
   });
 

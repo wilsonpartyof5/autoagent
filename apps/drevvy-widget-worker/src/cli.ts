@@ -5,10 +5,11 @@ import path from 'node:path';
 import { createChatClient } from './ai/client';
 import type { ChatClient } from './ai/types';
 import { runWidgetChat, type WidgetChatConfig } from './chat/agent';
+import { runLeadForm } from './forms/lead';
 import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptStore, ChatPage } from './chat/types';
-import { assertChatConfig, assertResearchConfig, chatSettings, loadConfig, type AppConfig } from './config';
+import { assertChatConfig, assertOutreachConfig, assertResearchConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
 import type { DirectoryStore } from './directory/types';
@@ -17,22 +18,23 @@ import { parseHintsFile } from './research/hints';
 import { createHttpFetcher, researchVehiclePage, type PageFetcher } from './research/job';
 import { createSupabase } from './supabase';
 
-const HELP = `Drevvy dealer research and chat-widget worker.
+const HELP = `Drevvy dealer research, lead-form, and chat-widget worker.
 
 Usage:
   drevvy-widget-worker research <url-or-file> [--force] [--hints file.json]
+  drevvy-widget-worker lead <url-or-file> [--stock STOCK]
   drevvy-widget-worker chat <url-or-file> [--stock STOCK]
   drevvy-widget-worker run <url-or-file> [--force] [--hints file.json]
 
 A file has one vehicle page URL per line. An optional second column is the stock number.
 Lines starting with # are ignored.
 
-DRY_RUN defaults to true: the chat command opens the page, names the widget, and logs
-the message it would send. It does not type into the widget.
-Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
+run researches the dealer, then submits the vehicle lead form, then runs the widget chat.
+DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
+it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 `;
 
-type Command = 'research' | 'chat' | 'run';
+type Command = 'research' | 'lead' | 'chat' | 'run';
 
 type Target = { url: string; stockNumber: string | null };
 
@@ -54,7 +56,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     return { exitCode: 0, stdout: HELP, stderr: '' };
   }
   const command = argv[0];
-  if (command !== 'research' && command !== 'chat' && command !== 'run') {
+  if (command !== 'research' && command !== 'lead' && command !== 'chat' && command !== 'run') {
     return { exitCode: 1, stdout: '', stderr: `Unknown command: ${command}\n${HELP}` };
   }
   try {
@@ -84,10 +86,41 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
           status: result.error ? 'error' : result.skipped ? 'skipped' : (result.row?.status ?? 'error'),
           price: null,
           dryRun: '-',
+          channel: '-',
         });
         if (result.error) logs.push(`[research] ${target.url} ${result.error}`);
       }
       sections.push(`Research\n${formatResultsTable(rows)}`);
+    }
+
+    if (command === 'lead' || command === 'run') {
+      const settings = chatSettings(deps.config);
+      const rows: ResultRow[] = [];
+      for (const target of targets) {
+        const opened = await deps.openPage();
+        try {
+          const result = await runLeadForm({
+            vehiclePageUrl: target.url,
+            stockNumber: target.stockNumber,
+            page: opened.page,
+            config: settings,
+            store: deps.attempts,
+            log: (line) => logs.push(line),
+          });
+          rows.push({
+            url: target.url,
+            vendor: result.widgetVendor ?? '-',
+            status: result.status,
+            price: result.price,
+            dryRun: String(result.dryRun),
+            channel: result.channel,
+          });
+          if (result.error) logs.push(`[lead] ${target.url} ${result.error}`);
+        } finally {
+          await opened.close();
+        }
+      }
+      sections.push(`Lead form\n${formatResultsTable(rows)}`);
     }
 
     if (command === 'chat' || command === 'run') {
@@ -111,6 +144,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             status: result.status,
             price: result.price,
             dryRun: String(result.dryRun),
+            channel: result.channel,
           });
           if (result.error) logs.push(`[chat] ${target.url} ${result.error}`);
         } finally {
@@ -166,6 +200,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     const config = loadConfig();
     const command = argv[0] as Command | undefined;
     if (command === 'research' || command === 'run') assertResearchConfig(config);
+    if (command === 'lead' || command === 'run') assertOutreachConfig(config, config.dryRun);
     if (command === 'chat' || command === 'run') assertChatConfig(config, config.dryRun);
     const result = await execute(argv, buildDeps(config));
     process.stdout.write(result.stdout);

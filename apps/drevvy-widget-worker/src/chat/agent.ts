@@ -1,8 +1,9 @@
 import type { ChatClient } from '../ai/types';
 import { parseClassification, type DealerReplyClassification, type ReplyStatus } from '../ai/parse';
 import { isAllowlisted, MAX_TURNS_CAP } from '../config';
+import { runPrechatGate } from '../forms/prechat';
+import { isBotBlockedPage } from '../forms/outreach';
 import {
-  asksForShopperContact,
   dealerAskedForShopperContact,
   hasCaptchaChallenge,
   sharesDisallowedContact,
@@ -11,7 +12,7 @@ import { detectWidgetVendor } from '../widgets/detect';
 import { extractWidgetScope, WIDGET_ADAPTERS, type WidgetVendor } from '../widgets/vendors';
 import { extractStockNumber, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
 import { siteUrlFromVehiclePage } from '../research/urls';
-import type { AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from './types';
+import type { AttemptChannel, AttemptResult, AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from './types';
 import { resolveNextMessage } from './resolve';
 
 export type WidgetChatConfig = {
@@ -21,21 +22,11 @@ export type WidgetChatConfig = {
   drevvyEmail: string;
   shopperFirst: string;
   maxTurns: number;
+  leadLastName?: string;
+  leadZip?: string | null;
 };
 
-export type ChatAttemptResult = {
-  id: string | null;
-  vehiclePageUrl: string;
-  dealerSiteUrl: string | null;
-  stockNumber: string | null;
-  widgetVendor: string | null;
-  status: AttemptStatus;
-  price: string | null;
-  dryRun: boolean;
-  transcript: TranscriptEntry[];
-  stopReason: string | null;
-  error: string | null;
-};
+export type ChatAttemptResult = AttemptResult;
 
 const CLASSIFY_SYSTEM = `You classify one dealer chat reply about a car listing.
 Return JSON only:
@@ -77,8 +68,10 @@ export async function runWidgetChat(input: {
   let stock = input.stockNumber?.trim() || null;
   let site: string | null = null;
   let terminal = false;
+  let observedReply: AttemptChannel | null = null;
 
   const finish = async (): Promise<ChatAttemptResult> => {
+    const firstReply = observedReply ?? (await input.store.currentFirstReply(input.vehiclePageUrl).catch(() => null));
     const result: ChatAttemptResult = {
       id: null,
       vehiclePageUrl: input.vehiclePageUrl,
@@ -91,6 +84,7 @@ export async function runWidgetChat(input: {
       transcript,
       stopReason,
       error,
+      channel: 'widget',
     };
     try {
       const saved = await input.store.insert({
@@ -106,6 +100,8 @@ export async function runWidgetChat(input: {
         error,
         started_at: started.toISOString(),
         finished_at: now().toISOString(),
+        channel: 'widget',
+        first_reply_channel: firstReply,
       });
       result.id = saved.id;
     } catch (storeError) {
@@ -131,6 +127,23 @@ export async function runWidgetChat(input: {
     return finish();
   }
 
+  if (await input.store.hasBlockedSite(site)) {
+    return {
+      id: null,
+      vehiclePageUrl: input.vehiclePageUrl,
+      dealerSiteUrl: site,
+      stockNumber: stock,
+      widgetVendor: null,
+      status: 'blocked',
+      price: null,
+      dryRun: input.config.dryRun,
+      transcript: [],
+      stopReason: 'blocked',
+      error: null,
+      channel: 'widget',
+    };
+  }
+
   try {
     await input.page.goto(input.vehiclePageUrl);
   } catch (gotoError) {
@@ -140,6 +153,10 @@ export async function runWidgetChat(input: {
   }
 
   const html = await input.page.content();
+  if (isBotBlockedPage(html)) {
+    mark('blocked', 'blocked', 'Stopped: the site blocked automated access.');
+    return finish();
+  }
   vendor = detectWidgetVendor(html);
   if (!stock) stock = extractStockNumber(html);
   const script = renderScript({
@@ -154,6 +171,33 @@ export async function runWidgetChat(input: {
     return finish();
   }
 
+  const scope = (await input.page.widgetHtml(vendor)) || extractWidgetScope(html, vendor);
+  if ((await input.page.captchaVisible(vendor)) || hasCaptchaChallenge(scope)) {
+    mark('captcha', 'captcha', 'Stopped: captcha.');
+    return finish();
+  }
+
+  const openGate = async (widgetHtml: string) =>
+    runPrechatGate({
+      vehiclePageUrl: input.vehiclePageUrl,
+      dealerSiteUrl: site,
+      stockNumber: stock,
+      widgetVendor: vendor,
+      widgetHtml,
+      page: input.page,
+      config: input.config,
+      store: input.store,
+      now,
+      log,
+      started,
+    });
+
+  const initialGate = await openGate(scope);
+  if (!initialGate.continueChat) {
+    mark(initialGate.status ?? 'unknown', initialGate.stopReason ?? 'prechat', initialGate.note ?? undefined);
+    return finish();
+  }
+
   if (input.config.dryRun) {
     log(`[dry-run] ${input.vehiclePageUrl} vendor=${vendor} would send: ${script.availability}`);
     transcript.push({ role: 'agent', text: script.availability, at: now().toISOString(), via: 'planned' });
@@ -165,16 +209,6 @@ export async function runWidgetChat(input: {
     log(`[blocked] ${input.vehiclePageUrl} vendor=${vendor} not on allowlist; would send: ${script.availability}`);
     transcript.push({ role: 'agent', text: script.availability, at: now().toISOString(), via: 'planned' });
     mark('not_allowlisted', 'not_allowlisted', 'Not allowlisted: nothing was sent.');
-    return finish();
-  }
-
-  const scope = (await input.page.widgetHtml(vendor)) || extractWidgetScope(html, vendor);
-  if ((await input.page.captchaVisible(vendor)) || hasCaptchaChallenge(scope)) {
-    mark('captcha', 'captcha', 'Stopped: captcha.');
-    return finish();
-  }
-  if ((await input.page.contactFormVisible(vendor)) || asksForShopperContact(scope)) {
-    mark('contact_form', 'contact_form', 'Stopped: the widget asks for the shopper name, phone, or email.');
     return finish();
   }
 
@@ -202,8 +236,9 @@ export async function runWidgetChat(input: {
         mark('captcha', 'captcha', 'Stopped: captcha after opening the widget.');
         return false;
       }
-      if ((await input.page.contactFormVisible(vendor)) || asksForShopperContact(opened)) {
-        mark('contact_form', 'contact_form', 'Stopped: the widget asks for the shopper name, phone, or email.');
+      const openedGate = await openGate(opened);
+      if (!openedGate.continueChat) {
+        mark(openedGate.status ?? 'unknown', openedGate.stopReason ?? 'prechat', openedGate.note ?? undefined);
         return false;
       }
     }
@@ -245,6 +280,11 @@ export async function runWidgetChat(input: {
     } else {
       screenshotFallbacks = 0;
       lastDealer = read.text;
+      if (!observedReply) {
+        const existing = await input.store.currentFirstReply(input.vehiclePageUrl);
+        observedReply = existing ?? 'widget';
+        if (!existing) await input.store.setFirstReply(input.vehiclePageUrl, 'widget');
+      }
     }
 
     const dealerText = read.kind === 'text' ? read.text : null;
@@ -275,10 +315,6 @@ export async function runWidgetChat(input: {
 
     if (await input.page.captchaVisible(vendor)) {
       mark('captcha', 'captcha', 'Stopped: captcha.');
-      break;
-    }
-    if (await input.page.contactFormVisible(vendor)) {
-      mark('contact_form', 'contact_form', 'Stopped: the widget asks for the shopper name, phone, or email.');
       break;
     }
 

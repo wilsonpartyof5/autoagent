@@ -1,3 +1,4 @@
+import { assertLeadLastName, DEFAULT_LEAD_LAST_NAME, normalizeZip } from './forms/outreach';
 import { normalizeEmail, normalizePhone } from './research/validate';
 
 export const MAX_TURNS_CAP = 6;
@@ -13,6 +14,8 @@ export type AppConfig = {
   drevvyTextNumber: string | null;
   drevvyEmail: string | null;
   shopperFirst: string | null;
+  leadLastName: string;
+  leadZip: string | null;
   fetchTimeoutMs: number;
   maxTurns: number;
 };
@@ -31,6 +34,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     drevvyTextNumber: textNumber,
     drevvyEmail: email ? normalizeEmail(email) : null,
     shopperFirst: blankToNull(env.SHOPPER_FIRST_NAME),
+    leadLastName: blankToNull(env.LEAD_LAST_NAME) ?? DEFAULT_LEAD_LAST_NAME,
+    leadZip: normalizeZip(env.DREVVY_ZIP),
     fetchTimeoutMs: positiveInt(env.RESEARCH_FETCH_TIMEOUT_MS, 15_000),
     maxTurns: resolveMaxTurns(env.WIDGET_CHAT_MAX_TURNS),
   };
@@ -83,7 +88,7 @@ export function assertResearchConfig(config: AppConfig): void {
   assertSupabaseConfig(config);
 }
 
-export function assertChatConfig(config: AppConfig, dryRun: boolean): void {
+export function assertOutreachConfig(config: AppConfig, dryRun: boolean): void {
   assertSupabaseConfig(config);
   if (!config.drevvyTextNumber || !normalizePhone(config.drevvyTextNumber)) {
     throw new Error('DREVVY_TEXT_NUMBER must be a valid US phone number.');
@@ -95,12 +100,17 @@ export function assertChatConfig(config: AppConfig, dryRun: boolean): void {
     throw new Error('SHOPPER_FIRST_NAME is required.');
   }
   assertShopperFirst(config.shopperFirst);
+  assertLeadLastName(config.leadLastName);
+  if (!dryRun && config.allowlist.length === 0) {
+    throw new Error('WIDGET_CHAT_ALLOWLIST is required when DRY_RUN=false. Refusing to send.');
+  }
+}
+
+export function assertChatConfig(config: AppConfig, dryRun: boolean): void {
+  assertOutreachConfig(config, dryRun);
   if (!dryRun) {
     if (!config.aiApiKey) throw new Error('AI_API_KEY is required when DRY_RUN=false.');
     if (!config.aiModel) throw new Error('AI_MODEL is required when DRY_RUN=false.');
-    if (config.allowlist.length === 0) {
-      throw new Error('WIDGET_CHAT_ALLOWLIST is required when DRY_RUN=false. Refusing to send.');
-    }
   }
 }
 
@@ -117,6 +127,8 @@ export function chatSettings(config: AppConfig): {
   drevvyEmail: string;
   shopperFirst: string;
   maxTurns: number;
+  leadLastName: string;
+  leadZip: string | null;
 } {
   if (!config.drevvyTextNumber || !config.drevvyEmail || !config.shopperFirst) {
     throw new Error('Chat settings are incomplete.');
@@ -128,6 +140,8 @@ export function chatSettings(config: AppConfig): {
     drevvyEmail: config.drevvyEmail,
     shopperFirst: assertShopperFirst(config.shopperFirst),
     maxTurns: config.maxTurns,
+    leadLastName: assertLeadLastName(config.leadLastName),
+    leadZip: config.leadZip,
   };
 }
 

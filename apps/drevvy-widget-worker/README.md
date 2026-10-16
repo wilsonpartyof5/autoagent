@@ -1,23 +1,30 @@
 # Drevvy widget worker
 
-Standalone Node worker for two dealer steps:
+Standalone Node worker for day-0 dealer outreach:
 
 1. **Research.** Given a dealer vehicle page, fetch that page and the dealer site, ask an OpenAI-compatible model for the widget vendor, phone numbers, and emails, check those values against the page, and upsert `dealer_directory`.
-2. **Widget chat.** Open the vehicle page in Chromium, detect a known chat widget, and follow a fixed script. By default this is a dry run: it identifies the widget and logs the message it would send.
+2. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
+3. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
-Shopper phone numbers and email addresses are never typed into a widget and never stored. The handoff message uses Drevvy's own text number and email. If a dealer asks whether this is a bot, the reply is `I'm Drevvy's AI, working for {first}.`
+Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.`
 
 MarketCheck contact data can be passed as a hint file. Hints are not written to the database. A phone, email, or name is stored only when it appears on the fetched dealer page. Do not point this worker at a MarketCheck listing URL.
 
-The migration is `supabase/migrations/20261018014500_dealer_directory_widget_chat.sql`. This package does not apply it.
+Migrations, applied separately from this package:
+
+- `supabase/migrations/20261018014500_dealer_directory_widget_chat.sql`
+- `supabase/migrations/20261018030000_widget_attempt_channels.sql` adds `channel` (`widget`, `lead_form`, `prechat`) and `first_reply_channel` on `widget_chat_attempts`.
 
 ## Commands
 
 ```bash
 pnpm --filter @drevvy/widget-worker research urls.txt --hints hints.json
+pnpm --filter @drevvy/widget-worker lead urls.txt
 pnpm --filter @drevvy/widget-worker chat urls.txt
 pnpm --filter @drevvy/widget-worker run urls.txt
 ```
+
+`run` researches the dealer, submits the vehicle lead form, then runs the widget chat.
 
 `urls.txt` has one vehicle page URL per line. An optional second column is the stock number. `#` starts a comment.
 
@@ -39,20 +46,34 @@ https://www.example-motors.test/inventory/2024-honda-civic H24118
 
 A directory row is skipped when `last_checked_at` is under 30 days old. `--force` fetches again.
 
-The chat command prints a table:
+Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat`.
 
 ```text
-url                         vendor    status    price    dry_run
-https://www.example...      gubagoo   dry_run   -        true
+url                         vendor    status    price    dry_run  channel
+https://www.example...      gubagoo   dry_run   -        true     widget
 ```
+
+## Lead form and pre-chat
+
+The lead message, used when the form has a message, comment, or question field, is:
+
+`Is this unit still available? Stock #X. What's the price on it? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+
+The stock sentence is omitted when the page has no stock number. There is no introduction. A form without a message field is still submitted with the identity fields it does have.
+
+A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's first name and `DREVVY_TEXT_NUMBER`. A single name box on that gate gets the first name only. A lead form with one full-name box gets `{first} {LEAD_LAST_NAME}`.
+
+`first_reply_channel` stays empty until a dealer text reply is read. A screenshot-only turn does not set it. The first text reply updates the earlier attempt rows for that vehicle page.
 
 ## Safety
 
-- `DRY_RUN` defaults to true. Only the exact string `false` turns it off.
+- `DRY_RUN` defaults to true. Only the exact string `false` turns it off. A dry run opens the page, logs the form fields or chat line, and does not type or submit.
 - Live sending also requires `WIDGET_CHAT_ALLOWLIST`, a comma-separated list of dealer origins. Matching is by hostname. An empty list sends nowhere.
-- The agent sends only the four script lines below. Model output cannot add a sentence.
-- It stops on a captcha, on a widget form that asks for a name, phone, or email, and after 6 sends.
-- It does not fill those contact fields.
+- The chat agent sends only the four script lines below. Model output cannot add a sentence. The chat composer refuses an email, phone, or name field, so the script is never typed into a contact box.
+- Captcha, a required field this worker does not recognize, and any form that asks for an address, date of birth, SSN, or trade details stop that form with nothing filled.
+- One live submit is allowed per vehicle page per channel (`lead_form` and `prechat`). A later run records `already_submitted` and does not open the lead form again.
+- A bot wall such as a SOKAL "Access Restricted" page is stored as `blocked`. Later runs for that dealer site do not open the page and do not insert another row.
+- The chat stops after 6 sends. If the dealer asks for the shopper's phone or email, the chat stops and does not send a shopper number.
 
 Script:
 
@@ -74,9 +95,11 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key. The tables are locked to `service_role`. |
 | `DRY_RUN` | no | Default true. Set to `false` to allow sends. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
-| `DREVVY_TEXT_NUMBER` | chat | Drevvy text number used in the handoff line. |
-| `DREVVY_EMAIL` | chat | Drevvy email used in the handoff line. |
-| `SHOPPER_FIRST_NAME` | chat | First name only, for the bot disclosure. |
+| `DREVVY_TEXT_NUMBER` | lead and chat | Drevvy Telnyx text number. Used in the handoff line and in lead and pre-chat phone fields. |
+| `DREVVY_EMAIL` | lead and chat | Drevvy email. Used in the handoff line, the lead message, and lead email fields. |
+| `SHOPPER_FIRST_NAME` | lead and chat | First name only. Used on lead forms and in the bot disclosure. |
+| `LEAD_LAST_NAME` | no | Last-name box on a lead form. Default `via Drevvy`. |
+| `DREVVY_ZIP` | when a form has ZIP | Five-digit ZIP, or ZIP+4. A ZIP field without this value stops the form. |
 | `RESEARCH_FETCH_TIMEOUT_MS` | no | Page fetch timeout. Default `15000`. |
 | `WIDGET_CHAT_MAX_TURNS` | no | Send cap. Values above 6 are clamped to 6. |
 
@@ -109,4 +132,4 @@ node dist/cli.js run /data/urls.txt
 
 Railway cron can use that same command. Leave the restart policy at never so a finished job is not restarted in a loop.
 
-Set the environment variables above in the Railway service. Do not set `DRY_RUN=false` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply the Supabase migration separately before the first write.
+Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply both Supabase migrations separately before the first write.

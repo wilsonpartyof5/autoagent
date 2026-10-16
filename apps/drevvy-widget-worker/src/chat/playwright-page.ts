@@ -1,10 +1,18 @@
 import type { Frame, Page } from 'playwright';
 
+import { isPrivateFieldHint, type OutreachFill } from '../forms/outreach';
 import { asksForShopperContact, hasCaptchaChallenge, isContactField, isForbiddenContactSelector } from '../widgets/guards';
 import { WIDGET_ADAPTERS, type WidgetVendor } from '../widgets/vendors';
 import type { ChatPage } from './types';
 
 const CAPTCHA_FRAME = /google\.com\/recaptcha\/api2|hcaptcha\.com\/captcha|challenges\.cloudflare\.com\/turnstile/i;
+
+function outreachSelectors(fill: OutreachFill): string[] {
+  const selectors: string[] = [];
+  if (fill.id && /^[\w.-]+$/.test(fill.id)) selectors.push(`[id="${fill.id}"]`);
+  if (fill.name && /^[A-Za-z][\w:-]*$/.test(fill.name)) selectors.push(`[name="${fill.name}"]`);
+  return selectors;
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -159,6 +167,58 @@ export class PlaywrightChatPage implements ChatPage {
 
   async contactFormVisible(vendor: WidgetVendor | null): Promise<boolean> {
     return asksForShopperContact(await this.widgetHtml(vendor));
+  }
+
+  async fillOutreach(fill: OutreachFill): Promise<boolean> {
+    if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
+    const selectors = outreachSelectors(fill);
+    if (selectors.length === 0) return false;
+    for (const selector of selectors) {
+      for (const frame of this.page.frames()) {
+        try {
+          const loc = frame.locator(selector).first();
+          if ((await loc.count()) === 0) continue;
+          const blob = [
+            await loc.getAttribute('name'),
+            await loc.getAttribute('id'),
+            await loc.getAttribute('placeholder'),
+            await loc.getAttribute('aria-label'),
+          ]
+            .filter((part): part is string => Boolean(part))
+            .join(' ');
+          if (isPrivateFieldHint(blob)) return false;
+          await loc.fill(fill.value, { timeout: 2_000 });
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+    return false;
+  }
+
+  async submitForm(formId: string | null, buttonText: string | null): Promise<boolean> {
+    const formSelector = formId && /^[\w.-]+$/.test(formId) ? `form[id="${formId}"]` : 'form';
+    for (const frame of this.page.frames()) {
+      try {
+        const form = frame.locator(formSelector).first();
+        if ((await form.count()) === 0) continue;
+        if (buttonText) {
+          const named = form.getByRole('button', { name: buttonText, exact: true }).first();
+          if ((await named.count()) > 0) {
+            await named.click({ timeout: 2_000 });
+            return true;
+          }
+        }
+        const submit = form.locator('button[type="submit"], input[type="submit"], button').first();
+        if ((await submit.count()) === 0) continue;
+        await submit.click({ timeout: 2_000 });
+        return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
   }
 
   private async withSelector(

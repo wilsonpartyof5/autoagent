@@ -23,6 +23,8 @@ const config: AppConfig = {
   drevvyTextNumber: '803-555-0148',
   drevvyEmail: 'deals@drevvy.test',
   shopperFirst: 'Maya',
+  leadLastName: 'via Drevvy',
+  leadZip: '29201',
   fetchTimeoutMs: 1000,
   maxTurns: 6,
 };
@@ -95,7 +97,13 @@ describe('cli', () => {
     assert.equal(saved.includes('5550177'), false);
     assert.equal(saved.includes('marketcheck'), false);
     assert.equal(saved.includes('1HGCV1F16NA000001'), false);
-    assert.equal(attempts.attempts.length, 2);
-    assert.equal(attempts.attempts.every((attempt) => attempt.dry_run && attempt.status === 'dry_run'), true);
+    assert.equal(attempts.attempts.length, 4);
+    const leads = attempts.attempts.filter((attempt) => attempt.channel === 'lead_form');
+    const widgets = attempts.attempts.filter((attempt) => attempt.channel === 'widget');
+    assert.equal(leads.length, 2);
+    assert.equal(widgets.length, 2);
+    assert.equal(leads.every((attempt) => attempt.status === 'unknown' && attempt.stop_reason === 'no_lead_form'), true);
+    assert.equal(widgets.every((attempt) => attempt.dry_run && attempt.status === 'dry_run'), true);
+    assert.match(result.stdout, /Lead form/);
   });
 });

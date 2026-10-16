@@ -34,7 +34,7 @@ describe('widget snapshots', () => {
     assert.equal(hasCaptchaChallenge(scope), true);
   });
 
-  it('stops on a pre-chat contact form and ignores a footer lead form', () => {
+  it('sees a pre-chat contact form and ignores a footer form inside the widget scope', () => {
     const prechat = readFixture('prechat-form.html');
     assert.equal(asksForShopperContact(extractWidgetScope(prechat, 'gubagoo')), true);
     const footer = readFixture('footer-lead-form.html');

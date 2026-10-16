@@ -4,16 +4,18 @@ export type ResultRow = {
   status: string;
   price: string | null;
   dryRun: string;
+  channel?: string;
 };
 
 export function formatResultsTable(rows: ResultRow[]): string {
-  const headers = ['url', 'vendor', 'status', 'price', 'dry_run'];
+  const headers = ['url', 'vendor', 'status', 'price', 'dry_run', 'channel'];
   const body = rows.map((row) => [
     truncate(row.url, 64),
     row.vendor || '-',
     row.status || '-',
     row.price ?? '-',
     row.dryRun || '-',
+    row.channel || '-',
   ]);
   const widths = headers.map((header, index) =>
     Math.max(header.length, ...body.map((line) => line[index]?.length ?? 0), 1),

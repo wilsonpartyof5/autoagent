@@ -1,3 +1,5 @@
+import type { OutreachFill } from '../src/forms/outreach';
+import { isPrivateFieldHint } from '../src/forms/outreach';
 import type { ChatPage } from '../src/chat/types';
 import type { FieldAttrs } from '../src/widgets/guards';
 import { isContactField } from '../src/widgets/guards';
@@ -7,6 +9,8 @@ export class FakeChatPage implements ChatPage {
   readonly sent: string[] = [];
   readonly clicks: string[][] = [];
   readonly gotos: string[] = [];
+  readonly outreach: OutreachFill[] = [];
+  readonly submits: Array<{ formId: string | null; buttonText: string | null }> = [];
   screenshots = 0;
 
   constructor(
@@ -15,6 +19,8 @@ export class FakeChatPage implements ChatPage {
       replies?: Array<string | null>;
       composerAttrs?: FieldAttrs;
       failSendClick?: boolean;
+      failOutreach?: boolean;
+      failSubmit?: boolean;
     } = {},
   ) {}
 
@@ -69,6 +75,19 @@ export class FakeChatPage implements ChatPage {
 
   async contactFormVisible(_vendor: WidgetVendor | null): Promise<boolean> {
     return false;
+  }
+
+  async fillOutreach(fill: OutreachFill): Promise<boolean> {
+    if (this.options.failOutreach) return false;
+    if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
+    this.outreach.push(fill);
+    return true;
+  }
+
+  async submitForm(formId: string | null, buttonText: string | null): Promise<boolean> {
+    if (this.options.failSubmit) return false;
+    this.submits.push({ formId, buttonText });
+    return true;
   }
 
   async close(): Promise<void> {

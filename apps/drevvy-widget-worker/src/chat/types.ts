@@ -1,4 +1,9 @@
+import type { OutreachFill } from '../forms/outreach';
 import type { WidgetVendor } from '../widgets/vendors';
+
+export const ATTEMPT_CHANNELS = ['widget', 'lead_form', 'prechat'] as const;
+
+export type AttemptChannel = (typeof ATTEMPT_CHANNELS)[number];
 
 export const ATTEMPT_STATUSES = [
   'available',
@@ -14,6 +19,10 @@ export const ATTEMPT_STATUSES = [
   'no_widget',
   'turn_limit',
   'error',
+  'blocked',
+  'submitted',
+  'private_info',
+  'already_submitted',
 ] as const;
 
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
@@ -40,11 +49,32 @@ export type WidgetChatAttemptWrite = {
   error: string | null;
   started_at: string;
   finished_at: string;
+  channel: AttemptChannel;
+  first_reply_channel: AttemptChannel | null;
 };
 
 export interface AttemptStore {
   insert(attempt: WidgetChatAttemptWrite): Promise<{ id: string }>;
+  hasBlockedSite(dealerSiteUrl: string): Promise<boolean>;
+  hasLiveSubmit(vehiclePageUrl: string, channel: AttemptChannel): Promise<boolean>;
+  currentFirstReply(vehiclePageUrl: string): Promise<AttemptChannel | null>;
+  setFirstReply(vehiclePageUrl: string, channel: AttemptChannel): Promise<void>;
 }
+
+export type AttemptResult = {
+  id: string | null;
+  vehiclePageUrl: string;
+  dealerSiteUrl: string | null;
+  stockNumber: string | null;
+  widgetVendor: string | null;
+  status: AttemptStatus;
+  price: string | null;
+  dryRun: boolean;
+  transcript: TranscriptEntry[];
+  stopReason: string | null;
+  error: string | null;
+  channel: AttemptChannel;
+};
 
 export interface ChatPage {
   goto(url: string): Promise<void>;
@@ -57,4 +87,6 @@ export interface ChatPage {
   pressEnter(selectors: string[]): Promise<boolean>;
   captchaVisible(vendor: WidgetVendor | null): Promise<boolean>;
   contactFormVisible(vendor: WidgetVendor | null): Promise<boolean>;
+  fillOutreach(fill: OutreachFill): Promise<boolean>;
+  submitForm(formId: string | null, buttonText: string | null): Promise<boolean>;
 }
