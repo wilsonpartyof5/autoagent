@@ -1,0 +1,107 @@
+export const WIDGET_VENDORS = [
+  'gubagoo',
+  'activengage',
+  'carnow',
+  'podium',
+  'kenect',
+  'contactatonce',
+  'fullpath',
+  'impel',
+  'matador',
+] as const;
+
+export type WidgetVendor = (typeof WIDGET_VENDORS)[number];
+
+export type WidgetAdapter = {
+  vendor: WidgetVendor;
+  frameUrl: RegExp;
+  launchSelectors: string[];
+  inputSelectors: string[];
+  sendSelectors: string[];
+  messageSelectors: string[];
+  containerSelectors: string[];
+};
+
+const SIGNATURES: Record<WidgetVendor, RegExp[]> = {
+  gubagoo: [/gubagoo\.com/i, /gubagoo\.io/i, /\bgubagoo\b/i, /gg-chat/i],
+  activengage: [/activengage\.com/i, /ae-launcher/i, /\bactivengage\b/i],
+  carnow: [/carnow\.com/i, /cn-chat/i, /\bcarnow\b/i],
+  podium: [/widget\.podium\.com/i, /cdn\.podium\.com/i, /podium-website-widget/i, /id=["']podium-bubble/i],
+  kenect: [/kenect\.com/i, /kenect-widget/i, /\bkenect\b/i],
+  contactatonce: [/contactatonce\.com/i, /cao-widget/i, /contact\s*at\s*once/i],
+  fullpath: [/fullpath\.com/i, /autoleadstar\.com/i, /als-widget/i, /\bfullpath\b/i],
+  impel: [/impel\.ai/i, /spincar\.com/i, /impel-chat/i, /\bimpel\b/i],
+  matador: [/matador\.ai/i, /matador-chat/i, /\bmatador\b/i],
+};
+
+const CONTAINER_PATTERNS: Record<WidgetVendor, RegExp> = {
+  gubagoo: /<div\b[^>]*(?:gubagoo|gg-chat)[^>]*>[\s\S]*?<\/div>/i,
+  activengage: /<div\b[^>]*(?:activengage|ae-launcher|ae-chat)[^>]*>[\s\S]*?<\/div>/i,
+  carnow: /<div\b[^>]*(?:carnow|cn-chat)[^>]*>[\s\S]*?<\/div>/i,
+  podium: /<div\b[^>]*(?:podium-website-widget|podium-bubble|podium)[^>]*>[\s\S]*?<\/div>/i,
+  kenect: /<div\b[^>]*(?:kenect)[^>]*>[\s\S]*?<\/div>/i,
+  contactatonce: /<div\b[^>]*(?:contactatonce|cao-widget)[^>]*>[\s\S]*?<\/div>/i,
+  fullpath: /<div\b[^>]*(?:fullpath|autoleadstar|als-widget)[^>]*>[\s\S]*?<\/div>/i,
+  impel: /<div\b[^>]*(?:impel|spincar)[^>]*>[\s\S]*?<\/div>/i,
+  matador: /<div\b[^>]*(?:matador)[^>]*>[\s\S]*?<\/div>/i,
+};
+
+export const WIDGET_ADAPTERS: Record<WidgetVendor, WidgetAdapter> = {
+  gubagoo: adapter('gubagoo', /gubagoo/i, ['#gubagoo-chat-button', '.gg-chat-launcher', '[data-gg-launcher]'], ['textarea.gg-chat-input', '#gg-chat-input', 'textarea[placeholder*="message" i]'], ['button.gg-chat-send', 'button[aria-label="Send"]'], ['.gg-message-dealer', '.gg-chat-message.incoming', '[data-gg-message="dealer"]'], ['#gubagoo-chat', '.gg-chat']),
+  activengage: adapter('activengage', /activengage/i, ['.ae-launcher', '#ae-chat-launcher', '[data-ae-launcher]'], ['textarea.ae-chat-input', '#ae-chat-input'], ['button.ae-chat-send', 'button[aria-label="Send message"]'], ['.ae-message-agent', '.ae-chat-message.incoming'], ['#ae-chat', '.ae-chat']),
+  carnow: adapter('carnow', /carnow/i, ['#cn-chat-launcher', '.cn-chat-button', '[data-cn-launcher]'], ['textarea.cn-chat-input', '#cn-chat-input'], ['button.cn-chat-send', 'button[aria-label="Send"]'], ['.cn-message-dealer', '.cn-chat-incoming'], ['#cn-chat', '.cn-chat']),
+  podium: adapter('podium', /podium/i, ['#podium-bubble', '.podium-website-widget button', '[data-podium-bubble]'], ['textarea.podium-composer', '#podium-chat-input'], ['button.podium-send', 'button[aria-label="Send"]'], ['.podium-message-incoming', '[data-podium-message="dealer"]'], ['#podium-website-widget', '.podium-website-widget']),
+  kenect: adapter('kenect', /kenect/i, ['.kenect-widget-button', '#kenect-launcher'], ['textarea.kenect-composer', '#kenect-chat-input'], ['button.kenect-send', 'button[aria-label="Send"]'], ['.kenect-message-incoming'], ['#kenect-widget', '.kenect-widget']),
+  contactatonce: adapter('contactatonce', /contactatonce/i, ['.cao-widget-button', '#cao-launcher'], ['textarea.cao-composer', '#cao-chat-input'], ['button.cao-send', 'button[aria-label="Send"]'], ['.cao-message-incoming'], ['#cao-widget', '.cao-widget']),
+  fullpath: adapter('fullpath', /fullpath|autoleadstar/i, ['.als-widget-button', '#fullpath-launcher'], ['textarea.als-composer', '#fullpath-chat-input'], ['button.als-send', 'button[aria-label="Send"]'], ['.als-message-incoming'], ['#als-widget', '.als-widget']),
+  impel: adapter('impel', /impel|spincar/i, ['.impel-chat-button', '#impel-launcher'], ['textarea.impel-composer', '#impel-chat-input'], ['button.impel-send', 'button[aria-label="Send"]'], ['.impel-message-incoming'], ['#impel-chat', '.impel-chat']),
+  matador: adapter('matador', /matador/i, ['.matador-chat-button', '#matador-launcher'], ['textarea.matador-composer', '#matador-chat-input'], ['button.matador-send', 'button[aria-label="Send"]'], ['.matador-message-incoming'], ['#matador-chat', '.matador-chat']),
+};
+
+export function vendorSignatures(vendor: WidgetVendor): RegExp[] {
+  return SIGNATURES[vendor];
+}
+
+export function extractWidgetScope(html: string, vendor: WidgetVendor | null): string {
+  if (!vendor) return '';
+  return html.match(CONTAINER_PATTERNS[vendor])?.[0] ?? '';
+}
+
+export function vendorFromModel(value: string | null | undefined): WidgetVendor | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, '');
+  const aliases: Record<string, WidgetVendor> = {
+    gubagoo: 'gubagoo',
+    activengage: 'activengage',
+    carnow: 'carnow',
+    podium: 'podium',
+    kenect: 'kenect',
+    contactatonce: 'contactatonce',
+    fullpath: 'fullpath',
+    autoleadstar: 'fullpath',
+    impel: 'impel',
+    spincar: 'impel',
+    matador: 'matador',
+  };
+  return aliases[normalized] ?? null;
+}
+
+function adapter(
+  vendor: WidgetVendor,
+  frameUrl: RegExp,
+  launchSelectors: string[],
+  inputSelectors: string[],
+  sendSelectors: string[],
+  messageSelectors: string[],
+  containerSelectors: string[],
+): WidgetAdapter {
+  return {
+    vendor,
+    frameUrl,
+    launchSelectors,
+    inputSelectors,
+    sendSelectors,
+    messageSelectors,
+    containerSelectors,
+  };
+}
