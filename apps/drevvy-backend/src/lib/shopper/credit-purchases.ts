@@ -67,11 +67,32 @@ export function webhookAuthorized(authorization: string | null, secret: string |
   return tokensEqual(authorization, `Bearer ${secret}`);
 }
 
+export type VerifiedCreditPurchase = {
+  productId: CreditProductId;
+  size: number;
+  priceUsd: number;
+  transactionId: string;
+};
+
+function trimmedId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function canonicalTransactionId(purchase: RevenueCatPurchaseRecord): string | null {
+  return trimmedId(purchase.store_transaction_id)
+    ?? trimmedId(purchase.transaction_id)
+    ?? trimmedId(purchase.id);
+}
+
 export function findVerifiedPurchase(
   subscriber: RevenueCatSubscriber,
   transactionId: string,
   expectedProductId?: string,
-): { productId: CreditProductId; size: number; priceUsd: number } | null {
+): VerifiedCreditPurchase | null {
+  const needle = transactionId.trim();
+  if (!needle) return null;
   const expected = expectedProductId ? packForProductId(expectedProductId) : null;
   if (expectedProductId && !expected) return null;
   const groups = subscriber.non_subscriptions ?? {};
@@ -80,11 +101,25 @@ export function findVerifiedPurchase(
     if (!pack) continue;
     if (expected && expected.productId !== pack.productId) continue;
     for (const purchase of purchases ?? []) {
-      const ids = [purchase.id, purchase.store_transaction_id, purchase.transaction_id];
-      if (ids.includes(transactionId)) return pack;
+      const canonical = canonicalTransactionId(purchase);
+      if (!canonical) continue;
+      const aliases = [
+        trimmedId(purchase.id),
+        trimmedId(purchase.store_transaction_id),
+        trimmedId(purchase.transaction_id),
+      ].filter((id): id is string => id != null);
+      if (aliases.includes(needle)) return { ...pack, transactionId: canonical };
     }
   }
   return null;
+}
+
+export async function grantVerifiedPurchase(
+  supabase: SupabaseClient,
+  userId: string,
+  verified: VerifiedCreditPurchase,
+) {
+  return purchaseCredits(supabase, userId, verified.size, verified.priceUsd, verified.transactionId);
 }
 
 export async function fetchRevenueCatSubscriber(
@@ -120,27 +155,41 @@ export type RevenueCatWebhookEvent = {
   id?: string;
 };
 
+export type RevenueCatApplyResult = {
+  applied: 'granted' | 'reversed' | 'ignored';
+  credits: ShopperCredits | null;
+  retryable: boolean;
+};
+
 export async function applyRevenueCatEvent(
   supabase: SupabaseClient,
   event: RevenueCatWebhookEvent,
-): Promise<{ applied: 'granted' | 'reversed' | 'ignored'; credits: ShopperCredits | null }> {
+): Promise<RevenueCatApplyResult> {
   const type = event.type ?? '';
-  const userId = event.app_user_id ?? '';
-  const transactionId = event.transaction_id ?? '';
-  const pack = event.product_id ? packForProductId(event.product_id) : null;
+  const userId = (event.app_user_id ?? '').trim();
+  const transactionId = (event.transaction_id ?? '').trim();
+  const pack = event.product_id ? packForProductId(event.product_id.trim()) : null;
   if (!isConsumerUserId(userId) || !transactionId || !pack) {
-    return { applied: 'ignored', credits: null };
+    return { applied: 'ignored', credits: null, retryable: false };
   }
 
   if (type === 'NON_RENEWING_PURCHASE') {
     const result = await purchaseCredits(supabase, userId, pack.size, pack.priceUsd, transactionId);
-    return { applied: result.success ? 'granted' : 'ignored', credits: result.credits };
+    if (!result.success) return { applied: 'ignored', credits: result.credits, retryable: true };
+    if (!result.granted && !result.alreadyGranted) {
+      return { applied: 'ignored', credits: result.credits, retryable: false };
+    }
+    return { applied: 'granted', credits: result.credits, retryable: false };
   }
 
   if (type === 'REFUND' || type === 'CANCELLATION') {
     const result = await reversePurchaseCredits(supabase, userId, pack.size, transactionId);
-    return { applied: result.success ? 'reversed' : 'ignored', credits: result.credits };
+    if (!result.success) return { applied: 'ignored', credits: result.credits, retryable: true };
+    if (!result.reversed && !result.alreadyReversed) {
+      return { applied: 'ignored', credits: result.credits, retryable: false };
+    }
+    return { applied: 'reversed', credits: result.credits, retryable: false };
   }
 
-  return { applied: 'ignored', credits: null };
+  return { applied: 'ignored', credits: null, retryable: false };
 }

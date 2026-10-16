@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
+import { handleGetCreditBalance } from '@/lib/shopper/credit-balance-handler';
 import {
   creditBalanceData,
   fetchRevenueCatSubscriber,
   findVerifiedPurchase,
+  grantVerifiedPurchase,
   packForProductId,
   purchasesConfigured,
 } from '@/lib/shopper/credit-purchases';
-import { getShopperCredits, purchaseCredits } from '@/lib/shopper/credits';
+import { getShopperCredits } from '@/lib/shopper/credits';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -27,13 +29,10 @@ function notConfigured() {
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const auth = await requireConsumerAuth(request);
-    const credits = await getShopperCredits(createAdminClient(), auth.userId);
-    return balanceResponse(credits);
-  } catch (error) {
-    return consumerAuthErrorResponse(error);
-  }
+  return handleGetCreditBalance(request, {
+    requireAuth: requireConsumerAuth,
+    supabase: createAdminClient,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -68,13 +67,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const granted = await purchaseCredits(
-      createAdminClient(),
-      auth.userId,
-      verified.size,
-      verified.priceUsd,
-      transactionId,
-    );
+    const granted = await grantVerifiedPurchase(createAdminClient(), auth.userId, verified);
     if (!granted.success) {
       return NextResponse.json(
         { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these credits.' } },

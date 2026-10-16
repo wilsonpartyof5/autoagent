@@ -11,7 +11,7 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  * Returns one deal owned by the signed-in shopper. Another shopper's deal
  * is not found. Dealer identity is not included. `visit` is included only
  * after the official offer is forwarded. DELETE removes the car from the
- * shopper's list and refunds the monthly slot only inside the 30-minute
+ * shopper's list and returns the car credit only inside the 30-minute
  * window before any outreach.
  */
 

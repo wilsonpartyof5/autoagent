@@ -23,6 +23,7 @@ import {
   forwardOffer,
   getShopperCar,
   listBuyOutcomes,
+  REMOVAL_REFUND_MS,
   removeShopperCar,
   runLifecycleSchedule,
   similarForDeal,
@@ -47,11 +48,17 @@ import { findSimilarListings, similarSearchQuery, toShopperListing } from './sim
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-function createMockSupabase() {
+function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credits' | 'error' = 'ok') {
   const credits = new Map<string, { balance: number; lifetime_purchased: number; lifetime_used: number; lifetime_refunded: number }>();
   const events = new Map<string, { id: string; user_id: string; idempotency_key: string }[]>();
 
-  credits.set('shopper-1', { balance: 999, lifetime_purchased: 999, lifetime_used: 0, lifetime_refunded: 0 });
+  credits.set('shopper-1', { balance: initialBalance, lifetime_purchased: initialBalance, lifetime_used: 0, lifetime_refunded: 0 });
+
+  const rowFor = (userId: string) => {
+    const row = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
+    credits.set(userId, row);
+    return row;
+  };
 
   const mockResult = (table: string, userId: string) => ({
     maybeSingle: async () => {
@@ -63,7 +70,7 @@ function createMockSupabase() {
     },
     single: async () => {
       if (table === 'shopper_credits') {
-        const data = credits.get(userId) ?? { balance: 999, lifetime_purchased: 999, lifetime_used: 0, lifetime_refunded: 0 };
+        const data = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
         return { data: { ...data, user_id: userId }, error: null };
       }
       return { data: null, error: null };
@@ -92,31 +99,43 @@ function createMockSupabase() {
       }),
     }),
     rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_idempotency_key?: string }) => {
+      const userId = params.p_user_id ?? '';
+      const row = rowFor(userId);
+      const userEvents = events.get(userId) ?? [];
+      events.set(userId, userEvents);
+
+      if (fnName === 'consume_credit_atomic') {
+        if (consumeMode === 'error') return { data: null, error: { message: 'db down' } };
+        const key = `use:${params.p_deal_id ?? ''}`;
+        if (userEvents.some((event) => event.idempotency_key === key)) {
+          return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
+        }
+        if (consumeMode === 'no_credits' || row.balance <= 0) {
+          return { data: [{ consumed: false, already_consumed: false, ...row }], error: null };
+        }
+        userEvents.push({ id: randomUUID(), user_id: userId, idempotency_key: key });
+        row.balance -= 1;
+        row.lifetime_used += 1;
+        return { data: [{ consumed: true, already_consumed: false, ...row }], error: null };
+      }
+
       if (fnName === 'refund_credit_atomic') {
-        const userId = params.p_user_id ?? '';
         const dealId = params.p_deal_id ?? '';
         const idempotencyKey = params.p_idempotency_key ?? '';
-        const userEvents = events.get(userId) ?? [];
-        const existingRefund = userEvents.find((e) => e.idempotency_key === idempotencyKey);
+        const existingRefund = userEvents.find((event) => event.idempotency_key === idempotencyKey);
         if (existingRefund) {
-          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
-          return { data: [{ refunded: false, already_refunded: true, new_balance: c.balance }], error: null };
+          return { data: [{ refunded: false, already_refunded: true, new_balance: row.balance }], error: null };
         }
-        const useKey = `use:${dealId}`;
-        const useEvent = userEvents.find((e) => e.idempotency_key === useKey);
+        const useEvent = userEvents.find((event) => event.idempotency_key === `use:${dealId}`);
         if (!useEvent) {
-          const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
-          return { data: [{ refunded: false, already_refunded: false, new_balance: c.balance }], error: null };
+          return { data: [{ refunded: false, already_refunded: false, new_balance: row.balance }], error: null };
         }
         userEvents.push({ id: randomUUID(), user_id: userId, idempotency_key: idempotencyKey });
-        events.set(userId, userEvents);
-        const c = credits.get(userId) ?? { balance: 0, lifetime_purchased: 0, lifetime_used: 0, lifetime_refunded: 0 };
-        c.balance += 1;
-        c.lifetime_refunded += 1;
-        credits.set(userId, c);
-        return { data: [{ refunded: true, already_refunded: false, new_balance: c.balance }], error: null };
+        row.balance += 1;
+        row.lifetime_refunded += 1;
+        return { data: [{ refunded: true, already_refunded: false, new_balance: row.balance }], error: null };
       }
-      return { data: null, error: null };
+      return { data: null, error: { message: 'unknown rpc' } };
     },
   } as unknown;
 }
@@ -177,10 +196,18 @@ function memoryDeals(): ShopperDealRepository & { rows: ShopperDealRow[] } {
       if (row.status !== 'closed') row.status = 'closed';
       return row;
     },
+    async discard(consumerUserId, dealId) {
+      const index = rows.findIndex((item) => item.consumerUserId === consumerUserId && item.id === dealId);
+      if (index >= 0) rows.splice(index, 1);
+    },
   };
 }
 
-function harness(now = '2026-10-01T16:10:00.000Z') {
+function harness(
+  now = '2026-10-01T16:10:00.000Z',
+  balance = 999,
+  consumeMode: 'ok' | 'no_credits' | 'error' = 'ok',
+) {
   const deals = memoryDeals();
   const lifecycle = createMemoryLifecycleRepository();
   const deps: DealDeps = {
@@ -188,7 +215,7 @@ function harness(now = '2026-10-01T16:10:00.000Z') {
     lifecycle,
     now: new Date(now),
     live: false,
-    supabase: createMockSupabase() as DealDeps['supabase'],
+    supabase: createMockSupabase(balance, consumeMode) as DealDeps['supabase'],
   };
   return { deals, lifecycle, deps };
 }
@@ -205,32 +232,84 @@ test('a removed deal can be added again with a new id', async () => {
   assert.notEqual(second.deal.id, created.deal.id);
 });
 
-test('removeShopperCar refunds a credit within 30 minutes and before outreach', async () => {
-  const box = harness('2026-10-01T16:10:00.000Z');
+test('adding a deal consumes one car and repeating that listing does not', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z', 2);
+  const first = await addCar(box, 'mc-car-consume');
+  assert.equal(first.credits.balance, 1);
+  const again = await addCar(box, 'mc-car-consume');
+  assert.equal(again.deal.id, first.deal.id);
+  assert.equal(again.credits.balance, 1);
+  const second = await addCar(box, 'mc-car-consume-2');
+  assert.equal(second.credits.balance, 0);
+  assert.equal(box.deals.rows.length, 2);
+});
+
+test('adding a deal with an empty balance does not create a deal', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z', 0);
+  await assert.rejects(
+    () => addCar(box, 'mc-car-empty'),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'no_credits',
+  );
+  assert.equal(box.deals.rows.length, 0);
+});
+
+test('a failed charge discards the new deal and a credit error keeps it', async () => {
+  const uncharged = harness('2026-10-01T16:10:00.000Z', 1, 'no_credits');
+  await assert.rejects(
+    () => addCar(uncharged, 'mc-car-uncharged'),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'no_credits',
+  );
+  assert.equal(uncharged.deals.rows.length, 0);
+
+  const failed = harness('2026-10-01T16:10:00.000Z', 1, 'error');
+  await assert.rejects(
+    () => addCar(failed, 'mc-car-credit-error'),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'credit_failed',
+  );
+  assert.equal(failed.deals.rows.length, 1);
+  assert.equal(failed.deals.rows[0]?.status, 'interested');
+});
+
+test('removing a deal within 30 minutes and before outreach returns the car once', async () => {
+  const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-window');
+  assert.equal(created.credits.balance, 0);
+  const added = Date.parse(created.deal.createdAt);
+  box.deps.now = new Date(added + REMOVAL_REFUND_MS);
   const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
   assert.equal(result.refunded, true);
+  assert.equal(result.credits.balance, 1);
+
+  const again = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(again.refunded, false);
+  assert.equal(again.credits.balance, 1);
 });
 
-test('removeShopperCar does not refund after 30 minutes', async () => {
-  const box = harness('2026-10-01T16:40:00.000Z');
+test('removing a deal after 30 minutes does not return the car', async () => {
+  const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-late');
+  const added = Date.parse(created.deal.createdAt);
+  box.deps.now = new Date(added + REMOVAL_REFUND_MS + 1);
   const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
   assert.equal(result.refunded, false);
+  assert.equal(result.credits.balance, 0);
 });
 
-test('removeShopperCar does not refund after outreach even within 30 minutes', async () => {
-  const box = harness('2026-10-01T16:10:00.000Z');
+test('removing a deal after outreach does not return the car', async () => {
+  const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-outreach');
+  const added = Date.parse(created.deal.createdAt);
   await applyAgentEvent({
     type: 'outreach',
     dealId: created.deal.id,
     consumerUserId: 'shopper-1',
     channel: 'email',
-    sentAt: '2026-10-01T16:05:00.000Z',
+    sentAt: new Date(added + 60_000).toISOString(),
   }, box.deps);
+  box.deps.now = new Date(added + 5 * 60_000);
   const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
   assert.equal(result.refunded, false);
+  assert.equal(result.credits.balance, 0);
 });
 
 test('saving an open listing returns the same deal', async () => {

@@ -5,9 +5,10 @@ import {
   creditBalanceData,
   fetchRevenueCatSubscriber,
   findVerifiedPurchase,
+  grantVerifiedPurchase,
   purchasesConfigured,
 } from '@/lib/shopper/credit-purchases';
-import { getShopperCredits, purchaseCredits } from '@/lib/shopper/credits';
+import { getShopperCredits } from '@/lib/shopper/credits';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     for (const transactionId of transactionIds) {
       const verified = findVerifiedPurchase(lookup.subscriber, transactionId.trim());
       if (!verified) continue;
-      const granted = await purchaseCredits(admin, auth.userId, verified.size, verified.priceUsd, transactionId.trim());
+      const granted = await grantVerifiedPurchase(admin, auth.userId, verified);
       if (!granted.success) {
         return NextResponse.json(
           { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not restore these credits.' } },

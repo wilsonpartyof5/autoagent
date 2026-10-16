@@ -6,10 +6,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseShopperDealRepository } from './deal-store';
 import {
   ShopperDealError,
-  createShopperDeal,
   getShopperDeal,
   isShopperListingId,
   listShopperDeals,
+  provisionShopperDeal,
   toShopperDeal,
   type ShopperDeal,
   type ShopperDealRepository,
@@ -85,6 +85,8 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
   };
 }
 
+export const REMOVAL_REFUND_MS = 30 * 60 * 1000;
+
 export async function addShopperCar(
   userId: string,
   input: { listingId: unknown; vehicle: unknown },
@@ -96,6 +98,7 @@ export async function addShopperCar(
     const existing = await deps.deals.findOpen(userId, input.listingId);
     if (existing) {
       const deal = toShopperDeal(existing);
+      await chargeDeal(supabase, userId, deal.id, false, deps);
       const records = await deps.lifecycle.listForShopper(userId);
       return {
         deal: presentDeal(deal, findRecord(records, deal.id)),
@@ -113,24 +116,23 @@ export async function addShopperCar(
     );
   }
 
-  const deal = await createShopperDeal(deps.deals, {
+  const provisioned = await provisionShopperDeal(deps.deals, {
     consumerUserId: userId,
     listingId: input.listingId,
     vehicle: input.vehicle,
   });
-
-  const useResult = await consumeCredit(supabase, userId, deal.id);
-  if (!useResult.success) {
-    console.error('[deal-actions] Failed to use credit:', useResult.error);
-  }
+  await chargeDeal(supabase, userId, provisioned.deal.id, provisioned.created, deps);
 
   const records = await deps.lifecycle.listForShopper(userId);
-  if (!findRecord(records, deal.id)) {
-    await deps.lifecycle.save(blankLifecycle(deal, userId));
+  if (!findRecord(records, provisioned.deal.id)) {
+    await deps.lifecycle.save(blankLifecycle(provisioned.deal, userId));
   }
 
   return {
-    deal: presentDeal(deal, (await deps.lifecycle.get(userId, deal.id)) ?? blankLifecycle(deal, userId)),
+    deal: presentDeal(
+      provisioned.deal,
+      (await deps.lifecycle.get(userId, provisioned.deal.id)) ?? blankLifecycle(provisioned.deal, userId),
+    ),
     credits: await creditSummaryFor(supabase, userId),
   };
 }
@@ -155,8 +157,6 @@ export async function getShopperCar(userId: string, dealId: string, deps: DealDe
   const record = await deps.lifecycle.get(userId, deal.id);
   return presentDeal(deal, record);
 }
-
-const REMOVAL_REFUND_MS = 30 * 60 * 1000;
 
 export async function removeShopperCar(
   userId: string,
@@ -393,6 +393,32 @@ async function requireDeal(userId: string, dealId: string, deps: DealDeps): Prom
   const deal = await getShopperDeal(deps.deals, userId, dealId);
   if (!deal) throw new ShopperDealError('Deal not found.', 404, 'not_found');
   return deal;
+}
+
+async function chargeDeal(
+  supabase: SupabaseClient,
+  userId: string,
+  dealId: string,
+  discardIfUncharged: boolean,
+  deps: DealDeps,
+): Promise<void> {
+  const useResult = await consumeCredit(supabase, userId, dealId);
+  if (useResult.success) return;
+  if (discardIfUncharged && useResult.error === 'no_credits') {
+    try {
+      await deps.deals.discard(userId, dealId);
+    } catch (error) {
+      console.error('[deal-actions] Failed to discard uncharged deal:', error instanceof Error ? error.message : error);
+    }
+  }
+  if (useResult.error === 'credit_failed') {
+    throw new ShopperDealError('Drevvy could not use a car credit for this deal.', 500, 'credit_failed');
+  }
+  throw new ShopperDealError(
+    'You need car credits to add a new car. Purchase a car pack to continue.',
+    402,
+    'no_credits',
+  );
 }
 
 async function creditSummaryFor(supabase: SupabaseClient, userId: string): Promise<CreditSummary> {
