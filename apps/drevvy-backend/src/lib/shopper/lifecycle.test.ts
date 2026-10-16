@@ -14,6 +14,7 @@ import {
   type ShopperDealRow,
 } from './deals';
 import type { ShopperPush } from '@/lib/push/events';
+import { planShopperPush } from '@/lib/push/triggers';
 
 import {
   addShopperCar,
@@ -33,6 +34,7 @@ import {
   BUY_PROMPT_BODY,
   BUY_PROMPT_TITLE,
   pickupFallbackDue,
+  readAgentEvent,
   readCronAuth,
   readOfferBody,
   readOutcomeBody,
@@ -654,6 +656,109 @@ test('official offer, a sold car, and the day after pickup send push events once
   assert.deepEqual(pushes.map((push) => push.event), ['official_offer', 'official_offer', 'did_you_buy', 'car_sold']);
   assert.equal(pushes.every((push) => push.userId === 'shopper-1'), true);
   assert.equal(/negotiat/i.test(JSON.stringify(pushes)), false);
+  const sold = pushes.find((push) => push.event === 'car_sold');
+  assert.match(sold?.title ?? '', /Your Tahoe is no longer listed/);
+  assert.match(sold?.body ?? '', /add another/);
+  assert.equal(/just sold/i.test(`${sold?.title} ${sold?.body}`), false);
+  const buy = pushes.find((push) => push.event === 'did_you_buy');
+  assert.equal(buy?.title, 'Did you buy it?');
+  assert.match(buy?.body ?? '', /Tahoe/);
+  assert.equal(/secret motors|lakeside|@/i.test(pushes.map((push) => `${push.title} ${push.body}`).join(' ')), false);
+});
+
+test('price drop and offer ready pushes omit dealer identity, and price drops stay on', async () => {
+  const box = harness();
+  const pushes: ShopperPush[] = [];
+  box.deps.notify = async (push) => {
+    pushes.push(push);
+  };
+  const created = await addCar(box, 'mc-listing-9');
+  const identity = {
+    dealerName: 'Lakeside Toyota',
+    dealerEmail: 'sales@lakeside.example',
+    phone: '704-555-0199',
+    website: 'https://lakeside.example',
+    street: '100 Dealer Way',
+  };
+  const dropped = readAgentEvent({
+    type: 'price_drop',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    price: 50000,
+    dealerAlias: 'Dealer A',
+    ...identity,
+  }, box.deps.now.toISOString());
+  assert.equal(dropped.type === 'price_drop' && dropped.priceDrops, true);
+  await applyAgentEvent(dropped, box.deps);
+  await applyAgentEvent(readAgentEvent({
+    type: 'price_drop',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    previousPrice: 50000,
+    price: 51000,
+    dealerAlias: 'Lakeside Toyota',
+    ...identity,
+  }, box.deps.now.toISOString()), box.deps);
+  await applyAgentEvent(readAgentEvent({
+    type: 'price_drop',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    previousPrice: 50000,
+    price: 49000,
+    priceDrops: false,
+    ...identity,
+  }, box.deps.now.toISOString()), box.deps);
+  await applyAgentEvent(readAgentEvent({
+    type: 'offer_ready',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    otd: 53450,
+    dealerAlias: 'Dealer A',
+    ...identity,
+  }, box.deps.now.toISOString()), box.deps);
+
+  assert.deepEqual(pushes.map((push) => push.event), ['price_drop', 'offer_ready']);
+  assert.equal(pushes[0]?.title, 'Dealer A dropped $2,900 on your Tahoe');
+  assert.equal(pushes[0]?.body, 'Vehicle price now $50,000. Tap to review.');
+  assert.equal(pushes[1]?.title, 'Offer ready');
+  assert.match(pushes[1]?.body ?? '', /\$53,450 out the door/);
+  const text = pushes.map((push) => `${push.title} ${push.body}`).join(' ');
+  assert.equal(/lakeside|sales@|704-555-0199|dealer way|https?:/i.test(text), false);
+  assert.equal(/negotiat/i.test(text), false);
+  assert.equal((await box.lifecycle.get('shopper-1', created.deal.id))?.endState, 'open');
+});
+
+test('the official offer push names the dealer and the deal payload does not', async () => {
+  const box = harness();
+  const pushes: ShopperPush[] = [];
+  box.deps.notify = async (push) => {
+    pushes.push(push);
+  };
+  const created = await addCar(box, 'mc-listing-8');
+  const offer = readOfferBody({
+    latitude: 35.19,
+    longitude: -80.91,
+    dealerName: 'Lakeside Toyota',
+    street: '100 Dealer Way',
+    dealerEmail: 'sales@lakeside.example',
+  });
+  assert.equal(JSON.stringify(offer).includes('Lakeside'), false);
+  const revealed = await forwardOffer('shopper-1', created.deal.id, offer, box.deps, 'Lakeside Toyota');
+  assert.equal(JSON.stringify(revealed).includes('Lakeside'), false);
+  assert.equal(JSON.stringify(revealed).includes('Dealer Way'), false);
+  assert.equal(pushes[0]?.body, 'Official offer from Lakeside Toyota is in your inbox.');
+  await forwardOffer('shopper-1', created.deal.id, offer, box.deps, 'Lakeside Toyota');
+  assert.equal(pushes.length, 1);
+
+  const early = planShopperPush({
+    kind: 'official_offer',
+    userId: 'shopper-1',
+    dealId: created.deal.id,
+    offerForwarded: false,
+    identity: { dealerName: 'Lakeside Toyota', dealerEmail: 'sales@lakeside.example' },
+    vehicle: { model: 'Tahoe' },
+  });
+  assert.equal(/lakeside|sales@/i.test(`${early?.title} ${early?.body}`), false);
 });
 
 function liveVehicle(listingId: string): LiveVehicle {

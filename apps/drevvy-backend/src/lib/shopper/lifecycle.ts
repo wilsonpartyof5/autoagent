@@ -91,10 +91,41 @@ export type OutcomeInput = {
   finalPrice: number | null;
 };
 
+export type DealSignalIdentity = {
+  dealerName: string | null;
+  dealerPhone: string | null;
+  dealerEmail: string | null;
+  dealerWebsite: string | null;
+  street: string | null;
+};
+
 export type DealAgentEvent =
   | { type: 'outreach'; dealId: string; consumerUserId: string; channel: OutreachChannel; sentAt: string }
   | { type: 'reply'; dealId: string; consumerUserId: string; sentAt: string }
-  | { type: 'end'; dealId: string; consumerUserId: string; endState: 'sold' | 'ended_no_response' | 'dealer_declined'; sentAt: string };
+  | { type: 'end'; dealId: string; consumerUserId: string; endState: 'sold' | 'ended_no_response' | 'dealer_declined'; sentAt: string }
+  | {
+    type: 'price_drop';
+    dealId: string;
+    consumerUserId: string;
+    sentAt: string;
+    price: number;
+    previousPrice: number | null;
+    hidePrices: boolean;
+    /** Omitted or any value other than false keeps the push on. */
+    priceDrops: boolean;
+    dealerAlias: string | null;
+    identity: DealSignalIdentity;
+  }
+  | {
+    type: 'offer_ready';
+    dealId: string;
+    consumerUserId: string;
+    sentAt: string;
+    otd: number | null;
+    hidePrices: boolean;
+    offers: boolean;
+    identity: DealSignalIdentity;
+  };
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -396,7 +427,64 @@ export function readAgentEvent(body: unknown, nowIso: string): DealAgentEvent {
   if (record.type === 'end' && (record.endState === 'sold' || record.endState === 'ended_no_response' || record.endState === 'dealer_declined')) {
     return { type: 'end', dealId, consumerUserId, endState: record.endState, sentAt };
   }
-  throw new ShopperDealError('Event type must be outreach, reply, or end.', 400, 'invalid_event');
+  if (record.type === 'price_drop') {
+    const price = integerIn(record.price, 0, 10_000_000);
+    if (price == null) {
+      throw new ShopperDealError('A listing price is required.', 400, 'invalid_event');
+    }
+    const previousPrice = record.previousPrice == null || record.previousPrice === ''
+      ? null
+      : integerIn(record.previousPrice, 0, 10_000_000);
+    if ((record.previousPrice != null && record.previousPrice !== '') && previousPrice == null) {
+      throw new ShopperDealError('Previous price must be a dollar amount.', 400, 'invalid_event');
+    }
+    return {
+      type: 'price_drop',
+      dealId,
+      consumerUserId,
+      sentAt,
+      price,
+      previousPrice,
+      hidePrices: record.hidePrices === true,
+      priceDrops: record.priceDrops !== false,
+      dealerAlias: typeof record.dealerAlias === 'string' ? record.dealerAlias : null,
+      identity: readSignalIdentity(record),
+    };
+  }
+  if (record.type === 'offer_ready') {
+    const otd = record.otd == null || record.otd === '' ? null : integerIn(record.otd, 0, 10_000_000);
+    if (record.otd != null && record.otd !== '' && otd == null) {
+      throw new ShopperDealError('Offer price must be a dollar amount.', 400, 'invalid_event');
+    }
+    return {
+      type: 'offer_ready',
+      dealId,
+      consumerUserId,
+      sentAt,
+      otd,
+      hidePrices: record.hidePrices === true,
+      offers: record.offers !== false,
+      identity: readSignalIdentity(record),
+    };
+  }
+  throw new ShopperDealError('Event type must be outreach, reply, end, price_drop, or offer_ready.', 400, 'invalid_event');
+}
+
+function readSignalIdentity(record: Record<string, unknown>): DealSignalIdentity {
+  return {
+    dealerName: optionalIdentity(record.dealerName),
+    dealerPhone: optionalIdentity(record.dealerPhone ?? record.phone),
+    dealerEmail: optionalIdentity(record.dealerEmail ?? record.email),
+    dealerWebsite: optionalIdentity(record.dealerWebsite ?? record.website),
+    street: optionalIdentity(record.street ?? record.address),
+  };
+}
+
+function optionalIdentity(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 200) return null;
+  return trimmed;
 }
 
 export function readCronAuth(authorization: string | null, secret: string | undefined): 'ok' | 'unconfigured' | 'rejected' {

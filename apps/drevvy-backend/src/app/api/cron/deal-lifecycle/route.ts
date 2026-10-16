@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { supabaseShopperDealRepository } from '@/lib/shopper/deal-store';
-import { runLifecycleSchedule } from '@/lib/shopper/deal-actions';
+import { runLifecycleSchedule, shopperDeps } from '@/lib/shopper/deal-actions';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
 import { readCronAuth } from '@/lib/shopper/lifecycle';
-import { getLifecycleRepository } from '@/lib/shopper/lifecycle-store';
 
 /**
  * GET or POST /api/cron/deal-lifecycle
@@ -13,8 +11,9 @@ import { getLifecycleRepository } from '@/lib/shopper/lifecycle-store';
  * pickup when no geofence exit was recorded or location was not granted,
  * and marks open deals ended_no_response five days after the first outreach
  * with no reply. Requires Authorization: Bearer $DREVVY_CRON_SECRET.
- * Responds 404 when that secret is unset. The day-after-pickup prompt also
- * sends did_you_buy. That send is a no-op until FCM env vars are set.
+ * Responds 404 when that secret is unset. The day-after-pickup prompt sends
+ * did_you_buy through FCM. That send is a no-op when Firebase credentials
+ * are unset. The geofence prompt stays on the phone.
  */
 
 export const dynamic = 'force-dynamic';
@@ -37,10 +36,12 @@ async function run(request: NextRequest) {
     );
   }
   try {
+    const deps = await shopperDeps('schedule');
     const data = await runLifecycleSchedule({
-      deals: supabaseShopperDealRepository(),
-      lifecycle: getLifecycleRepository(),
+      deals: deps.deals,
+      lifecycle: deps.lifecycle,
       now: new Date(),
+      notify: deps.notify,
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {

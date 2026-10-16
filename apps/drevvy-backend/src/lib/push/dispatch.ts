@@ -1,6 +1,7 @@
-import { pushCopy, pushData, type ShopperPush } from './events';
+import { pushCopy, pushData, type PushCopy, type ShopperPush } from './events';
 import { sendPush, type SendPushResult } from './send';
 import { listDeviceTokens } from './tokens';
+import { sanitizePushText } from './triggers';
 
 export type PushDeliveryReport = {
   event: ShopperPush['event'];
@@ -17,7 +18,7 @@ export type PushDeliveryDeps = {
 };
 
 export async function deliverShopperPush(push: ShopperPush, deps: PushDeliveryDeps): Promise<PushDeliveryReport> {
-  const copy = pushCopy(push.event);
+  const copy = outgoingCopy(push);
   try {
     const tokens = await deps.tokens(push.userId);
     if (tokens.length === 0) {
@@ -53,4 +54,12 @@ export function deliverShopperPushLive(push: ShopperPush): Promise<PushDeliveryR
     tokens: listDeviceTokens,
     send: (message) => sendPush(message),
   });
+}
+
+function outgoingCopy(push: ShopperPush): PushCopy {
+  const fallback = pushCopy(push.event);
+  return {
+    title: sanitizePushText(push.title?.trim() || fallback.title),
+    body: sanitizePushText(push.body?.trim() || fallback.body),
+  };
 }
