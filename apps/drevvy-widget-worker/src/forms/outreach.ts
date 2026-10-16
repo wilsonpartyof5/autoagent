@@ -17,6 +17,8 @@ export type OutreachFill = {
   value: string;
 };
 
+export type LeadContactMode = 'full' | 'name_and_phone';
+
 export type OutreachRunConfig = {
   dryRun: boolean;
   allowlist: string[];
@@ -25,6 +27,7 @@ export type OutreachRunConfig = {
   shopperFirst: string;
   leadLastName?: string;
   leadZip?: string | null;
+  contactMode?: LeadContactMode;
 };
 
 export function buildIdentity(input: {
@@ -58,10 +61,13 @@ export function normalizeZip(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-export function leadMessage(input: { stockNumber: string | null; phone: string; email: string }): string {
+export function leadMessage(input: { stockNumber: string | null; phone: string; email?: string | null }): string {
   const stock = input.stockNumber?.trim();
   const stockPart = stock ? ` Stock #${stock}.` : '';
-  return `Is this unit still available?${stockPart} What's the price on it? Please text or email us at ${input.phone} / ${input.email}.`;
+  const reach = input.email
+    ? `Please text or email us at ${input.phone} / ${input.email}.`
+    : `Please text us at ${input.phone}.`;
+  return `Is this unit still available?${stockPart} What's the price on it? ${reach}`;
 }
 
 export function outreachValue(
@@ -69,16 +75,21 @@ export function outreachValue(
   identity: OutreachIdentity,
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
+  mode: LeadContactMode = 'full',
 ): string | null {
   if (kind === 'first_name') return identity.firstName;
-  if (kind === 'last_name') return identity.lastName;
+  if (kind === 'last_name') return mode === 'name_and_phone' ? null : identity.lastName;
   if (kind === 'full_name') {
-    return channel === 'prechat' ? identity.firstName : `${identity.firstName} ${identity.lastName}`;
+    return channel === 'prechat' || mode === 'name_and_phone' ? identity.firstName : `${identity.firstName} ${identity.lastName}`;
   }
   if (kind === 'phone') return identity.phone;
-  if (kind === 'email') return identity.email;
-  if (kind === 'zip') return identity.zip;
-  return leadMessage({ stockNumber, phone: identity.phone, email: identity.email });
+  if (kind === 'email') return mode === 'name_and_phone' ? null : identity.email;
+  if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
+  return leadMessage({
+    stockNumber,
+    phone: identity.phone,
+    email: mode === 'name_and_phone' ? null : identity.email,
+  });
 }
 
 export function isApprovedFill(
@@ -86,9 +97,10 @@ export function isApprovedFill(
   identity: OutreachIdentity,
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
+  mode: LeadContactMode = 'full',
 ): boolean {
   if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
-  const expected = outreachValue(fill.kind, identity, stockNumber, channel);
+  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode);
   return expected != null && fill.value === expected;
 }
 

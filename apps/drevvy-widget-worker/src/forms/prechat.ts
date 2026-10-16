@@ -1,5 +1,6 @@
 import { isAllowlisted } from '../config';
-import type { AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from '../chat/types';
+import type { AttemptStatus, AttemptStore, ChannelSelection, ChatPage, TranscriptEntry } from '../chat/types';
+import { selectionColumns } from '../chat/types';
 import { applyPlan } from './apply';
 import { detectPrechat } from './detect';
 import { buildIdentity, type OutreachRunConfig } from './outreach';
@@ -26,6 +27,7 @@ export async function runPrechatGate(input: {
   now: () => Date;
   log: (line: string) => void;
   started: Date;
+  selection?: ChannelSelection;
 }): Promise<PrechatGateResult> {
   const form = detectPrechat(input.widgetHtml);
   if (!form) return CONTINUE;
@@ -100,6 +102,7 @@ async function insertPrechat(
     finished_at: input.now().toISOString(),
     channel: 'prechat',
     first_reply_channel: firstReply,
+    ...selectionColumns(input.selection),
   });
 }
 

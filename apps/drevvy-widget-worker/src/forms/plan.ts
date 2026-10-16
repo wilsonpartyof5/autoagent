@@ -3,6 +3,7 @@ import { formHasCaptcha, formRequiresPrivateInfo } from './detect';
 import {
   isApprovedFill,
   outreachValue,
+  type LeadContactMode,
   type OutreachFill,
   type OutreachIdentity,
 } from './outreach';
@@ -20,6 +21,7 @@ export function planForm(
   identity: OutreachIdentity,
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
+  mode: LeadContactMode = 'full',
 ): FormPlan {
   if (formHasCaptcha(form)) {
     return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'captcha' };
@@ -38,7 +40,13 @@ export function planForm(
     if (field.kind === 'private') {
       return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'private_info' };
     }
-    const value = outreachValue(field.kind, identity, stockNumber, channel);
+    if (mode === 'name_and_phone' && (field.kind === 'last_name' || field.kind === 'email' || field.kind === 'zip')) {
+      if (field.required) {
+        return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'unsupported_field' };
+      }
+      continue;
+    }
+    const value = outreachValue(field.kind, identity, stockNumber, channel, mode);
     if (!value) {
       if (field.required || field.kind === 'zip') {
         return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'missing_zip' };
@@ -46,7 +54,7 @@ export function planForm(
       continue;
     }
     const fill: OutreachFill = { kind: field.kind, name: field.name, id: field.id, value };
-    if (!isApprovedFill(fill, identity, stockNumber, channel)) {
+    if (!isApprovedFill(fill, identity, stockNumber, channel, mode)) {
       return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'private_info' };
     }
     fills.push(fill);

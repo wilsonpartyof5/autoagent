@@ -13,7 +13,8 @@ import { isTimeoutError } from '../widgets/timeout';
 import { extractWidgetScope, type WidgetVendor } from '../widgets/vendors';
 import { extractStockNumber, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
 import { siteUrlFromVehiclePage } from '../research/urls';
-import type { AttemptChannel, AttemptResult, AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from './types';
+import type { AttemptChannel, AttemptResult, AttemptStatus, AttemptStore, ChannelSelection, ChatPage, TranscriptEntry } from './types';
+import { selectionColumns } from './types';
 import { resolveNextMessage } from './resolve';
 
 export type WidgetChatConfig = {
@@ -56,6 +57,7 @@ export async function runWidgetChat(input: {
   store: AttemptStore;
   now?: () => Date;
   log?: (line: string) => void;
+  selection?: ChannelSelection;
 }): Promise<ChatAttemptResult> {
   const now = input.now ?? (() => new Date());
   const log = input.log ?? (() => undefined);
@@ -103,6 +105,7 @@ export async function runWidgetChat(input: {
         finished_at: now().toISOString(),
         channel: 'widget',
         first_reply_channel: firstReply,
+        ...selectionColumns(input.selection),
       });
       result.id = saved.id;
     } catch (storeError) {
@@ -209,6 +212,7 @@ export async function runWidgetChat(input: {
       now,
       log,
       started,
+      selection: input.selection,
     });
 
   const initialGate = await openGate(scope);

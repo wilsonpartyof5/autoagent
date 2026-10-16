@@ -3,9 +3,10 @@
 Standalone Node worker for day-0 dealer outreach:
 
 1. **Research.** Given a dealer vehicle page, fetch that page and the dealer site, ask an OpenAI-compatible model for the widget vendor, phone numbers, and emails, check those values against the page, and upsert `dealer_directory`.
-2. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
-3. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
-4. **Scan.** Open the same pages without typing, and print the detected vendor, playbook, and status. Use this to evaluate widget finding before a live chat.
+2. **Scan.** Open the page, wait for a late widget, and record whether the chat widget is ready.
+3. **Day-0 channels.** `run` uses that scan. A ready widget gets the widget chat and the lead form. Every other widget status gets the lead form only. A bot wall gets neither, and is marked for email, text, and call.
+4. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
+5. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
 Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.`
 
@@ -16,6 +17,7 @@ Migrations, applied separately from this package:
 - `supabase/migrations/20261018014500_dealer_directory_widget_chat.sql`
 - `supabase/migrations/20261018030000_widget_attempt_channels.sql` adds `channel` (`widget`, `lead_form`, `prechat`) and `first_reply_channel` on `widget_chat_attempts`.
 - `supabase/migrations/20261018120000_widget_playbooks.sql` adds `dealer_directory.widget_playbook` and the scan statuses `widget_offline`, `page_timeout`, and `composer_not_found`.
+- `supabase/migrations/20261018150000_day0_channel_selection.sql` adds `selected_channels`, `channel_reason`, and `fallback` on `widget_chat_attempts`. `fallback` is `email_text_call` when a bot wall skips both channels.
 
 ## Commands
 
@@ -27,7 +29,16 @@ pnpm --filter @drevvy/widget-worker chat urls.txt
 pnpm --filter @drevvy/widget-worker run urls.txt
 ```
 
-`run` researches the dealer, submits the vehicle lead form, then runs the widget chat. It does not scan.
+`run` researches the dealer, scans the widget, then sends only the channels that scan selects. It records `selected_channels`, `channel_reason`, and `fallback` on the scan row and on each later lead, chat, and pre-chat row.
+
+| Widget status | Channels | Lead identity |
+| --- | --- | --- |
+| `dry_run` (launcher and composer, or a pre-chat gate) | `widget,lead_form` | First name and `DREVVY_TEXT_NUMBER` only. The message says `Please text us at {DREVVY_TEXT_NUMBER}.` A required last name, email, or ZIP stops that form with nothing filled. |
+| `no_widget`, `widget_offline`, `composer_not_found`, `page_timeout`, `error` | `lead_form` | The full lead identity below, including `LEAD_LAST_NAME`, `DREVVY_EMAIL`, and `DREVVY_ZIP`. |
+| `captcha`, `contact_form` | `lead_form` | Same full lead identity. The reason says `blocked-for-chat`. |
+| `blocked` | none | Nothing is sent. `fallback` is `email_text_call`. The page is not opened again. |
+
+`lead` and `chat` stay independent: `lead` always uses the full identity, and `chat` always runs its own script.
 
 `scan` needs Supabase and does not need an API key, a shopper name, or the allowlist. It never fills or submits a chat or a form. `--concurrency` defaults to 3. Each site is capped at `WIDGET_SCAN_TIMEOUT_MS` (default 25 seconds). A navigation crash or a timeout is stored as `error` or `page_timeout` for that URL, and the rest of the list still runs. Each result is written as soon as that site finishes.
 
@@ -51,7 +62,7 @@ https://www.example-motors.test/inventory/2024-honda-civic H24118
 
 A directory row is skipped when `last_checked_at` is under 30 days old. `--force` fetches again.
 
-Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat`. A scan also prints `playbook` and `reason`.
+Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat` for a single attempt, and `widget,lead_form` on the day-0 row when both are sent. A scan also prints `playbook` and `reason`. `run` adds `fallback`, which is `email_text_call` for a bot wall and `-` otherwise.
 
 ```text
 url                         vendor    status    price    dry_run  channel
@@ -92,6 +103,8 @@ A blocked dealer site is not opened again, and a second scan does not insert ano
 The lead message, used when the form has a message, comment, or question field, is:
 
 `Is this unit still available? Stock #X. What's the price on it? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+
+When `run` sends the lead form alongside a ready widget, the last sentence is `Please text us at {DREVVY_TEXT_NUMBER}.` and the form is filled with the first name and that number only.
 
 The stock sentence is omitted when the page has no stock number. There is no introduction. A form without a message field is still submitted with the identity fields it does have.
 

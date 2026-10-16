@@ -7,10 +7,11 @@ import type { ChatClient } from './ai/types';
 import { runWidgetChat, type WidgetChatConfig } from './chat/agent';
 import { runLeadForm } from './forms/lead';
 import { mapWithConcurrency } from './scan/pool';
+import { runDay0 } from './run/day0';
 import { runScan } from './scan/run';
 import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
-import type { AttemptStore, ChatPage, WidgetChatAttemptWrite } from './chat/types';
+import type { AttemptResult, AttemptStore, ChatPage, Day0Fallback, WidgetChatAttemptWrite } from './chat/types';
 import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
@@ -33,7 +34,10 @@ Usage:
 A file has one vehicle page URL per line. An optional second column is the stock number.
 Lines starting with # are ignored.
 
-run researches the dealer, then submits the vehicle lead form, then runs the widget chat.
+run researches the dealer, scans the widget, then sends the chosen day-0 channels.
+A ready widget gets the widget chat and the lead form (first name and the Drevvy number).
+Any other widget status gets the lead form only. A bot wall is not retried and is
+marked for email, text, and call.
 scan opens each page, waits for late widgets, and prints vendor, playbook, and status.
 It scans up to 3 sites at once (--concurrency) and gives each site 25 seconds.
 It does not type into a composer or submit a form. One failed URL does not stop the rest.
@@ -116,7 +120,35 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
       sections.push(`Scan\n${formatResultsTable(rows)}`);
     }
 
-    if (command === 'lead' || command === 'run') {
+    if (command === 'run') {
+      const runs = await runDay0({
+        targets,
+        openPage: deps.openPage,
+        ai: deps.ai,
+        attempts: deps.attempts,
+        directory: deps.directory,
+        config: deps.config,
+        log,
+      });
+      const dayRows: ResultRow[] = runs.map((run) => ({
+        url: run.url,
+        vendor: run.scan?.widgetVendor ?? '-',
+        status: run.scan?.status ?? 'error',
+        price: null,
+        dryRun: String(deps.config.dryRun),
+        channel: run.plan.channels.join(',') || '-',
+        playbook: run.scan?.playbook ?? 'generic',
+        reason: run.plan.reason,
+        fallback: run.plan.fallback ?? '-',
+      }));
+      sections.push(`Day 0\n${formatResultsTable(dayRows)}`);
+      const leadRows = runs.flatMap((run) => (run.lead ? [resultRow(run.url, run.lead, run.plan.reason, run.plan.fallback)] : []));
+      const chatRows = runs.flatMap((run) => (run.chat ? [resultRow(run.url, run.chat, run.plan.reason, run.plan.fallback)] : []));
+      if (leadRows.length > 0) sections.push(`Lead form\n${formatResultsTable(leadRows)}`);
+      if (chatRows.length > 0) sections.push(`Widget chat\n${formatResultsTable(chatRows)}`);
+    }
+
+    if (command === 'lead') {
       const settings = chatSettings(deps.config);
       const rows: ResultRow[] = [];
       for (const target of targets) {
@@ -146,7 +178,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
       sections.push(`Lead form\n${formatResultsTable(rows)}`);
     }
 
-    if (command === 'chat' || command === 'run') {
+    if (command === 'chat') {
       const settings = chatSettings(deps.config);
       const rows: ResultRow[] = [];
       for (const target of targets) {
@@ -218,6 +250,19 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
       process.stdout.write(`${line}\n`);
     },
     ...overrides,
+  };
+}
+
+function resultRow(url: string, result: AttemptResult, reason: string, fallback: Day0Fallback | null): ResultRow {
+  return {
+    url,
+    vendor: result.widgetVendor ?? '-',
+    status: result.status,
+    price: result.price,
+    dryRun: String(result.dryRun),
+    channel: result.channel,
+    reason,
+    fallback: fallback ?? '-',
   };
 }
 

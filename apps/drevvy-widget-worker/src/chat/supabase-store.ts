@@ -1,15 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AttemptChannel, AttemptStore, WidgetChatAttemptWrite } from './types';
+import type { AttemptChannel, AttemptStore, ChannelSelection, WidgetChatAttemptWrite } from './types';
 
 export function createSupabaseAttemptStore(client: SupabaseClient): AttemptStore {
   return {
     async insert(attempt: WidgetChatAttemptWrite) {
-      const { data, error } = await client.from('widget_chat_attempts').insert(attempt).select('id').single();
+      const payload = Object.fromEntries(Object.entries(attempt).filter(([, value]) => value !== undefined));
+      const { data, error } = await client.from('widget_chat_attempts').insert(payload).select('id').single();
       if (error) throw new Error(`widget_chat_attempts insert failed: ${error.message}`);
-      const row = data as { id?: unknown };
-      if (!row || typeof row.id !== 'string') throw new Error('widget_chat_attempts insert did not return an id.');
-      return { id: row.id };
+      const saved = data as { id?: unknown };
+      if (!saved || typeof saved.id !== 'string') throw new Error('widget_chat_attempts insert did not return an id.');
+      return { id: saved.id };
+    },
+
+    async annotate(id: string, selection: ChannelSelection) {
+      const { error } = await client.from('widget_chat_attempts').update(selection).eq('id', id);
+      if (error) throw new Error(`widget_chat_attempts selection update failed: ${error.message}`);
     },
 
     async hasBlockedSite(dealerSiteUrl: string) {

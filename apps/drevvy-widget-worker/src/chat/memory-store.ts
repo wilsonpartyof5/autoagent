@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { AttemptChannel, AttemptStore, WidgetChatAttemptWrite } from './types';
+import type { AttemptChannel, AttemptStore, ChannelSelection, WidgetChatAttemptWrite } from './types';
 
 export class MemoryAttemptStore implements AttemptStore {
   readonly attempts: Array<WidgetChatAttemptWrite & { id: string }> = [];
@@ -9,6 +9,14 @@ export class MemoryAttemptStore implements AttemptStore {
     const id = randomUUID();
     this.attempts.push({ ...attempt, id });
     return { id };
+  }
+
+  async annotate(id: string, selection: ChannelSelection): Promise<void> {
+    const row = this.attempts.find((attempt) => attempt.id === id);
+    if (!row) return;
+    row.selected_channels = selection.selected_channels;
+    row.channel_reason = selection.channel_reason;
+    row.fallback = selection.fallback;
   }
 
   async hasBlockedSite(dealerSiteUrl: string): Promise<boolean> {

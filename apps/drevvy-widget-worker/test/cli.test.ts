@@ -43,7 +43,7 @@ describe('cli', () => {
     assert.match(table, /gubagoo\s+dry_run\s+-\s+true/);
   });
 
-  it('runs research and a dry-run chat for a list of urls', async () => {
+  it('runs research and a lead-only day-0 pass when the composer is missing', async () => {
     const directory = new MemoryDirectoryStore();
     const attempts = new MemoryAttemptStore();
     const pages: FakeChatPage[] = [];
@@ -90,23 +90,33 @@ describe('cli', () => {
     const result = await execute(['run', 'urls.txt', '--hints', 'hints.json'], deps);
     assert.equal(result.exitCode, 0, result.stderr);
     assert.match(result.stdout, /Research/);
-    assert.match(result.stdout, /Widget chat/);
+    assert.match(result.stdout, /Day 0/);
+    assert.match(result.stdout, /Lead form/);
+    assert.doesNotMatch(result.stdout, /Widget chat/);
+    assert.doesNotMatch(result.stdout, /would send:/);
     assert.match(result.stdout, /gubagoo/);
-    assert.match(result.stdout, /dry_run/);
-    assert.match(result.stdout, /would send: Is this unit still available\? Stock #H24118/);
+    assert.match(result.stdout, /composer_not_found/);
+    assert.match(result.stdout, /lead_form/);
     assert.equal(pages.every((page) => page.sent.length === 0 && page.gotos.length === 1), true);
-    assert.equal(directory.writes.length, 1);
-    const saved = JSON.stringify(directory.writes[0]);
+    const saved = JSON.stringify(directory.writes);
     assert.equal(saved.includes('5550177'), false);
     assert.equal(saved.includes('marketcheck'), false);
     assert.equal(saved.includes('1HGCV1F16NA000001'), false);
     assert.equal(attempts.attempts.length, 4);
     const leads = attempts.attempts.filter((attempt) => attempt.channel === 'lead_form');
-    const widgets = attempts.attempts.filter((attempt) => attempt.channel === 'widget');
+    const scans = attempts.attempts.filter((attempt) => attempt.channel === 'widget');
     assert.equal(leads.length, 2);
-    assert.equal(widgets.length, 2);
+    assert.equal(scans.length, 2);
     assert.equal(leads.every((attempt) => attempt.status === 'unknown' && attempt.stop_reason === 'no_lead_form'), true);
-    assert.equal(widgets.every((attempt) => attempt.dry_run && attempt.status === 'dry_run'), true);
-    assert.match(result.stdout, /Lead form/);
+    assert.equal(leads.every((attempt) => attempt.selected_channels === 'lead_form'), true);
+    assert.equal(
+      scans.every(
+        (attempt) =>
+          attempt.status === 'composer_not_found' &&
+          attempt.selected_channels === 'lead_form' &&
+          (attempt.channel_reason ?? '').includes('composer_not_found'),
+      ),
+      true,
+    );
   });
 });

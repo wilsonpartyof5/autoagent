@@ -1,5 +1,6 @@
 import { isAllowlisted } from '../config';
-import type { AttemptResult, AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from '../chat/types';
+import type { AttemptResult, AttemptStatus, AttemptStore, ChannelSelection, ChatPage, TranscriptEntry } from '../chat/types';
+import { selectionColumns } from '../chat/types';
 import { siteUrlFromVehiclePage } from '../research/urls';
 import { detectWidgetVendor } from '../widgets/detect';
 import { hasCaptchaChallenge } from '../widgets/guards';
@@ -17,6 +18,7 @@ export async function runLeadForm(input: {
   store: AttemptStore;
   now?: () => Date;
   log?: (line: string) => void;
+  selection?: ChannelSelection;
 }): Promise<AttemptResult> {
   const now = input.now ?? (() => new Date());
   const log = input.log ?? (() => undefined);
@@ -61,6 +63,7 @@ export async function runLeadForm(input: {
         finished_at: now().toISOString(),
         channel: 'lead_form',
         first_reply_channel: firstReply,
+        ...selectionColumns(input.selection),
       });
       result.id = saved.id;
     } catch (storeError) {
@@ -154,7 +157,8 @@ export async function runLeadForm(input: {
     email: input.config.drevvyEmail,
     zip: input.config.leadZip,
   });
-  const plan = planForm(form, identity, stock, 'lead_form');
+  const mode = input.config.contactMode ?? 'full';
+  const plan = planForm(form, identity, stock, 'lead_form', mode);
   recordPlan(transcript, plan, now);
   log(`[lead] ${input.vehiclePageUrl} ${describePlan(plan)}`);
 
@@ -180,7 +184,7 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  const applied = await applyPlan(input.page, plan, identity, stock, 'lead_form');
+  const applied = await applyPlan(input.page, plan, identity, stock, 'lead_form', mode);
   if (applied !== 'filled') {
     status = 'error';
     stopReason = applied;

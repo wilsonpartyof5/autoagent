@@ -40,6 +40,16 @@ export type TranscriptEntry = {
   via?: TranscriptVia;
 };
 
+export const DAY0_FALLBACK = 'email_text_call' as const;
+
+export type Day0Fallback = typeof DAY0_FALLBACK;
+
+export type ChannelSelection = {
+  selected_channels: string | null;
+  channel_reason: string | null;
+  fallback: Day0Fallback | null;
+};
+
 export type WidgetChatAttemptWrite = {
   vehicle_page_url: string;
   dealer_site_url: string | null;
@@ -55,10 +65,23 @@ export type WidgetChatAttemptWrite = {
   finished_at: string;
   channel: AttemptChannel;
   first_reply_channel: AttemptChannel | null;
+  selected_channels?: string | null;
+  channel_reason?: string | null;
+  fallback?: Day0Fallback | null;
 };
+
+export function selectionColumns(selection: ChannelSelection | null | undefined): Partial<ChannelSelection> {
+  if (!selection) return {};
+  return {
+    selected_channels: selection.selected_channels,
+    channel_reason: selection.channel_reason,
+    fallback: selection.fallback,
+  };
+}
 
 export interface AttemptStore {
   insert(attempt: WidgetChatAttemptWrite): Promise<{ id: string }>;
+  annotate(id: string, selection: ChannelSelection): Promise<void>;
   hasBlockedSite(dealerSiteUrl: string): Promise<boolean>;
   hasLiveSubmit(vehiclePageUrl: string, channel: AttemptChannel): Promise<boolean>;
   currentFirstReply(vehiclePageUrl: string): Promise<AttemptChannel | null>;

@@ -7,10 +7,11 @@ export type ResultRow = {
   channel?: string;
   playbook?: string;
   reason?: string;
+  fallback?: string;
 };
 
 export function formatResultsTable(rows: ResultRow[]): string {
-  const headers = ['url', 'vendor', 'status', 'price', 'dry_run', 'channel', 'playbook', 'reason'];
+  const headers = ['url', 'vendor', 'status', 'price', 'dry_run', 'channel', 'playbook', 'reason', 'fallback'];
   const body = rows.map((row) => [
     truncate(row.url, 64),
     row.vendor || '-',
@@ -20,6 +21,7 @@ export function formatResultsTable(rows: ResultRow[]): string {
     row.channel || '-',
     row.playbook || '-',
     truncate(row.reason || '-', 72),
+    row.fallback || '-',
   ]);
   const widths = headers.map((header, index) =>
     Math.max(header.length, ...body.map((line) => line[index]?.length ?? 0), 1),
