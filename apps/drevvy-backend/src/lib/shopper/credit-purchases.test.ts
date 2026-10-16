@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { handleGetCreditBalance, GET as getCreditBalance } from '../../app/api/consumer/credits/route';
-import { handleRevenueCatWebhook, POST as postRevenueCatWebhook } from '../../app/api/webhooks/revenuecat/route';
+import { GET as getCreditBalance } from '../../app/api/consumer/credits/route';
+import { POST as postRevenueCatWebhook } from '../../app/api/webhooks/revenuecat/route';
+import { handleGetCreditBalance } from './credit-balance-handler';
+import { handleRevenueCatWebhook } from './revenuecat-webhook-handler';
 import {
   applyRevenueCatEvent,
   creditBalanceData,

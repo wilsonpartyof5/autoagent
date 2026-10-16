@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
+import { handleGetCreditBalance } from '@/lib/shopper/credit-balance-handler';
 import {
   creditBalanceData,
   fetchRevenueCatSubscriber,
@@ -26,22 +26,6 @@ function notConfigured() {
     { success: false, error: { code: 'purchases_not_configured', message: NOT_CONFIGURED } },
     { status: 503 },
   );
-}
-
-export async function handleGetCreditBalance(
-  request: Request,
-  deps: {
-    requireAuth: (request: Request) => Promise<{ userId: string }>;
-    supabase: () => SupabaseClient;
-  },
-): Promise<NextResponse> {
-  try {
-    const auth = await deps.requireAuth(request);
-    const credits = await getShopperCredits(deps.supabase(), auth.userId);
-    return balanceResponse(credits);
-  } catch (error) {
-    return consumerAuthErrorResponse(error);
-  }
 }
 
 export async function GET(request: NextRequest) {
