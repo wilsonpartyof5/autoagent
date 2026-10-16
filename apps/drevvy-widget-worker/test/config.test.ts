@@ -11,6 +11,10 @@ describe('config', () => {
     assert.equal(loadConfig({ DRY_RUN: 'false' }).dryRun, false);
     assert.equal(loadConfig({}).scanSettleMs, 3000);
     assert.equal(loadConfig({ WIDGET_SCAN_SETTLE_MS: '1500' }).scanSettleMs, 1500);
+    assert.equal(loadConfig({}).scanConcurrency, 3);
+    assert.equal(loadConfig({ WIDGET_SCAN_CONCURRENCY: '5' }).scanConcurrency, 5);
+    assert.equal(loadConfig({}).scanTimeoutMs, 25000);
+    assert.equal(loadConfig({ WIDGET_SCAN_TIMEOUT_MS: '20000' }).scanTimeoutMs, 20000);
   });
 
   it('caps the turn limit at 6', () => {

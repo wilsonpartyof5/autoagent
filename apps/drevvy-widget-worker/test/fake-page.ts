@@ -4,9 +4,10 @@ import type { ChatPage } from '../src/chat/types';
 import type { FrameSnapshot } from '../src/widgets/evidence';
 import type { FieldAttrs } from '../src/widgets/guards';
 import { isContactField } from '../src/widgets/guards';
+import { hasCaptchaChallenge } from '../src/widgets/guards';
 import { htmlHasAnySelector } from '../src/widgets/match';
 import { isOverlayDismiss, overlayButtons } from '../src/widgets/overlays';
-import type { WidgetVendor } from '../src/widgets/vendors';
+import { extractWidgetScope, type WidgetVendor } from '../src/widgets/vendors';
 
 export class FakeChatPage implements ChatPage {
   readonly sent: string[] = [];
@@ -35,6 +36,9 @@ export class FakeChatPage implements ChatPage {
       frames?: FrameSnapshot[];
       composerAfterLaunch?: boolean;
       composerAfterVision?: boolean;
+      httpStatus?: number | null;
+      contentError?: Error;
+      gotoDelayMs?: number;
     } = {},
   ) {
     this.currentHtml = html;
@@ -43,11 +47,21 @@ export class FakeChatPage implements ChatPage {
   private replyIndex = 0;
 
   async goto(url: string): Promise<void> {
+    if (this.options.gotoDelayMs) await new Promise((resolve) => setTimeout(resolve, this.options.gotoDelayMs));
     if (this.options.gotoError) throw this.options.gotoError;
     this.gotos.push(url);
   }
 
+  httpStatus(): number | null {
+    return this.options.httpStatus ?? null;
+  }
+
   async content(): Promise<string> {
+    if (this.options.contentError) {
+      const error = this.options.contentError;
+      this.options.contentError = undefined;
+      throw error;
+    }
     return this.currentHtml;
   }
 
@@ -87,8 +101,12 @@ export class FakeChatPage implements ChatPage {
     return !this.options.failSendClick;
   }
 
-  async captchaVisible(_vendor: WidgetVendor | null): Promise<boolean> {
-    return false;
+  async captchaVisible(vendor: WidgetVendor | null): Promise<boolean> {
+    const scope = vendor ? extractWidgetScope(this.currentHtml, vendor) : '';
+    if (scope && hasCaptchaChallenge(scope)) return true;
+    const frames = this.visibleFrames(null);
+    if (frames.some((frame) => hasCaptchaChallenge(frame.html))) return true;
+    return hasCaptchaChallenge(this.currentHtml);
   }
 
   async contactFormVisible(_vendor: WidgetVendor | null): Promise<boolean> {

@@ -160,7 +160,8 @@ export async function runWidgetChat(input: {
   const inspection = await prepareInspection(input.page, input.ai, log);
   const html = await input.page.content();
   if (inspection.blocked) {
-    mark('blocked', 'blocked', 'Stopped: the site blocked automated access.');
+    const signature = inspection.blockSignature ?? 'bot-wall';
+    mark('blocked', 'blocked', `Stopped: the site blocked automated access (${signature}).`);
     return finish();
   }
   vendor = inspection.vendor;

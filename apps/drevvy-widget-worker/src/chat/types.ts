@@ -82,6 +82,7 @@ export type AttemptResult = {
 
 export interface ChatPage {
   goto(url: string): Promise<void>;
+  httpStatus(): number | null;
   content(): Promise<string>;
   widgetHtml(vendor: WidgetVendor | null): Promise<string>;
   readLatestDealerText(selectors: string[]): Promise<string | null>;

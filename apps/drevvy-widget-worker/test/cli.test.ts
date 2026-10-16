@@ -28,6 +28,8 @@ const config: AppConfig = {
   fetchTimeoutMs: 1000,
   maxTurns: 6,
   scanSettleMs: 0,
+  scanConcurrency: 1,
+  scanTimeoutMs: 25_000,
 };
 
 describe('cli', () => {

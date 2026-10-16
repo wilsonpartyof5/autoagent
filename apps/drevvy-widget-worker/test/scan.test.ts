@@ -5,8 +5,11 @@ import type { AppConfig } from '../src/config';
 import { execute, type CliDeps } from '../src/cli';
 import { MemoryAttemptStore } from '../src/chat/memory-store';
 import { MemoryDirectoryStore } from '../src/directory/memory-store';
+import { mapWithConcurrency } from '../src/scan/pool';
 import { runScan } from '../src/scan/run';
-import { isBotBlockedPage } from '../src/forms/outreach';
+import { blockWallSignature, isBotBlockedPage } from '../src/forms/outreach';
+import { hasCaptchaChallenge } from '../src/widgets/guards';
+import { withNavigationRetry } from '../src/widgets/navigation';
 import { detectVendorEvidence } from '../src/widgets/evidence';
 import { htmlHasSelector } from '../src/widgets/match';
 import { isOverlayDismiss } from '../src/widgets/overlays';
@@ -87,23 +90,45 @@ describe('scan snapshots', () => {
     assert.equal(directory.writes[0]?.status, 'no_widget');
   });
 
-  it('classifies SOKAL and a short access-denied page as blocked', async () => {
-    assert.equal(isBotBlockedPage(readFixture('sokal-title.html')), true);
-    assert.equal(isBotBlockedPage(readFixture('access-denied.html')), true);
+  it('classifies known bot walls and leaves a dealer showroom alone', async () => {
+    assert.equal(blockWallSignature(readFixture('sokal-title.html')), 'sokal');
+    assert.equal(blockWallSignature(readFixture('cloudflare-just-a-moment.html')), 'cloudflare');
+    assert.equal(blockWallSignature(readFixture('cloudflare-attention.html')), 'cloudflare');
+    assert.equal(blockWallSignature(readFixture('akamai-denied.html')), 'akamai');
+    assert.equal(blockWallSignature(readFixture('perimeterx-block.html')), 'perimeterx');
+    assert.equal(blockWallSignature(readFixture('access-denied.html')), null);
+    assert.equal(blockWallSignature(readFixture('access-denied.html'), 403), 'http-403');
+    assert.equal(blockWallSignature(readFixture('too-many-requests.html')), null);
+    assert.equal(blockWallSignature(readFixture('too-many-requests.html'), 429), 'http-429');
+    assert.equal(isBotBlockedPage(readFixture('dealer-showroom.html')), false);
     assert.equal(isBotBlockedPage(readFixture('inventory-access.html')), false);
     const longInventory = `${readFixture('inventory-access.html')}<script src="https://ct.datadome.co/tags.js"></script>`;
     assert.equal(isBotBlockedPage(longInventory), false);
 
     const title = await scan(scanPage(readFixture('sokal-title.html')));
     assert.equal(title.result.status, 'blocked');
+    assert.match(title.result.reason, /sokal/);
     assert.equal(title.directory.writes[0]?.status, 'needs_review');
     assert.equal(title.page.points.length, 0);
 
-    const denied = await scan(scanPage(readFixture('access-denied.html')));
-    assert.equal(denied.result.status, 'blocked');
+    const cloudflare = await scan(scanPage(readFixture('cloudflare-just-a-moment.html')));
+    assert.equal(cloudflare.result.status, 'blocked');
+    assert.match(cloudflare.result.reason, /cloudflare/);
+    assert.equal(cloudflare.page.screenshots, 0);
 
-    const inventory = await scan(scanPage(readFixture('inventory-access.html')));
-    assert.equal(inventory.result.status, 'no_widget');
+    const attention = await scan(scanPage(readFixture('cloudflare-attention.html')));
+    assert.equal(attention.result.status, 'blocked');
+    assert.match(attention.result.reason, /cloudflare/);
+
+    const denied = await scan(scanPage(readFixture('access-denied.html')));
+    assert.equal(denied.result.status, 'no_widget');
+
+    const forbidden = await scan(scanPage(readFixture('access-denied.html'), { httpStatus: 403 }));
+    assert.equal(forbidden.result.status, 'blocked');
+    assert.match(forbidden.result.reason, /http-403/);
+
+    const showroom = await scan(scanPage(readFixture('dealer-showroom.html')));
+    assert.equal(showroom.result.status, 'no_widget');
   });
 
   it('dismisses a cookie banner and a trade-in popup, then finds the composer', async () => {
@@ -262,6 +287,8 @@ describe('scan snapshots', () => {
       fetchTimeoutMs: 1000,
       maxTurns: 6,
       scanSettleMs: 0,
+      scanConcurrency: 1,
+      scanTimeoutMs: 25_000,
     };
     const deps: CliDeps = {
       config,
@@ -289,7 +316,146 @@ describe('scan snapshots', () => {
     assert.match(cli.stdout, /dry_run/);
     assert.match(cli.stdout, /playbook/);
   });
+
+  it('ignores an invisible reCAPTCHA badge and still stops for a visible challenge', async () => {
+    assert.equal(hasCaptchaChallenge(readFixture('invisible-recaptcha.html')), false);
+    assert.equal(hasCaptchaChallenge(readFixture('gubagoo-vdp.html')), false);
+    assert.equal(hasCaptchaChallenge(readFixture('visible-captcha.html')), true);
+    assert.equal(hasCaptchaChallenge(readFixture('captcha-widget.html')), true);
+
+    const hidden = await scan(scanPage(readFixture('invisible-recaptcha.html')));
+    assert.equal(hidden.result.status, 'no_widget');
+    assert.equal(hidden.page.screenshots > 0, true);
+
+    const visible = await scan(scanPage(readFixture('visible-captcha.html')));
+    assert.equal(visible.result.status, 'captcha');
+    assert.equal(visible.page.screenshots, 0);
+    assert.deepEqual(visible.page.points, []);
+  });
+
+  it('records a navigation crash as an error and keeps scanning the next url', async () => {
+    const crashed = 'https://www.example-motors.test/inventory/civic';
+    const healthy = 'https://www.other-motors.test/inventory/accord';
+    const files: Record<string, string> = { 'urls.txt': `${crashed}\n${healthy}\n` };
+    const attempts = new MemoryAttemptStore();
+    const lines: Array<{ line: string; saved: number }> = [];
+    let opened = 0;
+    const deps: CliDeps = {
+      config: scanConfig(),
+      directory: new MemoryDirectoryStore(),
+      attempts,
+      fetchPage: async (url) => ({ url, status: 200, html: '' }),
+      ai: quietAi,
+      openPage: async () => {
+        opened += 1;
+        const html = opened === 1 ? readFixture('no-widget.html') : readFixture('gubagoo-ready.html');
+        const page = scanPage(html, {
+          contentError:
+            opened === 1
+              ? new Error('locator.count: Execution context was destroyed, most likely because of a navigation')
+              : undefined,
+        });
+        return { page, close: () => page.close() };
+      },
+      readFile: (filePath) => {
+        const text = files[filePath];
+        if (text == null) throw new Error(`missing ${filePath}`);
+        return text;
+      },
+      exists: (filePath) => filePath in files,
+      writeLine: (line) => lines.push({ line, saved: attempts.attempts.length }),
+    };
+    const cli = await execute(['scan', 'urls.txt', '--concurrency', '1'], deps);
+    assert.equal(cli.exitCode, 0, cli.stderr);
+    assert.match(cli.stdout, /error/);
+    assert.match(cli.stdout, /dry_run/);
+    assert.match(cli.stdout, /Execution context was destroyed/);
+    assert.equal(attempts.attempts.length, 2);
+    assert.equal(attempts.attempts[0]?.status, 'error');
+    assert.match(attempts.attempts[0]?.stop_reason ?? '', /Execution context was destroyed/);
+    assert.equal(attempts.attempts[1]?.status, 'dry_run');
+    const firstSummary = lines.find((entry) => entry.line.includes(`${crashed} - error`));
+    assert.equal(firstSummary?.saved, 1);
+  });
+
+  it('caps a slow page and still finishes', async () => {
+    const page = scanPage(readFixture('no-widget.html'), { gotoDelayMs: 200 });
+    const result = await runScan({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: quietAi,
+      attempts: new MemoryAttemptStore(),
+      directory: new MemoryDirectoryStore(),
+      timeoutMs: 40,
+    });
+    assert.equal(result.status, 'page_timeout');
+    assert.match(result.reason, /40ms/);
+  });
+
+  it('runs scans with a concurrency limit', async () => {
+    let active = 0;
+    let max = 0;
+    const files: Record<string, string> = {
+      'urls.txt': [
+        'https://www.one-motors.test/inventory/a',
+        'https://www.two-motors.test/inventory/b',
+        'https://www.three-motors.test/inventory/c',
+      ].join('\n'),
+    };
+    const attempts = new MemoryAttemptStore();
+    const deps: CliDeps = {
+      config: scanConfig(),
+      directory: new MemoryDirectoryStore(),
+      attempts,
+      fetchPage: async (url) => ({ url, status: 200, html: '' }),
+      ai: quietAi,
+      openPage: async () => {
+        active += 1;
+        max = Math.max(max, active);
+        const page = scanPage(readFixture('no-widget.html'), { gotoDelayMs: 50 });
+        return {
+          page,
+          close: async () => {
+            active -= 1;
+            await page.close();
+          },
+        };
+      },
+      readFile: (filePath) => {
+        const text = files[filePath];
+        if (text == null) throw new Error(`missing ${filePath}`);
+        return text;
+      },
+      exists: (filePath) => filePath in files,
+    };
+    const cli = await execute(['scan', 'urls.txt', '--concurrency', '2'], deps);
+    assert.equal(cli.exitCode, 0, cli.stderr);
+    assert.equal(max, 2);
+    assert.equal(attempts.attempts.length, 3);
+  });
 });
+
+function scanConfig(): AppConfig {
+  return {
+    aiBaseUrl: 'https://api.x.ai/v1',
+    aiApiKey: null,
+    aiModel: null,
+    supabaseUrl: 'https://example.supabase.co',
+    supabaseServiceRoleKey: 'service',
+    dryRun: true,
+    allowlist: [],
+    drevvyTextNumber: null,
+    drevvyEmail: null,
+    shopperFirst: null,
+    leadLastName: 'via Drevvy',
+    leadZip: null,
+    fetchTimeoutMs: 1000,
+    maxTurns: 6,
+    scanSettleMs: 0,
+    scanConcurrency: 3,
+    scanTimeoutMs: 25_000,
+  };
+}
 
 describe('widget finding helpers', () => {
   it('parses a launcher point and rejects captcha, cookies, and wild coordinates', () => {
@@ -321,6 +487,44 @@ describe('widget finding helpers', () => {
     assert.equal(htmlHasSelector(html, '#gg-chat-input'), true);
     assert.equal(htmlHasSelector(html, '#gubagoo-toolbar button'), false);
     assert.equal(htmlHasSelector(html, '.cn-chat-button'), false);
+  });
+
+  it('retries a destroyed execution context once', async () => {
+    let calls = 0;
+    let waited = 0;
+    const value = await withNavigationRetry(
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error('locator.count: Execution context was destroyed, most likely because of a navigation');
+        }
+        return 'ok';
+      },
+      async () => {
+        waited += 1;
+      },
+    );
+    assert.equal(value, 'ok');
+    assert.equal(calls, 2);
+    assert.equal(waited, 1);
+    await assert.rejects(
+      () =>
+        withNavigationRetry(
+          async () => {
+            throw new Error('Execution context was destroyed, most likely because of a navigation');
+          },
+          async () => undefined,
+        ),
+      /Execution context was destroyed/,
+    );
+  });
+
+  it('scans independent urls through a pool', async () => {
+    const seen: number[] = [];
+    await mapWithConcurrency([10, 20, 30], 2, async (value, index) => {
+      seen[index] = value;
+    });
+    assert.deepEqual(seen, [10, 20, 30]);
   });
 
   it('maps Gubagoo and CarNow to their playbooks and everything else to generic', () => {

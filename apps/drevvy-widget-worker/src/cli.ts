@@ -6,10 +6,11 @@ import { createChatClient } from './ai/client';
 import type { ChatClient } from './ai/types';
 import { runWidgetChat, type WidgetChatConfig } from './chat/agent';
 import { runLeadForm } from './forms/lead';
+import { mapWithConcurrency } from './scan/pool';
 import { runScan } from './scan/run';
 import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
-import type { AttemptStore, ChatPage } from './chat/types';
+import type { AttemptStore, ChatPage, WidgetChatAttemptWrite } from './chat/types';
 import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
@@ -17,13 +18,14 @@ import type { DirectoryStore } from './directory/types';
 import { formatResultsTable, parseUrlList, type ResultRow } from './cli/format';
 import { parseHintsFile } from './research/hints';
 import { createHttpFetcher, researchVehiclePage, type PageFetcher } from './research/job';
+import { siteUrlFromVehiclePage } from './research/urls';
 import { createSupabase } from './supabase';
 
 const HELP = `Drevvy dealer research, lead-form, and chat-widget worker.
 
 Usage:
   drevvy-widget-worker research <url-or-file> [--force] [--hints file.json]
-  drevvy-widget-worker scan <url-or-file>
+  drevvy-widget-worker scan <url-or-file> [--concurrency N]
   drevvy-widget-worker lead <url-or-file> [--stock STOCK]
   drevvy-widget-worker chat <url-or-file> [--stock STOCK]
   drevvy-widget-worker run <url-or-file> [--force] [--hints file.json]
@@ -33,7 +35,8 @@ Lines starting with # are ignored.
 
 run researches the dealer, then submits the vehicle lead form, then runs the widget chat.
 scan opens each page, waits for late widgets, and prints vendor, playbook, and status.
-It does not type into a composer or submit a form.
+It scans up to 3 sites at once (--concurrency) and gives each site 25 seconds.
+It does not type into a composer or submit a form. One failed URL does not stop the rest.
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 `;
@@ -51,6 +54,7 @@ export type CliDeps = {
   openPage: () => Promise<{ page: ChatPage; close: () => Promise<void> }>;
   readFile: (filePath: string) => string;
   exists: (filePath: string) => boolean;
+  writeLine?: (line: string) => void;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -72,6 +76,10 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     const hints = flags.hintsPath ? parseHintsFile(deps.readFile(flags.hintsPath)) : {};
     const logs: string[] = [];
     const sections: string[] = [];
+    const log = (line: string) => {
+      if (deps.writeLine) deps.writeLine(line);
+      else logs.push(line);
+    };
 
     if (command === 'research' || command === 'run') {
       const rows: ResultRow[] = [];
@@ -92,38 +100,19 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
           dryRun: '-',
           channel: '-',
         });
-        if (result.error) logs.push(`[research] ${target.url} ${result.error}`);
+        if (result.error) log(`[research] ${target.url} ${result.error}`);
       }
       sections.push(`Research\n${formatResultsTable(rows)}`);
     }
 
     if (command === 'scan') {
-      const rows: ResultRow[] = [];
-      for (const target of targets) {
-        const opened = await deps.openPage();
-        try {
-          const result = await runScan({
-            vehiclePageUrl: target.url,
-            page: opened.page,
-            ai: deps.ai,
-            attempts: deps.attempts,
-            directory: deps.directory,
-            log: (line) => logs.push(line),
-          });
-          rows.push({
-            url: target.url,
-            vendor: result.widgetVendor ?? '-',
-            status: result.status,
-            price: null,
-            dryRun: String(result.dryRun),
-            channel: result.channel,
-            playbook: result.playbook,
-            reason: result.reason,
-          });
-        } finally {
-          await opened.close();
-        }
-      }
+      const rows: ResultRow[] = new Array(targets.length);
+      const concurrency = flags.concurrency ?? deps.config.scanConcurrency;
+      await mapWithConcurrency(targets, concurrency, async (target, index) => {
+        const row = await scanTarget(target, deps, log);
+        rows[index] = row;
+        log(`[scan] ${row.url} ${row.vendor} ${row.status} ${row.reason ?? '-'}`);
+      });
       sections.push(`Scan\n${formatResultsTable(rows)}`);
     }
 
@@ -139,7 +128,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             page: opened.page,
             config: settings,
             store: deps.attempts,
-            log: (line) => logs.push(line),
+            log,
           });
           rows.push({
             url: target.url,
@@ -149,7 +138,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             dryRun: String(result.dryRun),
             channel: result.channel,
           });
-          if (result.error) logs.push(`[lead] ${target.url} ${result.error}`);
+          if (result.error) log(`[lead] ${target.url} ${result.error}`);
         } finally {
           await opened.close();
         }
@@ -170,7 +159,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             ai: deps.ai,
             config: settings,
             store: deps.attempts,
-            log: (line) => logs.push(line),
+            log,
           });
           rows.push({
             url: target.url,
@@ -180,7 +169,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             dryRun: String(result.dryRun),
             channel: result.channel,
           });
-          if (result.error) logs.push(`[chat] ${target.url} ${result.error}`);
+          if (result.error) log(`[chat] ${target.url} ${result.error}`);
         } finally {
           await opened.close();
         }
@@ -225,8 +214,84 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     },
     readFile: (filePath) => readFileSync(filePath, 'utf8'),
     exists: (filePath) => existsSync(filePath),
+    writeLine: (line) => {
+      process.stdout.write(`${line}\n`);
+    },
     ...overrides,
   };
+}
+
+async function scanTarget(
+  target: Target,
+  deps: CliDeps,
+  log: (line: string) => void,
+): Promise<ResultRow> {
+  const started = new Date().toISOString();
+  try {
+    const opened = await deps.openPage();
+    try {
+      const result = await runScan({
+        vehiclePageUrl: target.url,
+        page: opened.page,
+        ai: deps.ai,
+        attempts: deps.attempts,
+        directory: deps.directory,
+        timeoutMs: deps.config.scanTimeoutMs,
+        log,
+      });
+      return {
+        url: target.url,
+        vendor: result.widgetVendor ?? '-',
+        status: result.status,
+        price: null,
+        dryRun: String(result.dryRun),
+        channel: result.channel,
+        playbook: result.playbook,
+        reason: result.reason,
+      };
+    } finally {
+      await opened.close().catch(() => undefined);
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    let site: string | null = null;
+    try {
+      site = siteUrlFromVehiclePage(target.url);
+    } catch {
+      site = null;
+    }
+    const attempt: WidgetChatAttemptWrite = {
+      vehicle_page_url: target.url,
+      dealer_site_url: site,
+      stock_number: target.stockNumber,
+      widget_vendor: null,
+      status: 'error',
+      price: null,
+      dry_run: true,
+      transcript: [{ role: 'system', text: reason, at: started }],
+      stop_reason: reason,
+      error: reason,
+      started_at: started,
+      finished_at: new Date().toISOString(),
+      channel: 'widget',
+      first_reply_channel: null,
+    };
+    try {
+      await deps.attempts.insert(attempt);
+    } catch {
+      // The row is still printed. A store failure must not stop the remaining URLs.
+    }
+    return {
+      url: target.url,
+      vendor: '-',
+      status: 'error',
+      price: null,
+      dryRun: 'true',
+      channel: 'widget',
+      playbook: 'generic',
+      reason,
+    };
+  }
 }
 
 async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -251,11 +316,13 @@ function parseFlags(argv: string[]): {
   force: boolean;
   hintsPath: string | null;
   stock: string | null;
+  concurrency: number | null;
   positionals: string[];
 } {
   let force = false;
   let hintsPath: string | null = null;
   let stock: string | null = null;
+  let concurrency: number | null = null;
   const positionals: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -266,6 +333,12 @@ function parseFlags(argv: string[]): {
     } else if (arg === '--stock') {
       stock = requiredValue(argv, index, '--stock');
       index += 1;
+    } else if (arg === '--concurrency') {
+      const raw = requiredValue(argv, index, '--concurrency');
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1) throw new Error('--concurrency must be a positive integer.');
+      concurrency = parsed;
+      index += 1;
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown flag: ${arg}`);
     } else {
@@ -273,7 +346,7 @@ function parseFlags(argv: string[]): {
     }
   }
   if (positionals.length === 0) throw new Error('Provide a vehicle page URL or a file of URLs.');
-  return { force, hintsPath, stock, positionals };
+  return { force, hintsPath, stock, concurrency, positionals };
 }
 
 function requiredValue(argv: string[], index: number, flag: string): string {

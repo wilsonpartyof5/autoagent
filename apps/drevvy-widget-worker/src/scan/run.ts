@@ -12,15 +12,72 @@ export type ScanResult = AttemptResult & {
   reason: string;
 };
 
+const DEFAULT_SCAN_TIMEOUT_MS = 25_000;
+
 export async function runScan(input: {
   vehiclePageUrl: string;
   page: ChatPage;
   ai: ChatClient;
   attempts: AttemptStore;
   directory: DirectoryStore;
+  timeoutMs?: number;
   now?: () => Date;
   log?: (line: string) => void;
 }): Promise<ScanResult> {
+  const timeoutMs = input.timeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS;
+  let pending: Promise<ScanResult> | null = null;
+  const finishOnce = (details: Parameters<typeof finish>[1]): Promise<ScanResult> => {
+    if (!pending) pending = finish(input, details);
+    return pending;
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<ScanResult>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(
+        finishOnce({
+          site: safeSite(input.vehiclePageUrl),
+          vendor: null,
+          playbook: 'generic',
+          status: 'page_timeout',
+          reason: `Scan timed out after ${timeoutMs}ms.`,
+          started: (input.now ?? (() => new Date()))(),
+          now: input.now ?? (() => new Date()),
+          log: input.log ?? (() => undefined),
+          saveDirectory: true,
+          directoryStatus: 'needs_review',
+        }),
+      );
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([scanBody(input, finishOnce), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function safeSite(vehiclePageUrl: string): string | null {
+  try {
+    return siteUrlFromVehiclePage(vehiclePageUrl);
+  } catch {
+    return null;
+  }
+}
+
+async function scanBody(
+  input: {
+    vehiclePageUrl: string;
+    page: ChatPage;
+    ai: ChatClient;
+    attempts: AttemptStore;
+    directory: DirectoryStore;
+    now?: () => Date;
+    log?: (line: string) => void;
+  },
+  finishOnce: (details: Parameters<typeof finish>[1]) => Promise<ScanResult>,
+): Promise<ScanResult> {
   const now = input.now ?? (() => new Date());
   const log = input.log ?? (() => undefined);
   const started = now();
@@ -28,7 +85,7 @@ export async function runScan(input: {
   try {
     site = siteUrlFromVehiclePage(input.vehiclePageUrl);
   } catch (error) {
-    return finish(input, {
+    return finishOnce({
       site,
       vendor: null,
       playbook: 'generic',
@@ -66,7 +123,7 @@ export async function runScan(input: {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not open the page.';
     const timedOut = isTimeoutError(error);
-    return finish(input, {
+    return finishOnce({
       site,
       vendor: null,
       playbook: 'generic',
@@ -80,35 +137,56 @@ export async function runScan(input: {
     });
   }
 
-  const inspection = await prepareInspection(input.page, input.ai, log);
-  if (inspection.launcherFound && !inspection.composerFound && !inspection.gateFound && !inspection.captcha) {
-    const actions = actionsFor(inspection.vendor);
-    await input.page.click(actions.launchSelectors);
-    inspection.composerFound = await input.page.composerVisible(
-      actions.composerSelectors,
-      inspection.vendor ? actions.frameUrl : null,
-    );
-  }
+  try {
+    const inspection = await prepareInspection(input.page, input.ai, log);
+    if (inspection.launcherFound && !inspection.composerFound && !inspection.gateFound && !inspection.captcha) {
+      const actions = actionsFor(inspection.vendor);
+      await input.page.click(actions.launchSelectors);
+      inspection.composerFound = await input.page.composerVisible(
+        actions.composerSelectors,
+        inspection.vendor ? actions.frameUrl : null,
+      );
+    }
 
-  const outcome = classifyScan(inspection);
-  log(`[scan] ${input.vehiclePageUrl} ${outcome.status}: ${outcome.reason}`);
-  return finish(input, {
-    site,
-    vendor: inspection.vendor,
-    playbook: inspection.playbook,
-    status: outcome.status,
-    reason: outcome.reason,
-    started,
-    now,
-    log,
-    saveDirectory: true,
-    directoryStatus: directoryStatusFor(outcome.status, inspection.vendor),
-    overlays: inspection.overlaysDismissed,
-  });
+    const outcome = classifyScan(inspection);
+    log(`[scan] ${input.vehiclePageUrl} ${outcome.status}: ${outcome.reason}`);
+    return finishOnce({
+      site,
+      vendor: inspection.vendor,
+      playbook: inspection.playbook,
+      status: outcome.status,
+      reason: outcome.reason,
+      started,
+      now,
+      log,
+      saveDirectory: true,
+      directoryStatus: directoryStatusFor(outcome.status, inspection.vendor),
+      overlays: inspection.overlaysDismissed,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Scan failed.';
+    const timedOut = isTimeoutError(error);
+    log(`[scan] ${input.vehiclePageUrl} ${timedOut ? 'page_timeout' : 'error'}: ${message}`);
+    return finishOnce({
+      site,
+      vendor: null,
+      playbook: 'generic',
+      status: timedOut ? 'page_timeout' : 'error',
+      reason: message,
+      started,
+      now,
+      log,
+      saveDirectory: true,
+      directoryStatus: 'needs_review',
+    });
+  }
 }
 
 function classifyScan(inspection: WidgetInspection): { status: AttemptStatus; reason: string } {
-  if (inspection.blocked) return { status: 'blocked', reason: 'The site blocked automated access.' };
+  if (inspection.blocked) {
+    const signature = inspection.blockSignature ?? 'bot-wall';
+    return { status: 'blocked', reason: `Blocked: ${signature}.` };
+  }
   if (inspection.captcha) return { status: 'captcha', reason: 'Stopped: captcha.' };
   const present = inspection.launcherFound || inspection.gateFound;
   if (!present && !inspection.vendor) {

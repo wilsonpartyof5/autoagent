@@ -3,11 +3,22 @@ import type { Frame, Page } from 'playwright';
 import { isPrivateFieldHint, type OutreachFill } from '../forms/outreach';
 import type { FrameSnapshot } from '../widgets/evidence';
 import { asksForShopperContact, hasCaptchaChallenge, isContactField, isForbiddenContactSelector } from '../widgets/guards';
+import { isDestroyedContext, withNavigationRetry } from '../widgets/navigation';
 import { isOverlayDismiss } from '../widgets/overlays';
 import { WIDGET_ADAPTERS, type WidgetVendor } from '../widgets/vendors';
 import type { ChatPage } from './types';
 
 const CAPTCHA_FRAME = /google\.com\/recaptcha\/api2|hcaptcha\.com\/captcha|challenges\.cloudflare\.com\/turnstile/i;
+const VISIBLE_CHALLENGE = [
+  'iframe[src*="recaptcha/api2"]',
+  'iframe[src*="recaptcha/enterprise"]',
+  'iframe[src*="hcaptcha.com/captcha"]',
+  'iframe[src*="challenges.cloudflare.com/turnstile"]',
+  '.g-recaptcha',
+  '.h-captcha',
+  '.cf-turnstile',
+  '#rc-imageselect',
+].join(', ');
 
 function outreachSelectors(fill: OutreachFill): string[] {
   const selectors: string[] = [];
@@ -41,6 +52,7 @@ export async function launchChatBrowser(settleMs = 3_000): Promise<{ chatPage: C
 
 export class PlaywrightChatPage implements ChatPage {
   private readonly network: string[] = [];
+  private statusCode: number | null = null;
 
   constructor(
     private readonly page: Page,
@@ -52,7 +64,12 @@ export class PlaywrightChatPage implements ChatPage {
   }
 
   async goto(url: string): Promise<void> {
-    await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const response = await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    this.statusCode = response?.status() ?? null;
+  }
+
+  httpStatus(): number | null {
+    return this.statusCode;
   }
 
   async content(): Promise<string> {
@@ -163,10 +180,14 @@ export class PlaywrightChatPage implements ChatPage {
   async captchaVisible(vendor: WidgetVendor | null): Promise<boolean> {
     const html = await this.widgetHtml(vendor);
     if (hasCaptchaChallenge(html)) return true;
-    if (!vendor) return false;
+    if (vendor && this.captchaInsideVendorFrame(vendor)) return true;
+    return this.visibleChallengeInViewport();
+  }
+
+  private captchaInsideVendorFrame(vendor: WidgetVendor): boolean {
     const adapter = WIDGET_ADAPTERS[vendor];
     return this.page.frames().some((frame) => {
-      if (!CAPTCHA_FRAME.test(frame.url())) return false;
+      if (!CAPTCHA_FRAME.test(frame.url()) || /size=invisible/i.test(frame.url())) return false;
       let parent = frame.parentFrame();
       while (parent) {
         if (adapter.frameUrl.test(parent.url())) return true;
@@ -174,6 +195,33 @@ export class PlaywrightChatPage implements ChatPage {
       }
       return false;
     });
+  }
+
+  private visibleChallengeInViewport(): Promise<boolean> {
+    return withNavigationRetry(() => this.findVisibleChallenge(), () => this.waitForReload());
+  }
+
+  private async findVisibleChallenge(): Promise<boolean> {
+    const locator = this.page.locator(VISIBLE_CHALLENGE);
+    const count = Math.min(await this.locatorCount(locator), 20);
+    const viewport = this.page.viewportSize() ?? { width: 1280, height: 720 };
+    for (let index = 0; index < count; index += 1) {
+      const item = locator.nth(index);
+      try {
+        const src = (await item.getAttribute('src')) ?? '';
+        const size = (await item.getAttribute('data-size')) ?? '';
+        if (/size=invisible/i.test(src) || size === 'invisible') continue;
+        const badge = await item.evaluate((element) => Boolean(element.closest('.grecaptcha-badge')));
+        if (badge) continue;
+        const box = await item.boundingBox();
+        if (!box || box.width < 8 || box.height < 8) continue;
+        const inView = box.x < viewport.width && box.y < viewport.height && box.x + box.width > 0 && box.y + box.height > 0;
+        if (inView) return true;
+      } catch (error) {
+        if (isDestroyedContext(error)) throw error;
+      }
+    }
+    return false;
   }
 
   async contactFormVisible(vendor: WidgetVendor | null): Promise<boolean> {
@@ -215,7 +263,7 @@ export class PlaywrightChatPage implements ChatPage {
     const frames = this.page.frames().filter((frame) => !/gubagoo|carnow|podium|impel|truvideo|smartpath/i.test(frame.url()));
     for (const frame of frames) {
       const buttons = frame.locator('button, [role="button"], input[type="button"]');
-      const count = Math.min(await buttons.count(), 30);
+      const count = Math.min(await this.locatorCount(buttons), 30);
       for (let index = 0; index < count; index += 1) {
         const button = buttons.nth(index);
         try {
@@ -321,6 +369,17 @@ export class PlaywrightChatPage implements ChatPage {
     return false;
   }
 
+  private async locatorCount(locator: { count: () => Promise<number> }): Promise<number> {
+    return withNavigationRetry(
+      () => locator.count(),
+      () => this.waitForReload(),
+    );
+  }
+
+  private async waitForReload(): Promise<void> {
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 8_000 }).catch(() => undefined);
+  }
+
   private async selectorExists(selectors: string[]): Promise<boolean> {
     return this.withSelector(selectors, async (frame, selector) => (await frame.locator(selector).count()) > 0);
   }
@@ -334,8 +393,14 @@ export class PlaywrightChatPage implements ChatPage {
       for (const frame of this.page.frames()) {
         try {
           if (await visit(frame, selector)) return true;
-        } catch {
-          continue;
+        } catch (error) {
+          if (!isDestroyedContext(error)) continue;
+          try {
+            await this.waitForReload();
+            if (await visit(frame, selector)) return true;
+          } catch (retryError) {
+            if (isDestroyedContext(retryError)) throw retryError;
+          }
         }
       }
     }

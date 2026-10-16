@@ -1,18 +1,35 @@
 import { normalizeEmail, normalizePhone } from '../research/validate';
 
-const CAPTCHA_PATTERNS = [
-  /google\.com\/recaptcha\/api2/i,
-  /hcaptcha\.com\/captcha/i,
-  /challenges\.cloudflare\.com\/turnstile/i,
-  /class=["'][^"']*\b(?:g-recaptcha|h-captcha|cf-turnstile)\b/i,
+const CHALLENGE_TEXT = [
   /i['’]?m not a robot/i,
-  /verify you are human/i,
+  /select all (?:images|squares)/i,
+  /click each image/i,
   /complete the captcha/i,
 ];
 
 export function hasCaptchaChallenge(html: string): boolean {
   if (!html) return false;
-  return CAPTCHA_PATTERNS.some((pattern) => pattern.test(html));
+  const visible = stripInvisibleCaptcha(html);
+  if (CHALLENGE_TEXT.some((pattern) => pattern.test(visible))) return true;
+  if (/google\.com\/recaptcha\/api2\/bframe/i.test(visible)) return true;
+  if (/<iframe\b[^>]*(?:recaptcha\/api2\/anchor|hcaptcha\.com\/captcha|challenges\.cloudflare\.com\/turnstile)[^>]*>/i.test(visible)) {
+    return true;
+  }
+  return false;
+}
+
+function stripInvisibleCaptcha(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<div\b[^>]*\bgrecaptcha-badge\b[^>]*>[\s\S]*?<\/div>/gi, ' ')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, (tag) => (hiddenCaptchaFrame(tag) ? ' ' : tag))
+    .replace(/<iframe\b[^>]*\/?>/gi, (tag) => (hiddenCaptchaFrame(tag) ? ' ' : tag))
+    .replace(/<(div|span)\b[^>]*\bdata-size=["']invisible["'][^>]*>[\s\S]*?<\/\1>/gi, ' ');
+}
+
+function hiddenCaptchaFrame(tag: string): boolean {
+  return /size=invisible|data-size=["']invisible["']/i.test(tag) || /\b(?:width|height)\s*=\s*["']0/i.test(tag) || /display\s*:\s*none|visibility\s*:\s*hidden/i.test(tag);
 }
 
 export function asksForShopperContact(html: string): boolean {

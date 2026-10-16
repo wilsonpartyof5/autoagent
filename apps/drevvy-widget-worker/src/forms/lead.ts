@@ -6,7 +6,7 @@ import { hasCaptchaChallenge } from '../widgets/guards';
 import { extractStockNumber } from '../widgets/script';
 import { applyPlan } from './apply';
 import { detectLeadForms } from './detect';
-import { buildIdentity, isBotBlockedPage, type OutreachRunConfig } from './outreach';
+import { blockWallSignature, buildIdentity, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
 
 export async function runLeadForm(input: {
@@ -120,11 +120,12 @@ export async function runLeadForm(input: {
   vendor = detectWidgetVendor(html);
   if (!stock) stock = extractStockNumber(html);
 
-  if (isBotBlockedPage(html)) {
+  const wall = blockWallSignature(html, input.page.httpStatus());
+  if (wall) {
     status = 'blocked';
     stopReason = 'blocked';
-    note('The site blocked automated access.');
-    log(`[blocked] ${input.vehiclePageUrl} automated access restricted`);
+    note(`Blocked: ${wall}.`);
+    log(`[blocked] ${input.vehiclePageUrl} ${wall}`);
     return finish();
   }
 

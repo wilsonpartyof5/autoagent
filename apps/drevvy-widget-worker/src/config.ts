@@ -19,6 +19,8 @@ export type AppConfig = {
   fetchTimeoutMs: number;
   maxTurns: number;
   scanSettleMs: number;
+  scanConcurrency: number;
+  scanTimeoutMs: number;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -40,6 +42,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     fetchTimeoutMs: positiveInt(env.RESEARCH_FETCH_TIMEOUT_MS, 15_000),
     maxTurns: resolveMaxTurns(env.WIDGET_CHAT_MAX_TURNS),
     scanSettleMs: positiveInt(env.WIDGET_SCAN_SETTLE_MS, 3_000),
+    scanConcurrency: positiveInt(env.WIDGET_SCAN_CONCURRENCY, 3),
+    scanTimeoutMs: positiveInt(env.WIDGET_SCAN_TIMEOUT_MS, 25_000),
   };
 }
 

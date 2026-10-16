@@ -1,8 +1,7 @@
 import type { ChatClient } from '../ai/types';
 import type { ChatPage } from '../chat/types';
 import { detectPrechat } from '../forms/detect';
-import { isBotBlockedPage } from '../forms/outreach';
-import { hasCaptchaChallenge } from './guards';
+import { blockWallSignature, type BlockWall } from '../forms/outreach';
 import { actionsFor, playbookForVendor, type WidgetPlaybook } from './playbooks';
 import { detectVendorEvidence, type VendorSource } from './evidence';
 import { extractWidgetScope, type WidgetVendor } from './vendors';
@@ -17,6 +16,7 @@ export type WidgetInspection = {
   gateFound: boolean;
   captcha: boolean;
   blocked: boolean;
+  blockSignature: BlockWall | null;
   overlaysDismissed: string[];
   visionClicked: boolean;
 };
@@ -27,14 +27,22 @@ export async function prepareInspection(
   log: (line: string) => void = () => undefined,
 ): Promise<WidgetInspection> {
   const initial = await page.content();
-  if (isBotBlockedPage(initial)) return emptyInspection({ blocked: true });
+  const initialWall = blockWallSignature(initial, page.httpStatus());
+  if (initialWall) {
+    log(`[blocked] ${initialWall}`);
+    return emptyInspection({ blocked: true, blockSignature: initialWall });
+  }
 
   await page.settle();
   const overlaysDismissed = await page.dismissOverlays();
   if (overlaysDismissed.length > 0) log(`[overlays] dismissed ${overlaysDismissed.join(', ')}`);
 
   let html = await page.content();
-  if (isBotBlockedPage(html)) return emptyInspection({ blocked: true, overlaysDismissed });
+  const wall = blockWallSignature(html, page.httpStatus());
+  if (wall) {
+    log(`[blocked] ${wall}`);
+    return emptyInspection({ blocked: true, blockSignature: wall, overlaysDismissed });
+  }
 
   let frames = await page.frames();
   let evidence = detectVendorEvidence({ html, frames, networkUrls: page.networkUrls() });
@@ -43,8 +51,7 @@ export async function prepareInspection(
   let composerFound = await page.composerVisible(actions.composerSelectors, evidence.vendor ? actions.frameUrl : null);
   const scope = evidence.vendor ? (await page.widgetHtml(evidence.vendor)) || extractWidgetScope(html, evidence.vendor) : '';
   const gateFound = Boolean(detectPrechat(scope || frames.map((frame) => frame.html).join('\n')));
-  const captcha =
-    (await page.captchaVisible(evidence.vendor)) || hasCaptchaChallenge(scope) || hasCaptchaChallenge(html);
+  const captcha = await page.captchaVisible(evidence.vendor);
   let visionClicked = false;
 
   if (!captcha && !launcherFound && !gateFound) {
@@ -75,12 +82,17 @@ export async function prepareInspection(
     gateFound,
     captcha,
     blocked: false,
+    blockSignature: null,
     overlaysDismissed,
     visionClicked,
   };
 }
 
-function emptyInspection(input: { blocked: boolean; overlaysDismissed?: string[] }): WidgetInspection {
+function emptyInspection(input: {
+  blocked: boolean;
+  blockSignature?: BlockWall | null;
+  overlaysDismissed?: string[];
+}): WidgetInspection {
   return {
     vendor: null,
     playbook: 'generic',
@@ -90,6 +102,7 @@ function emptyInspection(input: { blocked: boolean; overlaysDismissed?: string[]
     gateFound: false,
     captcha: false,
     blocked: input.blocked,
+    blockSignature: input.blockSignature ?? null,
     overlaysDismissed: input.overlaysDismissed ?? [],
     visionClicked: false,
   };

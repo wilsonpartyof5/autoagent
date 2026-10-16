@@ -21,7 +21,7 @@ Migrations, applied separately from this package:
 
 ```bash
 pnpm --filter @drevvy/widget-worker research urls.txt --hints hints.json
-pnpm --filter @drevvy/widget-worker scan urls.txt
+pnpm --filter @drevvy/widget-worker scan urls.txt --concurrency 3
 pnpm --filter @drevvy/widget-worker lead urls.txt
 pnpm --filter @drevvy/widget-worker chat urls.txt
 pnpm --filter @drevvy/widget-worker run urls.txt
@@ -29,7 +29,7 @@ pnpm --filter @drevvy/widget-worker run urls.txt
 
 `run` researches the dealer, submits the vehicle lead form, then runs the widget chat. It does not scan.
 
-`scan` needs Supabase and does not need an API key, a shopper name, or the allowlist. It never fills or submits a chat or a form.
+`scan` needs Supabase and does not need an API key, a shopper name, or the allowlist. It never fills or submits a chat or a form. `--concurrency` defaults to 3. Each site is capped at `WIDGET_SCAN_TIMEOUT_MS` (default 25 seconds). A navigation crash or a timeout is stored as `error` or `page_timeout` for that URL, and the rest of the list still runs. Each result is written as soon as that site finishes.
 
 `urls.txt` has one vehicle page URL per line. An optional second column is the stock number. `#` starts a comment.
 
@@ -67,7 +67,8 @@ A scan and a chat both wait before they decide a page has no widget:
 3. Dismiss a cookie banner (ComplyAuto, OneTrust, and similar Accept All controls) and a trade-in popup. Chat, text-us, availability, and price controls are left alone.
 4. Detect the vendor from network request hosts, script `src` values, iframe URLs, the iframe document, and then the main page. Known vendors include Gubagoo, CarNow, Podium, Impel, Fullpath, Toyota SmartPath, and TruVideo AIVA.
 5. Look for the launcher and the message composer in the main page and inside a vendor iframe.
-6. If no launcher and no pre-chat gate are visible, and the page is not a captcha, send one screenshot to the model. The model returns a click point. The worker clicks that point only. A point whose reason mentions a captcha, cookie banner, trade-in popup, lead form, phone, or email is ignored.
+6. A captcha counts when a challenge checkbox or image grid is visible in the viewport, or when that challenge sits inside the chat widget's own frame. An invisible reCAPTCHA, a `data-size="invisible"` widget, and the reCAPTCHA badge do not count.
+7. If no launcher and no pre-chat gate are visible, and the page is not a captcha, send one screenshot to the model. The model returns a click point. The worker clicks that point only. A point whose reason mentions a captcha, cookie banner, trade-in popup, lead form, phone, or email is ignored.
 
 Gubagoo and CarNow use a vendor playbook: open the launcher, find the composer, send, and read the reply. Every other vendor, including a launcher found only by the screenshot, uses the generic playbook. The detected vendor and playbook are stored on `dealer_directory` (`widget_vendor`, `widget_playbook`).
 
@@ -79,9 +80,10 @@ Scan statuses, with the reason stored on the attempt:
 | `no_widget` | No vendor and no launcher after the wait. |
 | `widget_offline` | A vendor script or request was seen, and no launcher appeared. |
 | `composer_not_found` | The launcher was opened once, and the composer did not appear. |
-| `blocked` | A bot wall such as SOKAL, or a short access-denied page. |
-| `page_timeout` | The page timed out before it could be scanned. |
-| `captcha` | A captcha was visible. Nothing was clicked. |
+| `blocked` | A known bot wall. The reason names the signature: `sokal`, `cloudflare`, `akamai`, `perimeterx`, `datadome`, `http-403`, or `http-429`. |
+| `page_timeout` | The page or the per-site cap timed out before the scan finished. |
+| `captcha` | A visible challenge, or a challenge inside the chat widget frame. Nothing was clicked. |
+| `error` | The page crashed after one retry, for example a navigation that destroyed the locator. The reason is the error message. |
 
 A blocked dealer site is not opened again, and a second scan does not insert another row.
 
@@ -102,9 +104,9 @@ A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's f
 - `DRY_RUN` defaults to true. Only the exact string `false` turns it off. A dry run opens the page, logs the form fields or chat line, and does not type or submit. A scan may dismiss overlays, scroll, move the pointer, and click a launcher to see whether a composer appears. It does not type into a composer or a form.
 - Live sending also requires `WIDGET_CHAT_ALLOWLIST`, a comma-separated list of dealer origins. Matching is by hostname. An empty list sends nowhere.
 - The chat agent sends only the four script lines below. Model output cannot add a sentence. The chat composer refuses an email, phone, or name field, so the script is never typed into a contact box.
-- Captcha, a required field this worker does not recognize, and any form that asks for an address, date of birth, SSN, or trade details stop that form with nothing filled.
+- A visible captcha, a required field this worker does not recognize, and any form that asks for an address, date of birth, SSN, or trade details stop that form with nothing filled. An invisible reCAPTCHA badge does not.
 - One live submit is allowed per vehicle page per channel (`lead_form` and `prechat`). A later run records `already_submitted` and does not open the lead form again.
-- A bot wall such as a SOKAL "Access Restricted" page is stored as `blocked`. Later runs for that dealer site do not open the page and do not insert another row.
+- A known bot wall is stored as `blocked`, and the reason names the signature that matched. Walls are SOKAL, a Cloudflare interstitial ("Just a moment..." or "Attention Required! | Cloudflare"), Akamai, PerimeterX, DataDome, or an HTTP 403/429 response whose body says the request was denied. A dealer page that merely says "access denied" is not a wall. Later runs for that dealer site do not open the page and do not insert another row.
 - The chat stops after 6 sends. If the dealer asks for the shopper's phone or email, the chat stops and does not send a shopper number.
 
 Script:
@@ -135,6 +137,8 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `RESEARCH_FETCH_TIMEOUT_MS` | no | Page fetch timeout. Default `15000`. |
 | `WIDGET_CHAT_MAX_TURNS` | no | Send cap. Values above 6 are clamped to 6. |
 | `WIDGET_SCAN_SETTLE_MS` | no | Extra wait after network idle before widget detection. Default `3000`. |
+| `WIDGET_SCAN_CONCURRENCY` | no | How many scans run at once. Default `3`. `--concurrency` overrides it. |
+| `WIDGET_SCAN_TIMEOUT_MS` | no | Per-site scan cap. Default `25000`. |
 
 Copy `.env.example` and export it, or run Node with `--env-file`.
 
