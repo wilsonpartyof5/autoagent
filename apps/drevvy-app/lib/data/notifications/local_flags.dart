@@ -69,6 +69,10 @@ class SharedPreferencesFlags implements LocalFlags {
   }
 }
 
+abstract final class OnboardingFlags {
+  static const complete = 'drevvy.onboarding.complete';
+}
+
 abstract final class PushFlags {
   static const prompted = 'drevvy.notifications.prompted';
   static const optedIn = 'drevvy.notifications.optedIn';

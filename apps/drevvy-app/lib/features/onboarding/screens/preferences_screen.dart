@@ -1,25 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/models/models.dart';
+import '../../../data/repositories/demo_repository.dart';
+import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
 /// Screen 05: Onboarding - Preferences
-class PreferencesScreen extends StatefulWidget {
+class PreferencesScreen extends ConsumerStatefulWidget {
   const PreferencesScreen({super.key});
 
   @override
-  State<PreferencesScreen> createState() => _PreferencesScreenState();
+  ConsumerState<PreferencesScreen> createState() => _PreferencesScreenState();
 }
 
-class _PreferencesScreenState extends State<PreferencesScreen> {
+class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
   int? _budgetIndex;
   final Set<String> _bodyTypes = {};
   int _tradeInIndex = 2; // unsure
   int _paymentIndex = 2; // unsure
+
+  static const _budgetAmounts = <int?>[25000, 35000, 50000, 75000, null];
 
   static const _budgets = [
     'Under \$25k',
@@ -61,7 +67,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                 
                 const SizedBox(height: DrevvySpace.s4),
                 
-                const ProgressDots(current: 3, total: 5),
+                const ProgressDots(current: 3, total: onboardingStepCount),
                 
                 const SizedBox(height: DrevvySpace.s6),
                 
@@ -188,7 +194,19 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                   ),
                   child: DrevvyButton(
                     label: 'Continue',
-                    onPressed: () => context.push('/paywall?from=onboarding'),
+                    onPressed: () async {
+                      final draft = ref.read(onboardingDraftProvider);
+                      await DemoRepository.instance.saveOnboardingAnswers(
+                        budgetOtd: _budgetIndex == null ? null : _budgetAmounts[_budgetIndex!],
+                        bodyTypes: _bodyTypes.toList(),
+                        tradeIn: TradeInPref.values[_tradeInIndex],
+                        payment: PaymentPref.values[_paymentIndex],
+                        zip: draft.zip,
+                        locationGranted: draft.locationGranted,
+                      );
+                      if (!context.mounted) return;
+                      context.push('/paywall?from=onboarding');
+                    },
                     isFullWidth: true,
                   ),
                 ),

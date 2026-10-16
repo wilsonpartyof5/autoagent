@@ -112,7 +112,7 @@ final text = context.drevvyText;
 
 - **Backend API**: Replace `DemoRepository` calls with `https://api.drevvy.com`
 - **Supabase Auth**: Replace demo user with real authentication
-- **RevenueCat/Superwall**: Paywall screens are static placeholders
+- **RevenueCat/Superwall**: Offering `packs` (3 cars $47, 5 cars $67, 10 cars $97, one-time, never expire). The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free; the paywall opens from Unlock my price when the balance is 0.
 - **Push Notifications**: Pre-prompt UI exists, FCM not wired
 - **Geofencing**: Location permission UI exists, geofence logic not wired
 

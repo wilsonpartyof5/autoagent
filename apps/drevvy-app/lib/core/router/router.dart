@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/onboarding/onboarding_controller.dart';
 import '../../features/onboarding/screens/welcome_screen.dart';
 import '../../features/onboarding/screens/how_it_works_screen.dart';
 import '../../features/onboarding/screens/location_screen.dart';
@@ -20,15 +21,30 @@ import '../widgets/shell_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-// Provider to track if onboarding is complete
-final onboardingCompleteProvider = StateProvider<bool>((ref) => true); // Set to true for demo
-
 final routerProvider = Provider<GoRouter>((ref) {
-  final isOnboardingComplete = ref.watch(onboardingCompleteProvider);
-  
+  final refresh = ValueNotifier<int>(0);
+  ref.onDispose(refresh.dispose);
+  ref.listen<bool>(onboardingCompleteProvider, (_, _) {
+    refresh.value++;
+  });
+
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: isOnboardingComplete ? '/shop' : '/onboarding/welcome',
+    refreshListenable: refresh,
+    initialLocation: '/onboarding/welcome',
+    redirect: (context, state) {
+      final done = ref.read(onboardingCompleteProvider);
+      final location = state.matchedLocation;
+      final fromOnboarding = state.uri.queryParameters['from'] == 'onboarding';
+      final inFirstRun = location.startsWith('/onboarding') ||
+          location == '/account/create' ||
+          (location == '/paywall' && fromOnboarding);
+      if (!done && !inFirstRun) return '/onboarding/welcome';
+      if (done && (location.startsWith('/onboarding') || location == '/account/create')) {
+        return '/shop';
+      }
+      return null;
+    },
     routes: [
       // Onboarding routes (outside shell)
       GoRoute(

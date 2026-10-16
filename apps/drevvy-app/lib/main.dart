@@ -7,13 +7,21 @@ import 'core/platform/flutter_test_env.dart';
 import 'core/providers/app_services.dart';
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
+import 'data/notifications/local_flags.dart';
 import 'data/services/purchase_bootstrap.dart';
 import 'data/services/purchase_config.dart';
+import 'features/onboarding/onboarding_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await PurchaseBootstrap.start(PurchaseConfig.fromEnvironment());
   final container = ProviderContainer();
+  final onboardingDone = await container
+      .read(localFlagsProvider)
+      .getBool(OnboardingFlags.complete);
+  if (onboardingDone) {
+    container.read(onboardingCompleteProvider.notifier).state = true;
+  }
   runApp(UncontrolledProviderScope(
     container: container,
     child: const DrevvyApp(),

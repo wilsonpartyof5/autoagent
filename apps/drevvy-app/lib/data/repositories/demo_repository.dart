@@ -64,6 +64,11 @@ class DemoRepository {
     return _delay(user);
   }
 
+  /// Clears the in-memory demo shopper so tests can start from the seed user.
+  void resetDemoUser() {
+    _currentUser = null;
+  }
+
   static final _demoUser = User(
     id: 'user_demo_001',
     firstName: 'Dana',
@@ -1472,6 +1477,63 @@ extension DemoRepositorySearchProfile on DemoRepository {
   /// Restores the in-memory demo search profile between tests.
   void resetDemoSearchProfile() {
     _searchProfile = _newDemoSearchProfile();
+  }
+
+  /// Stores first-run answers on the shopper and as onboarding memory.
+  /// Asking and shopping stay available when these are left blank.
+  Future<void> saveOnboardingAnswers({
+    int? budgetOtd,
+    List<String> bodyTypes = const [],
+    TradeInPref tradeIn = TradeInPref.unsure,
+    PaymentPref payment = PaymentPref.unsure,
+    String? zip,
+    bool locationGranted = false,
+  }) async {
+    final user = await getCurrentUser();
+    await updateUser(
+      user.copyWith(
+        prefs: UserPrefs(
+          budgetOtd: budgetOtd ?? user.prefs?.budgetOtd,
+          bodyTypes: bodyTypes.isEmpty ? (user.prefs?.bodyTypes ?? const []) : bodyTypes,
+          tradeIn: tradeIn,
+          payment: payment,
+          radius: user.prefs?.radius ?? 50,
+        ),
+        zipCode: zip ?? user.zipCode,
+        locationState: zip != null
+            ? LocationState.zipFallback
+            : locationGranted
+                ? LocationState.granted
+                : user.locationState,
+      ),
+    );
+    if (budgetOtd != null) {
+      _remember(MemoryKind.budget, budgetOtd);
+    }
+    if (bodyTypes.isNotEmpty) {
+      _remember(MemoryKind.bodyTypes, bodyTypes);
+    }
+    if (zip != null && zip.isNotEmpty) {
+      _remember(MemoryKind.location, {'zip': zip, 'radius': user.prefs?.radius ?? 50});
+    }
+  }
+
+  void _remember(MemoryKind kind, Object value) {
+    final items = List<MemoryItem>.from(_searchProfile.items);
+    final index = items.indexWhere((item) => item.kind == kind);
+    final next = MemoryItem(
+      id: index >= 0 ? items[index].id : 'mem_onboarding_${kind.name}',
+      kind: kind,
+      value: value,
+      source: MemorySource.onboarding,
+      updatedAt: DateTime.now(),
+    );
+    if (index >= 0) {
+      items[index] = next;
+    } else {
+      items.add(next);
+    }
+    _searchProfile = _searchProfile.copyWith(items: items);
   }
 
   List<MemoryItem> chatMemoryItems(Set<String>? enabledIds) {

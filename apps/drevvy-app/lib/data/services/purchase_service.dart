@@ -121,10 +121,12 @@ class RestoreError extends RestoreResult {
 class FakePurchaseService implements PurchaseService {
   FakePurchaseService({
     this.simulateDelay = const Duration(milliseconds: 800),
+    this.offeringsDelay = const Duration(milliseconds: 200),
     this.onPurchaseComplete,
   });
 
   final Duration simulateDelay;
+  final Duration offeringsDelay;
 
   /// Callback when a purchase completes (for demo repository integration).
   final void Function(CarPackType packType, int credits)? onPurchaseComplete;
@@ -138,7 +140,9 @@ class FakePurchaseService implements PurchaseService {
 
   @override
   Future<List<CarPackOffering>?> getOfferings() async {
-    await Future.delayed(const Duration(milliseconds: 200));
+    if (offeringsDelay > Duration.zero) {
+      await Future.delayed(offeringsDelay);
+    }
     return [
       CarPackOffering(
         packType: CarPackType.starter,

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
+import 'package:drevvy_app/data/models/money_format.dart';
 import 'package:drevvy_app/data/services/purchase_service.dart';
 
 void main() {
@@ -55,6 +56,15 @@ void main() {
 
       // Best Value: (15.67 - 9.70) * 10 = $59.67
       expect(CarPackType.bestValue.savingsDollarsVsStarter, closeTo(59.67, 0.1));
+    });
+
+    test('prices use dollar format', () {
+      expect(formatUsd(47), r'$47');
+      expect(formatUsd(97), r'$97');
+      expect(formatUsd(9.7, cents: true), r'$9.70');
+      expect(CarPackType.starter.priceFormatted, r'$47');
+      expect(CarPackType.plus.priceFormatted, r'$67');
+      expect(CarPackType.bestValue.priceFormatted, r'$97');
     });
 
     test('CTA text is formatted correctly', () {
