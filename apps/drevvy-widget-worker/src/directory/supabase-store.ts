@@ -38,6 +38,7 @@ function mapDirectoryRow(data: unknown): DealerDirectoryRow {
     phones: stringArray(row.phones),
     emails: stringArray(row.emails),
     widget_vendor: nullableString(row.widget_vendor),
+    widget_playbook: nullableString(row.widget_playbook),
     source_urls: stringArray(row.source_urls),
     confidence: nullableNumber(row.confidence),
     last_checked_at: nullableString(row.last_checked_at),

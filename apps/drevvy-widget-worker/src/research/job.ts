@@ -3,6 +3,7 @@ import { parseExtraction } from '../ai/parse';
 import { isDueForRefresh } from '../directory/refresh';
 import type { DealerDirectoryRow, DealerDirectoryWrite, DirectoryStatus, DirectoryStore } from '../directory/types';
 import { detectWidgetVendor, vendorMentioned } from '../widgets/detect';
+import { playbookForVendor } from '../widgets/playbooks';
 import { vendorFromModel } from '../widgets/vendors';
 import { buildPageExcerpt } from './excerpt';
 import { hintLines, type MarketCheckContactHint } from './hints';
@@ -31,7 +32,7 @@ Return JSON only:
   "name": string | null,
   "phones": string[],
   "emails": string[],
-  "widget_vendor": "gubagoo" | "activengage" | "carnow" | "podium" | "kenect" | "contactatonce" | "fullpath" | "impel" | "matador" | null,
+  "widget_vendor": "gubagoo" | "activengage" | "carnow" | "podium" | "kenect" | "contactatonce" | "fullpath" | "impel" | "matador" | "smartpath" | "aiva" | null,
   "confidence": number
 }
 Rules:
@@ -77,6 +78,7 @@ export async function researchVehiclePage(input: {
         phones: [],
         emails: [],
         widget_vendor: null,
+        widget_playbook: null,
         source_urls: [],
         confidence: 0,
         last_checked_at: now.toISOString(),
@@ -131,6 +133,7 @@ export async function researchVehiclePage(input: {
     phones,
     emails,
     widget_vendor: vendor,
+    widget_playbook: playbookForVendor(vendor),
     source_urls: pages.map((page) => page.url),
     confidence: roundConfidence(confidence),
     last_checked_at: now.toISOString(),
@@ -202,6 +205,7 @@ function preserveExisting(
     phones: existing.phones,
     emails: existing.emails,
     widget_vendor: existing.widget_vendor,
+    widget_playbook: existing.widget_playbook,
     source_urls: existing.source_urls,
     confidence: existing.confidence,
     last_checked_at: fallback.last_checked_at,

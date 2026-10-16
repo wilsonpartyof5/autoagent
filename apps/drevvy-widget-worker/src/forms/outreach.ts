@@ -99,9 +99,17 @@ export function isPrivateFieldHint(value: string): boolean {
 }
 
 export function isBotBlockedPage(html: string): boolean {
-  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  if (/sokal/i.test(html) && /restricted|blocked|denied/i.test(text)) return true;
+  if (/\bsokal\b/i.test(html)) return true;
+  const text = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (/access restricted/i.test(text)) return true;
   if (/automated access to this (?:page|site|website)/i.test(text)) return true;
+  if (/you have been blocked/i.test(text)) return true;
+  if (/access denied/i.test(text) && text.length < 800) return true;
+  if (/\b(datadome|perimeterx)\b/i.test(text) && text.length < 500) return true;
   return false;
 }

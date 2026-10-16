@@ -6,10 +6,11 @@ import { createChatClient } from './ai/client';
 import type { ChatClient } from './ai/types';
 import { runWidgetChat, type WidgetChatConfig } from './chat/agent';
 import { runLeadForm } from './forms/lead';
+import { runScan } from './scan/run';
 import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptStore, ChatPage } from './chat/types';
-import { assertChatConfig, assertOutreachConfig, assertResearchConfig, chatSettings, loadConfig, type AppConfig } from './config';
+import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
 import type { DirectoryStore } from './directory/types';
@@ -22,6 +23,7 @@ const HELP = `Drevvy dealer research, lead-form, and chat-widget worker.
 
 Usage:
   drevvy-widget-worker research <url-or-file> [--force] [--hints file.json]
+  drevvy-widget-worker scan <url-or-file>
   drevvy-widget-worker lead <url-or-file> [--stock STOCK]
   drevvy-widget-worker chat <url-or-file> [--stock STOCK]
   drevvy-widget-worker run <url-or-file> [--force] [--hints file.json]
@@ -30,11 +32,13 @@ A file has one vehicle page URL per line. An optional second column is the stock
 Lines starting with # are ignored.
 
 run researches the dealer, then submits the vehicle lead form, then runs the widget chat.
+scan opens each page, waits for late widgets, and prints vendor, playbook, and status.
+It does not type into a composer or submit a form.
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 `;
 
-type Command = 'research' | 'lead' | 'chat' | 'run';
+type Command = 'research' | 'scan' | 'lead' | 'chat' | 'run';
 
 type Target = { url: string; stockNumber: string | null };
 
@@ -56,7 +60,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     return { exitCode: 0, stdout: HELP, stderr: '' };
   }
   const command = argv[0];
-  if (command !== 'research' && command !== 'lead' && command !== 'chat' && command !== 'run') {
+  if (command !== 'research' && command !== 'scan' && command !== 'lead' && command !== 'chat' && command !== 'run') {
     return { exitCode: 1, stdout: '', stderr: `Unknown command: ${command}\n${HELP}` };
   }
   try {
@@ -91,6 +95,36 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
         if (result.error) logs.push(`[research] ${target.url} ${result.error}`);
       }
       sections.push(`Research\n${formatResultsTable(rows)}`);
+    }
+
+    if (command === 'scan') {
+      const rows: ResultRow[] = [];
+      for (const target of targets) {
+        const opened = await deps.openPage();
+        try {
+          const result = await runScan({
+            vehiclePageUrl: target.url,
+            page: opened.page,
+            ai: deps.ai,
+            attempts: deps.attempts,
+            directory: deps.directory,
+            log: (line) => logs.push(line),
+          });
+          rows.push({
+            url: target.url,
+            vendor: result.widgetVendor ?? '-',
+            status: result.status,
+            price: null,
+            dryRun: String(result.dryRun),
+            channel: result.channel,
+            playbook: result.playbook,
+            reason: result.reason,
+          });
+        } finally {
+          await opened.close();
+        }
+      }
+      sections.push(`Scan\n${formatResultsTable(rows)}`);
     }
 
     if (command === 'lead' || command === 'run') {
@@ -186,7 +220,7 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     ai,
     openPage: async () => {
       const { launchChatBrowser } = await import('./chat/playwright-page');
-      const launched = await launchChatBrowser();
+      const launched = await launchChatBrowser(config.scanSettleMs);
       return { page: launched.chatPage, close: launched.close };
     },
     readFile: (filePath) => readFileSync(filePath, 'utf8'),
@@ -200,6 +234,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     const config = loadConfig();
     const command = argv[0] as Command | undefined;
     if (command === 'research' || command === 'run') assertResearchConfig(config);
+    if (command === 'scan') assertSupabaseConfig(config);
     if (command === 'lead' || command === 'run') assertOutreachConfig(config, config.dryRun);
     if (command === 'chat' || command === 'run') assertChatConfig(config, config.dryRun);
     const result = await execute(argv, buildDeps(config));

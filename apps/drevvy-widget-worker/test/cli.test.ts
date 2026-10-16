@@ -27,6 +27,7 @@ const config: AppConfig = {
   leadZip: '29201',
   fetchTimeoutMs: 1000,
   maxTurns: 6,
+  scanSettleMs: 0,
 };
 
 describe('cli', () => {

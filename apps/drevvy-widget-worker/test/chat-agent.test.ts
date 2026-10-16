@@ -369,4 +369,23 @@ describe('widget chat agent', () => {
     assert.equal(result.status, 'no_widget');
     assert.deepEqual(page.sent, []);
   });
+
+  it('records widget_offline when the vendor script never shows a launcher', async () => {
+    const page = new FakeChatPage(readFixture('gubagoo-offline.html'));
+    const result = await runWidgetChat({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: scriptedAi(),
+      config: liveConfig,
+      store: new MemoryAttemptStore(),
+    });
+    assert.equal(result.status, 'widget_offline');
+    assert.equal(result.stopReason, 'widget_offline');
+    assert.equal(result.widgetVendor, 'gubagoo');
+    const notes = result.transcript.map((entry) => entry.text).join('\n');
+    assert.match(notes, /gubagoo/);
+    assert.match(notes, /launcher/i);
+    assert.deepEqual(page.sent, []);
+    assert.deepEqual(page.clicks, []);
+  });
 });

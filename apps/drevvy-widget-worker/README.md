@@ -5,6 +5,7 @@ Standalone Node worker for day-0 dealer outreach:
 1. **Research.** Given a dealer vehicle page, fetch that page and the dealer site, ask an OpenAI-compatible model for the widget vendor, phone numbers, and emails, check those values against the page, and upsert `dealer_directory`.
 2. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
 3. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
+4. **Scan.** Open the same pages without typing, and print the detected vendor, playbook, and status. Use this to evaluate widget finding before a live chat.
 
 Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.`
 
@@ -14,17 +15,21 @@ Migrations, applied separately from this package:
 
 - `supabase/migrations/20261018014500_dealer_directory_widget_chat.sql`
 - `supabase/migrations/20261018030000_widget_attempt_channels.sql` adds `channel` (`widget`, `lead_form`, `prechat`) and `first_reply_channel` on `widget_chat_attempts`.
+- `supabase/migrations/20261018120000_widget_playbooks.sql` adds `dealer_directory.widget_playbook` and the scan statuses `widget_offline`, `page_timeout`, and `composer_not_found`.
 
 ## Commands
 
 ```bash
 pnpm --filter @drevvy/widget-worker research urls.txt --hints hints.json
+pnpm --filter @drevvy/widget-worker scan urls.txt
 pnpm --filter @drevvy/widget-worker lead urls.txt
 pnpm --filter @drevvy/widget-worker chat urls.txt
 pnpm --filter @drevvy/widget-worker run urls.txt
 ```
 
-`run` researches the dealer, submits the vehicle lead form, then runs the widget chat.
+`run` researches the dealer, submits the vehicle lead form, then runs the widget chat. It does not scan.
+
+`scan` needs Supabase and does not need an API key, a shopper name, or the allowlist. It never fills or submits a chat or a form.
 
 `urls.txt` has one vehicle page URL per line. An optional second column is the stock number. `#` starts a comment.
 
@@ -46,12 +51,39 @@ https://www.example-motors.test/inventory/2024-honda-civic H24118
 
 A directory row is skipped when `last_checked_at` is under 30 days old. `--force` fetches again.
 
-Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat`.
+Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat`. A scan also prints `playbook` and `reason`.
 
 ```text
 url                         vendor    status    price    dry_run  channel
 https://www.example...      gubagoo   dry_run   -        true     widget
 ```
+
+## Finding the widget
+
+A scan and a chat both wait before they decide a page has no widget:
+
+1. Wait for network idle, then `WIDGET_SCAN_SETTLE_MS` (default 3 seconds).
+2. Move the pointer a short distance and scroll a little, so late launchers can render.
+3. Dismiss a cookie banner (ComplyAuto, OneTrust, and similar Accept All controls) and a trade-in popup. Chat, text-us, availability, and price controls are left alone.
+4. Detect the vendor from network request hosts, script `src` values, iframe URLs, the iframe document, and then the main page. Known vendors include Gubagoo, CarNow, Podium, Impel, Fullpath, Toyota SmartPath, and TruVideo AIVA.
+5. Look for the launcher and the message composer in the main page and inside a vendor iframe.
+6. If no launcher and no pre-chat gate are visible, and the page is not a captcha, send one screenshot to the model. The model returns a click point. The worker clicks that point only. A point whose reason mentions a captcha, cookie banner, trade-in popup, lead form, phone, or email is ignored.
+
+Gubagoo and CarNow use a vendor playbook: open the launcher, find the composer, send, and read the reply. Every other vendor, including a launcher found only by the screenshot, uses the generic playbook. The detected vendor and playbook are stored on `dealer_directory` (`widget_vendor`, `widget_playbook`).
+
+Scan statuses, with the reason stored on the attempt:
+
+| Status | Meaning |
+| --- | --- |
+| `dry_run` | A launcher and a composer, or a pre-chat gate, were found. Nothing was typed. |
+| `no_widget` | No vendor and no launcher after the wait. |
+| `widget_offline` | A vendor script or request was seen, and no launcher appeared. |
+| `composer_not_found` | The launcher was opened once, and the composer did not appear. |
+| `blocked` | A bot wall such as SOKAL, or a short access-denied page. |
+| `page_timeout` | The page timed out before it could be scanned. |
+| `captcha` | A captcha was visible. Nothing was clicked. |
+
+A blocked dealer site is not opened again, and a second scan does not insert another row.
 
 ## Lead form and pre-chat
 
@@ -67,7 +99,7 @@ A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's f
 
 ## Safety
 
-- `DRY_RUN` defaults to true. Only the exact string `false` turns it off. A dry run opens the page, logs the form fields or chat line, and does not type or submit.
+- `DRY_RUN` defaults to true. Only the exact string `false` turns it off. A dry run opens the page, logs the form fields or chat line, and does not type or submit. A scan may dismiss overlays, scroll, move the pointer, and click a launcher to see whether a composer appears. It does not type into a composer or a form.
 - Live sending also requires `WIDGET_CHAT_ALLOWLIST`, a comma-separated list of dealer origins. Matching is by hostname. An empty list sends nowhere.
 - The chat agent sends only the four script lines below. Model output cannot add a sentence. The chat composer refuses an email, phone, or name field, so the script is never typed into a contact box.
 - Captcha, a required field this worker does not recognize, and any form that asks for an address, date of birth, SSN, or trade details stop that form with nothing filled.
@@ -102,6 +134,7 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `DREVVY_ZIP` | when a form has ZIP | Five-digit ZIP, or ZIP+4. A ZIP field without this value stops the form. |
 | `RESEARCH_FETCH_TIMEOUT_MS` | no | Page fetch timeout. Default `15000`. |
 | `WIDGET_CHAT_MAX_TURNS` | no | Send cap. Values above 6 are clamped to 6. |
+| `WIDGET_SCAN_SETTLE_MS` | no | Extra wait after network idle before widget detection. Default `3000`. |
 
 Copy `.env.example` and export it, or run Node with `--env-file`.
 
@@ -132,4 +165,4 @@ node dist/cli.js run /data/urls.txt
 
 Railway cron can use that same command. Leave the restart policy at never so a finished job is not restarted in a loop.
 
-Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply both Supabase migrations separately before the first write.
+Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply the three Supabase migrations separately before the first write.

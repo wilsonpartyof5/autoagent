@@ -80,6 +80,7 @@ describe('research job', () => {
       phones: ['+18035550199'],
       emails: [],
       widget_vendor: 'gubagoo',
+      widget_playbook: 'gubagoo',
       source_urls: [pageUrl],
       confidence: 0.9,
       last_checked_at: now.toISOString(),

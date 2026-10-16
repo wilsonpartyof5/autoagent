@@ -5,10 +5,12 @@ export type ResultRow = {
   price: string | null;
   dryRun: string;
   channel?: string;
+  playbook?: string;
+  reason?: string;
 };
 
 export function formatResultsTable(rows: ResultRow[]): string {
-  const headers = ['url', 'vendor', 'status', 'price', 'dry_run', 'channel'];
+  const headers = ['url', 'vendor', 'status', 'price', 'dry_run', 'channel', 'playbook', 'reason'];
   const body = rows.map((row) => [
     truncate(row.url, 64),
     row.vendor || '-',
@@ -16,6 +18,8 @@ export function formatResultsTable(rows: ResultRow[]): string {
     row.price ?? '-',
     row.dryRun || '-',
     row.channel || '-',
+    row.playbook || '-',
+    truncate(row.reason || '-', 72),
   ]);
   const widths = headers.map((header, index) =>
     Math.max(header.length, ...body.map((line) => line[index]?.length ?? 0), 1),

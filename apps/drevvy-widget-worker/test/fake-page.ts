@@ -1,8 +1,11 @@
 import type { OutreachFill } from '../src/forms/outreach';
 import { isPrivateFieldHint } from '../src/forms/outreach';
 import type { ChatPage } from '../src/chat/types';
+import type { FrameSnapshot } from '../src/widgets/evidence';
 import type { FieldAttrs } from '../src/widgets/guards';
 import { isContactField } from '../src/widgets/guards';
+import { htmlHasAnySelector } from '../src/widgets/match';
+import { isOverlayDismiss, overlayButtons } from '../src/widgets/overlays';
 import type { WidgetVendor } from '../src/widgets/vendors';
 
 export class FakeChatPage implements ChatPage {
@@ -11,7 +14,11 @@ export class FakeChatPage implements ChatPage {
   readonly gotos: string[] = [];
   readonly outreach: OutreachFill[] = [];
   readonly submits: Array<{ formId: string | null; buttonText: string | null }> = [];
+  readonly points: Array<{ x: number; y: number }> = [];
+  readonly dismissed: string[] = [];
   screenshots = 0;
+  private currentHtml: string;
+  private composerOpen = false;
 
   constructor(
     readonly html: string,
@@ -21,17 +28,27 @@ export class FakeChatPage implements ChatPage {
       failSendClick?: boolean;
       failOutreach?: boolean;
       failSubmit?: boolean;
+      gotoError?: Error;
+      afterSettleHtml?: string;
+      htmlAfterDismiss?: string;
+      networkUrls?: string[];
+      frames?: FrameSnapshot[];
+      composerAfterLaunch?: boolean;
+      composerAfterVision?: boolean;
     } = {},
-  ) {}
+  ) {
+    this.currentHtml = html;
+  }
 
   private replyIndex = 0;
 
   async goto(url: string): Promise<void> {
+    if (this.options.gotoError) throw this.options.gotoError;
     this.gotos.push(url);
   }
 
   async content(): Promise<string> {
-    return this.html;
+    return this.currentHtml;
   }
 
   async widgetHtml(_vendor: WidgetVendor | null): Promise<string> {
@@ -56,6 +73,7 @@ export class FakeChatPage implements ChatPage {
     if (this.options.failSendClick && selectors.some((selector) => selector.includes('send') || selector.includes('Send'))) {
       return false;
     }
+    if (this.options.composerAfterLaunch) this.composerOpen = true;
     return true;
   }
 
@@ -74,7 +92,7 @@ export class FakeChatPage implements ChatPage {
   }
 
   async contactFormVisible(_vendor: WidgetVendor | null): Promise<boolean> {
-    return false;
+    return Boolean(this.options.composerAttrs && isContactField(this.options.composerAttrs));
   }
 
   async fillOutreach(fill: OutreachFill): Promise<boolean> {
@@ -90,7 +108,55 @@ export class FakeChatPage implements ChatPage {
     return true;
   }
 
+  async settle(): Promise<void> {
+    if (this.options.afterSettleHtml) this.currentHtml = this.options.afterSettleHtml;
+  }
+
+  networkUrls(): string[] {
+    return this.options.networkUrls ?? [];
+  }
+
+  async frames(): Promise<FrameSnapshot[]> {
+    return this.options.frames ?? [];
+  }
+
+  async dismissOverlays(): Promise<string[]> {
+    const names = overlayButtons(this.currentHtml)
+      .filter((button) => isOverlayDismiss(button.label, button.context))
+      .map((button) => button.label);
+    this.dismissed.push(...names);
+    if (names.length > 0 && this.options.htmlAfterDismiss) this.currentHtml = this.options.htmlAfterDismiss;
+    return names;
+  }
+
+  async launcherVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean> {
+    if (htmlHasAnySelector(this.currentHtml, selectors)) return true;
+    return this.visibleFrames(frameUrl).some((frame) => htmlHasAnySelector(frame.html, selectors) || (frameUrl != null && /<button\b/i.test(frame.html)));
+  }
+
+  async composerVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean> {
+    if (this.composerOpen) return true;
+    if (htmlHasAnySelector(this.currentHtml, selectors)) return true;
+    return this.visibleFrames(frameUrl).some((frame) => {
+      if (htmlHasAnySelector(frame.html, selectors)) return true;
+      return frameUrl != null && /<textarea\b|contenteditable=["']true["']/i.test(frame.html);
+    });
+  }
+
+  async clickPoint(x: number, y: number): Promise<boolean> {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 4000 || y > 4000) return false;
+    this.points.push({ x, y });
+    if (this.options.composerAfterVision) this.composerOpen = true;
+    return true;
+  }
+
   async close(): Promise<void> {
     return undefined;
+  }
+
+  private visibleFrames(frameUrl: RegExp | null): FrameSnapshot[] {
+    const frames = this.options.frames ?? [];
+    if (!frameUrl) return frames;
+    return frames.filter((frame) => frameUrl.test(frame.url));
   }
 }

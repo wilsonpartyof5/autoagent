@@ -1,7 +1,9 @@
 import type { Frame, Page } from 'playwright';
 
 import { isPrivateFieldHint, type OutreachFill } from '../forms/outreach';
+import type { FrameSnapshot } from '../widgets/evidence';
 import { asksForShopperContact, hasCaptchaChallenge, isContactField, isForbiddenContactSelector } from '../widgets/guards';
+import { isOverlayDismiss } from '../widgets/overlays';
 import { WIDGET_ADAPTERS, type WidgetVendor } from '../widgets/vendors';
 import type { ChatPage } from './types';
 
@@ -20,7 +22,7 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-export async function launchChatBrowser(): Promise<{ chatPage: ChatPage; close: () => Promise<void> }> {
+export async function launchChatBrowser(settleMs = 3_000): Promise<{ chatPage: ChatPage; close: () => Promise<void> }> {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -29,7 +31,7 @@ export async function launchChatBrowser(): Promise<{ chatPage: ChatPage; close: 
   const page = await context.newPage();
   page.setDefaultTimeout(15_000);
   return {
-    chatPage: new PlaywrightChatPage(page),
+    chatPage: new PlaywrightChatPage(page, settleMs),
     close: async () => {
       await context.close();
       await browser.close();
@@ -38,7 +40,16 @@ export async function launchChatBrowser(): Promise<{ chatPage: ChatPage; close: 
 }
 
 export class PlaywrightChatPage implements ChatPage {
-  constructor(private readonly page: Page) {}
+  private readonly network: string[] = [];
+
+  constructor(
+    private readonly page: Page,
+    private readonly settleMs: number,
+  ) {
+    this.page.on('request', (request) => {
+      if (this.network.length < 500) this.network.push(request.url());
+    });
+  }
 
   async goto(url: string): Promise<void> {
     await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -169,6 +180,95 @@ export class PlaywrightChatPage implements ChatPage {
     return asksForShopperContact(await this.widgetHtml(vendor));
   }
 
+  async settle(): Promise<void> {
+    try {
+      await this.page.waitForLoadState('networkidle', { timeout: 8_000 });
+    } catch {
+      // Chat widgets often keep a request open. The extra wait below still runs.
+    }
+    await delay(this.settleMs);
+    await this.page.mouse.move(24, 24);
+    await this.page.mouse.move(280, 180);
+    await this.page.mouse.wheel(0, 480);
+    await this.page.mouse.wheel(0, -240);
+  }
+
+  networkUrls(): string[] {
+    return [...this.network];
+  }
+
+  async frames(): Promise<FrameSnapshot[]> {
+    const found: FrameSnapshot[] = [];
+    for (const frame of this.page.frames()) {
+      if (frame === this.page.mainFrame()) continue;
+      try {
+        found.push({ url: frame.url(), html: await frame.content() });
+      } catch {
+        continue;
+      }
+    }
+    return found;
+  }
+
+  async dismissOverlays(): Promise<string[]> {
+    const dismissed: string[] = [];
+    const frames = this.page.frames().filter((frame) => !/gubagoo|carnow|podium|impel|truvideo|smartpath/i.test(frame.url()));
+    for (const frame of frames) {
+      const buttons = frame.locator('button, [role="button"], input[type="button"]');
+      const count = Math.min(await buttons.count(), 30);
+      for (let index = 0; index < count; index += 1) {
+        const button = buttons.nth(index);
+        try {
+          const label = ((await button.innerText()) || (await button.getAttribute('value')) || (await button.getAttribute('aria-label')) || '').trim();
+          const context = await button.evaluate((element) => {
+            const box = element.closest('div, section, form, aside');
+            return (box?.textContent ?? '').slice(0, 400);
+          });
+          if (!isOverlayDismiss(label, context)) continue;
+          await button.click({ timeout: 1_000 });
+          dismissed.push(label);
+        } catch {
+          continue;
+        }
+      }
+    }
+    return dismissed;
+  }
+
+  async launcherVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean> {
+    if (await this.selectorExists(selectors)) return true;
+    if (!frameUrl) return false;
+    for (const frame of this.page.frames()) {
+      if (!frameUrl.test(frame.url())) continue;
+      try {
+        if ((await frame.locator('button, [role="button"]').count()) > 0) return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  async composerVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean> {
+    if (await this.selectorExists(selectors)) return true;
+    if (!frameUrl) return false;
+    for (const frame of this.page.frames()) {
+      if (!frameUrl.test(frame.url())) continue;
+      try {
+        if ((await frame.locator('textarea, [contenteditable="true"]').count()) > 0) return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  async clickPoint(x: number, y: number): Promise<boolean> {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 4000 || y > 4000) return false;
+    await this.page.mouse.click(x, y);
+    return true;
+  }
+
   async fillOutreach(fill: OutreachFill): Promise<boolean> {
     if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
     const selectors = outreachSelectors(fill);
@@ -219,6 +319,10 @@ export class PlaywrightChatPage implements ChatPage {
       }
     }
     return false;
+  }
+
+  private async selectorExists(selectors: string[]): Promise<boolean> {
+    return this.withSelector(selectors, async (frame, selector) => (await frame.locator(selector).count()) > 0);
   }
 
   private async withSelector(

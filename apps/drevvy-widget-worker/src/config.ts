@@ -18,6 +18,7 @@ export type AppConfig = {
   leadZip: string | null;
   fetchTimeoutMs: number;
   maxTurns: number;
+  scanSettleMs: number;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -38,6 +39,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     leadZip: normalizeZip(env.DREVVY_ZIP),
     fetchTimeoutMs: positiveInt(env.RESEARCH_FETCH_TIMEOUT_MS, 15_000),
     maxTurns: resolveMaxTurns(env.WIDGET_CHAT_MAX_TURNS),
+    scanSettleMs: positiveInt(env.WIDGET_SCAN_SETTLE_MS, 3_000),
   };
 }
 

@@ -1,4 +1,5 @@
 import type { OutreachFill } from '../forms/outreach';
+import type { FrameSnapshot } from '../widgets/evidence';
 import type { WidgetVendor } from '../widgets/vendors';
 
 export const ATTEMPT_CHANNELS = ['widget', 'lead_form', 'prechat'] as const;
@@ -23,6 +24,9 @@ export const ATTEMPT_STATUSES = [
   'submitted',
   'private_info',
   'already_submitted',
+  'widget_offline',
+  'page_timeout',
+  'composer_not_found',
 ] as const;
 
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
@@ -89,4 +93,11 @@ export interface ChatPage {
   contactFormVisible(vendor: WidgetVendor | null): Promise<boolean>;
   fillOutreach(fill: OutreachFill): Promise<boolean>;
   submitForm(formId: string | null, buttonText: string | null): Promise<boolean>;
+  settle(): Promise<void>;
+  networkUrls(): string[];
+  frames(): Promise<FrameSnapshot[]>;
+  dismissOverlays(): Promise<string[]>;
+  launcherVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean>;
+  composerVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean>;
+  clickPoint(x: number, y: number): Promise<boolean>;
 }

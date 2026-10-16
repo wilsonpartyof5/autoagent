@@ -9,6 +9,8 @@ describe('config', () => {
     assert.equal(loadConfig({ DRY_RUN: 'true' }).dryRun, true);
     assert.equal(loadConfig({ DRY_RUN: 'FALSE' }).dryRun, true);
     assert.equal(loadConfig({ DRY_RUN: 'false' }).dryRun, false);
+    assert.equal(loadConfig({}).scanSettleMs, 3000);
+    assert.equal(loadConfig({ WIDGET_SCAN_SETTLE_MS: '1500' }).scanSettleMs, 1500);
   });
 
   it('caps the turn limit at 6', () => {

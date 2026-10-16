@@ -14,6 +14,7 @@ export type DealerDirectoryWrite = {
   phones: string[];
   emails: string[];
   widget_vendor: string | null;
+  widget_playbook: string | null;
   source_urls: string[];
   confidence: number | null;
   last_checked_at: string | null;
@@ -32,6 +33,7 @@ export const DIRECTORY_WRITE_KEYS = [
   'phones',
   'emails',
   'widget_vendor',
+  'widget_playbook',
   'source_urls',
   'confidence',
   'last_checked_at',

@@ -2,14 +2,15 @@ import type { ChatClient } from '../ai/types';
 import { parseClassification, type DealerReplyClassification, type ReplyStatus } from '../ai/parse';
 import { isAllowlisted, MAX_TURNS_CAP } from '../config';
 import { runPrechatGate } from '../forms/prechat';
-import { isBotBlockedPage } from '../forms/outreach';
 import {
   dealerAskedForShopperContact,
   hasCaptchaChallenge,
   sharesDisallowedContact,
 } from '../widgets/guards';
-import { detectWidgetVendor } from '../widgets/detect';
-import { extractWidgetScope, WIDGET_ADAPTERS, type WidgetVendor } from '../widgets/vendors';
+import { prepareInspection } from '../widgets/inspect';
+import { actionsFor } from '../widgets/playbooks';
+import { isTimeoutError } from '../widgets/timeout';
+import { extractWidgetScope, type WidgetVendor } from '../widgets/vendors';
 import { extractStockNumber, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
 import { siteUrlFromVehiclePage } from '../research/urls';
 import type { AttemptChannel, AttemptResult, AttemptStatus, AttemptStore, ChatPage, TranscriptEntry } from './types';
@@ -147,17 +148,22 @@ export async function runWidgetChat(input: {
   try {
     await input.page.goto(input.vehiclePageUrl);
   } catch (gotoError) {
-    mark('error', 'navigation_failed');
     error = gotoError instanceof Error ? gotoError.message : 'Could not open the vehicle page.';
+    if (isTimeoutError(gotoError)) {
+      mark('page_timeout', 'page_timeout', 'The page timed out before the widget could be checked.');
+    } else {
+      mark('error', 'navigation_failed');
+    }
     return finish();
   }
 
+  const inspection = await prepareInspection(input.page, input.ai, log);
   const html = await input.page.content();
-  if (isBotBlockedPage(html)) {
+  if (inspection.blocked) {
     mark('blocked', 'blocked', 'Stopped: the site blocked automated access.');
     return finish();
   }
-  vendor = detectWidgetVendor(html);
+  vendor = inspection.vendor;
   if (!stock) stock = extractStockNumber(html);
   const script = renderScript({
     stockNumber: stock,
@@ -166,16 +172,28 @@ export async function runWidgetChat(input: {
     shopperFirst: input.config.shopperFirst,
   });
 
-  if (!vendor) {
-    mark('no_widget', 'no_widget', 'No supported chat widget found.');
-    return finish();
-  }
-
-  const scope = (await input.page.widgetHtml(vendor)) || extractWidgetScope(html, vendor);
-  if ((await input.page.captchaVisible(vendor)) || hasCaptchaChallenge(scope)) {
+  if (inspection.captcha) {
     mark('captcha', 'captcha', 'Stopped: captcha.');
     return finish();
   }
+
+  const widgetPresent = inspection.launcherFound || inspection.gateFound;
+  if (!vendor && !widgetPresent) {
+    mark('no_widget', 'no_widget', 'No chat vendor or launcher appeared after the wait.');
+    return finish();
+  }
+  if (!widgetPresent) {
+    const via = inspection.source ?? 'the page';
+    mark(
+      'widget_offline',
+      'widget_offline',
+      `${vendor} was detected from ${via}, and no launcher appeared after the wait.`,
+    );
+    return finish();
+  }
+
+  const scope = vendor ? (await input.page.widgetHtml(vendor)) || extractWidgetScope(html, vendor) : '';
+  const actions = actionsFor(vendor);
 
   const openGate = async (widgetHtml: string) =>
     runPrechatGate({
@@ -212,7 +230,6 @@ export async function runWidgetChat(input: {
     return finish();
   }
 
-  const adapter = WIDGET_ADAPTERS[vendor];
   const maxTurns = Math.min(MAX_TURNS_CAP, Math.max(1, Math.floor(input.config.maxTurns)));
   const sent = new Set<ScriptId>();
   let turns = 0;
@@ -230,8 +247,8 @@ export async function runWidgetChat(input: {
       return false;
     }
     if (sent.size === 0) {
-      await input.page.click(adapter.launchSelectors);
-      const opened = await input.page.widgetHtml(vendor);
+      await input.page.click(actions.launchSelectors);
+      const opened = vendor ? await input.page.widgetHtml(vendor) : '';
       if ((await input.page.captchaVisible(vendor)) || hasCaptchaChallenge(opened)) {
         mark('captcha', 'captcha', 'Stopped: captcha after opening the widget.');
         return false;
@@ -242,14 +259,18 @@ export async function runWidgetChat(input: {
         return false;
       }
     }
-    const filled = await input.page.fill(adapter.inputSelectors, text);
+    const filled = await input.page.fill(actions.composerSelectors, text);
     if (!filled) {
-      mark('contact_form', 'composer_refused', 'Stopped: the composer was missing or looked like a contact field.');
+      if (await input.page.contactFormVisible(vendor)) {
+        mark('contact_form', 'composer_refused', 'Stopped: the composer was missing or looked like a contact field.');
+      } else {
+        mark('composer_not_found', 'composer_not_found', 'Stopped: the message composer was not found.');
+      }
       return false;
     }
-    const clicked = await input.page.click(adapter.sendSelectors);
+    const clicked = await input.page.click(actions.sendSelectors);
     if (!clicked) {
-      const pressed = await input.page.pressEnter(adapter.inputSelectors);
+      const pressed = await input.page.pressEnter(actions.composerSelectors);
       if (!pressed) {
         error = 'Could not send the chat message.';
         mark('error', 'send_failed');
@@ -266,7 +287,7 @@ export async function runWidgetChat(input: {
   if (!(await send('availability'))) return finish();
 
   while (!terminal && turns < maxTurns) {
-    const read = await readDealerMessage(input.page, adapter.messageSelectors, lastDealer);
+    const read = await readDealerMessage(input.page, actions.messageSelectors, lastDealer);
     if (read.kind === 'repeat') {
       mark(statusFromSent(sent), 'no_new_message');
       break;
