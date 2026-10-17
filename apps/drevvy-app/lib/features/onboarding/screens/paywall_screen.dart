@@ -24,16 +24,11 @@ import '../widgets/progress_dots.dart';
 /// First-run and in-context car-pack paywall.
 ///
 /// Superwall placement `onboarding_paywall` can replace this screen when a
-/// key exists. With no store keys, the three demo packs render here:
-/// 3 cars $47, 5 cars $67, 10 cars $97. Best value is 10 at $9.70 per car.
+/// key exists. With no store keys, the four demo packs render here:
+/// 1 car $27, 3 cars $47, 5 cars $67, 10 cars $97. Best value is 10 at $9.70 per car.
 /// Asking and shopping stay free; this screen can be skipped.
 class PaywallScreen extends ConsumerStatefulWidget {
-  const PaywallScreen({
-    super.key,
-    this.from,
-    this.placement,
-    this.repository,
-  });
+  const PaywallScreen({super.key, this.from, this.placement, this.repository});
 
   final String? from;
   final CarsBalancePlacement? placement;
@@ -59,12 +54,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (isOnboarding) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final placement = widget.placement ??
+        final placement =
+            widget.placement ??
             onboardingPaywallPlacementFor(PurchaseConfig.fromEnvironment());
-        unawaited(placement.register(
-          presentLocalPaywall: () {},
-          onPurchased: _continueAfterStorePaywall,
-        ));
+        unawaited(
+          placement.register(
+            presentLocalPaywall: () {},
+            onPurchased: _continueAfterStorePaywall,
+          ),
+        );
       });
     }
   }
@@ -74,7 +72,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final offerings = await _repo.purchaseService.getOfferings();
       if (!mounted || offerings == null) return;
       setState(() {
-        _offerings = {for (final offering in offerings) offering.packType: offering};
+        _offerings = {
+          for (final offering in offerings) offering.packType: offering,
+        };
       });
     } catch (_) {
       // Demo catalog prices stay on screen.
@@ -98,7 +98,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return '${formatUsd(amount / pack.cars, cents: true)}/car';
   }
 
-  String _cta(CarPackType pack) => 'Get ${pack.cars} cars for ${_totalLabel(pack)}';
+  String _cta(CarPackType pack) =>
+      'Get ${pack.carsLabel} for ${_totalLabel(pack)}';
 
   Future<void> _continueAfterStorePaywall() async {
     if (!mounted) return;
@@ -119,13 +120,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return;
     }
     final message = switch (result) {
-      PurchasePending() => 'Payment is pending. Cars are added when it completes.',
+      PurchasePending() =>
+        'Payment is pending. Cars are added when it completes.',
       PurchaseError(:final message) => message,
       PurchaseCancelled() => null,
       PurchaseSuccess() => null,
     };
     if (message != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -134,6 +137,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'placement': isOnboarding ? 'onboarding' : 'paywall',
       'pack_id': pack.productId,
+      'pack_size': pack.cars,
+      'pack_mix': CarPackType.packMix,
       'price': pack.priceUsd,
       'currency': 'USD',
       'stage': 'preview',
@@ -171,13 +176,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DrevvySpace.s2,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (isOnboarding)
                         IconButton(
-                          icon: Icon(LucideIcons.chevronLeft, color: colors.ink),
+                          icon: Icon(
+                            LucideIcons.chevronLeft,
+                            color: colors.ink,
+                          ),
                           onPressed: () {
                             _dismiss('back');
                             context.pop();
@@ -186,7 +196,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       else
                         const SizedBox(width: 48),
                       if (isOnboarding)
-                        const ProgressDots(current: 4, total: onboardingStepCount),
+                        const ProgressDots(
+                          current: 4,
+                          total: onboardingStepCount,
+                        ),
                       if (!isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.x, color: colors.ink),
@@ -202,7 +215,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DrevvySpace.gutter,
+                    ),
                     child: Column(
                       children: [
                         const SizedBox(height: DrevvySpace.s4),
@@ -219,25 +234,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         ),
                         const SizedBox(height: DrevvySpace.s3),
                         Text(
-                          'From \$9.70/car · Car packs 3 · 5 · 10 · One-time. Never expire.',
+                          'From \$9.70/car · Car packs 1 · 3 · 5 · 10 · One-time. Never expire.',
                           style: text.callout.copyWith(color: colors.ink),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: DrevvySpace.s5),
-                        for (final pack in CarPackType.values) ...[
-                          PackOptionCard(
-                            pack: pack,
-                            isSelected: _selected == pack,
-                            showBadge: pack == CarPackType.bestValue,
-                            totalLabel: _totalLabel(pack),
-                            perCarLabel: _perCarLabel(pack),
-                            onTap: () => _selectPack(pack),
-                          ),
-                          const SizedBox(height: DrevvySpace.s3),
-                        ],
+                        const SizedBox(height: DrevvySpace.s4),
+                        PackPickerColumn(
+                          selected: _selected,
+                          onSelected: _selectPack,
+                          totalLabel: _totalLabel,
+                          perCarLabel: _perCarLabel,
+                        ),
                         const SizedBox(height: DrevvySpace.s2),
                         Text(
-                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0. Packs are one-time and never expire.',
+                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0.',
                           style: text.callout.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),
@@ -267,12 +277,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         onPressed: _buying ? null : _buy,
                         isLoading: _buying,
                         isFullWidth: true,
-                      ),
-                      const SizedBox(height: DrevvySpace.s2),
-                      Text(
-                        'One-time purchase. No recurring charges.',
-                        style: text.micro.copyWith(color: colors.muted),
-                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),

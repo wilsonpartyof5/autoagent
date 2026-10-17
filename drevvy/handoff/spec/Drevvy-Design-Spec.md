@@ -349,7 +349,7 @@ GlassCard(padding: EdgeInsets.all(8), child: Column(mainAxisSize: MainAxisSize.m
 **Sticky VDP CTA sheet:**
 - White @ 97% with blur (dark: `glass`), top radius 26, padding 12/16. It sits flush with the bottom edge, and its bottom padding is 12 pt + the safe-area inset, so the fill runs under the home indicator. Use `SafeArea(top: false)` inside a full-bleed `DecoratedBox`. There is no tab bar on detail pages (§1.1).
 - Contents: listed price on the left (`figureS`), then the primary button, then a note line underneath.
-- Free user: "Get Best Price", with the note "🔒 Drevvy Pro · $97/mo · 10 cars a month".
+- Free user: "Unlock my price", with the note "From $9.70/car · Car packs 1 · 3 · 5 · 10 ($27, $47, $67, $97). One-time. Never expire."
 - Subscriber: a `lilacTint` banner reading "Pro · 3 of 10 cars used this month · resets Oct 20", then "Add to Agent", with the note "Drevvy contacts Dealer A during business hours".
 - At 10 of 10 this month, the button becomes "10 of 10 used · resets Oct 20" (secondary style, opens Deals). After cancellation it becomes "Resubscribe to add cars".
 
@@ -585,7 +585,8 @@ Drevvy is a **transparency layer** that uses market data. With dealers it is a p
 
 ### 10.4 Plan, limits and end states
 
-- **Plan.** Drevvy Pro, $97/month: 10 cars per billing month. The count resets on the billing date ("4 of 10 used · resets Oct 20"). Adding a car uses one. There are no slots and no "at a time" limit.
+- **Plan.** One-time car packs that never expire: 1 car $27, 3 cars $47, 5 cars $67, 10 cars $97 ($9.70 per car, best value). Adding a car uses one. There is no monthly reset and no subscription.
+- **Pack picker.** Four compact full-width rows in order 1, 3, 5, 10. The 10-pack is preselected and carries the BEST VALUE badge. Savings chips compare with the 1-car price: 3 cars “Save 42.0%/car”, 5 cars “Save 50.4%/car”, 10 cars “Save 64.1%/car”. The 1-car row’s second line is “One-time · never expires.” The same picker is on the paywall, the Out of cars sheet, and Account → Buy cars. The sheet does not scroll the rows. Store product `drevvy_pack_1`, RevenueCat package `pack_1`, grants 1 CARS. The analytics pack-mix dimension is 1, 3, 5, 10.
 - **Giving cars back.** A deal that ends as **No response** (no dealer reply in 5 days) or **No longer listed** (the listing disappeared, likely sold) gives that car back to the month's count. Trigger: the dealer confirms it sold, or the listing is missing from MarketCheck for 2+ daily refreshes (MarketCheck only infers "sold" after 7+ days, so the UI says "likely sold"). It sends a push and an in-app banner: "This RAV4 is no longer listed (likely sold). You got your car back, so add another and keep going." with a Shop CTA. **Removing a deal:** if the shopper removes it within **30 minutes of adding it and** before Drevvy has contacted the dealer, the car goes back to the 10. Otherwise it still counts. Both conditions are required: a deal Drevvy contacted 5 minutes after adding counts, and so does an uncontacted deal removed after 30 minutes. The Remove sheet states which case applies (§6.8); a fresh card shows the remaining undo time (§6.2). When a contacted deal is removed, Drevvy sends the dealer one short, polite close-out message.
 - **Silence.** Drevvy follows up on its own schedule (email/text/call sequence TBD; the UI only says "business hours" and "email or text"). Five days with no reply is a dead end: the deal ends as No response.
 - **Cancellation.** Deals already started run to completion, even past the billing date, but no new cars can be added. Profile shows the banner "Drevvy is finishing your active deals" with Resubscribe. Add to Agent becomes "Resubscribe to add cars".

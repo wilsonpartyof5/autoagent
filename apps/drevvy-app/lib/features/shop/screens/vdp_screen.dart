@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/providers/app_services.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../core/theme/drevvy_theme.dart';
@@ -164,19 +165,21 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     final listing = _listing;
     final balance = _creditBalance;
     if (listing == null || balance == null) return;
-    unawaited(showUnlockPaywall(
-      context: context,
-      listing: listing,
-      balance: balance,
-      repo: _repo,
-      avgSavings: _avgSavings,
-      placement: _carsBalancePlacement,
-      onCanUnlock: (next) async {
-        if (!mounted) return;
-        setState(() => _creditBalance = next);
-        _showAddSheet();
-      },
-    ));
+    unawaited(
+      showUnlockPaywall(
+        context: context,
+        listing: listing,
+        balance: balance,
+        repo: _repo,
+        avgSavings: _avgSavings,
+        placement: _carsBalancePlacement,
+        onCanUnlock: (next) async {
+          if (!mounted) return;
+          setState(() => _creditBalance = next);
+          _showAddSheet();
+        },
+      ),
+    );
   }
 
   @override
@@ -556,7 +559,7 @@ class _HowDrevvyWorks extends StatelessWidget {
           Text('How Drevvy works for you', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
           _Step(number: '1', text: 'You tap "Unlock my price"'),
-          _Step(number: '2', text: 'Pick a car pack (3, 5, or 10 cars)'),
+          _Step(number: '2', text: 'Pick a car pack (1, 3, 5, or 10 cars)'),
           _Step(
             number: '3',
             text: 'Drevvy asks the dealer for an itemized out-the-door price',

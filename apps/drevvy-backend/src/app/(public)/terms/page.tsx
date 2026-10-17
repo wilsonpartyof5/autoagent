@@ -99,48 +99,32 @@ export default function TermsPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-semibold mb-4">Subscription and Billing</h2>
+              <h2 className="text-2xl font-semibold mb-4">Car Packs and Billing</h2>
 
-              <h3 className="text-xl font-medium mt-6 mb-3">Subscription Terms</h3>
+              <h3 className="text-xl font-medium mt-6 mb-3">One-time car packs</h3>
               <p className="text-muted-foreground mb-4">
-                Access to Drevvy&apos;s pricing service requires a paid subscription of {LEGAL.SUBSCRIPTION_PRICE} per{' '}
-                {LEGAL.SUBSCRIPTION_PERIOD}. Your subscription includes:
+                Asking and shopping are free. Unlocking a dealer price uses one car from a pack you buy.
+                Packs are one-time purchases and never expire:
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
-                <li>Pricing requests on up to {LEGAL.VEHICLE_LIMIT} vehicles at any time</li>
-                <li>Full out-the-door price breakdowns</li>
-                <li>Unlimited browsing of vehicle listings</li>
+                {LEGAL.CAR_PACKS.map((pack) => (
+                  <li key={pack.cars}>
+                    {pack.cars === 1 ? '1 car' : `${pack.cars} cars`} for {pack.price} ({pack.perCar} per car)
+                  </li>
+                ))}
               </ul>
-
-              <h3 className="text-xl font-medium mt-6 mb-3">Auto-Renewal</h3>
               <p className="text-muted-foreground mb-4">
-                Your subscription will automatically renew at the end of each billing period unless you cancel
-                before the renewal date. You authorize the applicable app store (Apple App Store or Google Play
-                Store) to charge your payment method on file for each renewal.
+                There is no subscription and no automatic renewal. Cars you buy stay on your account until
+                you use them. Each unlock includes a written out-the-door price request. If a dealer never
+                replies, that car is returned to your balance.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Payment Processing</h3>
               <p className="text-muted-foreground mb-4">
                 All payments are processed through Apple App Store or Google Play Store. Drevvy does not
                 directly handle your payment information. Payment terms, including refunds and disputes, are
-                governed by the applicable app store&apos;s policies.
-              </p>
-
-              <h3 className="text-xl font-medium mt-6 mb-3">Cancellation</h3>
-              <p className="text-muted-foreground mb-4">
-                You may cancel your subscription at any time through your device&apos;s subscription settings:
-              </p>
-              <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>
-                  <strong>iOS:</strong> Settings &gt; Your Name &gt; Subscriptions &gt; Drevvy
-                </li>
-                <li>
-                  <strong>Android:</strong> Google Play Store &gt; Subscriptions &gt; Drevvy
-                </li>
-              </ul>
-              <p className="text-muted-foreground mt-4">
-                Cancellation takes effect at the end of your current billing period. You will retain access
-                until then.
+                governed by the applicable app store&apos;s policies. You can restore a previous purchase
+                from the App.
               </p>
             </section>
 
@@ -193,7 +177,7 @@ export default function TermsPage() {
               </p>
               <p className="text-muted-foreground mb-4">
                 Our AI agent texts dealership sales staff to request itemized out-the-door pricing on specific
-                vehicles selected by our subscribers.
+                vehicles a shopper selects.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Message Frequency</h3>

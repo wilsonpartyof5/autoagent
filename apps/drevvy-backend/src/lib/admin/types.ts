@@ -186,6 +186,11 @@ export type ShopperDeal = {
   llmCostUsd: number;
 };
 
+/** Pack-mix dimension. Includes the 1-car pack. */
+export const PACK_MIX_SIZES = [1, 3, 5, 10] as const;
+
+export type PackMixSize = (typeof PACK_MIX_SIZES)[number];
+
 export type ShopperRecord = {
   id: string;
   name: string;
@@ -193,6 +198,8 @@ export type ShopperRecord = {
   signedUpAt: string;
   subscription: SubscriptionStatus;
   monthlyPriceUsd: number;
+  /** Cars in the pack this shopper bought. Null when they have not purchased. */
+  purchasedPack: PackMixSize | null;
   funnel: FunnelStep[];
   lastActivityAt: string;
   deals: ShopperDeal[];

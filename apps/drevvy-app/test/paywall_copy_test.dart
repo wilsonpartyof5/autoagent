@@ -2,6 +2,7 @@ import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/models/listing.dart';
 import 'package:drevvy_app/features/shop/widgets/out_of_cars_sheet.dart';
+import 'package:drevvy_app/features/shop/widgets/pack_option_card.dart';
 import 'package:drevvy_app/features/shop/widgets/pack_picker_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,59 +30,122 @@ void main() {
   });
 
   tearDown(() {
-    final view = TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first;
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first;
     view.resetPhysicalSize();
     view.resetDevicePixelRatio();
   });
 
-  testWidgets('pack picker keeps per-car cost, savings vs the 3-pack, and avg savings', (tester) async {
+  testWidgets(
+    'pack picker uses four rows, savings vs the 1-car price, and the 10-pack',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: const Scaffold(
+            body: PackPickerSheet(
+              listing: listing,
+              avgSavings: avgSavings,
+              onPurchase: _noopPurchase,
+              onRestore: _noop,
+              onKeepShopping: _noop,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text(r'$27.00/car'), findsOneWidget);
+      expect(find.text(r'$15.67/car'), findsOneWidget);
+      expect(find.text(r'$13.40/car'), findsOneWidget);
+      expect(find.text(r'$9.70/car'), findsOneWidget);
+      expect(find.text('1 car · Single'), findsOneWidget);
+      expect(find.text('3 cars · Starter'), findsOneWidget);
+      expect(find.text('5 cars · Plus'), findsOneWidget);
+      expect(find.text('10 cars · Best Value'), findsOneWidget);
+      expect(find.text('Save 42.0%/car'), findsOneWidget);
+      expect(find.text('Save 50.4%/car'), findsOneWidget);
+      expect(find.text('Save 64.1%/car'), findsOneWidget);
+      expect(find.text('One-time · never expires'), findsOneWidget);
+      expect(find.text(PackPickerColumn.footnote), findsOneWidget);
+      expect(find.text('BEST VALUE'), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('1 car · Single')).dy <
+            tester.getTopLeft(find.text('3 cars · Starter')).dy,
+        isTrue,
+      );
+      expect(
+        tester.getTopLeft(find.text('3 cars · Starter')).dy <
+            tester.getTopLeft(find.text('10 cars · Best Value')).dy,
+        isTrue,
+      );
+      expect(find.text('3–5%'), findsOneWidget);
+      expect(find.textContaining('Source: CarEdge'), findsOneWidget);
+      expect(find.text('Restore purchases'), findsOneWidget);
+      expect(find.text('Get 10 cars for \$97'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'out of cars sheet keeps pack prices and the never-expires line',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: drevvyTheme(Brightness.light),
+          home: const Scaffold(
+            body: OutOfCarsSheet(
+              listing: listing,
+              onPurchase: _noopPurchase,
+              onNotNow: _noop,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('0 CARS LEFT'), findsOneWidget);
+      expect(find.text(r'$27.00/car'), findsOneWidget);
+      expect(find.text(r'$15.67/car'), findsOneWidget);
+      expect(find.text(r'$9.70/car'), findsOneWidget);
+      expect(find.text('Save 42.0%/car'), findsOneWidget);
+      expect(find.text('Save 64.1%/car'), findsOneWidget);
+      expect(find.text('One-time · never expires'), findsOneWidget);
+      expect(find.text(PackPickerColumn.footnote), findsOneWidget);
+      expect(find.text('Get 10 cars for \$97'), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
+    },
+  );
+
+  testWidgets('four packs stay on screen in a phone-sized sheet', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+
     await tester.pumpWidget(
       MaterialApp(
         theme: drevvyTheme(Brightness.light),
         home: const Scaffold(
-          body: PackPickerSheet(
-            listing: listing,
-            avgSavings: avgSavings,
-            onPurchase: _noopPurchase,
-            onRestore: _noop,
-            onKeepShopping: _noop,
-          ),
+          body: OutOfCarsSheet(onPurchase: _noopPurchase, onNotNow: _noop),
         ),
       ),
     );
 
-    expect(find.text(r'$15.67/car'), findsOneWidget);
-    expect(find.text(r'$13.40/car'), findsOneWidget);
-    expect(find.text(r'$9.70/car'), findsOneWidget);
-    expect(find.text('Save 14.5%/car · \$11.33 vs Starter'), findsOneWidget);
-    expect(find.text('Save 38.1%/car · \$59.67 vs Starter'), findsOneWidget);
-    expect(find.text('One-time · never expires'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.text(r'$27'), findsOneWidget);
+    expect(find.text(r'$47'), findsOneWidget);
+    expect(find.text(r'$67'), findsOneWidget);
+    expect(find.text(r'$97'), findsOneWidget);
     expect(find.text('BEST VALUE'), findsOneWidget);
-    expect(find.text('3–5%'), findsOneWidget);
-    expect(find.textContaining('Source: CarEdge'), findsOneWidget);
-    expect(find.text('Restore purchases'), findsOneWidget);
     expect(find.text('Get 10 cars for \$97'), findsOneWidget);
-  });
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(find.textContaining('negotiat'), findsNothing);
 
-  testWidgets('out of cars sheet keeps pack prices and the never-expires line', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: drevvyTheme(Brightness.light),
-        home: const Scaffold(
-          body: OutOfCarsSheet(
-            listing: listing,
-            onPurchase: _noopPurchase,
-            onNotNow: _noop,
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('0 CARS LEFT'), findsOneWidget);
-    expect(find.text(r'$15.67/car'), findsOneWidget);
-    expect(find.text(r'$9.70/car'), findsOneWidget);
-    expect(find.text('Save 38.1%/car · \$59.67 vs Starter'), findsOneWidget);
-    expect(find.text('One-time purchase. Packs never expire.'), findsOneWidget);
+    await tester.tap(find.text('1 car · Single'));
+    await tester.pump();
+    expect(find.text('Get 1 car for \$27'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 

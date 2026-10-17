@@ -5,6 +5,7 @@ import {
   DEAL_STAGES,
   MONTHLY_PRICE_USD,
   type DealStage,
+  type PackMixSize,
   type DealerContact,
   type DemoVehicle,
   type FunnelStep,
@@ -42,6 +43,7 @@ const SHOPPER_SEEDS: Array<{
   email: string;
   signedUpAt: string;
   subscription: SubscriptionStatus;
+  purchasedPack: PackMixSize | null;
   funnel: FunnelStep[];
 }> = [
   {
@@ -50,6 +52,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'maya.chen@example.com',
     signedUpAt: '2026-08-12T15:04:00.000Z',
     subscription: 'active',
+    purchasedPack: 10,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply', 'best_price_ready', 'bought_or_won'],
   },
   {
@@ -58,6 +61,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'jordan.blake@example.com',
     signedUpAt: '2026-09-02T18:22:00.000Z',
     subscription: 'active',
+    purchasedPack: 5,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply'],
   },
   {
@@ -66,6 +70,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'priya.shah@example.com',
     signedUpAt: '2026-09-20T13:10:00.000Z',
     subscription: 'paywall_shown',
+    purchasedPack: null,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown'],
   },
   {
@@ -74,6 +79,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'chris.alvarez@example.com',
     signedUpAt: '2026-07-18T11:40:00.000Z',
     subscription: 'active',
+    purchasedPack: 3,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply', 'best_price_ready'],
   },
   {
@@ -82,6 +88,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'elena.brooks@example.com',
     signedUpAt: '2026-06-01T16:05:00.000Z',
     subscription: 'canceled',
+    purchasedPack: 10,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply', 'best_price_ready'],
   },
   {
@@ -90,6 +97,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'sam.okonkwo@example.com',
     signedUpAt: '2026-09-08T20:15:00.000Z',
     subscription: 'active',
+    purchasedPack: 1,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply', 'best_price_ready'],
   },
   {
@@ -98,6 +106,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'riley.nguyen@example.com',
     signedUpAt: '2026-09-28T09:30:00.000Z',
     subscription: 'onboarding',
+    purchasedPack: null,
     funnel: ['signup'],
   },
   {
@@ -106,6 +115,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'avery.kim@example.com',
     signedUpAt: '2026-09-25T17:45:00.000Z',
     subscription: 'active',
+    purchasedPack: 3,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply'],
   },
 ];

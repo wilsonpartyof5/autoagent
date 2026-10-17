@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -10,14 +11,16 @@ import 'pack_option_card.dart';
 
 /// Screen X: Pack picker paywall sheet shown when user taps "Unlock my price".
 /// v1.7: Replaces monthly subscription with one-time car packs.
-/// 
-/// Pack options:
-/// - 3 cars (Starter) $47 - $15.67/car
-/// - 5 cars (Plus) $67 - $13.40/car, save 14.5%/car vs Starter
-/// - 10 cars (Best Value) $97 - $9.70/car, save 38.1%/car vs Starter (preselected)
-/// 
-/// RevenueCat products: drevvy_pack_3, drevvy_pack_5, drevvy_pack_10
+///
+/// Pack options, full-width rows, 10-pack preselected:
+/// - 1 car (Single) $27 — $27.00/car, "One-time · never expires"
+/// - 3 cars (Starter) $47 — $15.67/car, Save 42.0%/car
+/// - 5 cars (Plus) $67 — $13.40/car, Save 50.4%/car
+/// - 10 cars (Best Value) $97 — $9.70/car, Save 64.1%/car
+///
+/// Products drevvy_pack_1/3/5/10, packages pack_1/3/5/10, 1/3/5/10 CARS.
 /// Superwall placement: unlock_my_price
+/// Account → Buy cars uses this same sheet.
 class PackPickerSheet extends StatefulWidget {
   const PackPickerSheet({
     super.key,
@@ -34,7 +37,7 @@ class PackPickerSheet extends StatefulWidget {
   final Future<void> Function(CarPackType) onPurchase;
   final VoidCallback onRestore;
   final VoidCallback onKeepShopping;
-  
+
   /// Server-driven avg_savings stat. Hidden if null.
   final AvgSavingsConfig? avgSavings;
   final String placement;
@@ -50,7 +53,9 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
   @override
   void initState() {
     super.initState();
-    ProductAnalytics.instance.screen('pack_picker', {'placement': widget.placement});
+    ProductAnalytics.instance.screen('pack_picker', {
+      'placement': widget.placement,
+    });
     ProductAnalytics.instance.track(AnalyticsEvents.paywallViewed, {
       'placement': widget.placement,
       'provider': 'local',
@@ -58,6 +63,7 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
     ProductAnalytics.instance.track(AnalyticsEvents.packViewed, {
       'placement': widget.placement,
       'pack_count': CarPackType.values.length,
+      'pack_mix': CarPackType.packMix,
     });
   }
 
@@ -66,6 +72,8 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'placement': widget.placement,
       'pack_id': pack.productId,
+      'pack_size': pack.cars,
+      'pack_mix': CarPackType.packMix,
       'price': pack.priceUsd,
       'currency': 'USD',
       'stage': 'preview',
@@ -99,134 +107,86 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: DrevvySpace.s3),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.track,
-                borderRadius: BorderRadius.circular(2),
-              ),
+          SizedBox(
+            height: 40,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.track,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: Icon(LucideIcons.x, color: colors.muted),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ],
             ),
           ),
-
-          // Close button
-          Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: DrevvySpace.s2, top: DrevvySpace.s1),
-              child: IconButton(
-                icon: Icon(LucideIcons.x, color: colors.muted),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Car preview image (only shown when context listing provided)
-                if (widget.listing?.media.primaryPhoto != null)
+                if (widget.listing?.media.primaryPhoto != null) ...[
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(DrevvyRadius.md),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
+                    borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+                    child: SizedBox(
+                      height: 72,
+                      width: double.infinity,
                       child: Image.asset(
                         widget.listing!.media.primaryPhoto!,
                         fit: BoxFit.cover,
                       ),
                     ),
                   ),
-
-                const SizedBox(height: DrevvySpace.s5),
-
-                // Title
-                Text(
-                  'Let Drevvy handle this dealer.',
-                  style: text.headline,
-                ),
-
-                const SizedBox(height: DrevvySpace.s2),
-
-                // Subtitle
-                Text(
-                  'Pick a car pack. Each car you unlock uses one. Packs never expire.',
-                  style: text.body.copyWith(color: colors.muted),
-                ),
-
-                const SizedBox(height: DrevvySpace.s5),
-
-                // Pack options
-                PackOptionCard(
-                  pack: CarPackType.starter,
-                  isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => _selectPack(CarPackType.starter),
-                ),
-                const SizedBox(height: DrevvySpace.s3),
-                PackOptionCard(
-                  pack: CarPackType.plus,
-                  isSelected: _selectedPack == CarPackType.plus,
-                  onTap: () => _selectPack(CarPackType.plus),
-                ),
-                const SizedBox(height: DrevvySpace.s3),
-                PackOptionCard(
-                  pack: CarPackType.bestValue,
-                  isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => _selectPack(CarPackType.bestValue),
-                  showBadge: true,
-                ),
-
-                const SizedBox(height: DrevvySpace.s5),
-
-                // Avg savings stat (hidden if unavailable)
-                if (widget.avgSavings != null) ...[
-                  _AvgSavingsStat(config: widget.avgSavings!),
-                  const SizedBox(height: DrevvySpace.s5),
+                  const SizedBox(height: DrevvySpace.s2),
                 ],
-
-                // CTA button (follows selection)
+                Text('Let Drevvy handle this dealer.', style: text.headline),
+                const SizedBox(height: DrevvySpace.s1),
+                Text(
+                  'Pick a car pack. Each car you unlock uses one.',
+                  style: text.callout.copyWith(color: colors.muted),
+                ),
+                const SizedBox(height: DrevvySpace.s3),
+                PackPickerColumn(
+                  selected: _selectedPack,
+                  onSelected: _selectPack,
+                ),
+                if (widget.avgSavings != null) ...[
+                  const SizedBox(height: DrevvySpace.s3),
+                  _AvgSavingsStat(config: widget.avgSavings!),
+                ],
+                const SizedBox(height: DrevvySpace.s3),
                 DrevvyPrimaryButton(
                   label: _selectedPack.ctaText,
                   onPressed: _isPurchasing ? null : _handlePurchase,
                   isLoading: _isPurchasing,
                 ),
-
-                const SizedBox(height: DrevvySpace.s3),
-
-                // Disclosure
-                Center(
-                  child: Text(
-                    'One-time purchase. No recurring charges. Dealer response and savings are not guaranteed.',
-                    style: text.callout.copyWith(color: colors.muted),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-                const SizedBox(height: DrevvySpace.s4),
-
-                // Keep shopping free
                 Center(
                   child: DrevvyGhostButton(
                     label: 'Keep shopping free',
                     onPressed: () {
-                      ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
-                        'placement': widget.placement,
-                        'action': 'keep_shopping',
-                        'provider': 'local',
-                      });
+                      ProductAnalytics.instance.track(
+                        AnalyticsEvents.paywallDismissed,
+                        {
+                          'placement': widget.placement,
+                          'action': 'keep_shopping',
+                          'provider': 'local',
+                        },
+                      );
                       widget.onKeepShopping();
                     },
                     color: colors.ink,
                   ),
                 ),
-
-                const SizedBox(height: DrevvySpace.s3),
-
-                // Footer links
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -237,17 +197,21 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                         style: text.callout.copyWith(color: colors.muted),
                       ),
                     ),
-                    Text(' · ', style: text.callout.copyWith(color: colors.muted)),
+                    Text(
+                      ' · ',
+                      style: text.callout.copyWith(color: colors.muted),
+                    ),
                     TextButton(
-                      onPressed: () {
-                        // TODO: Open terms
-                      },
+                      onPressed: () {},
                       child: Text(
                         'Terms',
                         style: text.callout.copyWith(color: colors.muted),
                       ),
                     ),
-                    Text(' · ', style: text.callout.copyWith(color: colors.muted)),
+                    Text(
+                      ' · ',
+                      style: text.callout.copyWith(color: colors.muted),
+                    ),
                     TextButton(
                       onPressed: () => showAnalyticsPrivacy(context),
                       child: Text(
@@ -260,8 +224,7 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
               ],
             ),
           ),
-
-          SizedBox(height: bottomPadding + DrevvySpace.s4),
+          SizedBox(height: bottomPadding),
         ],
       ),
     );
@@ -293,10 +256,7 @@ class _AvgSavingsStat extends StatelessWidget {
             style: text.bodyStrong.copyWith(color: colors.mint),
           ),
           const SizedBox(height: DrevvySpace.s1),
-          Text(
-            config.label,
-            style: text.callout.copyWith(color: colors.mint),
-          ),
+          Text(config.label, style: text.callout.copyWith(color: colors.mint)),
           const SizedBox(height: DrevvySpace.s1),
           Text(
             'Source: ${config.source}.',

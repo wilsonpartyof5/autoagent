@@ -38,7 +38,9 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
   @override
   void initState() {
     super.initState();
-    ProductAnalytics.instance.screen('out_of_cars', {'placement': widget.placement});
+    ProductAnalytics.instance.screen('out_of_cars', {
+      'placement': widget.placement,
+    });
     ProductAnalytics.instance.track(AnalyticsEvents.paywallViewed, {
       'placement': widget.placement,
       'provider': 'local',
@@ -46,6 +48,7 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
     ProductAnalytics.instance.track(AnalyticsEvents.packViewed, {
       'placement': widget.placement,
       'pack_count': CarPackType.values.length,
+      'pack_mix': CarPackType.packMix,
     });
   }
 
@@ -54,6 +57,8 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'placement': widget.placement,
       'pack_id': pack.productId,
+      'pack_size': pack.cars,
+      'pack_mix': CarPackType.packMix,
       'price': pack.priceUsd,
       'currency': 'USD',
       'stage': 'preview',
@@ -87,55 +92,48 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: DrevvySpace.s3),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.track,
-                borderRadius: BorderRadius.circular(2),
-              ),
+          SizedBox(
+            height: 40,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.track,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: Icon(LucideIcons.x, color: colors.muted),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ],
             ),
           ),
-
-          // Close button
-          Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.only(
-                right: DrevvySpace.s2,
-                top: DrevvySpace.s1,
-              ),
-              child: IconButton(
-                icon: Icon(LucideIcons.x, color: colors.muted),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Car preview image
-                if (widget.listing?.media.primaryPhoto != null)
+                if (widget.listing?.media.primaryPhoto != null) ...[
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(DrevvyRadius.md),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
+                    borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+                    child: SizedBox(
+                      height: 72,
+                      width: double.infinity,
                       child: Image.asset(
                         widget.listing!.media.primaryPhoto!,
                         fit: BoxFit.cover,
                       ),
                     ),
                   ),
-
-                const SizedBox(height: DrevvySpace.s4),
-
-                // "0 CARS LEFT" badge
+                  const SizedBox(height: DrevvySpace.s2),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: DrevvySpace.s3,
@@ -153,74 +151,36 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                     ),
                   ),
                 ),
-
-                const SizedBox(height: DrevvySpace.s4),
-
-                // Title
-                Text("You've used all your cars.", style: text.headline),
-
                 const SizedBox(height: DrevvySpace.s2),
-
-                // Subtitle
+                Text("You've used all your cars.", style: text.title),
+                const SizedBox(height: DrevvySpace.s1),
                 Text(
                   'Your active deals keep going. Add a pack to unlock this car.',
-                  style: text.body.copyWith(color: colors.muted),
-                ),
-
-                const SizedBox(height: DrevvySpace.s5),
-
-                // Pack options (same as PackPickerSheet)
-                PackOptionCard(
-                  pack: CarPackType.starter,
-                  isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => _selectPack(CarPackType.starter),
+                  style: text.callout.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
-                PackOptionCard(
-                  pack: CarPackType.plus,
-                  isSelected: _selectedPack == CarPackType.plus,
-                  onTap: () => _selectPack(CarPackType.plus),
+                PackPickerColumn(
+                  selected: _selectedPack,
+                  onSelected: _selectPack,
                 ),
                 const SizedBox(height: DrevvySpace.s3),
-                PackOptionCard(
-                  pack: CarPackType.bestValue,
-                  isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => _selectPack(CarPackType.bestValue),
-                  showBadge: true,
-                ),
-
-                const SizedBox(height: DrevvySpace.s5),
-
-                // CTA button
                 DrevvyPrimaryButton(
                   label: _selectedPack.ctaText,
                   onPressed: _isPurchasing ? null : _handlePurchase,
                   isLoading: _isPurchasing,
                 ),
-
-                const SizedBox(height: DrevvySpace.s3),
-
-                // Disclosure
-                Center(
-                  child: Text(
-                    'One-time purchase. Packs never expire.',
-                    style: text.callout.copyWith(color: colors.muted),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-                const SizedBox(height: DrevvySpace.s4),
-
-                // Not now
                 Center(
                   child: DrevvyGhostButton(
                     label: 'Not now',
                     onPressed: () {
-                      ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
-                        'placement': widget.placement,
-                        'action': 'not_now',
-                        'provider': 'local',
-                      });
+                      ProductAnalytics.instance.track(
+                        AnalyticsEvents.paywallDismissed,
+                        {
+                          'placement': widget.placement,
+                          'action': 'not_now',
+                          'provider': 'local',
+                        },
+                      );
                       widget.onNotNow();
                     },
                     color: colors.ink,
@@ -229,8 +189,7 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
               ],
             ),
           ),
-
-          SizedBox(height: bottomPadding + DrevvySpace.s4),
+          SizedBox(height: bottomPadding),
         ],
       ),
     );

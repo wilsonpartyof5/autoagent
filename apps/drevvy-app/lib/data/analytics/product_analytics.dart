@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../models/car_pack.dart';
 import '../notifications/local_flags.dart';
 import 'analytics_client.dart';
 import 'analytics_config.dart';
@@ -31,7 +32,10 @@ class ProductAnalytics {
 
   static ProductAnalytics disabled() {
     return ProductAnalytics(
-      config: const AnalyticsConfig(apiKey: '', host: AnalyticsConfig.defaultHost),
+      config: const AnalyticsConfig(
+        apiKey: '',
+        host: AnalyticsConfig.defaultHost,
+      ),
       client: const NoopAnalyticsClient(),
       flags: MemoryFlags(),
     );
@@ -76,13 +80,20 @@ class ProductAnalytics {
   }) async {
     final analytics = ProductAnalytics(
       config: config,
-      client: client ?? (config.configured ? PosthogAnalyticsClient() : const NoopAnalyticsClient()),
+      client:
+          client ??
+          (config.configured
+              ? PosthogAnalyticsClient()
+              : const NoopAnalyticsClient()),
       flags: flags ?? SharedPreferencesFlags(),
       now: now,
       attachLifecycle: attachLifecycle && config.configured,
     );
     instance = analytics;
-    await analytics.bootstrap(launchRoute: launchRoute, installReferrer: installReferrer);
+    await analytics.bootstrap(
+      launchRoute: launchRoute,
+      installReferrer: installReferrer,
+    );
     return analytics;
   }
 
@@ -150,7 +161,8 @@ class ProductAnalytics {
       });
       track(AnalyticsEvents.packViewed, {
         'placement': route.paywallPlacement,
-        'pack_count': 3,
+        'pack_count': CarPackType.values.length,
+        'pack_mix': CarPackType.packMix,
       });
     }
     if (route.screen == 'error') {
@@ -260,7 +272,9 @@ class ProductAnalytics {
     _sessionOpen = false;
     final started = _sessionStartedAt ?? _now();
     final seconds = _now().difference(started).inSeconds;
-    track(AnalyticsEvents.sessionEnded, {'duration_seconds': seconds < 0 ? 0 : seconds});
+    track(AnalyticsEvents.sessionEnded, {
+      'duration_seconds': seconds < 0 ? 0 : seconds,
+    });
   }
 
   void handleLifecycle(AppLifecycleState state) {
@@ -280,7 +294,9 @@ class ProductAnalytics {
     if (incoming == null || incoming.isEmpty) return;
     final next = attribution.mergeFirstTouch(incoming);
     if (next.properties.length == attribution.properties.length &&
-        next.properties.entries.every((entry) => attribution.properties[entry.key] == entry.value)) {
+        next.properties.entries.every(
+          (entry) => attribution.properties[entry.key] == entry.value,
+        )) {
       return;
     }
     attribution = next;
@@ -303,7 +319,9 @@ class ProductAnalytics {
   }
 
   Future<CreatorAttribution> _readAttribution() async {
-    return CreatorAttribution.fromJson(await _flags.getString(_attributionKey)) ??
+    return CreatorAttribution.fromJson(
+          await _flags.getString(_attributionKey),
+        ) ??
         CreatorAttribution.empty;
   }
 
@@ -320,7 +338,9 @@ class ProductAnalytics {
   Uri? _locationUri(String location) {
     final trimmed = location.trim();
     if (trimmed.isEmpty) return null;
-    if (trimmed.startsWith('/')) return Uri.tryParse('https://drevvy.local$trimmed');
+    if (trimmed.startsWith('/')) {
+      return Uri.tryParse('https://drevvy.local$trimmed');
+    }
     return Uri.tryParse(trimmed);
   }
 

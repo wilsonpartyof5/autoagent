@@ -20,13 +20,19 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    final view = TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first;
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first;
     view.physicalSize = const Size(800, 2000);
     view.devicePixelRatio = 1;
   });
 
   tearDown(() {
-    final view = TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first;
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first;
     view.resetPhysicalSize();
     view.resetDevicePixelRatio();
     DemoRepository.instance
@@ -54,45 +60,54 @@ void main() {
     );
     expect(
       selectPackPackages<String>(
-        byOfferingId: {'default': ['other']},
+        byOfferingId: {
+          'default': ['other'],
+        },
         currentPackages: ['current'],
       ),
       ['current'],
     );
   });
 
-  test('onboarding answers land on the shopper as market preferences', () async {
-    final repo = DemoRepository(networkDelay: Duration.zero);
-    repo.resetDemoSearchProfile();
-    addTearDown(() {
-      repo.resetDemoUser();
+  test(
+    'onboarding answers land on the shopper as market preferences',
+    () async {
+      final repo = DemoRepository(networkDelay: Duration.zero);
       repo.resetDemoSearchProfile();
-    });
+      addTearDown(() {
+        repo.resetDemoUser();
+        repo.resetDemoSearchProfile();
+      });
 
-    await repo.saveOnboardingAnswers(
-      budgetOtd: 35000,
-      bodyTypes: const ['SUV'],
-      tradeIn: TradeInPref.no,
-      payment: PaymentPref.cash,
-      zip: '29730',
-      locationGranted: false,
-    );
+      await repo.saveOnboardingAnswers(
+        budgetOtd: 35000,
+        bodyTypes: const ['SUV'],
+        tradeIn: TradeInPref.no,
+        payment: PaymentPref.cash,
+        zip: '29730',
+        locationGranted: false,
+      );
 
-    final user = await repo.getCurrentUser();
-    expect(user.prefs?.budgetOtd, 35000);
-    expect(user.prefs?.bodyTypes, ['SUV']);
-    expect(user.prefs?.tradeIn, TradeInPref.no);
-    expect(user.zipCode, '29730');
-    expect(user.locationState, LocationState.zipFallback);
+      final user = await repo.getCurrentUser();
+      expect(user.prefs?.budgetOtd, 35000);
+      expect(user.prefs?.bodyTypes, ['SUV']);
+      expect(user.prefs?.tradeIn, TradeInPref.no);
+      expect(user.zipCode, '29730');
+      expect(user.locationState, LocationState.zipFallback);
 
-    final profile = await repo.getSearchProfile();
-    final budget = profile.items.firstWhere((item) => item.kind == MemoryKind.budget);
-    expect(budget.value, 35000);
-    expect(budget.source, MemorySource.onboarding);
-    expect(budget.displayValue, r'$35,000');
-  });
+      final profile = await repo.getSearchProfile();
+      final budget = profile.items.firstWhere(
+        (item) => item.kind == MemoryKind.budget,
+      );
+      expect(budget.value, 35000);
+      expect(budget.source, MemorySource.onboarding);
+      expect(budget.displayValue, r'$35,000');
+    },
+  );
 
-  testWidgets('first run walks to the pack paywall and can shop free', (tester) async {
+  testWidgets('first run walks to the pack paywall and can shop free', (
+    tester,
+  ) async {
     await tester.pumpWidget(const ProviderScope(child: DrevvyApp()));
     await tester.pumpAndSettle();
 
@@ -123,6 +138,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Market data, then a written price.'), findsOneWidget);
+    expect(find.text(r'$27'), findsOneWidget);
     expect(find.text(r'$47'), findsOneWidget);
     expect(find.text(r'$67'), findsOneWidget);
     expect(find.text(r'$97'), findsOneWidget);
@@ -137,7 +153,9 @@ void main() {
     expect(find.text('Create your account'), findsOneWidget);
   });
 
-  testWidgets('paywall screen keeps dollar packs when store keys are absent', (tester) async {
+  testWidgets('paywall screen keeps dollar packs when store keys are absent', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
@@ -157,14 +175,20 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.text(r'$27.00/car'), findsOneWidget);
     expect(find.text(r'$15.67/car'), findsOneWidget);
     expect(find.text(r'$13.40/car'), findsOneWidget);
     expect(find.text(r'$9.70/car'), findsOneWidget);
     expect(find.text('One-time · never expires'), findsOneWidget);
+    expect(find.text('Save 42.0%/car'), findsOneWidget);
+    expect(find.text('Save 50.4%/car'), findsOneWidget);
+    expect(find.text('Save 64.1%/car'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
   });
 
-  testWidgets('unlock with a zero balance shows the demo paywall', (tester) async {
+  testWidgets('unlock with a zero balance shows the demo paywall', (
+    tester,
+  ) async {
     const listing = Listing(
       id: 'listing_1',
       vin: 'VIN123',

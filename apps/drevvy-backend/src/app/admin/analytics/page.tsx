@@ -43,6 +43,18 @@ export default async function AdminAnalyticsPage() {
         </ol>
       </article>
 
+      <article className="rounded-xl border border-slate-800 p-4">
+        <h3 className="font-medium">Pack mix</h3>
+        <ul className="mt-3 space-y-2 text-sm">
+          {analytics.packMix.map((row) => (
+            <li key={row.size} className="flex justify-between border-b border-slate-800 py-1">
+              <span>{row.size === 1 ? '1 car' : `${row.size} cars`}</span>
+              <span>{row.purchases}</span>
+            </li>
+          ))}
+        </ul>
+      </article>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-xl border border-slate-800 p-4">
           <h3 className="font-medium">Deals by stage</h3>

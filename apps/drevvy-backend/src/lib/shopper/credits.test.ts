@@ -6,7 +6,11 @@ import { shouldRefundCredit, type QuotaEndState } from './quota';
 
 test('car packs have correct pricing', () => {
   const packs = CAR_PACKS;
-  assert.equal(packs.length, 3);
+  assert.equal(packs.length, 4);
+
+  const pack1 = packs.find((p) => p.size === 1);
+  assert.ok(pack1);
+  assert.equal(pack1.priceUsd, 27);
 
   const pack3 = packs.find((p) => p.size === 3);
   assert.ok(pack3);

@@ -143,8 +143,14 @@ void main() {
     await analytics.flushed;
 
     expect(client.identifies, hasLength(1));
-    expect(client.identifies.single.userId, '11111111-2222-3333-4444-555555555555');
-    expect(client.identifies.single.userPropertiesSetOnce?['creator_id'], 'creatorid');
+    expect(
+      client.identifies.single.userId,
+      '11111111-2222-3333-4444-555555555555',
+    );
+    expect(
+      client.identifies.single.userPropertiesSetOnce?['creator_id'],
+      'creatorid',
+    );
     expect(
       client.identifies.single.userPropertiesSetOnce?.containsKey('email'),
       isNot(true),
@@ -230,6 +236,35 @@ void main() {
     expect(event.properties?['price'], pack.priceUsd);
     expect(event.properties?['currency'], 'USD');
     expect(event.properties?.containsKey('email'), isFalse);
+  });
+
+  test('paywall events include the 1-car pack in the mix', () async {
+    final client = RecordingAnalyticsClient();
+    final analytics = await _started(client);
+    await analytics.flushed;
+    client.events.clear();
+
+    analytics.recordLocation('/paywall');
+    analytics.track(AnalyticsEvents.packSelected, {
+      'pack_id': CarPackType.single.productId,
+      'pack_size': CarPackType.single.cars,
+      'pack_mix': CarPackType.packMix,
+      'price': CarPackType.single.priceUsd,
+      'currency': 'USD',
+      'stage': 'preview',
+    });
+    await analytics.flushed;
+
+    final viewed = client.events.firstWhere(
+      (event) => event.name == 'pack_viewed',
+    );
+    expect(viewed.properties?['pack_count'], 4);
+    expect(viewed.properties?['pack_mix'], '1,3,5,10');
+    final selected = client.events.firstWhere(
+      (event) => event.name == 'pack_selected',
+    );
+    expect(selected.properties?['pack_size'], 1);
+    expect(selected.properties?['pack_mix'], contains('1'));
   });
 
   test('ANALYTICS.md documents every event', () {

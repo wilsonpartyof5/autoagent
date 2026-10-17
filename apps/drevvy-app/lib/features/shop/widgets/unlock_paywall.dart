@@ -30,7 +30,8 @@ Future<void> showUnlockPaywall({
     return;
   }
 
-  final gate = placement ?? carsBalancePlacementFor(PurchaseConfig.fromEnvironment());
+  final gate =
+      placement ?? carsBalancePlacementFor(PurchaseConfig.fromEnvironment());
 
   Future<void> continueIfFunded() async {
     final next = await repo.getCreditBalance();
@@ -40,7 +41,8 @@ Future<void> showUnlockPaywall({
 
   void showMessage(String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   await gate.register(
@@ -60,7 +62,8 @@ Future<void> showUnlockPaywall({
               return;
             }
             final message = switch (result) {
-              PurchasePending() => 'Payment is pending. Cars are added when it completes.',
+              PurchasePending() =>
+                'Payment is pending. Cars are added when it completes.',
               PurchaseError(:final message) => message,
               PurchaseCancelled() => null,
               PurchaseSuccess() => null,
@@ -74,7 +77,9 @@ Future<void> showUnlockPaywall({
             Navigator.pop(sheetContext);
             final message = switch (result) {
               RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-                'Restored $creditsRestored cars.',
+                creditsRestored == 1
+                    ? 'Restored 1 car.'
+                    : 'Restored $creditsRestored cars.',
               RestoreSuccess() => 'Purchases restored.',
               RestoreNoPurchases() => 'No purchases to restore.',
               RestoreError(:final message) => message,

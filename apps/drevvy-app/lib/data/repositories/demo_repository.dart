@@ -21,7 +21,7 @@ import '../../core/theme/drevvy_tokens.dart';
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
-/// - RevenueCat/Superwall for billing (products: drevvy_pack_3/5/10)
+/// - RevenueCat/Superwall for billing (products: drevvy_pack_1/3/5/10)
 class DemoRepository {
   DemoRepository({
     PurchaseConfig? config,
@@ -143,6 +143,8 @@ class DemoRepository {
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'pack_id': packType.productId,
+      'pack_size': packType.cars,
+      'pack_mix': CarPackType.packMix,
       'price': packType.priceUsd,
       'currency': 'USD',
       'stage': 'purchase',
@@ -152,6 +154,8 @@ class DemoRepository {
     if (result is PurchaseSuccess) {
       ProductAnalytics.instance.track(AnalyticsEvents.purchaseCompleted, {
         'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
         'price': packType.priceUsd,
         'currency': 'USD',
       });
@@ -159,6 +163,8 @@ class DemoRepository {
     } else {
       ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
         'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
         'reason': switch (result) {
           PurchaseCancelled() => 'cancelled',
           PurchasePending() => 'pending',
@@ -326,7 +332,8 @@ class DemoRepository {
     final result = await _purchaseService.restorePurchases();
     ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, {
       'result': switch (result) {
-        RestoreSuccess(:final creditsRestored) when creditsRestored > 0 => 'success',
+        RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+          'success',
         RestoreSuccess() => 'empty',
         RestoreNoPurchases() => 'empty',
         RestoreError() => 'error',
@@ -544,7 +551,10 @@ class DemoRepository {
   }
 
   /// Remove a saved car (unsave / swipe to remove).
-  Future<void> removeSavedCar(String savedCarId, {String source = 'saved'}) async {
+  Future<void> removeSavedCar(
+    String savedCarId, {
+    String source = 'saved',
+  }) async {
     final listingId = _savedCars
         .where((car) => car.id == savedCarId)
         .map((car) => car.listingId)
@@ -561,7 +571,10 @@ class DemoRepository {
   }
 
   /// Remove saved car by listing ID.
-  Future<void> unsaveByListingId(String listingId, {String source = 'unknown'}) async {
+  Future<void> unsaveByListingId(
+    String listingId, {
+    String source = 'unknown',
+  }) async {
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
     ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
@@ -1288,7 +1301,11 @@ class DemoRepository {
           otd: 35120,
           vehiclePrice: 31200,
           lines: const [
-            OfferLine(key: 'Vehicle price', amount: 31200, subLine: 'Down from \$32,100'),
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 31200,
+              subLine: 'Down from \$32,100',
+            ),
             OfferLine(key: 'Doc fee', amount: 499),
             OfferLine(key: 'Title & registration', amount: 250),
             OfferLine(key: 'Sales tax (6.25%)', amount: 1950),
@@ -1303,7 +1320,11 @@ class DemoRepository {
           otd: 33415,
           vehiclePrice: 30700,
           lines: const [
-            OfferLine(key: 'Vehicle price', amount: 30700, subLine: 'Down from \$31,200'),
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 30700,
+              subLine: 'Down from \$31,200',
+            ),
             OfferLine(key: 'Doc fee', amount: 399, subLine: 'Down from \$499'),
             OfferLine(key: 'Title & registration', amount: 250),
             OfferLine(key: 'Sales tax (6.25%)', amount: 1919),
@@ -1341,7 +1362,11 @@ class DemoRepository {
           otd: 34880,
           vehiclePrice: 32100,
           lines: const [
-            OfferLine(key: 'Vehicle price', amount: 32100, subLine: 'Down from \$32,950'),
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 32100,
+              subLine: 'Down from \$32,950',
+            ),
             OfferLine(key: 'Doc fee', amount: 499, subLine: 'Down from \$599'),
             OfferLine(key: 'Title & registration', amount: 275),
             OfferLine(key: 'Sales tax (6.25%)', amount: 2006),
@@ -1353,10 +1378,7 @@ class DemoRepository {
         ),
       ],
     ),
-    const DealerTimeline(
-      letter: 'C',
-      status: DealStatus.noResponse,
-    ),
+    const DealerTimeline(letter: 'C', status: DealStatus.noResponse),
   ];
 
   List<Deal> get _demoDealsList => [
@@ -1529,10 +1551,7 @@ class DemoRepository {
             ),
           ],
         ),
-        const DealerTimeline(
-          letter: 'B',
-          status: DealStatus.reachingOut,
-        ),
+        const DealerTimeline(letter: 'B', status: DealStatus.reachingOut),
       ],
     ),
 
@@ -1860,7 +1879,9 @@ extension DemoRepositorySearchProfile on DemoRepository {
       user.copyWith(
         prefs: UserPrefs(
           budgetOtd: budgetOtd ?? user.prefs?.budgetOtd,
-          bodyTypes: bodyTypes.isEmpty ? (user.prefs?.bodyTypes ?? const []) : bodyTypes,
+          bodyTypes: bodyTypes.isEmpty
+              ? (user.prefs?.bodyTypes ?? const [])
+              : bodyTypes,
           tradeIn: tradeIn,
           payment: payment,
           radius: user.prefs?.radius ?? 50,
@@ -1869,8 +1890,8 @@ extension DemoRepositorySearchProfile on DemoRepository {
         locationState: zip != null
             ? LocationState.zipFallback
             : locationGranted
-                ? LocationState.granted
-                : user.locationState,
+            ? LocationState.granted
+            : user.locationState,
       ),
     );
     if (budgetOtd != null) {
@@ -1880,7 +1901,10 @@ extension DemoRepositorySearchProfile on DemoRepository {
       _remember(MemoryKind.bodyTypes, bodyTypes);
     }
     if (zip != null && zip.isNotEmpty) {
-      _remember(MemoryKind.location, {'zip': zip, 'radius': user.prefs?.radius ?? 50});
+      _remember(MemoryKind.location, {
+        'zip': zip,
+        'radius': user.prefs?.radius ?? 50,
+      });
     }
   }
 

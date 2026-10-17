@@ -625,15 +625,18 @@ Paywall route or a pack sheet is shown.
 | Property | Values |
 | --- | --- |
 | `placement` | Same set as `paywall_viewed` |
-| `pack_count` | `3` |
+| `pack_count` | `4` |
+| `pack_mix` | `1,3,5,10` |
 
 ### `pack_selected`
 
-A pack card is tapped (`stage` `preview`) or purchase starts (`stage` `purchase`). Price is the catalog USD amount, not the store-localized price.
+A pack card is tapped (`stage` `preview`) or purchase starts (`stage` `purchase`). Price is the catalog USD amount, not the store-localized price. `pack_size` is the pack-mix dimension and includes `1`.
 
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
+| `pack_size` | `1`, `3`, `5`, or `10` |
+| `pack_mix` | `1,3,5,10` |
 | `price` | Catalog USD amount |
 | `currency` | `USD` |
 | `stage` | `preview` or `purchase` |
@@ -646,6 +649,8 @@ The store purchase succeeds.
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
+| `pack_size` | `1`, `3`, `5`, or `10` |
+| `pack_mix` | `1,3,5,10` |
 | `price` | Catalog USD amount |
 | `currency` | `USD` |
 
@@ -656,6 +661,8 @@ The store purchase does not succeed. The store message is not sent.
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
+| `pack_size` | `1`, `3`, `5`, or `10` |
+| `pack_mix` | `1,3,5,10` |
 | `reason` | `cancelled`, `pending`, `store_error` |
 
 ### `purchases_restore_started`
