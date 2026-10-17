@@ -4,7 +4,9 @@ import {
   DEAL_STAGES,
   FUNNEL_STEPS,
   MONTHLY_PRICE_USD,
+  PACK_MIX_SIZES,
   type DealStage,
+  type PackMixSize,
   type FunnelStep,
   type OutreachChannel,
   type ShopperRecord,
@@ -28,6 +30,7 @@ export type AdminAnalytics = {
   churnNote: string;
   llmCostPerDeal: number | null;
   totalLlmCostUsd: number;
+  packMix: Array<{ size: PackMixSize; purchases: number }>;
 };
 
 export function buildAnalytics(shoppers: ShopperRecord[] = getMockShoppers()): AdminAnalytics {
@@ -76,6 +79,10 @@ export function buildAnalytics(shoppers: ShopperRecord[] = getMockShoppers()): A
     churnNote: 'Placeholder until Stripe (or the payment provider) reports real cancellations. This count is canceled mock subscriptions only.',
     llmCostPerDeal: deals.length === 0 ? null : deals.reduce((sum, deal) => sum + deal.llmCostUsd, 0) / deals.length,
     totalLlmCostUsd: deals.reduce((sum, deal) => sum + deal.llmCostUsd, 0),
+    packMix: PACK_MIX_SIZES.map((size) => ({
+      size,
+      purchases: shoppers.filter((shopper) => shopper.purchasedPack === size).length,
+    })),
   };
 }
 

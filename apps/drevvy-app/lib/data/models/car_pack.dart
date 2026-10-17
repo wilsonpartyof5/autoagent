@@ -3,27 +3,52 @@ import 'package:equatable/equatable.dart';
 import 'money_format.dart';
 
 /// One-time car pack purchase options (v1.7).
-/// Packs never expire. RevenueCat products: drevvy_pack_1/3/5/10.
+/// Packs never expire. Store products `drevvy_pack_1/3/5/10`,
+/// RevenueCat packages `pack_1/3/5/10`, virtual currency `CARS`.
 enum CarPackType {
-  single(cars: 1, priceUsd: 27, productId: 'drevvy_pack_1'),
-  starter(cars: 3, priceUsd: 47, productId: 'drevvy_pack_3'),
-  plus(cars: 5, priceUsd: 67, productId: 'drevvy_pack_5'),
-  bestValue(cars: 10, priceUsd: 97, productId: 'drevvy_pack_10');
+  single(
+    cars: 1,
+    priceUsd: 27,
+    productId: 'drevvy_pack_1',
+    packageId: 'pack_1',
+  ),
+  starter(
+    cars: 3,
+    priceUsd: 47,
+    productId: 'drevvy_pack_3',
+    packageId: 'pack_3',
+  ),
+  plus(cars: 5, priceUsd: 67, productId: 'drevvy_pack_5', packageId: 'pack_5'),
+  bestValue(
+    cars: 10,
+    priceUsd: 97,
+    productId: 'drevvy_pack_10',
+    packageId: 'pack_10',
+  );
 
   const CarPackType({
     required this.cars,
     required this.priceUsd,
     required this.productId,
+    required this.packageId,
   });
 
   final int cars;
   final int priceUsd;
   final String productId;
 
-  /// Consumable store product for this pack. Credits from a pack never expire.
+  /// RevenueCat package identifier on the `packs` offering.
+  final String packageId;
+
+  /// Cars granted to the `CARS` virtual currency for this pack.
+  int get carsGranted => cars;
+
+  /// Store product id or RevenueCat package id.
   static CarPackType? fromProductId(String productId) {
     for (final pack in values) {
-      if (pack.productId == productId) return pack;
+      if (pack.productId == productId || pack.packageId == productId) {
+        return pack;
+      }
     }
     return null;
   }
@@ -48,27 +73,19 @@ enum CarPackType {
   /// "1 car" or "3 cars".
   String get carsLabel => cars == 1 ? '1 car' : '$cars cars';
 
-  /// Savings vs the 3-car Starter pack (per car) as a percentage.
-  /// The 1-car pack is the unit price, so it has no savings line.
-  double? get savingsVsStarter {
-    final starterPerCar = CarPackType.starter.perCarCost;
-    if (perCarCost >= starterPerCar) return null;
-    return ((starterPerCar - perCarCost) / starterPerCar) * 100;
+  /// Percent saved per car versus the 1-car price, rounded by [savingsText].
+  /// The 1-car pack is the baseline, so it has no savings chip.
+  double? get savingsPercentVsSingle {
+    final baseline = CarPackType.single.perCarCost;
+    if (perCarCost >= baseline) return null;
+    return ((baseline - perCarCost) / baseline) * 100;
   }
 
-  /// Savings vs the 3-car Starter pack in dollars (total).
-  double? get savingsDollarsVsStarter {
-    final starterPerCar = CarPackType.starter.perCarCost;
-    if (perCarCost >= starterPerCar) return null;
-    return (starterPerCar - perCarCost) * cars;
-  }
-
-  /// Human-readable savings text: "Save 14.5%/car vs Starter".
+  /// Chip copy: "Save 42.0%/car". Null on the 1-car pack.
   String? get savingsText {
-    final pct = savingsVsStarter;
+    final pct = savingsPercentVsSingle;
     if (pct == null) return null;
-    final dollars = savingsDollarsVsStarter!;
-    return 'Save ${pct.toStringAsFixed(1)}%/car · ${formatUsd(dollars, cents: true)} vs Starter';
+    return 'Save ${pct.toStringAsFixed(1)}%/car';
   }
 
   /// CTA button text: "Get 1 car for $27" or "Get 10 cars for $97".

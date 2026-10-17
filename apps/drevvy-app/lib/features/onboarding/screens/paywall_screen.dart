@@ -209,21 +209,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           style: text.callout.copyWith(color: colors.ink),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: DrevvySpace.s5),
-                        for (final pack in CarPackType.values) ...[
-                          PackOptionCard(
-                            pack: pack,
-                            isSelected: _selected == pack,
-                            showBadge: pack == CarPackType.bestValue,
-                            totalLabel: _totalLabel(pack),
-                            perCarLabel: _perCarLabel(pack),
-                            onTap: () => setState(() => _selected = pack),
-                          ),
-                          const SizedBox(height: DrevvySpace.s3),
-                        ],
+                        const SizedBox(height: DrevvySpace.s4),
+                        PackPickerColumn(
+                          selected: _selected,
+                          onSelected: (pack) =>
+                              setState(() => _selected = pack),
+                          totalLabel: _totalLabel,
+                          perCarLabel: _perCarLabel,
+                        ),
                         const SizedBox(height: DrevvySpace.s2),
                         Text(
-                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0. Packs are one-time and never expire.',
+                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0.',
                           style: text.callout.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),
@@ -253,12 +249,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         onPressed: _buying ? null : _buy,
                         isLoading: _buying,
                         isFullWidth: true,
-                      ),
-                      const SizedBox(height: DrevvySpace.s2),
-                      Text(
-                        'One-time purchase. No recurring charges.',
-                        style: text.micro.copyWith(color: colors.muted),
-                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),

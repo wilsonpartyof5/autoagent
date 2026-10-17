@@ -20,6 +20,14 @@ export const CREDIT_PRODUCTS = {
   drevvy_pack_10: { size: 10, priceUsd: 97 },
 } as const;
 
+/** RevenueCat package identifier → store product. Grants are 1/3/5/10 CARS. */
+export const CREDIT_PACKAGES = {
+  pack_1: 'drevvy_pack_1',
+  pack_3: 'drevvy_pack_3',
+  pack_5: 'drevvy_pack_5',
+  pack_10: 'drevvy_pack_10',
+} as const satisfies Record<string, CreditProductId>;
+
 export type CreditProductId = keyof typeof CREDIT_PRODUCTS;
 
 export type CreditBalanceData = {
@@ -42,8 +50,11 @@ export type RevenueCatSubscriber = {
 const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function packForProductId(productId: string): { productId: CreditProductId; size: number; priceUsd: number } | null {
-  if (Object.prototype.hasOwnProperty.call(CREDIT_PRODUCTS, productId)) {
-    const id = productId as CreditProductId;
+  const storeId = Object.prototype.hasOwnProperty.call(CREDIT_PACKAGES, productId)
+    ? CREDIT_PACKAGES[productId as keyof typeof CREDIT_PACKAGES]
+    : productId;
+  if (Object.prototype.hasOwnProperty.call(CREDIT_PRODUCTS, storeId)) {
+    const id = storeId as CreditProductId;
     return { productId: id, ...CREDIT_PRODUCTS[id] };
   }
   return null;

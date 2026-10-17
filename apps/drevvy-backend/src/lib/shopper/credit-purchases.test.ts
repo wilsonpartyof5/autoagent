@@ -26,6 +26,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 test('product ids map to packs and unknown ids do not', () => {
   assert.deepEqual(packForProductId('drevvy_pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 27 });
+  assert.deepEqual(packForProductId('pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 27 });
+  assert.deepEqual(packForProductId('pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 47 });
+  assert.deepEqual(packForProductId('pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 97 });
   assert.deepEqual(packForProductId('drevvy_pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 47 });
   assert.deepEqual(packForProductId('drevvy_pack_5'), { productId: 'drevvy_pack_5', size: 5, priceUsd: 67 });
   assert.deepEqual(packForProductId('drevvy_pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 97 });

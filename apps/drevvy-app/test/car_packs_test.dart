@@ -9,18 +9,23 @@ void main() {
       expect(CarPackType.single.cars, 1);
       expect(CarPackType.single.priceUsd, 27);
       expect(CarPackType.single.productId, 'drevvy_pack_1');
+      expect(CarPackType.single.packageId, 'pack_1');
+      expect(CarPackType.single.carsGranted, 1);
 
       expect(CarPackType.starter.cars, 3);
       expect(CarPackType.starter.priceUsd, 47);
       expect(CarPackType.starter.productId, 'drevvy_pack_3');
+      expect(CarPackType.starter.packageId, 'pack_3');
 
       expect(CarPackType.plus.cars, 5);
       expect(CarPackType.plus.priceUsd, 67);
       expect(CarPackType.plus.productId, 'drevvy_pack_5');
+      expect(CarPackType.plus.packageId, 'pack_5');
 
       expect(CarPackType.bestValue.cars, 10);
       expect(CarPackType.bestValue.priceUsd, 97);
       expect(CarPackType.bestValue.productId, 'drevvy_pack_10');
+      expect(CarPackType.bestValue.packageId, 'pack_10');
     });
 
     test('per-car cost is calculated correctly', () {
@@ -44,34 +49,27 @@ void main() {
       expect(CarPackType.bestValue.perCarFormatted, r'$9.70');
     });
 
-    test('savings vs starter pack are calculated correctly', () {
-      // Single is the unit price, above the 3-car baseline.
-      expect(CarPackType.single.savingsVsStarter, isNull);
+    test('savings vs the 1-car price round to one decimal', () {
+      expect(CarPackType.single.savingsPercentVsSingle, isNull);
+      expect(CarPackType.single.savingsText, isNull);
 
-      // Starter has no savings vs itself
-      expect(CarPackType.starter.savingsVsStarter, isNull);
-
-      // Plus: (15.67 - 13.40) / 15.67 = 14.5%
-      expect(CarPackType.plus.savingsVsStarter, closeTo(14.5, 0.5));
-
-      // Best Value: (15.67 - 9.70) / 15.67 = 38.1%
-      expect(CarPackType.bestValue.savingsVsStarter, closeTo(38.1, 0.5));
-    });
-
-    test('dollar savings vs starter pack are calculated correctly', () {
-      expect(CarPackType.single.savingsDollarsVsStarter, isNull);
-
-      // Starter has no savings vs itself
-      expect(CarPackType.starter.savingsDollarsVsStarter, isNull);
-
-      // Plus: (15.67 - 13.40) * 5 = $11.33
-      expect(CarPackType.plus.savingsDollarsVsStarter, closeTo(11.33, 0.1));
-
-      // Best Value: (15.67 - 9.70) * 10 = $59.67
+      // (27 - 47/3) / 27 = 42.0%
       expect(
-        CarPackType.bestValue.savingsDollarsVsStarter,
-        closeTo(59.67, 0.1),
+        CarPackType.starter.savingsPercentVsSingle,
+        closeTo(41.975, 0.001),
       );
+      expect(CarPackType.starter.savingsText, 'Save 42.0%/car');
+
+      // (27 - 67/5) / 27 = 50.4%
+      expect(CarPackType.plus.savingsPercentVsSingle, closeTo(50.370, 0.001));
+      expect(CarPackType.plus.savingsText, 'Save 50.4%/car');
+
+      // (27 - 9.70) / 27 = 64.1%
+      expect(
+        CarPackType.bestValue.savingsPercentVsSingle,
+        closeTo(64.074, 0.001),
+      );
+      expect(CarPackType.bestValue.savingsText, 'Save 64.1%/car');
     });
 
     test('prices use dollar format', () {
@@ -101,6 +99,8 @@ void main() {
 
     test('product ids map back to packs', () {
       expect(CarPackType.fromProductId('drevvy_pack_1'), CarPackType.single);
+      expect(CarPackType.fromProductId('pack_1'), CarPackType.single);
+      expect(CarPackType.fromProductId('pack_10'), CarPackType.bestValue);
       expect(CarPackType.fromProductId('drevvy_pack_3'), CarPackType.starter);
       expect(CarPackType.fromProductId('drevvy_pack_5'), CarPackType.plus);
       expect(

@@ -93,8 +93,9 @@ function formatDollars(amount: number) {
 }
 
 const packSavings: Record<number, string> = {
-  5: ' · save 14.5%',
-  10: ' · save 38.1%',
+  3: ' · save 42.0%',
+  5: ' · save 50.4%',
+  10: ' · save 64.1%',
 };
 
 const packs = LEGAL.CAR_PACKS.map((pack) => ({

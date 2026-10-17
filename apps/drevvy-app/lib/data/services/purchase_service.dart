@@ -37,7 +37,8 @@ class PurchasePending extends PurchaseResult {
 ///
 /// RevenueCat integration notes:
 /// - Products: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10 (consumable IAP)
-/// - Virtual currency: `cars` (code CARS) - grants 1/3/5/10 on purchase
+/// - Packages: pack_1, pack_3, pack_5, pack_10 on offering `packs`
+/// - Virtual currency: `cars` (code CARS) — grants 1/3/5/10 on purchase
 /// - Superwall placement: `cars_balance_empty` replaces `monthly_limit_reached`
 abstract class PurchaseService {
   /// Initialize the purchase service.

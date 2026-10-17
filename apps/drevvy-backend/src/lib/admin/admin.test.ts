@@ -65,6 +65,8 @@ test('analytics funnel counts only move forward', () => {
   const email = analytics.responseRateByChannel.find((row) => row.channel === 'email');
   assert.equal((email?.replies ?? 0) > 0, true);
   assert.equal(analytics.mrrUsd, analytics.activeSubscribers * 97);
+  assert.deepEqual(analytics.packMix.map((row) => row.size), [1, 3, 5, 10]);
+  assert.equal(analytics.packMix.find((row) => row.size === 1)?.purchases, 1);
   assert.equal(analytics.dealsByStage.reduce((sum, row) => sum + row.count, 0), 19);
   const ready = getMockShoppers().flatMap((shopper) => shopper.deals).filter((deal) => deal.stage === 'best_price_ready');
   assert.equal(ready.every((deal) => deal.bestOtd != null && (deal.savings ?? 0) > 0), true);
