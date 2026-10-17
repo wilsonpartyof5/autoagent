@@ -115,6 +115,67 @@ describe('research job', () => {
     assert.equal(store.writes.length, 2);
   });
 
+  it('records a bot wall as blocked and does not ask the model', async () => {
+    const store = new MemoryDirectoryStore();
+    let asked = false;
+    const wall = `${readFixture('sokal-blocked.html')}<a href="tel:+18035550199">(803) 555-0199</a>`;
+    const result = await researchVehiclePage({
+      vehiclePageUrl: pageUrl,
+      hints: { dealerName: 'Hint Motors', phone: '8035550177', email: 'hint@marketcheck.test' },
+      fetchPage: async (url) => ({ url, status: 200, html: wall }),
+      ai: {
+        async complete() {
+          asked = true;
+          throw new Error('should not call the model');
+        },
+      },
+      store,
+      now: new Date('2026-10-16T00:00:00.000Z'),
+    });
+    assert.equal(asked, false);
+    assert.equal(result.row?.status, 'blocked');
+    assert.deepEqual(result.row?.phones, []);
+    assert.deepEqual(result.row?.emails, []);
+    assert.equal(result.row?.name, null);
+    assert.deepEqual(result.row?.source_urls, [pageUrl, 'https://www.example-motors.test/']);
+    const saved = JSON.stringify(store.writes[0]);
+    assert.equal(saved.includes('5550177'), false);
+    assert.equal(saved.includes('5550199'), false);
+    assert.equal(saved.includes('marketcheck'), false);
+  });
+
+  it('keeps a 403 bot wall and ignores a page that only says access denied', async () => {
+    const store = new MemoryDirectoryStore();
+    const denied = await researchVehiclePage({
+      vehiclePageUrl: pageUrl,
+      fetchPage: async (url) => ({
+        url,
+        status: 200,
+        html: '<html><body><p>Access denied</p></body></html>',
+      }),
+      ai: ai(JSON.stringify({ name: null, phones: [], emails: [], widget_vendor: null, confidence: 0.2 }), []),
+      store,
+    });
+    assert.equal(denied.row?.status, 'needs_review');
+
+    const blocked = await researchVehiclePage({
+      vehiclePageUrl: 'https://www.walled-motors.test/inventory/civic',
+      fetchPage: async (url) => ({
+        url,
+        status: 403,
+        html: '<html><title>Access Denied</title><p>You have been blocked.</p></html>',
+      }),
+      ai: {
+        async complete() {
+          throw new Error('should not call the model');
+        },
+      },
+      store,
+    });
+    assert.equal(blocked.row?.status, 'blocked');
+    assert.equal(blocked.row?.site_url, 'https://www.walled-motors.test');
+  });
+
   it('refuses a MarketCheck URL and writes nothing', async () => {
     const store = new MemoryDirectoryStore();
     const result = await researchVehiclePage({

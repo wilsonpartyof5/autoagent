@@ -12,20 +12,26 @@ import { runScan } from './scan/run';
 import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptResult, AttemptStore, ChatPage, Day0Fallback, WidgetChatAttemptWrite } from './chat/types';
-import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
+import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSeedConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { MemoryDirectoryStore } from './directory/memory-store';
+import { formatDirectoryReport, summarizeDirectory } from './directory/report';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
 import type { DirectoryStore } from './directory/types';
 import { formatResultsTable, parseUrlList, type ResultRow } from './cli/format';
 import { parseHintsFile } from './research/hints';
 import { createHttpFetcher, researchVehiclePage, type PageFetcher } from './research/job';
 import { siteUrlFromVehiclePage } from './research/urls';
+import { parseLaunchAreas, type LaunchArea } from './seed/areas';
+import { listMarketCheckDealers } from './seed/marketcheck';
+import { formatSeedSummary, seedDirectory, type DealerSource } from './seed/run';
 import { createSupabase } from './supabase';
 
 const HELP = `Drevvy dealer research, lead-form, and chat-widget worker.
 
 Usage:
   drevvy-widget-worker research <url-or-file> [--force] [--hints file.json]
+  drevvy-widget-worker seed <zip-file-or-zip> [--radius miles] [--force]
+  drevvy-widget-worker report
   drevvy-widget-worker scan <url-or-file> [--concurrency N]
   drevvy-widget-worker lead <url-or-file> [--stock STOCK]
   drevvy-widget-worker chat <url-or-file> [--stock STOCK]
@@ -33,6 +39,18 @@ Usage:
 
 A file has one vehicle page URL per line. An optional second column is the stock number.
 Lines starting with # are ignored.
+
+seed reads launch-area ZIPs and a radius in miles, asks MarketCheck for dealer names
+and websites, then researches each dealer site. MarketCheck is a hint. Listing fields
+are dropped and nothing from MarketCheck is stored. Phone, email, and widget vendor
+come from the dealer's own site, with the page URL and a confidence. A bot wall is
+stored as blocked and is not fetched again until the row is older than 30 days.
+Rows younger than 30 days are skipped, so a rerun resumes. Requests are spaced by
+SEED_MIN_INTERVAL_MS. Seed never sends a message.
+A ZIP file has one ZIP per line, or ZIP and radius in miles. --radius fills lines
+that omit a radius.
+report counts the directory by vendor and by status, and how many rows have a phone
+or an email.
 
 run researches the dealer, scans the widget, then sends the chosen day-0 channels.
 A ready widget gets the widget chat and the lead form (first name and the Drevvy number).
@@ -45,7 +63,9 @@ DRY_RUN defaults to true. A dry run opens the page and logs the message or form 
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 `;
 
-type Command = 'research' | 'scan' | 'lead' | 'chat' | 'run';
+const COMMANDS = new Set(['research', 'scan', 'lead', 'chat', 'run', 'seed', 'report']);
+
+type Command = 'research' | 'scan' | 'lead' | 'chat' | 'run' | 'seed' | 'report';
 
 type Target = { url: string; stockNumber: string | null };
 
@@ -59,6 +79,9 @@ export type CliDeps = {
   readFile: (filePath: string) => string;
   exists: (filePath: string) => boolean;
   writeLine?: (line: string) => void;
+  listDealers?: DealerSource;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => Date;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -68,9 +91,11 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     return { exitCode: 0, stdout: HELP, stderr: '' };
   }
   const command = argv[0];
-  if (command !== 'research' && command !== 'scan' && command !== 'lead' && command !== 'chat' && command !== 'run') {
+  if (!command || !COMMANDS.has(command)) {
     return { exitCode: 1, stdout: '', stderr: `Unknown command: ${command}\n${HELP}` };
   }
+  if (command === 'report') return executeReport(deps);
+  if (command === 'seed') return executeSeed(argv.slice(1), deps);
   try {
     const flags = parseFlags(argv.slice(1));
     const targets = collectTargets(flags.positionals, flags.stock, deps);
@@ -249,8 +274,61 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     writeLine: (line) => {
       process.stdout.write(`${line}\n`);
     },
+    listDealers: (area, pace) => {
+      if (!config.marketcheckApiKey) {
+        throw new Error('MARKETCHECK_API_KEY is required to seed the directory.');
+      }
+      return listMarketCheckDealers({
+        area,
+        apiKey: config.marketcheckApiKey,
+        baseUrl: config.marketcheckBaseUrl,
+        timeoutMs: config.fetchTimeoutMs,
+        pace,
+      });
+    },
     ...overrides,
   };
+}
+
+async function executeReport(deps: CliDeps): Promise<CliResult> {
+  try {
+    const rows = await deps.directory.list();
+    return { exitCode: 0, stdout: `${formatDirectoryReport(summarizeDirectory(rows))}\n`, stderr: '' };
+  } catch (error) {
+    return { exitCode: 1, stdout: '', stderr: `${error instanceof Error ? error.message : String(error)}\n` };
+  }
+}
+
+async function executeSeed(argv: string[], deps: CliDeps): Promise<CliResult> {
+  try {
+    const flags = parseSeedFlags(argv);
+    const areas = collectAreas(flags.positionals, flags.radius, deps);
+    if (!deps.listDealers) {
+      return { exitCode: 1, stdout: '', stderr: 'MARKETCHECK_API_KEY is required to seed the directory.\n' };
+    }
+    const lines: string[] = [];
+    const log = (line: string) => {
+      if (deps.writeLine) deps.writeLine(line);
+      else lines.push(line);
+    };
+    const summary = await seedDirectory({
+      areas,
+      listDealers: deps.listDealers,
+      fetchPage: deps.fetchPage,
+      ai: deps.ai,
+      store: deps.directory,
+      now: deps.now?.() ?? new Date(),
+      force: flags.force,
+      minIntervalMs: deps.config.seedIntervalMs,
+      sleep: deps.sleep,
+      log,
+    });
+    const stdout = [...lines, formatSeedSummary(summary)].filter((part) => part.length > 0).join('\n') + '\n';
+    const stderr = summary.areaErrors > 0 ? `MarketCheck failed for ${summary.areaErrors} launch area(s).\n` : '';
+    return { exitCode: summary.areaErrors > 0 ? 1 : 0, stdout, stderr };
+  } catch (error) {
+    return { exitCode: 1, stdout: '', stderr: `${error instanceof Error ? error.message : String(error)}\n` };
+  }
 }
 
 function resultRow(url: string, result: AttemptResult, reason: string, fallback: Day0Fallback | null): ResultRow {
@@ -344,7 +422,8 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     const config = loadConfig();
     const command = argv[0] as Command | undefined;
     if (command === 'research' || command === 'run') assertResearchConfig(config);
-    if (command === 'scan') assertSupabaseConfig(config);
+    if (command === 'seed') assertSeedConfig(config);
+    if (command === 'scan' || command === 'report') assertSupabaseConfig(config);
     if (command === 'lead' || command === 'run') assertOutreachConfig(config, config.dryRun);
     if (command === 'chat' || command === 'run') assertChatConfig(config, config.dryRun);
     const result = await execute(argv, buildDeps(config));
@@ -392,6 +471,50 @@ function parseFlags(argv: string[]): {
   }
   if (positionals.length === 0) throw new Error('Provide a vehicle page URL or a file of URLs.');
   return { force, hintsPath, stock, concurrency, positionals };
+}
+
+function parseSeedFlags(argv: string[]): { force: boolean; radius: number | null; positionals: string[] } {
+  let force = false;
+  let radius: number | null = null;
+  const positionals: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--force') force = true;
+    else if (arg === '--radius') {
+      const raw = requiredValue(argv, index, '--radius');
+      if (!/^\d+$/.test(raw)) throw new Error('--radius must be a whole number of miles.');
+      const parsed = Number(raw);
+      if (parsed < 1 || parsed > 500) throw new Error('--radius must be from 1 to 500 miles.');
+      radius = parsed;
+      index += 1;
+    } else if (arg.startsWith('--')) {
+      throw new Error(`Unknown flag: ${arg}`);
+    } else {
+      positionals.push(arg);
+    }
+  }
+  if (positionals.length === 0) throw new Error('Provide a ZIP, a list of ZIPs, or a file of ZIPs.');
+  return { force, radius, positionals };
+}
+
+function collectAreas(
+  positionals: string[],
+  radius: number | null,
+  deps: Pick<CliDeps, 'readFile' | 'exists'>,
+): LaunchArea[] {
+  if (positionals.length === 1) {
+    const input = positionals[0];
+    if (!input) throw new Error('Provide a ZIP, a list of ZIPs, or a file of ZIPs.');
+    if (deps.exists(input) && !/^\d{5}$/.test(input)) {
+      const areas = parseLaunchAreas(deps.readFile(input), radius);
+      if (areas.length === 0) throw new Error('No launch areas were provided.');
+      return areas;
+    }
+    if (!/^\d{5}$/.test(input)) throw new Error(`Not a ZIP or file: ${input}`);
+  }
+  const areas = parseLaunchAreas(positionals.join('\n'), radius);
+  if (areas.length === 0) throw new Error('No launch areas were provided.');
+  return areas;
 }
 
 function requiredValue(argv: string[], index: number, flag: string): string {

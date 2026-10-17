@@ -18,11 +18,14 @@ Migrations, applied separately from this package:
 - `supabase/migrations/20261018030000_widget_attempt_channels.sql` adds `channel` (`widget`, `lead_form`, `prechat`) and `first_reply_channel` on `widget_chat_attempts`.
 - `supabase/migrations/20261018120000_widget_playbooks.sql` adds `dealer_directory.widget_playbook` and the scan statuses `widget_offline`, `page_timeout`, and `composer_not_found`.
 - `supabase/migrations/20261018150000_day0_channel_selection.sql` adds `selected_channels`, `channel_reason`, and `fallback` on `widget_chat_attempts`. `fallback` is `email_text_call` when a bot wall skips both channels.
+- `supabase/migrations/20261018180000_dealer_directory_blocked_status.sql` allows `dealer_directory.status = blocked` when a dealer site presents a bot wall.
 
 ## Commands
 
 ```bash
 pnpm --filter @drevvy/widget-worker research urls.txt --hints hints.json
+pnpm --filter @drevvy/widget-worker seed launch-areas.txt --radius 25
+pnpm --filter @drevvy/widget-worker report
 pnpm --filter @drevvy/widget-worker scan urls.txt --concurrency 3
 pnpm --filter @drevvy/widget-worker lead urls.txt
 pnpm --filter @drevvy/widget-worker chat urls.txt
@@ -61,6 +64,30 @@ https://www.example-motors.test/inventory/2024-honda-civic H24118
 ```
 
 A directory row is skipped when `last_checked_at` is under 30 days old. `--force` fetches again.
+
+## Seeding launch areas
+
+`seed` builds `dealer_directory` for a list of ZIP codes and a radius in miles. It asks MarketCheck for dealer names and websites, then runs the same research step as `research` against each dealer's own site. Phone, email, and widget vendor are stored only when they appear on that site, with the page URL and a confidence.
+
+MarketCheck is a hint. The client reads the dealers list and keeps the name, website, and optional phone and email. VIN, price, photos, address, and the rest of the payload are dropped immediately and are not written to the database. A response that contains listings and no dealers list is refused.
+
+```text
+# ZIP and radius in miles. A ZIP alone uses --radius.
+29201 25
+29401
+```
+
+```bash
+pnpm --filter @drevvy/widget-worker seed launch-areas.txt --radius 25
+```
+
+A bot wall (SOKAL, Cloudflare, Akamai, PerimeterX, DataDome, or an HTTP 403/429 wall) is stored as `blocked`. The model is not called, and contacts are not taken from the wall page. A page that only says "access denied" is not a wall.
+
+Rows younger than 30 days are skipped, including `blocked` rows, so running the same file again resumes where it left off. A row older than 30 days is fetched again. Requests to MarketCheck and to dealer sites are spaced by `SEED_MIN_INTERVAL_MS` (default 1 second). One failed ZIP or dealer does not stop the rest.
+
+`seed` does not open a browser, fill a form, or send a message.
+
+`report` prints counts by status, counts by widget vendor, and how many rows have a phone, an email, both, or neither.
 
 Each command prints a table. `channel` is `widget`, `lead_form`, or `prechat` for a single attempt, and `widget,lead_form` on the day-0 row when both are sent. A scan also prints `playbook` and `reason`. `run` adds `fallback`, which is `email_text_call` for a bot wall and `-` otherwise.
 
@@ -152,6 +179,9 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `WIDGET_SCAN_SETTLE_MS` | no | Extra wait after network idle before widget detection. Default `3000`. |
 | `WIDGET_SCAN_CONCURRENCY` | no | How many scans run at once. Default `3`. `--concurrency` overrides it. |
 | `WIDGET_SCAN_TIMEOUT_MS` | no | Per-site scan cap. Default `25000`. |
+| `MARKETCHECK_API_KEY` | seed | MarketCheck key. Used to list dealer names and websites. Never stored or logged. |
+| `MARKETCHECK_BASE_URL` | no | Default `https://api.marketcheck.com`. |
+| `SEED_MIN_INTERVAL_MS` | no | Minimum gap between MarketCheck pages and dealer-site fetches. Default `1000`. `0` disables the gap. |
 
 Copy `.env.example` and export it, or run Node with `--env-file`.
 
@@ -178,8 +208,12 @@ This is a one-shot worker, not a web server. The image defaults to `DRY_RUN=true
 
 ```bash
 node dist/cli.js run /data/urls.txt
+node dist/cli.js seed /data/launch-areas.txt --radius 25
+node dist/cli.js report
 ```
+
+`seed` and `report` do not send messages.
 
 Railway cron can use that same command. Leave the restart policy at never so a finished job is not restarted in a loop.
 
-Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply the three Supabase migrations separately before the first write.
+Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply the Supabase migrations separately before the first write.
