@@ -5,7 +5,8 @@ import 'store_gateway.dart';
 /// RevenueCat-backed car packs.
 ///
 /// Products are consumables so they can be bought again:
-/// `drevvy_pack_3` ($47), `drevvy_pack_5` ($67), `drevvy_pack_10` ($97).
+/// `drevvy_pack_1` ($27), `drevvy_pack_3` ($47), `drevvy_pack_5` ($67),
+/// `drevvy_pack_10` ($97).
 /// The credits they grant never expire. RevenueCat virtual currency `cars`
 /// (code `CARS`) is the dashboard counterpart of these grants.
 class RevenueCatPurchaseService implements PurchaseService {
@@ -35,16 +36,16 @@ class RevenueCatPurchaseService implements PurchaseService {
     final outcome = await gateway.purchase(packType);
     return switch (outcome) {
       StorePurchaseSucceeded(:final transactionId) => PurchaseSuccess(
-          packType: packType,
-          creditsAdded: packType.cars,
-          transactionId: transactionId,
-        ),
+        packType: packType,
+        creditsAdded: packType.cars,
+        transactionId: transactionId,
+      ),
       StorePurchaseCancelled() => const PurchaseCancelled(),
       StorePurchasePending() => const PurchasePending(),
       StorePurchaseFailed(:final message, :final code) => PurchaseError(
-          message: message,
-          code: code,
-        ),
+        message: message,
+        code: code,
+      ),
     };
   }
 

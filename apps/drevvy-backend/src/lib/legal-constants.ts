@@ -14,7 +14,7 @@ export const LEGAL = {
   BUSINESS_ADDRESS: '[BUSINESS ADDRESS]',
 
   /** Effective date for privacy policy and terms of service */
-  EFFECTIVE_DATE: 'October 12, 2026',
+  EFFECTIVE_DATE: 'October 17, 2026',
 
   /** Support email */
   SUPPORT_EMAIL: 'support@drevvy.com',
@@ -37,12 +37,14 @@ export const LEGAL = {
   /** SMS program name for carrier registration */
   SMS_PROGRAM_NAME: 'Drevvy Vehicle Inquiry Alerts',
 
-  /** Subscription price */
-  SUBSCRIPTION_PRICE: '$97',
-
-  /** Subscription period */
-  SUBSCRIPTION_PERIOD: 'month',
-
-  /** Vehicle limit per subscription */
-  VEHICLE_LIMIT: 10,
+  /**
+   * One-time car packs. Credits never expire.
+   * Store product ids: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10.
+   */
+  CAR_PACKS: [
+    { cars: 1, price: '$27', perCar: '$27.00', name: 'Single' },
+    { cars: 3, price: '$47', perCar: '$15.67', name: 'Starter' },
+    { cars: 5, price: '$67', perCar: '$13.40', name: 'Plus' },
+    { cars: 10, price: '$97', perCar: '$9.70', name: 'Best Value' },
+  ],
 } as const;

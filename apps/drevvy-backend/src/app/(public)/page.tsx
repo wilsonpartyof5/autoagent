@@ -4,6 +4,7 @@ import { Footer } from '@/components/landing/footer';
 import { Logo } from '@/components/landing/logo';
 import { PhoneFrame } from '@/components/landing/iphone-frame';
 import { StoreCta } from '@/components/landing/store-cta';
+import { LEGAL } from '@/lib/legal-constants';
 
 export const metadata: Metadata = {
   title: {
@@ -91,29 +92,18 @@ function formatDollars(amount: number) {
   return `$${amount.toLocaleString('en-US')}`;
 }
 
-const packs = [
-  {
-    name: 'Starter',
-    price: '$47',
-    cars: '3 cars',
-    detail: '$15.67 per car',
-    best: false,
-  },
-  {
-    name: 'Plus',
-    price: '$67',
-    cars: '5 cars',
-    detail: '$13.40 per car · save 14.5%',
-    best: false,
-  },
-  {
-    name: 'Best Value',
-    price: '$97',
-    cars: '10 cars',
-    detail: '$9.70 per car · save 38.1%',
-    best: true,
-  },
-];
+const packSavings: Record<number, string> = {
+  5: ' · save 14.5%',
+  10: ' · save 38.1%',
+};
+
+const packs = LEGAL.CAR_PACKS.map((pack) => ({
+  name: pack.name,
+  price: pack.price,
+  cars: pack.cars === 1 ? '1 car' : `${pack.cars} cars`,
+  detail: `${pack.perCar} per car${packSavings[pack.cars] ?? ''}`,
+  best: pack.cars === 10,
+}));
 
 const faqs = [
   {
@@ -136,8 +126,7 @@ const faqs = [
   },
   {
     question: 'How do car packs work?',
-    answer:
-      'Each car you unlock uses one. Packs are one-time purchases (3 for $47, 5 for $67, 10 for $97) and never expire. If a dealer never replies, you get the car back.',
+    answer: `Each car you unlock uses one. Packs are one-time purchases (${LEGAL.CAR_PACKS.map((pack) => `${pack.cars} for ${pack.price}`).join(', ')}) and never expire. If a dealer never replies, you get the car back.`,
     open: false,
   },
   {
@@ -348,14 +337,14 @@ export default function LandingPage() {
           <h2 className="mt-2.5 text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:text-5xl lg:text-[54px]">
             Pay per car. Never expires.
           </h2>
-          <div className="mt-12 grid grid-cols-1 gap-6 pt-2 md:grid-cols-3 md:gap-4 lg:gap-5">
+          <div className="mt-12 grid grid-cols-1 gap-5 pt-3 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
             {packs.map((pack) => (
               <article
                 key={pack.name}
                 className={
                   pack.best
-                    ? 'relative rounded-3xl border-2 border-[#5B4FE9] bg-white/80 px-6 py-8 shadow-[0_0_0_6px_#ECEAFF,0_20px_50px_rgba(70,80,220,0.2)]'
-                    : 'relative rounded-3xl border border-white bg-white/80 px-6 py-8 shadow-[0_10px_30px_rgba(40,50,110,0.08)]'
+                    ? 'relative flex h-full flex-col rounded-3xl border-2 border-[#5B4FE9] bg-white/80 px-5 py-7 shadow-[0_0_0_6px_#ECEAFF,0_20px_50px_rgba(70,80,220,0.2)] sm:px-6 sm:py-8'
+                    : 'relative flex h-full flex-col rounded-3xl border border-white bg-white/80 px-5 py-7 shadow-[0_10px_30px_rgba(40,50,110,0.08)] sm:px-6 sm:py-8'
                 }
               >
                 {pack.best ? (
@@ -364,9 +353,9 @@ export default function LandingPage() {
                   </span>
                 ) : null}
                 <p className="font-extrabold text-[#6A7086]">{pack.name}</p>
-                <p className="mt-1.5 text-[56px] font-extrabold tabular-nums leading-none tracking-[-0.04em]">{pack.price}</p>
+                <p className="mt-1.5 text-5xl font-extrabold tabular-nums leading-none tracking-[-0.04em] xl:text-[44px]">{pack.price}</p>
                 <p className="mt-2 text-lg font-extrabold">{pack.cars}</p>
-                <p className={pack.best ? 'mt-1.5 text-base font-extrabold text-[#4B3FD9] md:text-sm' : 'mt-1.5 text-base font-semibold text-[#6A7086] md:text-sm'}>
+                <p className={pack.best ? 'mt-1.5 text-balance text-base font-extrabold text-[#4B3FD9] md:text-sm' : 'mt-1.5 text-balance text-base font-semibold text-[#6A7086] md:text-sm'}>
                   {pack.detail}
                 </p>
               </article>

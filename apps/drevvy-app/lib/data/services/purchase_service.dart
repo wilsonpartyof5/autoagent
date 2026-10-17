@@ -34,10 +34,10 @@ class PurchasePending extends PurchaseResult {
 
 /// Abstract interface for in-app purchases.
 /// Implementations: FakePurchaseService (demo), RevenueCatPurchaseService (production).
-/// 
+///
 /// RevenueCat integration notes:
-/// - Products: drevvy_pack_3, drevvy_pack_5, drevvy_pack_10 (consumable IAP)
-/// - Virtual currency: `cars` (code CARS) - grants 3/5/10 on purchase
+/// - Products: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10 (consumable IAP)
+/// - Virtual currency: `cars` (code CARS) - grants 1/3/5/10 on purchase
 /// - Superwall placement: `cars_balance_empty` replaces `monthly_limit_reached`
 abstract class PurchaseService {
   /// Initialize the purchase service.
@@ -145,6 +145,12 @@ class FakePurchaseService implements PurchaseService {
     }
     return [
       CarPackOffering(
+        packType: CarPackType.single,
+        localizedPrice: '\$27.00',
+        currencyCode: 'USD',
+        priceAmount: 27.0,
+      ),
+      CarPackOffering(
         packType: CarPackType.starter,
         localizedPrice: '\$47.00',
         currencyCode: 'USD',
@@ -170,7 +176,8 @@ class FakePurchaseService implements PurchaseService {
     await Future.delayed(simulateDelay);
 
     _transactionCounter++;
-    final transactionId = 'fake_txn_${DateTime.now().millisecondsSinceEpoch}_$_transactionCounter';
+    final transactionId =
+        'fake_txn_${DateTime.now().millisecondsSinceEpoch}_$_transactionCounter';
 
     onPurchaseComplete?.call(packType, packType.cars);
 

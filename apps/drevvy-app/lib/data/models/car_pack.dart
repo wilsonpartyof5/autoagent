@@ -3,23 +3,12 @@ import 'package:equatable/equatable.dart';
 import 'money_format.dart';
 
 /// One-time car pack purchase options (v1.7).
-/// Packs never expire. RevenueCat products: drevvy_pack_3/5/10.
+/// Packs never expire. RevenueCat products: drevvy_pack_1/3/5/10.
 enum CarPackType {
-  starter(
-    cars: 3,
-    priceUsd: 47,
-    productId: 'drevvy_pack_3',
-  ),
-  plus(
-    cars: 5,
-    priceUsd: 67,
-    productId: 'drevvy_pack_5',
-  ),
-  bestValue(
-    cars: 10,
-    priceUsd: 97,
-    productId: 'drevvy_pack_10',
-  );
+  single(cars: 1, priceUsd: 27, productId: 'drevvy_pack_1'),
+  starter(cars: 3, priceUsd: 47, productId: 'drevvy_pack_3'),
+  plus(cars: 5, priceUsd: 67, productId: 'drevvy_pack_5'),
+  bestValue(cars: 10, priceUsd: 97, productId: 'drevvy_pack_10');
 
   const CarPackType({
     required this.cars,
@@ -50,22 +39,27 @@ enum CarPackType {
 
   /// Display name for the pack.
   String get displayName => switch (this) {
-        CarPackType.starter => 'Starter',
-        CarPackType.plus => 'Plus',
-        CarPackType.bestValue => 'Best Value',
-      };
+    CarPackType.single => 'Single',
+    CarPackType.starter => 'Starter',
+    CarPackType.plus => 'Plus',
+    CarPackType.bestValue => 'Best Value',
+  };
 
-  /// Savings vs Starter pack (per car) as percentage.
+  /// "1 car" or "3 cars".
+  String get carsLabel => cars == 1 ? '1 car' : '$cars cars';
+
+  /// Savings vs the 3-car Starter pack (per car) as a percentage.
+  /// The 1-car pack is the unit price, so it has no savings line.
   double? get savingsVsStarter {
-    if (this == CarPackType.starter) return null;
     final starterPerCar = CarPackType.starter.perCarCost;
+    if (perCarCost >= starterPerCar) return null;
     return ((starterPerCar - perCarCost) / starterPerCar) * 100;
   }
 
-  /// Savings vs Starter pack in dollars (total).
+  /// Savings vs the 3-car Starter pack in dollars (total).
   double? get savingsDollarsVsStarter {
-    if (this == CarPackType.starter) return null;
     final starterPerCar = CarPackType.starter.perCarCost;
+    if (perCarCost >= starterPerCar) return null;
     return (starterPerCar - perCarCost) * cars;
   }
 
@@ -77,8 +71,8 @@ enum CarPackType {
     return 'Save ${pct.toStringAsFixed(1)}%/car · ${formatUsd(dollars, cents: true)} vs Starter';
   }
 
-  /// CTA button text: "Get X cars for $Y".
-  String get ctaText => 'Get $cars cars for $priceFormatted';
+  /// CTA button text: "Get 1 car for $27" or "Get 10 cars for $97".
+  String get ctaText => 'Get $carsLabel for $priceFormatted';
 }
 
 /// Reason for a credit balance change in the ledger.
@@ -136,7 +130,16 @@ class CreditLedgerEntry extends Equatable {
   final String? rcEventId;
 
   @override
-  List<Object?> get props => [id, userId, delta, reason, createdAt, dealId, packType, rcEventId];
+  List<Object?> get props => [
+    id,
+    userId,
+    delta,
+    reason,
+    createdAt,
+    dealId,
+    packType,
+    rcEventId,
+  ];
 }
 
 /// User's current car credit balance (computed from ledger).
@@ -173,16 +176,16 @@ class CarCreditBalance extends Equatable {
   String get useText => 'Uses 1 car';
 
   const CarCreditBalance.empty()
-      : balance = 0,
-        totalPurchased = 0,
-        totalSpent = 0,
-        totalRefunded = 0;
+    : balance = 0,
+      totalPurchased = 0,
+      totalSpent = 0,
+      totalRefunded = 0;
 
   /// Create with initial balance (for demo).
   const CarCreditBalance.withBalance(this.balance)
-      : totalPurchased = balance,
-        totalSpent = 0,
-        totalRefunded = 0;
+    : totalPurchased = balance,
+      totalSpent = 0,
+      totalRefunded = 0;
 
   CarCreditBalance copyWith({
     int? balance,
@@ -199,7 +202,12 @@ class CarCreditBalance extends Equatable {
   }
 
   @override
-  List<Object?> get props => [balance, totalPurchased, totalSpent, totalRefunded];
+  List<Object?> get props => [
+    balance,
+    totalPurchased,
+    totalSpent,
+    totalRefunded,
+  ];
 }
 
 /// Server-driven config for avg_savings stat (v1.7).

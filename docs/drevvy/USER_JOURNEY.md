@@ -1,6 +1,6 @@
 # Drevvy shopper journey
 
-Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and pays $97 a month for an agent to chase an out-the-door price on up to 10 cars. The agent talks to dealers by SMS, email, and ElevenLabs voice. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
+Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and buys a one-time car pack (1 car $27, 3 cars $47, 5 cars $67, or 10 cars $97) so an agent can chase an out-the-door price. Packs never expire. The agent talks to dealers by SMS, email, and ElevenLabs voice. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
 
 Sign in with Apple is postponed until App Store submission. The demo does not depend on it. A shopper can move through Ask, Shop, and the Deals tab on this story without an Apple account.
 
@@ -12,8 +12,8 @@ flowchart TD
   shop[Shop: MarketCheck inventory, dealers hidden]
   vdp[Vehicle detail]
   best[Get Best Price]
-  paywall["$97/mo paywall"]
-  add[Add to agent, up to 10 cars]
+  paywall["Car packs from $27"]
+  add[Add to agent]
   outreach[SMS, email, and voice cadence]
   replies[Dealer replies and negotiation]
   ready[Best OTD price ready]
@@ -34,7 +34,7 @@ flowchart TD
 | Shop | Map and cards. Price, photos, city, and distance. No store name, phone, or website. | The same cards. Dealer identity stays off the shopper payload. |
 | Vehicle detail | Specs, photos, days on market, price history if we have it. | Market comps and the leverage line the agent can quote later. |
 | Get Best Price | A tap that means “have Drevvy get the out-the-door number.” | The tap, the listing id, and the listed price snapshot. |
-| Paywall | $97/mo, up to 10 cars. | Paywall shown, then subscribed or not. MRR is a placeholder until payments are real. |
+| Paywall | One-time packs: 1 car $27, 3 cars $47, 5 cars $67, 10 cars $97. Never expire. | Paywall shown, then the pack purchased or not. MRR is a placeholder until payments are real. |
 | Add to agent | A deal card: starting price, best OTD, savings, status chip, last activity. | That card, plus store names. |
 | Outreach | “3 dealerships contacted, 1 replied.” Counts by SMS, email, and voice. Summaries, not transcripts. | The stores, phone, email, raw transcripts, cadence, and agent notes. |
 | Best price | The lowest out-the-door total, the fee breakdown, and the offer trend. | Which store gave which number, and the next agent step. |
@@ -98,7 +98,7 @@ MarketCheck: detail enrichment (specs, days on market, price drops). The admin d
 
 ### Get Best Price
 
-The tap means the shopper wants Drevvy to get an out-the-door number. If they are not subscribed, this opens the paywall. If they are subscribed and under 10 cars, the car is added to the agent.
+The tap means the shopper wants Drevvy to get an out-the-door number. If their car balance is 0, this opens the pack picker. If they have cars left, the car is added to the agent.
 
 Event: `shopper.get_best_price`.
 
@@ -108,7 +108,7 @@ MarketCheck: the listed price and days on market are copied onto the deal so lat
 
 ### Paywall
 
-$97 per month. Up to 10 cars in the agent at once. The shopper sees the price and the cap. They do not see dealer outreach on this screen.
+One-time packs: 1 car for $27, 3 cars for $47, 5 cars for $67, 10 cars for $97 ($9.70 per car, best value). Packs never expire. The shopper sees the prices. They do not see dealer outreach on this screen.
 
 Event: `shopper.paywall_shown`, then `shopper.subscribed` when payment succeeds. Payments are not built. The admin MRR and churn figures are placeholders from mock subscription status.
 

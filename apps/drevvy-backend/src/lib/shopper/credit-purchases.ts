@@ -14,6 +14,7 @@ import {
 } from './credits';
 
 export const CREDIT_PRODUCTS = {
+  drevvy_pack_1: { size: 1, priceUsd: 27 },
   drevvy_pack_3: { size: 3, priceUsd: 47 },
   drevvy_pack_5: { size: 5, priceUsd: 67 },
   drevvy_pack_10: { size: 10, priceUsd: 97 },

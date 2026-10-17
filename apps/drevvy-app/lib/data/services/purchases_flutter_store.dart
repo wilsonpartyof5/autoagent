@@ -8,7 +8,7 @@ import 'purchase_config.dart';
 import 'purchase_service.dart';
 import 'store_gateway.dart';
 
-/// `purchases_flutter` adapter for the three consumable car packs.
+/// `purchases_flutter` adapter for the four consumable car packs.
 class PurchasesFlutterStore implements StoreGateway {
   PurchasesFlutterStore(this.config);
 
@@ -26,7 +26,9 @@ class PurchasesFlutterStore implements StoreGateway {
       if (apiKey == null) {
         throw StateError('RevenueCat public SDK key is not set.');
       }
-      await rc.Purchases.setLogLevel(kDebugMode ? rc.LogLevel.debug : rc.LogLevel.info);
+      await rc.Purchases.setLogLevel(
+        kDebugMode ? rc.LogLevel.debug : rc.LogLevel.info,
+      );
       if (await rc.Purchases.isConfigured) return;
       // Stay anonymous until sign-in calls [logIn] with the Supabase user id.
       await rc.Purchases.configure(rc.PurchasesConfiguration(apiKey));
@@ -42,7 +44,8 @@ class PurchasesFlutterStore implements StoreGateway {
     final matched = <CarPackType, CarPackOffering>{};
     final packages = _packages(offerings);
     for (final package in packages) {
-      final pack = CarPackType.fromProductId(package.storeProduct.identifier) ??
+      final pack =
+          CarPackType.fromProductId(package.storeProduct.identifier) ??
           CarPackType.fromProductId(package.identifier);
       if (pack == null || matched.containsKey(pack)) continue;
       matched[pack] = _offeringFromProduct(pack, package.storeProduct);
@@ -76,21 +79,26 @@ class PurchasesFlutterStore implements StoreGateway {
       final package = await _packageFor(packType);
       final rc.PurchaseResult result;
       if (package != null) {
-        result = await rc.Purchases.purchase(rc.PurchaseParams.package(package));
-      } else {
-        final products = await rc.Purchases.getProducts(
-          [packType.productId],
-          productCategory: rc.ProductCategory.nonSubscription,
+        result = await rc.Purchases.purchase(
+          rc.PurchaseParams.package(package),
         );
+      } else {
+        final products = await rc.Purchases.getProducts([
+          packType.productId,
+        ], productCategory: rc.ProductCategory.nonSubscription);
         if (products.isEmpty) {
           return StorePurchaseFailed(
             message: '${packType.productId} is not available.',
             code: 'product_not_available',
           );
         }
-        result = await rc.Purchases.purchase(rc.PurchaseParams.storeProduct(products.first));
+        result = await rc.Purchases.purchase(
+          rc.PurchaseParams.storeProduct(products.first),
+        );
       }
-      return StorePurchaseSucceeded(transactionId: _transactionId(result.storeTransaction, packType));
+      return StorePurchaseSucceeded(
+        transactionId: _transactionId(result.storeTransaction, packType),
+      );
     } on PlatformException catch (error) {
       final code = rc.PurchasesErrorHelper.getErrorCode(error);
       if (code == rc.PurchasesErrorCode.purchaseCancelledError) {
@@ -145,17 +153,17 @@ class PurchasesFlutterStore implements StoreGateway {
     if (offerings.any((offering) => offering.packType.productId == productId)) {
       return true;
     }
-    final products = await rc.Purchases.getProducts(
-      [productId],
-      productCategory: rc.ProductCategory.nonSubscription,
-    );
+    final products = await rc.Purchases.getProducts([
+      productId,
+    ], productCategory: rc.ProductCategory.nonSubscription);
     return products.isNotEmpty;
   }
 
   List<rc.Package> _packages(rc.Offerings offerings) {
     return selectPackPackages<rc.Package>(
       byOfferingId: {
-        for (final entry in offerings.all.entries) entry.key: entry.value.availablePackages,
+        for (final entry in offerings.all.entries)
+          entry.key: entry.value.availablePackages,
       },
       currentPackages: offerings.current?.availablePackages,
     );
@@ -165,14 +173,18 @@ class PurchasesFlutterStore implements StoreGateway {
     final offerings = await rc.Purchases.getOfferings();
     final packages = _packages(offerings);
     for (final package in packages) {
-      final pack = CarPackType.fromProductId(package.storeProduct.identifier) ??
+      final pack =
+          CarPackType.fromProductId(package.storeProduct.identifier) ??
           CarPackType.fromProductId(package.identifier);
       if (pack == packType) return package;
     }
     return null;
   }
 
-  CarPackOffering _offeringFromProduct(CarPackType pack, rc.StoreProduct product) {
+  CarPackOffering _offeringFromProduct(
+    CarPackType pack,
+    rc.StoreProduct product,
+  ) {
     return CarPackOffering(
       packType: pack,
       localizedPrice: product.priceString,

@@ -93,14 +93,19 @@ class PackOptionCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Text('${pack.cars} cars', style: text.bodyStrong),
-                          Text(
-                            ' · ${pack.displayName}',
-                            style: text.body.copyWith(color: colors.muted),
-                          ),
-                        ],
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: pack.carsLabel,
+                              style: text.bodyStrong,
+                            ),
+                            TextSpan(
+                              text: ' · ${pack.displayName}',
+                              style: text.body.copyWith(color: colors.muted),
+                            ),
+                          ],
+                        ),
                       ),
                       if (pack.savingsText != null)
                         Text(

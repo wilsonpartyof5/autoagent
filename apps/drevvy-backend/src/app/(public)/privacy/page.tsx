@@ -80,9 +80,12 @@ export default function PrivacyPage() {
 
               <h3 className="text-xl font-medium mt-6 mb-3">In-App Purchases</h3>
               <p className="text-muted-foreground mb-4">
-                Subscription purchases are processed through Apple App Store or Google Play Store. We receive
-                confirmation of your subscription status through RevenueCat, our subscription management
-                provider. We do not receive or store your payment card information.
+                Car packs are one-time purchases processed through Apple App Store or Google Play Store:{' '}
+                {`${LEGAL.CAR_PACKS.map((pack) =>
+                  `${pack.cars === 1 ? '1 car' : `${pack.cars} cars`} for ${pack.price}`,
+                ).join(', ')}.`}{' '}
+                Packs never expire. We receive confirmation of your purchase through RevenueCat. We do not
+                receive or store your payment card information.
               </p>
             </section>
 
@@ -93,7 +96,7 @@ export default function PrivacyPage() {
                 <li>Provide our services, including contacting dealers on your behalf</li>
                 <li>Show you relevant vehicle inventory based on your location and preferences</li>
                 <li>Calculate accurate tax and fee estimates</li>
-                <li>Process and manage your subscription</li>
+                <li>Process and manage your car-pack purchases</li>
                 <li>Communicate with you about your requests and our services</li>
                 <li>Improve the App and develop new features</li>
                 <li>Ensure the security and integrity of our services</li>
@@ -205,11 +208,11 @@ export default function PrivacyPage() {
               <p className="text-muted-foreground mb-4">We use the following third-party services:</p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
                 <li>
-                  <strong>Apple/Google:</strong> For authentication (Sign in with Apple) and subscription
+                  <strong>Apple/Google:</strong> For authentication (Sign in with Apple) and in-app purchase
                   processing
                 </li>
                 <li>
-                  <strong>RevenueCat:</strong> For subscription management and analytics
+                  <strong>RevenueCat:</strong> For purchase management and analytics
                 </li>
                 <li>
                   <strong>Supabase:</strong> For secure data storage and authentication

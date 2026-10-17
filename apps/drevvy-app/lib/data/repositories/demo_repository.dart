@@ -20,7 +20,7 @@ import '../../core/theme/drevvy_tokens.dart';
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
-/// - RevenueCat/Superwall for billing (products: drevvy_pack_3/5/10)
+/// - RevenueCat/Superwall for billing (products: drevvy_pack_1/3/5/10)
 class DemoRepository {
   DemoRepository({
     PurchaseConfig? config,

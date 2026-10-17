@@ -100,7 +100,7 @@ class _AccountSheetState extends State<AccountSheet> {
       if (sheetContext.mounted) Navigator.pop(sheetContext);
       _showPurchaseMessage(
         host,
-        'Added ${result.creditsAdded} cars. Packs never expire.',
+        'Added ${result.creditsAdded == 1 ? '1 car' : '${result.creditsAdded} cars'}. Packs never expire.',
       );
       return;
     }
@@ -119,7 +119,9 @@ class _AccountSheetState extends State<AccountSheet> {
   String _restoreMessage(RestoreResult result) {
     return switch (result) {
       RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-        'Restored $creditsRestored cars.',
+        creditsRestored == 1
+            ? 'Restored 1 car.'
+            : 'Restored $creditsRestored cars.',
       RestoreSuccess() => 'Purchases restored.',
       RestoreNoPurchases() => 'No purchases to restore.',
       RestoreError(:final message) => message,
