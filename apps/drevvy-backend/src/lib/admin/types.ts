@@ -165,6 +165,7 @@ export type ShopperDeal = {
   firstReplyAt: string | null;
   bestPriceAt: string | null;
   won: boolean;
+  isTest?: boolean;
   listedPrice: number;
   negotiatedPrice: number | null;
   bestOtd: number | null;

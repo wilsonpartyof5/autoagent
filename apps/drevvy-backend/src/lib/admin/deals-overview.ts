@@ -57,6 +57,7 @@ export type LiveMessageRow = {
   dealId: string;
   direction: string;
   at: string;
+  isTest?: boolean;
 };
 
 const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -176,11 +177,12 @@ function demoStatus(deal: ShopperDeal): OverviewStatus {
 }
 
 function messageResponseHours(messages: LiveMessageRow[]): number | null {
-  const outbound = messages
+  const live = messages.filter((row) => row.isTest !== true);
+  const outbound = live
     .filter((row) => row.direction === 'outbound')
     .map((row) => row.at)
     .sort();
-  const inbound = messages
+  const inbound = live
     .filter((row) => row.direction === 'inbound')
     .map((row) => row.at)
     .sort();

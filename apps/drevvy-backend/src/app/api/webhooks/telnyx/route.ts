@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { createAdminClient } from '@/lib/supabase/admin';
-import {
-  verifyTelnyxSignature,
-  parseClientState,
-  mapTelnyxEventToChannel,
-  mapTelnyxEventToStatus,
-  stripHtml,
-  type TelnyxPayload,
-  type TelnyxCallPayload,
-  type TelnyxMessagingPayload,
-  type TelnyxEmailPayload,
-} from '@/lib/brain/telnyx';
-import { insertBrainVendorEvent, type BrainVendorEvent } from '@/lib/brain/repository';
+import { ingestTelnyxPayload, supabaseCommunicationsStore } from '@/lib/brain/communications';
 import { recordEmailOptout, endDealOnOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
+import { verifyTelnyxSignature, parseClientState } from '@/lib/brain/telnyx';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +20,6 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signature = request.headers.get('telnyx-signature-ed25519');
   const timestamp = request.headers.get('telnyx-timestamp');
-
   const verification = verifyTelnyxSignature(rawBody, signature, timestamp, publicKey);
 
   if (!verification.valid) {
@@ -40,102 +29,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let payload: TelnyxPayload;
+  let payload: unknown;
   try {
-    payload = JSON.parse(rawBody) as TelnyxPayload;
+    payload = JSON.parse(rawBody) as unknown;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
   const supabase = createAdminClient();
+  await recordOptOut(supabase, payload);
 
-  const eventType = payload.data.event_type;
-  const vendorEventId = payload.data.id;
-  const occurredAt = payload.data.occurred_at;
+  const result = await ingestTelnyxPayload(payload, {
+    store: supabaseCommunicationsStore(supabase),
+    apiKey: process.env.TELNYX_API_KEY ?? null,
+  });
 
-  const channel = mapTelnyxEventToChannel(eventType);
-  const { status, errorCode, errorDetail } = mapTelnyxEventToStatus(payload);
-
-  let direction: 'outbound' | 'inbound' | null = null;
-  let clientState: { dealId?: string; dealerId?: string; touchpoint?: string; variant?: string } = {};
-  let durationS: number | null = null;
-  let transcript: string | null = null;
-
-  if (eventType.startsWith('call.')) {
-    const callPayload = payload.data.payload as TelnyxCallPayload['data']['payload'];
-    direction = callPayload.direction ?? null;
-    clientState = parseClientState(callPayload.client_state);
-
-    if (callPayload.start_time && callPayload.end_time) {
-      const startMs = Date.parse(callPayload.start_time);
-      const endMs = Date.parse(callPayload.end_time);
-      if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
-        durationS = Math.round((endMs - startMs) / 1000);
-      }
-    }
-  } else if (eventType.startsWith('message.')) {
-    const msgPayload = payload.data.payload as TelnyxMessagingPayload['data']['payload'];
-    direction = msgPayload.direction ?? null;
-    transcript = msgPayload.text ?? null;
-  } else if (eventType.startsWith('email.')) {
-    const emailPayload = payload.data.payload as TelnyxEmailPayload['data']['payload'];
-    direction = emailPayload.direction ?? null;
-    clientState = parseClientState(emailPayload.client_state);
-    const rawTranscript = emailPayload.body?.plain ?? emailPayload.body?.html ?? null;
-    transcript = rawTranscript ? stripHtml(rawTranscript) : null;
-
-    if (eventType === 'email.unsubscribed' || eventType === 'email.spam_reported') {
-      const fromEmail = emailPayload.from;
-      const reason: EmailOptoutReason = eventType === 'email.unsubscribed' ? 'unsubscribed' : 'spam_reported';
-
-      if (fromEmail) {
-        await recordEmailOptout(supabase, fromEmail, reason, vendorEventId);
-      }
-
-      if (clientState.dealId) {
-        await endDealOnOptout(clientState.dealId, reason, occurredAt);
-      }
-    }
-  }
-
-  const event: BrainVendorEvent = {
-    vendor: 'telnyx',
-    vendor_event_id: vendorEventId,
-    event_type: eventType,
-    channel,
-    direction,
-    deal_id: clientState.dealId ?? null,
-    dealer_id: clientState.dealerId ?? null,
-    touchpoint: clientState.touchpoint ?? null,
-    variant: clientState.variant ?? null,
-    status,
-    error_code: errorCode,
-    error_detail: errorDetail,
-    duration_s: durationS,
-    transcript,
-    summary: null,
-    occurred_at: occurredAt,
-    signature_verified: true,
-    payload: sanitizePayloadForStorage(payload),
-  };
-
-  const result = await insertBrainVendorEvent(supabase, event);
-
-  if ('error' in result) {
-    console.error('[Telnyx webhook] Insert error:', result.error);
-  }
-
-  return NextResponse.json({ received: true, id: 'id' in result ? result.id : null });
+  return NextResponse.json(
+    { received: result.received, id: result.id },
+    { status: result.httpStatus },
+  );
 }
 
-function sanitizePayloadForStorage(payload: TelnyxPayload): Record<string, unknown> {
-  const sanitized = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
-  const data = sanitized.data as Record<string, unknown> | undefined;
-  if (data?.payload) {
-    const innerPayload = data.payload as Record<string, unknown>;
-    delete innerPayload.client_state;
-    delete innerPayload.sip_headers;
-    delete innerPayload.custom_headers;
+async function recordOptOut(supabase: ReturnType<typeof createAdminClient>, payload: unknown): Promise<void> {
+  if (!payload || typeof payload !== 'object') return;
+  const data = (payload as { data?: { event_type?: string; id?: string; occurred_at?: string; payload?: Record<string, unknown> } }).data;
+  const eventType = data?.event_type;
+  if (eventType !== 'email.unsubscribed' && eventType !== 'email.spam_reported') return;
+  const inner = data?.payload ?? {};
+  const fromEmail = typeof inner.from === 'string' ? inner.from : null;
+  const reason: EmailOptoutReason = eventType === 'email.unsubscribed' ? 'unsubscribed' : 'spam_reported';
+  if (fromEmail && data?.id) {
+    await recordEmailOptout(supabase, fromEmail, reason, data.id);
   }
-  return sanitized;
+  const clientState = parseClientState(typeof inner.client_state === 'string' ? inner.client_state : undefined);
+  if (clientState.dealId) {
+    await endDealOnOptout(clientState.dealId, reason, data?.occurred_at ?? new Date().toISOString());
+  }
 }

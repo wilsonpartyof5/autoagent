@@ -3,22 +3,24 @@ import Link from 'next/link';
 import { InsightsPanel } from '@/components/admin/insights-panel';
 import { channelLabel, outcomeLabel, stopLabel } from '@/lib/admin/outreach/analytics';
 import { hours } from '@/lib/admin/format';
-import type { OutreachDeal, OutreachInsight, OutreachReport, SegmentStat, VariantStat } from '@/lib/admin/outreach/types';
+import type { OutreachDeal, OutreachInsight, OutreachReport, SegmentStat, TrafficFilter, VariantStat } from '@/lib/admin/outreach/types';
 import { MIN_VARIANT_SENDS, TOUCHPOINT_IDS } from '@/lib/admin/outreach/types';
 
 export function OutreachDashboard({
   report,
   insight,
   preview,
+  traffic = 'live',
 }: {
   report: OutreachReport;
   insight: OutreachInsight;
   preview: OutreachDeal[];
+  traffic?: TrafficFilter;
 }) {
   const maxDay = Math.max(...report.firstReplyByDay.map((row) => row.count), 1);
   const maxStop = Math.max(...report.stops.map((row) => row.count), 1);
   const maxChannel = Math.max(...report.channels.map((row) => row.sent), 1);
-  const query = `from=${report.from}&to=${report.to}`;
+  const query = `from=${report.from}&to=${report.to}&traffic=${traffic}`;
 
   return (
     <section className="space-y-8">
@@ -30,6 +32,7 @@ export function OutreachDashboard({
           </p>
         </div>
         <form className="flex flex-wrap items-end gap-2" action="/admin/outreach">
+          <input type="hidden" name="traffic" value={traffic} />
           <label className="text-xs text-slate-400">
             From
             <input type="date" name="from" defaultValue={report.from} className="mt-1 block rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100" />
@@ -203,6 +206,7 @@ export function ConversationTable({ deals }: { deals: OutreachDeal[] }) {
             <tr key={deal.id} className="border-t border-slate-800">
               <td className="py-2 pr-3">
                 <Link href={`/admin/outreach/conversations/${deal.id}`} className="text-emerald-300">{deal.dealerName}</Link>
+                {deal.isTest ? <span className="ml-2 inline-flex rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100">TEST</span> : null}
                 <p className="text-xs text-slate-500">{deal.dealerType} · {deal.region}</p>
               </td>
               <td className="py-2 pr-3">{deal.shopperFirst}</td>

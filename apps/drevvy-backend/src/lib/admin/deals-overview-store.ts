@@ -39,9 +39,7 @@ async function readLiveDeals(): Promise<{ deals: ReturnType<typeof assembleOverv
       selectPages<OfferTable>((from, to) => (
         admin.from('shopper_offers').select('shopper_deal_id, vehicle_price, occurred_at').order('occurred_at', { ascending: true }).range(from, to)
       )),
-      selectPages<MessageTable>((from, to) => (
-        admin.from('shopper_outreach_messages').select('shopper_deal_id, direction, occurred_at').order('occurred_at', { ascending: true }).range(from, to)
-      )),
+      selectMessages(admin),
     ]);
 
     const partial = Boolean(deals.capped || lifecycle.error || offers.error || messages.error);
@@ -57,6 +55,16 @@ async function readLiveDeals(): Promise<{ deals: ReturnType<typeof assembleOverv
   } catch {
     return null;
   }
+}
+
+async function selectMessages(admin: ReturnType<typeof createAdminClient>) {
+  const flagged = await selectPages<MessageTable>((from, to) => (
+    admin.from('shopper_outreach_messages').select('shopper_deal_id, direction, occurred_at, is_test').order('occurred_at', { ascending: true }).range(from, to)
+  ));
+  if (!flagged.error || !/is_test|column/i.test(flagged.error)) return flagged;
+  return selectPages<MessageTable>((from, to) => (
+    admin.from('shopper_outreach_messages').select('shopper_deal_id, direction, occurred_at').order('occurred_at', { ascending: true }).range(from, to)
+  ));
 }
 
 async function selectPages<T>(
@@ -83,7 +91,7 @@ type LifecycleTable = {
   bought: boolean | null;
 };
 type OfferTable = { shopper_deal_id: string; vehicle_price: number | string | null; occurred_at: string };
-type MessageTable = { shopper_deal_id: string; direction: string; occurred_at: string };
+type MessageTable = { shopper_deal_id: string; direction: string; occurred_at: string; is_test?: boolean | null };
 
 function toDeal(row: LiveDealTable): LiveDealRow {
   return { id: row.id, status: row.status, createdAt: row.created_at };
@@ -110,5 +118,5 @@ function toOffer(row: OfferTable): LiveOfferRow {
 }
 
 function toMessage(row: MessageTable): LiveMessageRow {
-  return { dealId: row.shopper_deal_id, direction: row.direction, at: row.occurred_at };
+  return { dealId: row.shopper_deal_id, direction: row.direction, at: row.occurred_at, isTest: row.is_test === true };
 }

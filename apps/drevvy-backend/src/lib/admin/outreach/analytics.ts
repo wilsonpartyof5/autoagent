@@ -31,20 +31,30 @@ export function dealsStartedBetween(from: string, to: string, deals = getOutreac
   });
 }
 
+export function withoutTestTraffic(deals: OutreachDeal[]): OutreachDeal[] {
+  return deals.flatMap((deal) => {
+    if (deal.isTest) return [];
+    const events = deal.events.filter((event) => event.isTest !== true);
+    if (deal.events.length > 0 && events.length === 0) return [];
+    return [{ ...deal, events }];
+  });
+}
+
 export function buildOutreachReport(from: string, to: string, deals = dealsStartedBetween(from, to)): OutreachReport {
-  const outbound = deals.flatMap((deal) => deal.events.filter(isSentOutbound));
+  const liveDeals = withoutTestTraffic(deals);
+  const outbound = liveDeals.flatMap((deal) => deal.events.filter(isSentOutbound));
   const calls = outbound.filter((event) => event.channel === 'call');
   const connected = calls.filter((event) => event.callOutcome && !['no_answer', 'voicemail'].includes(event.callOutcome));
   const captured = connected.filter((event) => event.callOutcome === 'number_captured');
-  const replyHours = deals
+  const replyHours = liveDeals
     .filter((deal) => deal.firstReplyAt)
     .map((deal) => hoursBetween(deal.startedAt, deal.firstReplyAt as string));
 
-  const replied = deals.filter((deal) => deal.replyWithin5Days).length;
-  const opted = deals.filter((deal) => deal.stop === 'opt_out').length;
-  const sold = deals.filter((deal) => deal.stop === 'sold').length;
-  const withOtd = deals.filter((deal) => deal.otdReceived).length;
-  const contacted = deals.length;
+  const replied = liveDeals.filter((deal) => deal.replyWithin5Days).length;
+  const opted = liveDeals.filter((deal) => deal.stop === 'opt_out').length;
+  const sold = liveDeals.filter((deal) => deal.stop === 'sold').length;
+  const withOtd = liveDeals.filter((deal) => deal.otdReceived).length;
+  const contacted = liveDeals.length;
 
   return {
     from,
@@ -55,7 +65,7 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
       textsSent: outbound.filter((event) => event.channel === 'sms').length,
       callsSent: calls.length,
       voicemailsSent: outbound.filter((event) => event.channel === 'voicemail').length,
-      textsSkipped: deals.flatMap((deal) => deal.events).filter((event) => event.status === 'skipped_not_textable').length,
+      textsSkipped: liveDeals.flatMap((deal) => deal.events).filter((event) => event.status === 'skipped_not_textable').length,
       replyRateWithin5Days: rate(replied, contacted),
       medianHoursToFirstReply: median(replyHours),
       otdReceivedRate: rate(withOtd, contacted),
@@ -66,17 +76,17 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
     },
     firstReplyByDay: [0, 1, 2, 3, 4, 5].map((day) => ({
       day,
-      count: deals.filter((deal) => deal.replyWithin5Days && replyDay(deal) === day).length,
+      count: liveDeals.filter((deal) => deal.replyWithin5Days && replyDay(deal) === day).length,
     })),
     firstReplyByTouchpoint: TOUCHPOINT_IDS.map((touchpoint) => ({
       touchpoint,
-      count: deals.filter((deal) => deal.firstReplyTouchpoint === touchpoint).length,
+      count: liveDeals.filter((deal) => deal.firstReplyTouchpoint === touchpoint).length,
     })).filter((row) => row.count > 0),
     stops: STOP_REASONS.map((reason) => ({
       reason,
-      count: deals.filter((deal) => deal.stop === reason).length,
+      count: liveDeals.filter((deal) => deal.stop === reason).length,
     })),
-    variants: variantStats(deals),
+    variants: variantStats(liveDeals),
     channels: CHANNELS.map((channel) => {
       const rows = outbound.filter((event) => event.channel === channel);
       const replies = rows.filter((event) => event.replied).length;
@@ -91,9 +101,9 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
       ? Math.round(mean(calls.map((event) => event.callDurationS).filter((value): value is number => value != null)))
       : null,
     segments: {
-      dealerType: dealSegments(deals, (deal) => deal.dealerType),
-      brand: dealSegments(deals, (deal) => deal.brand),
-      region: dealSegments(deals, (deal) => deal.region),
+      dealerType: dealSegments(liveDeals, (deal) => deal.dealerType),
+      brand: dealSegments(liveDeals, (deal) => deal.brand),
+      region: dealSegments(liveDeals, (deal) => deal.region),
       dayOfWeek: sendSegments(outbound, (event) => event.dayOfWeek, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
       timeOfDay: sendSegments(outbound, (event) => (hourOf(event) < 12 ? 'Morning' : 'Afternoon'), ['Morning', 'Afternoon']),
     },

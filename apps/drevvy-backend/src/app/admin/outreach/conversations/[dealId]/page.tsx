@@ -26,7 +26,10 @@ export default async function ConversationPage({ params }: { params: Promise<{ d
         <p className="mt-1 text-sm text-slate-400">
           {deal.dealerType} · {deal.brand} · {deal.region} · {deal.dealerSize}. Calling for {deal.shopperFirst} on the {deal.vehicle}, stock #{deal.stock}.
         </p>
-        <p className="mt-2 text-sm text-slate-300">{stopLabel(deal.stop)}{deal.otdReceived ? ' · OTD received' : ''}</p>
+        <p className="mt-2 text-sm text-slate-300">
+          {stopLabel(deal.stop)}{deal.otdReceived ? ' · OTD received' : ''}
+          {deal.isTest ? <span className="ml-2 inline-flex rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100">TEST</span> : null}
+        </p>
       </header>
       <ol className="space-y-3">
         {deal.events.map((event) => (
@@ -43,8 +46,15 @@ export default async function ConversationPage({ params }: { params: Promise<{ d
               {event.callDurationS != null ? ` · ${event.callDurationS}s` : ''}
               {event.optOut ? ' · opt-out' : ''}
               {event.capturedNumber ? ` · ${event.capturedNumber}` : ''}
+              {event.isTest ? ' · TEST' : ''}
             </p>
+            {(event.fromAddress || event.toAddress) ? (
+              <p className="mt-1 text-xs text-slate-500">{event.fromAddress ?? 'Unknown sender'} → {event.toAddress ?? 'Unknown recipient'}</p>
+            ) : null}
             <pre className="mt-3 whitespace-pre-wrap font-sans text-sm text-slate-200">{event.body}</pre>
+            {event.recordingPath ? (
+              <audio controls preload="none" src={`/api/admin/outreach/recordings?path=${encodeURIComponent(event.recordingPath)}`} className="mt-3 w-full" />
+            ) : null}
             {event.transcript && event.transcript !== event.body ? (
               <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-950 p-3 font-sans text-sm text-slate-300">{event.transcript}</pre>
             ) : null}

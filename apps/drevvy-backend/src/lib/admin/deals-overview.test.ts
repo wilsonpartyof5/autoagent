@@ -58,6 +58,21 @@ test('live rows map onto active, sold, no-response, and accepted', () => {
   assert.equal(summary.carsByMonth.find((row) => row.month === '2026-09')?.cars, 3);
 });
 
+test('test messages do not count as dealer replies', () => {
+  const deals = assembleOverviewDeals({
+    deals: [{ id: 'd', status: 'interested', createdAt: '2026-09-02T15:00:00.000Z' }],
+    lifecycle: [{ dealId: 'd', endState: 'open', addedAt: '2026-09-02T15:00:00.000Z', firstOutreachAt: null, repliedAt: null, bought: null }],
+    offers: [],
+    messages: [
+      { dealId: 'd', direction: 'outbound', at: '2026-09-02T16:00:00.000Z', isTest: true },
+      { dealId: 'd', direction: 'inbound', at: '2026-09-02T17:00:00.000Z', isTest: true },
+      { dealId: 'd', direction: 'outbound', at: '2026-09-02T18:00:00.000Z' },
+      { dealId: 'd', direction: 'inbound', at: '2026-09-02T20:00:00.000Z' },
+    ],
+  });
+  assert.equal(deals[0]?.responseHours, 2);
+});
+
 test('an empty deal table falls back to demo counts for every status', () => {
   const summary = summarizeDeals(demoOverviewDeals(), 'demo');
   assert.equal(summary.source, 'demo');
