@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 38: Did you buy it? (outcome sheet)
@@ -27,6 +28,12 @@ class _OutcomeSheetState extends State<OutcomeSheet> {
   final _priceController = TextEditingController();
   final _noteController = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    ProductAnalytics.instance.screen('outcome', {'deal_id': widget.deal.id});
+  }
+
   String _formatPrice(int price) {
     return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
   }
@@ -34,13 +41,25 @@ class _OutcomeSheetState extends State<OutcomeSheet> {
   void _submit() {
     if (_selectedType == null) return;
 
+    final price = _selectedType == DealOutcomeType.boughtDifferentPrice
+        ? int.tryParse(_priceController.text.replaceAll(',', ''))
+        : null;
     final outcome = DealOutcome(
       type: _selectedType!,
-      actualPrice: _selectedType == DealOutcomeType.boughtDifferentPrice
-          ? int.tryParse(_priceController.text.replaceAll(',', ''))
-          : null,
+      actualPrice: price,
       note: _noteController.text.isNotEmpty ? _noteController.text : null,
     );
+    ProductAnalytics.instance.track(AnalyticsEvents.outcomeSubmitted, {
+      'deal_id': widget.deal.id,
+      'outcome': switch (_selectedType!) {
+        DealOutcomeType.bought => 'bought',
+        DealOutcomeType.boughtDifferentPrice => 'bought_different_price',
+        DealOutcomeType.notYet => 'not_yet',
+        DealOutcomeType.no => 'no',
+      },
+      'has_note': _noteController.text.trim().isNotEmpty,
+      'has_price': price != null,
+    });
 
     widget.onSubmit(outcome);
   }

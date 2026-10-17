@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../analytics/product_analytics.dart';
 import '../models/car_pack.dart';
 import 'purchase_config.dart';
 import 'shopper_session_store.dart';
@@ -106,11 +107,22 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
         return null;
       }
       if (_endpointMissing(response.statusCode)) return null;
-      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _reportFailure(path, response.statusCode);
+        return null;
+      }
       return _parseBalance(response.body);
     } on Exception {
+      _reportFailure(path, 0);
       return null;
     }
+  }
+
+  void _reportFailure(String path, int status) {
+    ProductAnalytics.instance.track(AnalyticsEvents.apiFailed, {
+      'surface': path.endsWith('/restore') ? 'credits_restore' : 'credits',
+      'status': status,
+    });
   }
 
   Map<String, String> _headers() {

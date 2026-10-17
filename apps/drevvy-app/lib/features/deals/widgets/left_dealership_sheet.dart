@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 37: Left dealership notification (geofence exit trigger)
@@ -28,7 +30,9 @@ class LeftDealershipSheet extends StatelessWidget {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final dealerName = deal.dealer?.name ?? 'the dealership';
 
-    return Container(
+    return AnalyticsView(
+      screen: 'left_dealership',
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -94,7 +98,13 @@ class LeftDealershipSheet extends StatelessWidget {
                 DrevvyButton(
                   label: 'Yes, I bought it!',
                   icon: LucideIcons.partyPopper,
-                  onPressed: onBought,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.leftDealershipAnswered,
+                      {'answer': 'bought'},
+                    );
+                    onBought();
+                  },
                   variant: DrevvyButtonVariant.accept,
                   isFullWidth: true,
                 ),
@@ -104,7 +114,13 @@ class LeftDealershipSheet extends StatelessWidget {
                 DrevvyButton(
                   label: 'Still looking',
                   icon: LucideIcons.search,
-                  onPressed: onStillLooking,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.leftDealershipAnswered,
+                      {'answer': 'still_looking'},
+                    );
+                    onStillLooking();
+                  },
                   variant: DrevvyButtonVariant.secondary,
                   isFullWidth: true,
                 ),
@@ -112,7 +128,13 @@ class LeftDealershipSheet extends StatelessWidget {
                 const SizedBox(height: DrevvySpace.s3),
 
                 TextButton(
-                  onPressed: onDismiss,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.leftDealershipAnswered,
+                      {'answer': 'dismissed'},
+                    );
+                    onDismiss();
+                  },
                   child: Text(
                     'Dismiss',
                     style: text.callout.copyWith(color: colors.muted),
@@ -124,6 +146,7 @@ class LeftDealershipSheet extends StatelessWidget {
 
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

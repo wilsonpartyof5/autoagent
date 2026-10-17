@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
@@ -61,6 +62,10 @@ class HowItWorksScreen extends ConsumerWidget {
                       const Spacer(),
                       TextButton(
                         onPressed: () async {
+                          ProductAnalytics.instance.track(AnalyticsEvents.onboardingSkipped, {
+                            'step': 'how_it_works',
+                            'reason': 'skip',
+                          });
                           await completeFirstRun(ref);
                           if (context.mounted) context.go('/shop');
                         },

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/analytics/product_analytics.dart';
 import 'floating_tab_bar.dart';
 import 'canvas_background.dart';
 import 'offline_banner.dart';
@@ -75,6 +76,7 @@ class _ShellScaffoldState extends State<ShellScaffold> with SingleTickerProvider
   }
 
   void _simulateOffline() {
+    ProductAnalytics.instance.track(AnalyticsEvents.offlineBannerRetried);
     setState(() => _isOffline = !_isOffline);
   }
 
@@ -124,9 +126,16 @@ class _ShellScaffoldState extends State<ShellScaffold> with SingleTickerProvider
                 child: FloatingTabBar(
                   currentIndex: widget.navigationShell.currentIndex,
                   onTap: (index) {
+                    const tabs = ['shop', 'deals', 'saved'];
+                    final reselected = index == widget.navigationShell.currentIndex;
+                    ProductAnalytics.instance.track(AnalyticsEvents.tabSelected, {
+                      'tab': tabs[index],
+                      'reselected': reselected,
+                    });
+                    ProductAnalytics.instance.recordLocation('/${tabs[index]}');
                     widget.navigationShell.goBranch(
                       index,
-                      initialLocation: index == widget.navigationShell.currentIndex,
+                      initialLocation: reselected,
                     );
                   },
                 ),

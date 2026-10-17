@@ -6,6 +6,8 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
+import '../../../data/analytics/search_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../onboarding_controller.dart';
@@ -196,6 +198,21 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                     label: 'Continue',
                     onPressed: () async {
                       final draft = ref.read(onboardingDraftProvider);
+                      final bodies = _bodyTypes
+                          .map((value) => value.trim().toLowerCase())
+                          .where(vehicleCategories.contains)
+                          .toList();
+                      const bands = ['under_25k', '25_35', '35_50', 'over_50', 'unsure'];
+                      const trade = ['yes', 'no', 'unsure'];
+                      const payment = ['cash', 'finance', 'unsure'];
+                      ProductAnalytics.instance.track(AnalyticsEvents.onboardingPreferencesSaved, {
+                        'budget_band': bands[_budgetIndex ?? 4],
+                        if (bodies.isNotEmpty) 'body_types': bodies.join(','),
+                        'trade_in': trade[_tradeInIndex.clamp(0, trade.length - 1)],
+                        'payment': payment[_paymentIndex.clamp(0, payment.length - 1)],
+                        'location_granted': draft.locationGranted,
+                        'has_zip': draft.zip != null && draft.zip!.isNotEmpty,
+                      });
                       await DemoRepository.instance.saveOnboardingAnswers(
                         budgetOtd: _budgetIndex == null ? null : _budgetAmounts[_budgetIndex!],
                         bodyTypes: _bodyTypes.toList(),

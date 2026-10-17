@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 
 /// Screen 34: Pickup-check location pre-prompt ("Always")
 /// Shown after official offer received, one-time opt-in for geofence
@@ -24,7 +26,11 @@ class LocationPickupSheet extends StatelessWidget {
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'location_prompt',
+      event: AnalyticsEvents.locationPermissionAsked,
+      eventProperties: const {'surface': 'pickup'},
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -129,14 +135,26 @@ class LocationPickupSheet extends StatelessWidget {
                 // CTAs
                 DrevvyPrimaryButton(
                   label: 'Allow location',
-                  onPressed: onAllow,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.locationPermissionGranted,
+                      {'surface': 'pickup'},
+                    );
+                    onAllow();
+                  },
                 ),
 
                 const SizedBox(height: DrevvySpace.s3),
 
                 DrevvyGhostButton(
                   label: 'Not now',
-                  onPressed: onNotNow,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.locationPermissionDenied,
+                      {'surface': 'pickup'},
+                    );
+                    onNotNow();
+                  },
                 ),
               ],
             ),
@@ -144,6 +162,7 @@ class LocationPickupSheet extends StatelessWidget {
 
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

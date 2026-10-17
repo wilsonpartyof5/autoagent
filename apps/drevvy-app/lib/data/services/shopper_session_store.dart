@@ -1,3 +1,4 @@
+import '../analytics/product_analytics.dart';
 import '../auth/auth_api.dart';
 import '../auth/auth_exception.dart';
 import '../auth/session_store.dart';
@@ -60,6 +61,7 @@ class ShopperSessionStore {
     session = next;
     final userId = next.consumerUserId?.trim();
     if (userId == null || userId.isEmpty) return;
+    ProductAnalytics.instance.identify(userId);
     await identity?.onSignedIn(userId);
   }
 
@@ -95,6 +97,7 @@ class ShopperSessionStore {
       // Secure storage can be absent in demo mode.
     }
     session = null;
+    ProductAnalytics.instance.signOut();
     await identity?.onSignedOut();
   }
 }

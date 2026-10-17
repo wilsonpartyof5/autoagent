@@ -4,6 +4,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
+import '../../../data/analytics/search_analytics.dart';
 import '../../../data/models/search_profile.dart';
 
 /// Recent searches with run again, delete, and clear all on demo data.
@@ -59,9 +61,19 @@ class _RecentSearchesSheetState extends State<RecentSearchesSheet> {
   void initState() {
     super.initState();
     _searches = List<SavedSearch>.of(widget.searches);
+    ProductAnalytics.instance.screen('search_history');
   }
 
   void _run(SavedSearch search) {
+    final filters = filterEventProperties(search.filters);
+    ProductAnalytics.instance.track(AnalyticsEvents.historyRan, {
+      'has_filters': filters['has_filters'] ?? false,
+    });
+    ProductAnalytics.instance.track(AnalyticsEvents.searchRefined, {
+      'surface': 'search_history',
+      'source': 'history',
+      ...filters,
+    });
     widget.onRun(search);
     Navigator.pop(context, true);
   }
@@ -72,6 +84,7 @@ class _RecentSearchesSheetState extends State<RecentSearchesSheet> {
       _searches = _searches.where((entry) => entry.id != search.id).toList();
     });
     widget.onDelete(search);
+    ProductAnalytics.instance.track(AnalyticsEvents.historyDeleted);
 
     _messengerKey.currentState?.showSnackBar(
       SnackBar(
@@ -81,6 +94,7 @@ class _RecentSearchesSheetState extends State<RecentSearchesSheet> {
           label: 'Undo',
           onPressed: () {
             if (!mounted) return;
+            ProductAnalytics.instance.track(AnalyticsEvents.historyRestored);
             setState(() {
               final restored = List<SavedSearch>.of(_searches);
               restored.insert(index.clamp(0, restored.length), search);
@@ -125,6 +139,7 @@ class _RecentSearchesSheetState extends State<RecentSearchesSheet> {
     if (confirmed != true || !mounted) return;
     setState(() => _searches = []);
     widget.onClearAll();
+    ProductAnalytics.instance.track(AnalyticsEvents.historyCleared);
   }
 
   @override

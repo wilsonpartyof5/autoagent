@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../data/analytics/product_analytics.dart';
+import '../../../data/analytics/search_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 29: Ask Drevvy (deal-scoped chat sheet)
@@ -25,6 +27,7 @@ class _AskDrevvySheetState extends State<AskDrevvySheet> {
   @override
   void initState() {
     super.initState();
+    ProductAnalytics.instance.screen('ask_deal', {'deal_id': widget.deal.id});
     // Add initial context message
     _messages.add(_ChatMessage(
       isAgent: true,
@@ -38,9 +41,14 @@ class _AskDrevvySheetState extends State<AskDrevvySheet> {
     super.dispose();
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage({String source = 'composer'}) async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
+    ProductAnalytics.instance.track(
+      AnalyticsEvents.searchSubmitted,
+      searchEventProperties(surface: 'deal_ask', query: text, source: source),
+    );
 
     setState(() {
       _messages.add(_ChatMessage(isAgent: false, text: text));
@@ -170,21 +178,21 @@ class _AskDrevvySheetState extends State<AskDrevvySheet> {
                   label: 'What\'s the doc fee?',
                   onTap: () {
                     _controller.text = 'What\'s the doc fee?';
-                    _sendMessage();
+                    _sendMessage(source: 'quick_reply');
                   },
                 ),
                 _QuickReply(
                   label: 'Can you remove add-ons?',
                   onTap: () {
                     _controller.text = 'Can you remove any add-ons?';
-                    _sendMessage();
+                    _sendMessage(source: 'quick_reply');
                   },
                 ),
                 _QuickReply(
                   label: 'Who is the dealer?',
                   onTap: () {
                     _controller.text = 'Who is the dealer?';
-                    _sendMessage();
+                    _sendMessage(source: 'quick_reply');
                   },
                 ),
               ],

@@ -5,6 +5,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../onboarding_controller.dart';
 import '../widgets/demo_offer_card.dart';
 import '../widgets/progress_dots.dart';
@@ -87,6 +88,10 @@ class WelcomeScreen extends ConsumerWidget {
                   DrevvyGhostButton(
                     label: 'I already have an account',
                     onPressed: () async {
+                      ProductAnalytics.instance.track(AnalyticsEvents.onboardingSkipped, {
+                        'step': 'welcome',
+                        'reason': 'existing_account',
+                      });
                       await completeFirstRun(ref);
                       if (context.mounted) context.go('/shop');
                     },

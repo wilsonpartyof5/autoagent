@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// v1.6: "Changed my mind" withdraw sheet in Accepted state
@@ -31,7 +33,10 @@ class WithdrawSheet extends StatelessWidget {
     final listing = deal.listing;
     final offer = deal.latestOffer;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'withdraw_acceptance',
+      properties: {'deal_id': deal.id},
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -140,19 +145,32 @@ class WithdrawSheet extends StatelessWidget {
                 DrevvyButton(
                   label: 'Withdraw acceptance',
                   variant: DrevvyButtonVariant.destructive,
-                  onPressed: onWithdraw,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.acceptanceWithdrawConfirmed,
+                      {'deal_id': deal.id},
+                    );
+                    onWithdraw();
+                  },
                   isFullWidth: true,
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 DrevvyGhostButton(
                   label: 'Keep this deal',
-                  onPressed: onKeepDeal,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.acceptanceWithdrawCancelled,
+                      {'deal_id': deal.id},
+                    );
+                    onKeepDeal();
+                  },
                 ),
               ],
             ),
           ),
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

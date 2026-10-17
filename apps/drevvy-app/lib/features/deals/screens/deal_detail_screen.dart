@@ -7,6 +7,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/accept_confirm_sheet.dart';
@@ -51,6 +52,25 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
       _deal = deal;
       _isLoading = false;
     });
+    ProductAnalytics.instance.track(AnalyticsEvents.dealStateViewed, {
+      'deal_id': deal.id,
+      'status': deal.status.name,
+      'offer_count': deal.offers.length,
+      'round_count': deal.offers.length,
+    });
+    if (deal.offers.length > 1) {
+      ProductAnalytics.instance.track(AnalyticsEvents.priceDropRoundViewed, {
+        'deal_id': deal.id,
+        'round_count': deal.offers.length,
+      });
+    }
+    if (deal.offers.isNotEmpty) {
+      ProductAnalytics.instance.track(AnalyticsEvents.offerViewed, {
+        'deal_id': deal.id,
+        'surface': 'deal_detail',
+        'round_count': deal.offers.length,
+      });
+    }
     if (widget.openDidYouBuy && !_didOpenOutcome) {
       _didOpenOutcome = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,6 +80,9 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
   }
 
   Future<void> _acceptOffer() async {
+    ProductAnalytics.instance.track(AnalyticsEvents.offerAcceptStarted, {
+      'deal_id': _deal!.id,
+    });
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -71,10 +94,18 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
       ),
     );
 
-    if (confirmed == true && mounted) {
+    if (!mounted) return;
+    if (confirmed == true) {
+      ProductAnalytics.instance.track(AnalyticsEvents.offerAcceptConfirmed, {
+        'deal_id': _deal!.id,
+      });
       await _repo.acceptOffer(_deal!.id);
       await _loadData();
+      return;
     }
+    ProductAnalytics.instance.track(AnalyticsEvents.offerAcceptCancelled, {
+      'deal_id': _deal!.id,
+    });
   }
 
   Future<void> _keepGoing() async {
@@ -124,7 +155,12 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
           await _repo.removeDeal(_deal!.id);
           if (mounted && context.mounted) context.pop();
         },
-        onKeep: () => Navigator.pop(context),
+        onKeep: () {
+          ProductAnalytics.instance.track(AnalyticsEvents.dealRemoveKept, {
+            'deal_id': _deal!.id,
+          });
+          Navigator.pop(context);
+        },
       ),
     );
   }
@@ -248,7 +284,16 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                       if (deal.status.isEnded) ...[
                         EndedDealNotice(
                           status: deal.status,
-                          onFindSimilar: () => context.go('/shop'),
+                          onFindSimilar: () {
+                            ProductAnalytics.instance.track(
+                              AnalyticsEvents.findSimilarTapped,
+                              {
+                                'source': 'deal_detail',
+                                'listing_id': deal.listingId,
+                              },
+                            );
+                            context.go('/shop');
+                          },
                         ),
                         const SizedBox(height: DrevvySpace.s6),
                       ],

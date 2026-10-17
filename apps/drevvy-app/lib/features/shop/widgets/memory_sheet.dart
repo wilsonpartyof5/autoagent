@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/search_profile.dart';
 import 'account_sheet.dart';
 
@@ -52,17 +53,27 @@ class _MemorySheetState extends State<MemorySheet> {
     _enabledItemIds = Set<String>.of(
       widget.enabledItemIds ?? widget.items.map((item) => item.id),
     );
+    ProductAnalytics.instance.screen('chat_memory');
+    ProductAnalytics.instance.track(AnalyticsEvents.memoryOpened, {
+      'surface': 'chat',
+    });
   }
 
-  void _toggleItem(String itemId) {
+  void _toggleItem(MemoryItem item) {
+    final enabled = !_enabledItemIds.contains(item.id);
     setState(() {
-      if (_enabledItemIds.contains(itemId)) {
-        _enabledItemIds.remove(itemId);
+      if (enabled) {
+        _enabledItemIds.add(item.id);
       } else {
-        _enabledItemIds.add(itemId);
+        _enabledItemIds.remove(item.id);
       }
     });
     widget.onItemsChanged(_enabledItemIds);
+    ProductAnalytics.instance.track(AnalyticsEvents.personalizeToggled, {
+      'enabled': enabled,
+      'kind': item.kind.name,
+      'surface': 'chat',
+    });
   }
   
   /// v1.8: Show Account sheet instead of navigating to /profile
@@ -149,7 +160,7 @@ class _MemorySheetState extends State<MemorySheet> {
                             _MemoryToggleRow(
                               item: item,
                               isEnabled: isEnabled,
-                              onToggle: () => _toggleItem(item.id),
+                              onToggle: () => _toggleItem(item),
                             ),
                           ],
                         );
@@ -167,6 +178,10 @@ class _MemorySheetState extends State<MemorySheet> {
                           label: 'Edit in Account',
                           variant: DrevvyButtonVariant.secondary,
                           onPressed: () {
+                            ProductAnalytics.instance.track(
+                              AnalyticsEvents.settingsRowTapped,
+                              {'row': 'edit_memory'},
+                            );
                             Navigator.pop(context);
                             _showAccountSheet(context);
                           },

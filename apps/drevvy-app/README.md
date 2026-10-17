@@ -144,6 +144,36 @@ All 44 screens are now built:
 - Offline banner (42) - `OfflineBanner`
 - New-car VDP (44) - `NewCarMarketCard`
 
+## Product analytics
+
+PostHog is optional. The project key is a compile-time define and is not committed. With no key the SDK is not started, events are dropped, and demo purchases, auth, and push behave as before.
+
+```bash
+flutter run \
+  --dart-define=POSTHOG_API_KEY=phc_... \
+  --dart-define=POSTHOG_HOST=https://us.i.posthog.com
+```
+
+`POSTHOG_HOST` defaults to `https://us.i.posthog.com`. Use `https://eu.i.posthog.com` for an EU project. The full event dictionary (name, when it fires, properties) is [ANALYTICS.md](ANALYTICS.md).
+
+Creator links look like `drevvy://open?c=creatorid&v=videoid&utm_source=tiktok&utm_campaign=spring`. The first creator id is stored on the device and added to later events. It is not replaced by a second link. Android can supply the same query string through the Play install referrer.
+
+Profile has an Analytics switch. Off stops capture on that device. The privacy note in Profile describes what is collected. Events never include chat text, emails, phones, names, or addresses. After sign-in the distinct id is the Supabase user id only.
+
+Session replay, surveys, and application-lifecycle autocapture stay off so typed emails and chat are not collected. There is no share control and no separate support form. Call and Email on an official offer are `contact_tapped`.
+
+### What Dustin needs to do
+
+Create a PostHog project (US or EU). Copy the project API key and ingest host (`https://us.i.posthog.com` or `https://eu.i.posthog.com`). Provide them as `POSTHOG_API_KEY` and `POSTHOG_HOST`. Do not commit them. Build with:
+
+```bash
+flutter run \
+  --dart-define=POSTHOG_API_KEY=phc_... \
+  --dart-define=POSTHOG_HOST=https://us.i.posthog.com
+```
+
+Until the key is provided, the SDK is not started, analytics stays off, and demo mode is unchanged. Creator links look like `drevvy://open?c=creatorid&v=videoid&utm_source=tiktok&utm_campaign=spring`. Android Play install referrer can be the same query string. First touch wins.
+
 ## License
 
 Proprietary - Drevvy Inc.
