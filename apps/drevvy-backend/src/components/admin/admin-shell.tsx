@@ -12,9 +12,11 @@ const links = [
 
 export function AdminShell({
   email,
+  missingEnv = [],
   children,
 }: {
   email: string;
+  missingEnv?: string[];
   children: ReactNode;
 }) {
   return (
@@ -34,9 +36,27 @@ export function AdminShell({
           <p className="mt-8 text-xs text-slate-500">Signed in as {email}</p>
           <p className="mt-2 text-xs text-slate-500">Shopper lists use the mock book. Platform bills save to Supabase.</p>
         </aside>
-        <main className="px-5 py-6 md:px-8">{children}</main>
+        <main className="px-5 py-6 md:px-8">
+          <MissingEnvBanner names={missingEnv} />
+          {children}
+        </main>
       </div>
     </div>
+  );
+}
+
+export function MissingEnvBanner({ names }: { names: string[] }) {
+  if (names.length === 0) {
+    return (
+      <p className="mb-6 rounded-md border border-emerald-900 bg-emerald-950 px-3 py-2 text-sm text-emerald-200">
+        Required environment variables are set.
+      </p>
+    );
+  }
+  return (
+    <p className="mb-6 rounded-md border border-amber-900 bg-amber-950 px-3 py-2 text-sm text-amber-100">
+      Missing environment variables: {names.join(', ')}
+    </p>
   );
 }
 

@@ -569,6 +569,8 @@ export type NormalizedTelnyxEvent = {
   errorDetail: string | null;
   inReplyTo: string | null;
   references: string | null;
+  subject: string | null;
+  bodyUrl: string | null;
 };
 
 export function normalizeTelnyxPayload(payload: unknown): NormalizedTelnyxEvent | null {
@@ -597,16 +599,17 @@ export function normalizeTelnyxPayload(payload: unknown): NormalizedTelnyxEvent 
     ?? asString(inner.result && typeof inner.result === 'object' ? (inner.result as Record<string, unknown>).result : undefined)
     ?? null;
 
+  const email = channel === 'email' ? readEmail(inner) : null;
   return {
     eventType,
     vendorEventId,
     occurredAt,
     channel,
-    direction: readDirection(inner.direction),
+    direction: readDirection(inner.direction) ?? (eventType === 'email.received' ? 'inbound' : null),
     from: partyAddress(inner.from),
-    to: partyAddress(inner.to),
-    body: messageBody(channel, inner),
-    inlineTranscript: channel === 'email' ? (inlineTranscript ?? (messageBody(channel, inner) ? stripHtml(messageBody(channel, inner) as string) : null)) : inlineTranscript,
+    to: channel === 'email' ? emailParties(inner) : partyAddress(inner.to),
+    body: channel === 'sms' ? asString(inner.text) ?? null : email?.body ?? null,
+    inlineTranscript: channel === 'email' ? (inlineTranscript ?? (email?.body ? stripHtml(email.body) : null)) : inlineTranscript,
     summary,
     durationS,
     clientState: parseClientState(asString(inner.client_state)),
@@ -622,6 +625,8 @@ export function normalizeTelnyxPayload(payload: unknown): NormalizedTelnyxEvent 
     errorDetail: status.errorDetail,
     inReplyTo: headerValue(inner, 'in_reply_to') ?? headerValue(inner, 'in-reply-to'),
     references: headerValue(inner, 'references'),
+    subject: email?.subject ?? null,
+    bodyUrl: email?.bodyUrl ?? null,
   };
 }
 
@@ -631,22 +636,52 @@ function readDirection(value: unknown): 'outbound' | 'inbound' | null {
   return null;
 }
 
+function headerNamesMatch(key: string, name: string): boolean {
+  return key.toLowerCase().replace(/_/g, '-') === name.toLowerCase().replace(/_/g, '-');
+}
+
 function headerValue(inner: Record<string, unknown>, name: string): string | null {
-  const direct = asString(inner[name]);
+  const direct = asString(inner[name]) ?? asString(inner[name.replace(/_/g, '-')]);
   if (direct) return direct;
   const headers = inner.headers;
   if (Array.isArray(headers)) {
     for (const header of headers) {
       if (!header || typeof header !== 'object') continue;
       const record = header as Record<string, unknown>;
-      const key = (asString(record.name) ?? asString(record.key) ?? '').toLowerCase();
-      if (key === name) return asString(record.value) ?? null;
+      const key = asString(record.name) ?? asString(record.key) ?? '';
+      if (headerNamesMatch(key, name)) return asString(record.value) ?? null;
     }
   }
   if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
     const record = headers as Record<string, unknown>;
-    return asString(record[name]) ?? asString(record[name.replace(/_/g, '-')]) ?? null;
+    for (const [key, value] of Object.entries(record)) {
+      if (headerNamesMatch(key, name)) return asString(value) ?? null;
+    }
   }
+  return null;
+}
+
+function emailParties(inner: Record<string, unknown>): string | null {
+  const parts = [inner.to, inner.cc, inner.bcc]
+    .map(partyAddress)
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function readEmail(inner: Record<string, unknown>): { body: string | null; subject: string | null; bodyUrl: string | null } {
+  const nested = inner.body && typeof inner.body === 'object' ? inner.body as Record<string, unknown> : {};
+  const plain = asString(nested.plain) ?? asString(inner.text_body) ?? asString(inner.text);
+  const html = asString(nested.html) ?? asString(inner.html_body);
+  const content = plain || html || null;
+  const subject = asString(inner.subject) ?? null;
+  const bodyUrl = asString(inner.text_body_url) ?? asString(inner.html_body_url) ?? null;
+  return { body: composeEmailBody(subject, content, Boolean(bodyUrl)), subject, bodyUrl };
+}
+
+function composeEmailBody(subject: string | null, content: string | null, hasBodyUrl: boolean): string | null {
+  if (subject && content) return `Subject: ${subject}\n\n${content}`;
+  if (content) return content;
+  if (subject && !hasBodyUrl) return `Subject: ${subject}`;
   return null;
 }
 
@@ -663,18 +698,26 @@ function partyAddress(value: unknown): string | null {
   return null;
 }
 
-function messageBody(channel: NormalizedTelnyxEvent['channel'], inner: Record<string, unknown>): string | null {
-  if (channel === 'sms') return asString(inner.text) ?? null;
-  if (channel !== 'email') return null;
-  const body = inner.body && typeof inner.body === 'object' ? inner.body as Record<string, unknown> : {};
-  const plain = asString(body.plain);
-  const html = asString(body.html);
-  const text = asString(inner.text);
-  const content = plain || html || text || null;
-  const subject = asString(inner.subject);
-  if (subject && content) return `Subject: ${subject}\n\n${content}`;
-  if (subject) return `Subject: ${subject}`;
-  return content;
+const MAX_EMAIL_BODY_BYTES = 1_000_000;
+
+export async function downloadEmailBody(
+  url: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  if (!isSafeRecordingUrl(url)) return null;
+  try {
+    const response = await fetchImpl(url, { redirect: 'follow' });
+    if (!response.ok) return null;
+    if (response.url && !isSafeRecordingUrl(response.url)) return null;
+    const length = Number(response.headers.get('content-length') ?? '0');
+    if (Number.isFinite(length) && length > MAX_EMAIL_BODY_BYTES) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_EMAIL_BODY_BYTES) return null;
+    const text = new TextDecoder().decode(bytes).trim();
+    return text || null;
+  } catch {
+    return null;
+  }
 }
 
 function readDuration(inner: Record<string, unknown>): number | null {

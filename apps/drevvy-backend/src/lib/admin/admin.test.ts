@@ -4,8 +4,25 @@ import test from 'node:test';
 import { buildAnalytics } from './analytics';
 import { adminPreviewEnabled, isAllowlistedAdmin, parseAdminEmails, safeAdminNextPath } from './access';
 import { DEMO_VEHICLES, getMockShoppers, shopperFacingJson } from './mock-source';
+import { formatMissingEnv, missingRequiredEnv, REQUIRED_ENV_NAMES } from './required-env';
 
 const DEALER_MARKERS = ['Piedmont Auto Group', 'Catawba Motor Co', 'York Road Motors', 'Lake Wylie Cars', '803-555-0142', 'desk@piedmont.example'];
+
+test('admin startup lists missing env names and never the values', () => {
+  const env = Object.fromEntries(REQUIRED_ENV_NAMES.map((name) => [name, 'super-secret-value']));
+  assert.deepEqual(missingRequiredEnv(env), []);
+  assert.equal(formatMissingEnv([]).includes('super-secret-value'), false);
+  const missing = missingRequiredEnv({
+    ...env,
+    TELNYX_API_KEY: '   ',
+    ELEVENLABS_API_KEY: undefined,
+    CRON_SECRET: '',
+  });
+  assert.deepEqual(missing, ['TELNYX_API_KEY', 'ELEVENLABS_API_KEY', 'CRON_SECRET']);
+  const line = formatMissingEnv(missing);
+  assert.match(line, /TELNYX_API_KEY, ELEVENLABS_API_KEY, CRON_SECRET/);
+  assert.equal(line.includes('super-secret-value'), false);
+});
 
 test('admin emails are an allowlist, not a hardcoded owner', () => {
   assert.deepEqual(parseAdminEmails(' Owner@Drevvy.com, ops@drevvy.com '), ['owner@drevvy.com', 'ops@drevvy.com']);

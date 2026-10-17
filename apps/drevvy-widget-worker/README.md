@@ -30,6 +30,7 @@ pnpm --filter @drevvy/widget-worker scan urls.txt --concurrency 3
 pnpm --filter @drevvy/widget-worker lead urls.txt
 pnpm --filter @drevvy/widget-worker chat urls.txt
 pnpm --filter @drevvy/widget-worker run urls.txt
+pnpm --filter @drevvy/widget-worker health urls.txt
 ```
 
 `run` researches the dealer, scans the widget, then sends only the channels that scan selects. It records `selected_channels`, `channel_reason`, and `fallback` on the scan row and on each later lead, chat, and pre-chat row.
@@ -167,7 +168,9 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `AI_MODEL` | research, and live chat | Model name, for example `grok-4` or `gpt-4o`. |
 | `SUPABASE_URL` | yes | Project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key. The tables are locked to `service_role`. |
-| `DRY_RUN` | no | Default true. Set to `false` to allow sends. |
+| `DRY_RUN` | no | Default true. Set to `false` to allow sends. `health` ignores `false` and never sends. |
+| `WIDGET_HEALTH_URLS` | health batch | Comma-separated vehicle page URLs. The Railway cron reads this when no file is passed. |
+| `WIDGET_HEALTH_URL_FILE` | health batch | Path to a URL file. Used when `WIDGET_HEALTH_URLS` is empty. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
 | `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead, chat, and run assign the conversation identity for `--deal` and `--dealer` before the first live send. A missing text number holds the send. |
 | `DREVVY_TEXT_NUMBER` | test mode | Fallback text number. Live runs use the conversation identity. |
@@ -203,18 +206,73 @@ pnpm --filter @drevvy/widget-worker exec playwright install chromium
 
 ## Railway
 
-Create a service from this repo with root directory `apps/drevvy-widget-worker`. `railway.toml` builds the included Dockerfile, which is based on `mcr.microsoft.com/playwright:v1.49.1-jammy` so Chromium matches the `playwright@1.49.1` dependency. Keep those two versions together.
+The service is a one-shot worker. It is not a web server, so do not attach a public domain and do not set a healthcheck path. `railway.toml` already sets the Dockerfile builder, the start command `node dist/cli.js health`, the weekday cron `0 14 * * 1-5` (14:00 UTC), and `restartPolicyType = NEVER`. A finished run must exit. If a previous run is still active, Railway skips the next cron tick.
 
-This is a one-shot worker, not a web server. The image defaults to `DRY_RUN=true` and exits after printing help. Set the start command to the batch you want, or run a one-off:
+Chromium comes from `mcr.microsoft.com/playwright:v1.49.1-jammy` so it matches `playwright@1.49.1`. Keep those two versions together. Give the service at least 2 GB of memory when `health` opens vehicle pages.
 
-```bash
-node dist/cli.js run /data/urls.txt
-node dist/cli.js seed /data/launch-areas.txt --radius 25
-node dist/cli.js report
+### Create the service
+
+1. In the Railway project, create a service from this GitHub repo.
+2. Set the service root directory to `apps/drevvy-widget-worker`. Railway reads `railway.toml` and `Dockerfile` from that directory.
+3. Leave the builder as Dockerfile. Do not add a Railpack or Nixpacks override.
+4. Deploy. The first run prints `health`, `dry_run true`, and `sends false`, then exits 0 when no URLs are configured.
+5. Apply the Supabase migrations listed at the top of this file before the first write to `widget_chat_attempts`.
+
+### Environment variables
+
+Set these on the Railway service. Names only are listed here; values stay in Railway.
+
+| Variable | Required for `health` | Value |
+| --- | --- | --- |
+| `SUPABASE_URL` | yes | Supabase project URL. |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key. Never logged. |
+| `DRY_RUN` | yes | `true`. `health` still refuses to send if this is `false`. |
+| `DREVVY_TEST_MODE` | when URLs are set | `true`, so the form plan uses the three test values below and does not assign a live conversation identity. |
+| `DREVVY_TEXT_NUMBER` | when URLs are set | Drevvy test text number. |
+| `DREVVY_EMAIL` | when URLs are set | Drevvy test email. |
+| `SHOPPER_FIRST_NAME` | when URLs are set | First name only. |
+| `LEAD_LAST_NAME` | no | Default `via Drevvy`. |
+| `DREVVY_ZIP` | when a form has ZIP | Five-digit ZIP or ZIP+4. |
+| `WIDGET_HEALTH_URLS` | one of the URL sources | Comma-separated vehicle page URLs. |
+| `WIDGET_HEALTH_URL_FILE` | one of the URL sources | File inside the container, one URL per line. |
+| `AI_API_KEY` | no for `health` | Not called by `health`. |
+| `AI_MODEL` | no for `health` | Not called by `health`. |
+| `WIDGET_CHAT_ALLOWLIST` | no for `health` | Leave empty while testing. Live `lead`, `chat`, and `run` need it only when `DRY_RUN=false`. |
+
+`health` opens each page, logs the lead-form fields it would fill, and inserts a `widget_chat_attempts` row with `dry_run = true` and `channel = lead_form`. It does not type into the form, click submit, send chat, or call an external messaging API.
+
+### Cron and a manual run
+
+The cron entry is `cronSchedule` in `railway.toml`:
+
+```toml
+[deploy]
+startCommand = "node dist/cli.js health"
+cronSchedule = "0 14 * * 1-5"
+restartPolicyType = "NEVER"
 ```
 
-`seed` and `report` do not send messages.
+Schedules are UTC and must be at least 5 minutes apart. Change the expression in `railway.toml` and redeploy. Railway config-as-code owns this setting after the file is deployed.
 
-Railway cron can use that same command. Leave the restart policy at never so a finished job is not restarted in a loop.
+Trigger the same command once, outside the schedule, from a linked Railway CLI session:
 
-Set the environment variables above in the Railway service. Keep `DRY_RUN=true` until `WIDGET_CHAT_ALLOWLIST` contains only dealer sites you intend to message. Apply the Supabase migrations separately before the first write.
+```bash
+railway cron run
+```
+
+`railway cron list` shows recent runs. A one-off with an explicit URL file, still inside the service so the env vars are present:
+
+```bash
+railway run node dist/cli.js health /data/urls.txt
+```
+
+`/data/urls.txt` is a file you mount or bake in. Without a file, set `WIDGET_HEALTH_URLS` and use `railway cron run`, which executes `node dist/cli.js health`.
+
+Other commands stay available for a one-off and still honor `DRY_RUN`:
+
+```bash
+railway run node dist/cli.js report
+railway run node dist/cli.js seed /data/launch-areas.txt --radius 25
+```
+
+`seed` and `report` do not send messages. Do not point a one-off `lead`, `chat`, or `run` at dealer sites until `DRY_RUN=false` and `WIDGET_CHAT_ALLOWLIST` are intentional.

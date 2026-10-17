@@ -9,6 +9,8 @@ import { formatResultsTable, parseUrlList } from '../src/cli/format';
 import { FakeChatPage } from './fake-page';
 import { readFixture } from './fixture';
 
+const availability = readFixture('check-availability.html');
+
 const html = readFixture('gubagoo-vdp.html');
 const pageUrl = 'https://www.example-motors.test/inventory/civic';
 
@@ -123,4 +125,69 @@ describe('cli', () => {
       true,
     );
   });
+
+  it('health logs the form it would fill and writes a dry-run attempt', async () => {
+    const attempts = new MemoryAttemptStore();
+    const page = new FakeChatPage(availability);
+    const result = await execute(['health', pageUrl], healthDeps(attempts, page));
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(result.stdout, /dry_run true/);
+    assert.match(result.stdout, /sends false/);
+    assert.match(result.stdout, /first_name: Maya/);
+    assert.match(result.stdout, /email: deals@drevvy\.test/);
+    assert.equal(page.outreach.length, 0);
+    assert.equal(page.submits.length, 0);
+    assert.equal(page.sent.length, 0);
+    assert.equal(attempts.attempts.length, 1);
+    assert.equal(attempts.attempts[0]?.dry_run, true);
+    assert.equal(attempts.attempts[0]?.status, 'dry_run');
+    assert.equal(attempts.attempts[0]?.channel, 'lead_form');
+  });
+
+  it('health with no urls writes nothing and does not open a page', async () => {
+    const attempts = new MemoryAttemptStore();
+    let opened = 0;
+    const result = await execute(['health'], {
+      ...healthDeps(attempts, new FakeChatPage(availability)),
+      openPage: async () => {
+        opened += 1;
+        const page = new FakeChatPage(availability);
+        return { page, close: () => page.close() };
+      },
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(result.stdout, /urls 0/);
+    assert.equal(attempts.attempts.length, 0);
+    assert.equal(opened, 0);
+  });
+
+  it('health reads WIDGET_HEALTH_URLS and ignores DRY_RUN=false', async () => {
+    const attempts = new MemoryAttemptStore();
+    const page = new FakeChatPage(availability);
+    const result = await execute(['health'], {
+      ...healthDeps(attempts, page),
+      config: { ...config, dryRun: false, allowlist: ['https://www.example-motors.test'] },
+      env: { WIDGET_HEALTH_URLS: pageUrl },
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(result.stdout, /DRY_RUN=false is ignored/);
+    assert.equal(page.submits.length, 0);
+    assert.equal(page.outreach.length, 0);
+    assert.equal(attempts.attempts[0]?.dry_run, true);
+    assert.equal(attempts.attempts[0]?.status, 'dry_run');
+  });
 });
+
+function healthDeps(attempts: MemoryAttemptStore, page: FakeChatPage): CliDeps {
+  return {
+    config,
+    directory: new MemoryDirectoryStore(),
+    attempts,
+    fetchPage: async (url) => ({ url, status: 200, html: availability }),
+    ai: { async complete() { throw new Error('health must not call the model'); } },
+    openPage: async () => ({ page, close: () => page.close() }),
+    readFile: () => { throw new Error('missing file'); },
+    exists: () => false,
+    env: {},
+  };
+}
