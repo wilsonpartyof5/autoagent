@@ -214,7 +214,8 @@ private struct ExpandedVehicleCard: View {
             Text("·")
               .foregroundStyle(Color.white.opacity(0.4))
           }
-          Text(vehicle.dealerName)
+          // Dealer name hidden for MVP monetization (Drevvy contacts dealers privately)
+          Text(vehicle.color.capitalized)
             .font(.system(size: 12))
             .foregroundStyle(Color.white.opacity(0.6))
             .lineLimit(1)
