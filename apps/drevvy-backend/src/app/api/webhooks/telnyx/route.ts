@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { ingestTelnyxPayload, supabaseCommunicationsStore } from '@/lib/brain/communications';
 import { recordEmailOptout, endDealOnOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
-import { verifyTelnyxSignature, parseClientState } from '@/lib/brain/telnyx';
+import { normalizeTelnyxPayload, parseClientState, verifyTelnyxSignature } from '@/lib/brain/telnyx';
+import { ingestInboundSms } from '@/lib/sms/inbound';
+import { createSupabaseSmsStore } from '@/lib/sms/store';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +41,9 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   await recordOptOut(supabase, payload);
 
+  const suppressionFailed = await recordInboundStop(supabase, payload);
+  if (suppressionFailed) return suppressionFailed;
+
   const result = await ingestTelnyxPayload(payload, {
     store: supabaseCommunicationsStore(supabase),
     apiKey: process.env.TELNYX_API_KEY ?? null,
@@ -48,6 +53,35 @@ export async function POST(request: NextRequest) {
     { received: result.received, id: result.id },
     { status: result.httpStatus },
   );
+}
+
+/**
+ * Inbound texts are checked for STOP-family replies before the webhook is
+ * acknowledged. A failed suppression write returns 500 so Telnyx retries.
+ */
+async function recordInboundStop(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: unknown,
+): Promise<NextResponse | null> {
+  const normalized = normalizeTelnyxPayload(payload);
+  if (!normalized || normalized.channel !== 'sms' || normalized.direction !== 'inbound') return null;
+
+  try {
+    await ingestInboundSms(createSupabaseSmsStore(supabase), {
+      from: normalized.from,
+      text: normalized.body,
+      vendorEventId: normalized.vendorEventId,
+      occurredAt: normalized.occurredAt,
+    });
+    return null;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'sms_opt_out_suppression_failed',
+      vendorEventId: normalized.vendorEventId,
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
+    return NextResponse.json({ error: 'opt_out_not_recorded' }, { status: 500 });
+  }
 }
 
 async function recordOptOut(supabase: ReturnType<typeof createAdminClient>, payload: unknown): Promise<void> {
