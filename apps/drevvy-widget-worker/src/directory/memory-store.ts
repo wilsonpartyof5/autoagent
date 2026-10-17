@@ -10,6 +10,10 @@ export class MemoryDirectoryStore implements DirectoryStore {
     return this.rows.get(siteUrl) ?? null;
   }
 
+  async list(): Promise<DealerDirectoryRow[]> {
+    return [...this.rows.values()].sort((a, b) => a.site_url.localeCompare(b.site_url));
+  }
+
   async upsert(row: DealerDirectoryWrite): Promise<DealerDirectoryRow> {
     this.writes.push(row);
     const existing = this.rows.get(row.site_url);

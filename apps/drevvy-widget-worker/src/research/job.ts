@@ -5,6 +5,7 @@ import type { DealerDirectoryRow, DealerDirectoryWrite, DirectoryStatus, Directo
 import { detectWidgetVendor, vendorMentioned } from '../widgets/detect';
 import { playbookForVendor } from '../widgets/playbooks';
 import { vendorFromModel } from '../widgets/vendors';
+import { blockWallSignature } from '../forms/outreach';
 import { buildPageExcerpt } from './excerpt';
 import { hintLines, type MarketCheckContactHint } from './hints';
 import { siteUrlFromVehiclePage } from './urls';
@@ -71,7 +72,20 @@ export async function researchVehiclePage(input: {
   }
 
   const pages = await fetchDealerPages(input.vehiclePageUrl, siteUrl, input.fetchPage);
-  if (pages.length === 0) {
+  const usable = pages.filter((page) => page.status >= 200 && page.status < 400 && !blockWallSignature(page.html, page.status));
+  const walls = pages.filter((page) => blockWallSignature(page.html, page.status) != null);
+  if (usable.length === 0 && walls.length > 0) {
+    const row = await input.store.upsert(
+      blockedRecord(
+        siteUrl,
+        existing,
+        walls.map((page) => page.url),
+        now.toISOString(),
+      ),
+    );
+    return { vehiclePageUrl: input.vehiclePageUrl, siteUrl, skipped: false, row, error: null };
+  }
+  if (usable.length === 0) {
     const row = await input.store.upsert(
       preserveExisting(siteUrl, existing, {
         name: null,
@@ -88,7 +102,7 @@ export async function researchVehiclePage(input: {
     return { vehiclePageUrl: input.vehiclePageUrl, siteUrl, skipped: false, row, error: null };
   }
 
-  const html = pages.map((page) => page.html).join('\n');
+  const html = usable.map((page) => page.html).join('\n');
   const detected = detectWidgetVendor(html);
   let extractedName: string | null = null;
   let extractedPhones: string[] = [];
@@ -134,7 +148,7 @@ export async function researchVehiclePage(input: {
     emails,
     widget_vendor: vendor,
     widget_playbook: playbookForVendor(vendor),
-    source_urls: pages.map((page) => page.url),
+    source_urls: usable.map((page) => page.url),
     confidence: roundConfidence(confidence),
     last_checked_at: now.toISOString(),
     status,
@@ -154,7 +168,10 @@ export async function fetchDealerPages(
   for (const url of urls) {
     try {
       const page = await fetchPage(url);
-      if (page.status >= 200 && page.status < 400 && page.html.trim()) pages.push(page);
+      if (!page.html.trim()) continue;
+      if (blockWallSignature(page.html, page.status) || (page.status >= 200 && page.status < 400)) {
+        pages.push(page);
+      }
     } catch {
       // Try the other URL. A total miss is recorded by the caller.
     }
@@ -191,6 +208,44 @@ function directoryStatus(input: {
   if (!input.vendor) return 'no_widget';
   if (input.confidence < 0.5) return 'needs_review';
   return 'active';
+}
+
+function blockedRecord(
+  siteUrl: string,
+  existing: DealerDirectoryRow | null,
+  sourceUrls: string[],
+  checkedAt: string,
+): DealerDirectoryWrite {
+  if (!existing) {
+    return {
+      site_url: siteUrl,
+      name: null,
+      phones: [],
+      emails: [],
+      widget_vendor: null,
+      widget_playbook: null,
+      source_urls: sourceUrls,
+      confidence: null,
+      last_checked_at: checkedAt,
+      status: 'blocked',
+    };
+  }
+  const urls = [...existing.source_urls];
+  for (const url of sourceUrls) {
+    if (!urls.includes(url)) urls.push(url);
+  }
+  return {
+    site_url: siteUrl,
+    name: existing.name,
+    phones: existing.phones,
+    emails: existing.emails,
+    widget_vendor: existing.widget_vendor,
+    widget_playbook: existing.widget_playbook,
+    source_urls: urls,
+    confidence: existing.confidence,
+    last_checked_at: checkedAt,
+    status: 'blocked',
+  };
 }
 
 function preserveExisting(

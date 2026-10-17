@@ -13,6 +13,22 @@ export function createSupabaseDirectoryStore(client: SupabaseClient): DirectoryS
       if (error) throw new Error(`dealer_directory lookup failed: ${error.message}`);
       return data ? mapDirectoryRow(data) : null;
     },
+    async list() {
+      const pageSize = 1000;
+      const rows: DealerDirectoryRow[] = [];
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await client
+          .from('dealer_directory')
+          .select('*')
+          .order('site_url', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) throw new Error(`dealer_directory list failed: ${error.message}`);
+        const batch = data ?? [];
+        for (const item of batch) rows.push(mapDirectoryRow(item));
+        if (batch.length < pageSize) break;
+      }
+      return rows;
+    },
     async upsert(row) {
       const { data, error } = await client
         .from('dealer_directory')

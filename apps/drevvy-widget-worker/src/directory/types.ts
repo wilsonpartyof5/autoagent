@@ -4,6 +4,7 @@ export const DIRECTORY_STATUSES = [
   'unreachable',
   'no_widget',
   'needs_review',
+  'blocked',
 ] as const;
 
 export type DirectoryStatus = (typeof DIRECTORY_STATUSES)[number];
@@ -42,5 +43,6 @@ export const DIRECTORY_WRITE_KEYS = [
 
 export interface DirectoryStore {
   findBySiteUrl(siteUrl: string): Promise<DealerDirectoryRow | null>;
+  list(): Promise<DealerDirectoryRow[]>;
   upsert(row: DealerDirectoryWrite): Promise<DealerDirectoryRow>;
 }

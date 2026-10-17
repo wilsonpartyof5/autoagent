@@ -289,6 +289,9 @@ describe('scan snapshots', () => {
       scanSettleMs: 0,
       scanConcurrency: 1,
       scanTimeoutMs: 25_000,
+      marketcheckApiKey: null,
+      marketcheckBaseUrl: 'https://api.marketcheck.com',
+      seedIntervalMs: 1_000,
     };
     const deps: CliDeps = {
       config,
@@ -454,6 +457,9 @@ function scanConfig(): AppConfig {
     scanSettleMs: 0,
     scanConcurrency: 3,
     scanTimeoutMs: 25_000,
+    marketcheckApiKey: null,
+    marketcheckBaseUrl: 'https://api.marketcheck.com',
+    seedIntervalMs: 1_000,
   };
 }
 

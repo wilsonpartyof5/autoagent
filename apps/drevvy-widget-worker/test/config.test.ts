@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { assertChatConfig, assertOutreachConfig, isAllowlisted, loadConfig, resolveMaxTurns } from '../src/config';
+import { assertChatConfig, assertOutreachConfig, assertSeedConfig, isAllowlisted, loadConfig, resolveMaxTurns } from '../src/config';
 
 describe('config', () => {
   it('keeps dry run on unless DRY_RUN is exactly false', () => {
@@ -15,6 +15,12 @@ describe('config', () => {
     assert.equal(loadConfig({ WIDGET_SCAN_CONCURRENCY: '5' }).scanConcurrency, 5);
     assert.equal(loadConfig({}).scanTimeoutMs, 25000);
     assert.equal(loadConfig({ WIDGET_SCAN_TIMEOUT_MS: '20000' }).scanTimeoutMs, 20000);
+    assert.equal(loadConfig({}).seedIntervalMs, 1000);
+    assert.equal(loadConfig({ SEED_MIN_INTERVAL_MS: '0' }).seedIntervalMs, 0);
+    assert.equal(loadConfig({ SEED_MIN_INTERVAL_MS: '-5' }).seedIntervalMs, 1000);
+    assert.equal(loadConfig({}).marketcheckApiKey, null);
+    assert.equal(loadConfig({ MARKETCHECK_API_KEY: 'mc-key' }).marketcheckApiKey, 'mc-key');
+    assert.equal(loadConfig({}).marketcheckBaseUrl, 'https://api.marketcheck.com');
   });
 
   it('caps the turn limit at 6', () => {
@@ -64,5 +70,26 @@ describe('config', () => {
       WIDGET_CHAT_ALLOWLIST: 'https://www.example-motors.test',
     });
     assert.throws(() => assertOutreachConfig(named, false), /LEAD_LAST_NAME/);
+  });
+
+  it('requires a MarketCheck key to seed', () => {
+    const config = loadConfig({
+      AI_API_KEY: 'key',
+      AI_MODEL: 'grok-4',
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service',
+    });
+    assert.throws(() => assertSeedConfig(config), /MARKETCHECK_API_KEY/);
+    assert.doesNotThrow(() =>
+      assertSeedConfig(
+        loadConfig({
+          AI_API_KEY: 'key',
+          AI_MODEL: 'grok-4',
+          SUPABASE_URL: 'https://example.supabase.co',
+          SUPABASE_SERVICE_ROLE_KEY: 'service',
+          MARKETCHECK_API_KEY: 'mc-key',
+        }),
+      ),
+    );
   });
 });

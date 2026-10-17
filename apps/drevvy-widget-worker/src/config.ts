@@ -21,6 +21,9 @@ export type AppConfig = {
   scanSettleMs: number;
   scanConcurrency: number;
   scanTimeoutMs: number;
+  marketcheckApiKey: string | null;
+  marketcheckBaseUrl: string;
+  seedIntervalMs: number;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -44,6 +47,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     scanSettleMs: positiveInt(env.WIDGET_SCAN_SETTLE_MS, 3_000),
     scanConcurrency: positiveInt(env.WIDGET_SCAN_CONCURRENCY, 3),
     scanTimeoutMs: positiveInt(env.WIDGET_SCAN_TIMEOUT_MS, 25_000),
+    marketcheckApiKey: blankToNull(env.MARKETCHECK_API_KEY),
+    marketcheckBaseUrl: blankToNull(env.MARKETCHECK_BASE_URL) ?? 'https://api.marketcheck.com',
+    seedIntervalMs: nonNegativeInt(env.SEED_MIN_INTERVAL_MS, 1_000),
   };
 }
 
@@ -92,6 +98,13 @@ export function assertResearchConfig(config: AppConfig): void {
   if (!config.aiApiKey) throw new Error('AI_API_KEY is required for research.');
   if (!config.aiModel) throw new Error('AI_MODEL is required for research.');
   assertSupabaseConfig(config);
+}
+
+export function assertSeedConfig(config: AppConfig): void {
+  assertResearchConfig(config);
+  if (!config.marketcheckApiKey) {
+    throw new Error('MARKETCHECK_API_KEY is required to seed the directory.');
+  }
 }
 
 export function assertOutreachConfig(config: AppConfig, dryRun: boolean): void {
@@ -160,5 +173,12 @@ function positiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
+}
+
+function nonNegativeInt(value: string | undefined, fallback: number): number {
+  if (value == null || value.trim() === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return Math.floor(parsed);
 }
