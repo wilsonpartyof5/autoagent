@@ -1,5 +1,5 @@
 /**
- * Car credits system. Shoppers buy one-time car packs (1/$27, 3/$47, 5/$67, 10/$97)
+ * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
  * that never expire and never reset monthly. Credits are refunded on:
  * - sold: shopper bought the car
  * - ended_no_response: dealer didn't respond in 5 days
@@ -11,10 +11,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const CAR_PACKS = [
-  { size: 1, priceUsd: 27 },
-  { size: 3, priceUsd: 47 },
-  { size: 5, priceUsd: 67 },
-  { size: 10, priceUsd: 97 },
+  { size: 1, priceUsd: 35 },
+  { size: 3, priceUsd: 55 },
+  { size: 5, priceUsd: 75 },
+  { size: 10, priceUsd: 95 },
 ] as const;
 
 export type CreditEventType = 'purchase' | 'use' | 'refund';

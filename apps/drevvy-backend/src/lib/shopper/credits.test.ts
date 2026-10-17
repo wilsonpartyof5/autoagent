@@ -10,19 +10,19 @@ test('car packs have correct pricing', () => {
 
   const pack1 = packs.find((p) => p.size === 1);
   assert.ok(pack1);
-  assert.equal(pack1.priceUsd, 27);
+  assert.equal(pack1.priceUsd, 35);
 
   const pack3 = packs.find((p) => p.size === 3);
   assert.ok(pack3);
-  assert.equal(pack3.priceUsd, 47);
+  assert.equal(pack3.priceUsd, 55);
 
   const pack5 = packs.find((p) => p.size === 5);
   assert.ok(pack5);
-  assert.equal(pack5.priceUsd, 67);
+  assert.equal(pack5.priceUsd, 75);
 
   const pack10 = packs.find((p) => p.size === 10);
   assert.ok(pack10);
-  assert.equal(pack10.priceUsd, 97);
+  assert.equal(pack10.priceUsd, 95);
 });
 
 test('shouldRefundCredit returns true for slot-returning states', () => {

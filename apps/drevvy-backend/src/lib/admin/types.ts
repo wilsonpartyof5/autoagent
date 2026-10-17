@@ -245,4 +245,4 @@ export type ShopperDealCard = {
 };
 
 export const CAR_CAP = 10;
-export const MONTHLY_PRICE_USD = 97;
+export const MONTHLY_PRICE_USD = 95;
