@@ -210,6 +210,8 @@ The service is a one-shot worker. It is not a web server, so do not attach a pub
 
 Chromium comes from `mcr.microsoft.com/playwright:v1.49.1-jammy` so it matches `playwright@1.49.1`. Keep those two versions together. Give the service at least 2 GB of memory when `health` opens vehicle pages.
 
+`typescript` is a devDependency. The image installs with `NODE_ENV=development`, runs `npm run build`, prunes devDependencies, and only then sets `NODE_ENV=production`. Setting production before `npm install` omits `tsc`, and the build fails with `tsc: not found`.
+
 ### Create the service
 
 1. In the Railway project, create a service from this GitHub repo.
@@ -241,6 +243,20 @@ Set these on the Railway service. Names only are listed here; values stay in Rai
 
 `health` opens each page, logs the lead-form fields it would fill, and inserts a `widget_chat_attempts` row with `dry_run = true` and `channel = lead_form`. It does not type into the form, click submit, send chat, or call an external messaging API.
 
+`examples/health-urls.txt` is a placeholder with three public dealer vehicle pages (Jay Honda, Paragon Honda, and Honda Superstore of Joliet). The image copies it to `/app/examples/health-urls.txt`. Nothing reads that file until you set one of the URL sources. `WIDGET_HEALTH_URLS` is a comma-separated list and wins when both are set:
+
+```bash
+WIDGET_HEALTH_URLS=https://www.jayhonda.com/viewdetails/cpo/2hgfe2f56rh527206/2024-honda-civic-sedan-4dr-car,https://www.paragonhonda.com/viewdetails/cpo/2hgfe2f59ph562383/2023-honda-civic-sedan-4dr-car,https://www.hondaofjoliet.com/viewdetails/cpo/2hgfe2f58sh597876/2025-honda-civic-sedan-4dr-car
+```
+
+The same three pages, with stock numbers, are selected by:
+
+```bash
+WIDGET_HEALTH_URL_FILE=/app/examples/health-urls.txt
+```
+
+Leave both empty and `health` prints `urls 0` and does not open a page. With URLs set, `health` still does not type, submit, or send.
+
 ### Cron and a manual run
 
 The cron entry is `cronSchedule` in `railway.toml`:
@@ -266,7 +282,7 @@ railway cron run
 railway run node dist/cli.js health /data/urls.txt
 ```
 
-`/data/urls.txt` is a file you mount or bake in. Without a file, set `WIDGET_HEALTH_URLS` and use `railway cron run`, which executes `node dist/cli.js health`.
+`/data/urls.txt` is a file you mount or bake in. Without a file argument, `railway cron run` executes `node dist/cli.js health`, which reads `WIDGET_HEALTH_URLS` or, when that is empty, `WIDGET_HEALTH_URL_FILE` (for the baked-in placeholder, `/app/examples/health-urls.txt`).
 
 Other commands stay available for a one-off and still honor `DRY_RUN`:
 

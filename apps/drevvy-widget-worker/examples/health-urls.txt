@@ -1,0 +1,6 @@
+# Public dealer vehicle pages for `health`. One URL per line. The second column is the stock number.
+# Not used unless WIDGET_HEALTH_URL_FILE points here, or the same URLs are set on WIDGET_HEALTH_URLS.
+# health opens each page and logs the lead-form fields it would fill. It does not type or submit.
+https://www.jayhonda.com/viewdetails/cpo/2hgfe2f56rh527206/2024-honda-civic-sedan-4dr-car 277375A
+https://www.paragonhonda.com/viewdetails/cpo/2hgfe2f59ph562383/2023-honda-civic-sedan-4dr-car B37351L
+https://www.hondaofjoliet.com/viewdetails/cpo/2hgfe2f58sh597876/2025-honda-civic-sedan-4dr-car JP7282
