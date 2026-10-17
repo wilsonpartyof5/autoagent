@@ -80,6 +80,10 @@ export type OutreachEvent = {
   body: string;
   transcript: string | null;
   summary: string | null;
+  isTest?: boolean;
+  recordingPath?: string | null;
+  fromAddress?: string | null;
+  toAddress?: string | null;
 };
 
 export type OutreachDeal = {
@@ -106,6 +110,7 @@ export type OutreachDeal = {
   firstReplyTouchpoint: TouchpointId | null;
   replyWithin5Days: boolean;
   events: OutreachEvent[];
+  isTest?: boolean;
 };
 
 export type VariantStat = {
@@ -179,9 +184,12 @@ export type OutreachInsight = {
 
 export type OutreachRange = { from: string; to: string };
 
+export type TrafficFilter = 'live' | 'test' | 'all';
+
 export type ConversationQuery = OutreachRange & {
   touchpoint?: TouchpointId | '';
   variant?: Variant | '';
   outcome?: StopReason | '';
   q?: string;
+  traffic?: TrafficFilter;
 };

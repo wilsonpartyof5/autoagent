@@ -16,6 +16,7 @@ const TABLES = [
   { field: 'widgetChatAttempts', table: 'widget_chat_attempts' },
   { field: 'outreachEvents', table: 'outreach_events' },
   { field: 'outreachMessages', table: 'shopper_outreach_messages' },
+  { field: 'brainVendorEvents', table: 'brain_vendor_events' },
 ] as const;
 
 type MonitorEnv = { NEXT_PUBLIC_SUPABASE_URL?: string; SUPABASE_SERVICE_ROLE_KEY?: string };
@@ -42,7 +43,7 @@ export function isMissingRelation(error: { message?: string; code?: string } | n
  */
 export async function readLiveMonitorSources(): Promise<LiveMonitorSources> {
   if (!liveMonitorConfigured()) {
-    return { widgetChatAttempts: null, outreachEvents: null, outreachMessages: null, failed: false };
+    return { widgetChatAttempts: null, outreachEvents: null, outreachMessages: null, brainVendorEvents: null, failed: false };
   }
 
   try {
@@ -60,12 +61,13 @@ export async function readLiveMonitorSources(): Promise<LiveMonitorSources> {
       widgetChatAttempts: null,
       outreachEvents: null,
       outreachMessages: null,
+      brainVendorEvents: null,
       failed: reads.some((read) => read.failed),
     };
     for (const read of reads) sources[read.field] = read.rows;
     return sources;
   } catch {
-    return { widgetChatAttempts: null, outreachEvents: null, outreachMessages: null, failed: true };
+    return { widgetChatAttempts: null, outreachEvents: null, outreachMessages: null, brainVendorEvents: null, failed: true };
   }
 }
 

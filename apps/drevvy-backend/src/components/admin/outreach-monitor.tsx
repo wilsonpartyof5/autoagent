@@ -63,6 +63,13 @@ export function OutreachMonitor({ view }: { view: OutreachMonitorView }) {
             ))}
           </select>
         </Field>
+        <Field label="Traffic">
+          <select name="traffic" defaultValue={view.filters.traffic} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-2 text-sm">
+            <option value="live">Live only</option>
+            <option value="test">Test only</option>
+            <option value="all">Live and test</option>
+          </select>
+        </Field>
         <Field label="First reply">
           <select name="first" defaultValue={view.filters.firstReply} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-2 text-sm">
             <option value="">Any first reply</option>
@@ -80,7 +87,7 @@ export function OutreachMonitor({ view }: { view: OutreachMonitorView }) {
       <article className="rounded-xl border border-slate-800 p-4">
         <h3 className="font-medium">Reply rate by channel</h3>
         <p className="mt-1 text-sm text-slate-400">
-          First replies on that channel, divided by dealer-deal rows that used it. {view.rows.length} of {view.total} rows match the filters.
+          First replies on that channel, divided by live dealer-deal rows that used it. Test traffic is left out of these rates. {view.rows.length} rows match the filters. {view.total} live rows are in this book.
         </p>
         <ol className="mt-4 space-y-3">
           {view.replyRates.map((rate) => (
@@ -122,7 +129,10 @@ function MonitorRow({ row }: { row: OutreachMonitorRow }) {
   return (
     <tr className="border-t border-slate-800 align-top">
       <td className="px-3 py-3">
-        <p className="font-medium">{row.dealerName}</p>
+        <p className="font-medium">
+          {row.dealerName}
+          {row.isTest ? <span className="ml-2 inline-flex rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100">TEST</span> : null}
+        </p>
         <p className="text-xs text-slate-500">{row.dealerId}</p>
       </td>
       <td className="px-3 py-3">
@@ -206,7 +216,7 @@ function sourceCopy(source: 'live' | 'demo', partial: boolean): string {
   if (source === 'demo') {
     return 'widget_chat_attempts and the outreach tables are empty or not present, so this monitor is showing the demo book. Nothing was written and no migration was applied.';
   }
-  const base = 'Rows come from widget_chat_attempts, outreach_events, and shopper_outreach_messages. First reply uses first_reply_channel when that column is present.';
+  const base = 'Rows come from widget_chat_attempts, outreach_events, shopper_outreach_messages, and brain_vendor_events. First reply uses first_reply_channel when that column is present. Test calls and texts are hidden unless the traffic filter includes them.';
   return partial
     ? `${base} One of those tables was missing or could not be read in full, so the missing piece is left out.`
     : base;

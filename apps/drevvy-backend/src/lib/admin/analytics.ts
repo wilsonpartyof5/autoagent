@@ -34,7 +34,7 @@ export type AdminAnalytics = {
 };
 
 export function buildAnalytics(shoppers: ShopperRecord[] = getMockShoppers()): AdminAnalytics {
-  const deals = shoppers.flatMap((shopper) => shopper.deals);
+  const deals = shoppers.flatMap((shopper) => shopper.deals).filter((deal) => deal.isTest !== true);
   const withSavings = deals.filter((deal) => deal.savings != null && deal.savingsPct != null);
   const replyHours = deals
     .map((deal) => hoursBetween(deal.firstOutboundAt, deal.firstReplyAt))

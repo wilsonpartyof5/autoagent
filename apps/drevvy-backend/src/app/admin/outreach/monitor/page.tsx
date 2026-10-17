@@ -8,7 +8,7 @@ export const metadata = { title: 'Outreach monitor | Drevvy Admin' };
 export default async function OutreachMonitorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; dealer?: string; channel?: string; status?: string; day?: string; first?: string }>;
+  searchParams: Promise<{ q?: string; dealer?: string; channel?: string; status?: string; day?: string; first?: string; traffic?: string }>;
 }) {
   const params = await searchParams;
   const view = await loadOutreachMonitor(parseMonitorFilters(params));

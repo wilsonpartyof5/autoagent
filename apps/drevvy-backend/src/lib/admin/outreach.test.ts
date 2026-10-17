@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { buildOutreachReport, wilson } from './outreach/analytics';
+import { buildOutreachReport, wilson, withoutTestTraffic } from './outreach/analytics';
 import { callOpener, voicemailScript } from './outreach/copy';
 import { clearOutreachInsightCache, getOutreachInsight } from './outreach/insights';
 import { getOutreachDeals } from './outreach/mock-source';
@@ -91,6 +91,21 @@ test('sample insights stay labeled and do not change the book', () => {
     const fresh = await getOutreachInsight(range, { apiKey: null, regenerate: true });
     assert.notEqual(fresh.generatedAt, first.generatedAt);
   });
+});
+
+test('outreach totals leave out test traffic', () => {
+  const live = getOutreachDeals();
+  const sample = live[0];
+  const testDeal = {
+    ...sample,
+    id: 'ai-to-ai',
+    isTest: true,
+    events: sample.events.map((event) => ({ ...event, isTest: true, dealId: 'ai-to-ai' })),
+  };
+  const report = buildOutreachReport('2026-01-01', '2026-12-31', [...live, testDeal]);
+  const baseline = buildOutreachReport('2026-01-01', '2026-12-31', live);
+  assert.equal(report.kpis.dealsContacted, baseline.kpis.dealsContacted);
+  assert.equal(withoutTestTraffic([testDeal]).length, 0);
 });
 
 test('outreach migration locks the log to the service role', () => {

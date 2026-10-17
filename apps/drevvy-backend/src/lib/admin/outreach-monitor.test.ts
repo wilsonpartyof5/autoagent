@@ -47,6 +47,20 @@ test('demo monitor covers every channel and status and attributes first replies'
   assert.equal(rate('call')?.replyRate, 0.5);
 });
 
+test('test rows are hidden by default and can be filtered in', () => {
+  const rows = demoMonitorRows();
+  const testRow = { ...rows[0], id: 'mon-test', dealId: 'deal-test', dealerId: 'dlr-test', dealerName: 'Test Desk', isTest: true };
+  const hidden = filterMonitorRows([...rows, testRow], parseMonitorFilters({}));
+  assert.equal(hidden.some((row) => row.isTest), false);
+  const only = filterMonitorRows([...rows, testRow], parseMonitorFilters({ traffic: 'test' }));
+  assert.equal(only.length, 1);
+  assert.equal(only[0]?.isTest, true);
+  const view = readFileSync(join(HERE, '../../components/admin/outreach-monitor.tsx'), 'utf8');
+  assert.match(view, /TEST/);
+  assert.match(view, /Live only/);
+  assert.equal(/negotiat/i.test(view), false);
+});
+
 test('filters narrow dealer, channel, status, cadence day, and first reply', () => {
   const rows = demoMonitorRows();
   const piedmont = filterMonitorRows(rows, { ...parseMonitorFilters({}), dealer: 'dlr-piedmont' });
