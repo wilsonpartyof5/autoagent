@@ -13,6 +13,7 @@ import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptResult, AttemptStore, ChatPage, Day0Fallback, WidgetChatAttemptWrite } from './chat/types';
 import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSeedConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
+import { ensureConversationContact, type EnsureContactResult } from './forms/assign-identity';
 import { loadConversationContact, type ConversationContact } from './forms/identity';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { formatDirectoryReport, summarizeDirectory } from './directory/report';
@@ -62,9 +63,10 @@ It scans up to 3 sites at once (--concurrency) and gives each site 25 seconds.
 It does not type into a composer or submit a form. One failed URL does not stop the rest.
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
-Lead and chat read the conversation identity for --deal and --dealer: the shopper
-first name, the email alias, and the text number. DREVVY_EMAIL, DREVVY_TEXT_NUMBER,
-and SHOPPER_FIRST_NAME are used only when DREVVY_TEST_MODE=true.
+Lead, chat, and run assign a conversation identity for --deal and --dealer
+before the first live send. The email alias and text number stay on that deal
+and dealer. If no text number is free, the send is held. DREVVY_EMAIL,
+DREVVY_TEXT_NUMBER, and SHOPPER_FIRST_NAME are used only when DREVVY_TEST_MODE=true.
 `;
 
 const COMMANDS = new Set(['research', 'scan', 'lead', 'chat', 'run', 'seed', 'report']);
@@ -87,6 +89,7 @@ export type CliDeps = {
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   loadContact?: (dealId: string, dealerId: string) => Promise<ConversationContact | null>;
+  ensureContact?: (dealId: string, dealerId: string) => Promise<EnsureContactResult>;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -107,7 +110,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     if (targets.length === 0) {
       return { exitCode: 1, stdout: '', stderr: 'No vehicle page URLs were provided.\n' };
     }
-    const contact = await resolveContact(flags, deps);
+    const contact = await resolveContact(flags, deps, command === 'lead' || command === 'chat' || command === 'run');
     const outreach = command === 'lead' || command === 'chat' || command === 'run'
       ? chatSettings(deps.config, contact)
       : null;
@@ -263,6 +266,9 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
   const loadContact = supabase
     ? (dealId: string, dealerId: string) => loadConversationContact(supabase, dealId, dealerId)
     : undefined;
+  const ensureContact = supabase
+    ? (dealId: string, dealerId: string) => ensureConversationContact(supabase, { dealId, dealerId })
+    : undefined;
   const ai: ChatClient =
     config.aiApiKey && config.aiModel
       ? createChatClient({ apiKey: config.aiApiKey, baseUrl: config.aiBaseUrl, model: config.aiModel })
@@ -288,6 +294,7 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
       process.stdout.write(`${line}\n`);
     },
     loadContact,
+    ensureContact,
     listDealers: (area, pace) => {
       if (!config.marketcheckApiKey) {
         throw new Error('MARKETCHECK_API_KEY is required to seed the directory.');
@@ -453,10 +460,20 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
 async function resolveContact(
   flags: { dealId: string | null; dealerId: string | null },
   deps: CliDeps,
+  liveSend: boolean,
 ): Promise<ConversationContact | null> {
   if (!flags.dealId && !flags.dealerId) return null;
   if (!flags.dealId || !flags.dealerId) throw new Error('Pass both --deal and --dealer.');
-  if (!deps.loadContact) throw new Error('Supabase is required to read a conversation identity.');
+  if (liveSend && !deps.config.testMode) {
+    if (!deps.ensureContact) throw new Error('Supabase is required to assign a conversation identity.');
+    const ensured = await deps.ensureContact(flags.dealId, flags.dealerId);
+    if ('error' in ensured) throw new Error(ensured.error);
+    return ensured;
+  }
+  if (!deps.loadContact) {
+    if (deps.config.testMode) return null;
+    throw new Error('Supabase is required to read a conversation identity.');
+  }
   const contact = await deps.loadContact(flags.dealId, flags.dealerId);
   if (!contact && !deps.config.testMode) {
     throw new Error('No conversation identity is stored for that deal and dealer.');

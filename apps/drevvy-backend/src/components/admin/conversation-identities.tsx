@@ -33,9 +33,11 @@ export function ConversationIdentities({
         <p className="mt-4 text-sm text-slate-400">Identity storage is not configured in this environment.</p>
       ) : (
         <div className="mt-4 space-y-6">
-          {admin.livePool.low ? (
+          {admin.purchaseFlag ? (
             <p className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
-              The live text pool is low ({admin.livePool.active} active, flag at {admin.livePool.watermark}). Purchase another Telnyx number.
+              {admin.livePool.low
+                ? `The live text pool is low (${admin.livePool.active} active, flag at ${admin.livePool.watermark}). Purchase another Telnyx number.`
+                : `A live send is held because no text number is free. Purchase another Telnyx number. ${admin.livePool.active} live numbers are active and a number in cooldown is not reused.`}
             </p>
           ) : (
             <p className="text-sm text-slate-400">{admin.livePool.active} live text numbers are active.</p>

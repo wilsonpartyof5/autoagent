@@ -17,6 +17,7 @@ import {
   randomAliasTag,
   readShopperFirstName,
   routeInbound,
+  purchaseFlagVisible,
   smsPoolHealth,
   threadMessageId,
   type ConversationIdentity,
@@ -202,7 +203,10 @@ export async function ensureConversationIdentity(
       cooldownDays: settings.cooldownDays,
       test,
     });
-    if ('error' in picked) return { error: 'No text number is free for this dealer. Purchase another Telnyx number.' };
+    if ('error' in picked) {
+      if (!test) await markLivePurchaseNeeded(supabase);
+      return { error: 'No text number is free for this dealer. Purchase another Telnyx number.' };
+    }
     const alias = buildEmailAlias(firstName, randomAliasTag(random));
     if (!alias) return { error: 'Could not build an email alias from the shopper first name.' };
 
@@ -304,6 +308,30 @@ async function loadShopperFirstName(supabase: SupabaseClient, shopperId: string)
     await supabase.from('consumer_profiles').update({ first_name: name }).eq('user_id', shopperId).is('first_name', null);
   }
   return name;
+}
+
+export async function readLivePurchaseFlag(supabase: SupabaseClient): Promise<boolean> {
+  const [settings, pool] = await Promise.all([
+    supabase.from('identity_settings').select('sms_pool_low_watermark, purchase_needed').eq('id', 1).maybeSingle(),
+    supabase.from('sms_number_pool').select('phone_e164, status, is_test, last_assigned_at'),
+  ]);
+  const watermark = typeof settings.data?.sms_pool_low_watermark === 'number'
+    ? settings.data.sms_pool_low_watermark
+    : DEFAULT_LOW_WATERMARK;
+  const numbers: PoolNumber[] = (pool.data ?? []).map((row) => ({
+    phoneE164: row.phone_e164,
+    status: row.status === 'retired' ? 'retired' : 'active',
+    isTest: row.is_test === true,
+    lastAssignedAt: row.last_assigned_at ?? null,
+  }));
+  return purchaseFlagVisible(smsPoolHealth(numbers, watermark, false), settings.data?.purchase_needed === true);
+}
+
+async function markLivePurchaseNeeded(supabase: SupabaseClient): Promise<void> {
+  await supabase.from('identity_settings').update({
+    purchase_needed: true,
+    updated_at: new Date().toISOString(),
+  }).eq('id', 1);
 }
 
 async function loadSettings(supabase: SupabaseClient): Promise<{ cooldownDays: number; watermark: number }> {

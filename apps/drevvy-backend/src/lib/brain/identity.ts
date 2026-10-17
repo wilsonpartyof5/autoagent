@@ -165,6 +165,11 @@ export function smsPoolHealth(
   return { active, watermark, low: active <= watermark };
 }
 
+/** Admin purchase flag: the live pool is small, or a send was held because nothing was free. */
+export function purchaseFlagVisible(health: { low: boolean }, purchaseNeeded: boolean): boolean {
+  return health.low || purchaseNeeded;
+}
+
 export function pickVoiceNumber(
   numbers: { state: string; phoneE164: string }[],
   state: string | null | undefined,
