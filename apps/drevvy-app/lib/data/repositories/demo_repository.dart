@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
 import '../services/purchase_config.dart';
@@ -140,10 +141,37 @@ class DemoRepository {
 
   /// Purchase a car pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
+    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+      'pack_id': packType.productId,
+      'pack_size': packType.cars,
+      'pack_mix': CarPackType.packMix,
+      'price': packType.priceUsd,
+      'currency': 'USD',
+      'stage': 'purchase',
+    });
     await _purchaseService.initialize();
     final result = await _purchaseService.purchasePack(packType);
     if (result is PurchaseSuccess) {
+      ProductAnalytics.instance.track(AnalyticsEvents.purchaseCompleted, {
+        'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
+        'price': packType.priceUsd,
+        'currency': 'USD',
+      });
       await _recordPurchase(result);
+    } else {
+      ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
+        'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
+        'reason': switch (result) {
+          PurchaseCancelled() => 'cancelled',
+          PurchasePending() => 'pending',
+          PurchaseError() => 'store_error',
+          PurchaseSuccess() => 'store_error',
+        },
+      });
     }
     return result;
   }
@@ -167,6 +195,7 @@ class DemoRepository {
       balance: _creditBalance.balance - 1,
       totalSpent: _creditBalance.totalSpent + 1,
     );
+    _reportBalance('unlock', -1);
 
     return true;
   }
@@ -195,6 +224,7 @@ class DemoRepository {
       balance: _creditBalance.balance + 1,
       totalRefunded: _creditBalance.totalRefunded + 1,
     );
+    _reportBalance(reason.name, 1);
 
     return true;
   }
@@ -214,6 +244,7 @@ class DemoRepository {
         result.packType,
       );
       _creditBalance = remote;
+      _reportBalance('purchase', result.creditsAdded);
       return;
     }
     _addCredits(
@@ -270,6 +301,15 @@ class DemoRepository {
       balance: _creditBalance.balance + credits,
       totalPurchased: _creditBalance.totalPurchased + credits,
     );
+    _reportBalance(reason.name, credits);
+  }
+
+  void _reportBalance(String reason, int delta) {
+    ProductAnalytics.instance.track(AnalyticsEvents.packBalanceChanged, {
+      'reason': reason,
+      'delta': delta,
+      'balance': _creditBalance.balance,
+    });
   }
 
   /// Check if a deal qualifies for early removal refund (within 30 minutes, before outreach).
@@ -287,8 +327,22 @@ class DemoRepository {
 
   /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
+    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestoreStarted);
     await _purchaseService.initialize();
     final result = await _purchaseService.restorePurchases();
+    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, {
+      'result': switch (result) {
+        RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+          'success',
+        RestoreSuccess() => 'empty',
+        RestoreNoPurchases() => 'empty',
+        RestoreError() => 'error',
+      },
+      'credits': switch (result) {
+        RestoreSuccess(:final creditsRestored) => creditsRestored,
+        _ => 0,
+      },
+    });
     if (result is RestoreError) return result;
 
     final transactions = switch (result) {
@@ -476,7 +530,7 @@ class DemoRepository {
   }
 
   /// Save a car (heart tap). No credit spent, no dealer contact.
-  Future<SavedCar> saveCar(Listing listing) async {
+  Future<SavedCar> saveCar(Listing listing, {String source = 'unknown'}) async {
     final savedCar = SavedCar(
       id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -488,20 +542,45 @@ class DemoRepository {
     );
     _savedCars = [..._savedCars, savedCar];
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.carSaved, {
+      'listing_id': listing.id,
+      'inventory_type': listing.inventoryType,
+      'source': source,
+    });
     return _delay(savedCar);
   }
 
   /// Remove a saved car (unsave / swipe to remove).
-  Future<void> removeSavedCar(String savedCarId) async {
+  Future<void> removeSavedCar(
+    String savedCarId, {
+    String source = 'saved',
+  }) async {
+    final listingId = _savedCars
+        .where((car) => car.id == savedCarId)
+        .map((car) => car.listingId)
+        .firstOrNull;
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
     _bumpLists();
+    if (listingId != null) {
+      ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
+        'listing_id': listingId,
+        'source': source,
+      });
+    }
     return _delay(null);
   }
 
   /// Remove saved car by listing ID.
-  Future<void> unsaveByListingId(String listingId) async {
+  Future<void> unsaveByListingId(
+    String listingId, {
+    String source = 'unknown',
+  }) async {
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
+      'listing_id': listingId,
+      'source': source,
+    });
     return _delay(null);
   }
 
@@ -602,6 +681,10 @@ class DemoRepository {
       }
     }
     if (!_creditBalance.canUnlock) {
+      ProductAnalytics.instance.track(AnalyticsEvents.dealAddBlocked, {
+        'listing_id': listing.id,
+        'reason': 'no_credits',
+      });
       throw StateError('No cars left');
     }
 
@@ -623,6 +706,10 @@ class DemoRepository {
     // v1.7: Spend 1 car credit
     spendCredit(newDeal.id);
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealAdded, {
+      'deal_id': newDeal.id,
+      'listing_id': listing.id,
+    });
 
     return _delay(newDeal);
   }
@@ -630,13 +717,18 @@ class DemoRepository {
   Future<void> removeDeal(String dealId) async {
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    final refunded = canGetEarlyRemovalRefund(deal);
     _deals = _deals.where((d) => d.id != dealId).toList();
 
     // v1.7: Refund credit if within 30 minutes before outreach
-    if (canGetEarlyRemovalRefund(deal)) {
+    if (refunded) {
       refundCredit(dealId, CreditReason.refundEarlyRemoval);
     }
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealRemoved, {
+      'deal_id': dealId,
+      'refunded': refunded,
+    });
 
     return _delay(null);
   }
@@ -650,6 +742,10 @@ class DemoRepository {
     );
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealAccepted, {
+      'deal_id': dealId,
+      'listing_id': updated.listingId,
+    });
     return _delay(updated);
   }
 
@@ -659,6 +755,9 @@ class DemoRepository {
     final updated = deal.copyWith(status: DealStatus.findingBestPrice);
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealKeepGoing, {
+      'deal_id': dealId,
+    });
     return _delay(updated);
   }
 
@@ -1175,6 +1274,113 @@ class DemoRepository {
     ),
   ];
 
+  List<DealerTimeline> get _rav4Timelines => [
+    DealerTimeline(
+      letter: 'A',
+      status: DealStatus.offerReceived,
+      rounds: [
+        DealerQuoteRound(
+          id: 'tl_a_1',
+          round: 1,
+          receivedAt: DateTime.now().subtract(const Duration(days: 4)),
+          otd: 36450,
+          vehiclePrice: 32100,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 32100),
+            OfferLine(key: 'Doc fee', amount: 499),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2006),
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+        DealerQuoteRound(
+          id: 'tl_a_2',
+          round: 2,
+          receivedAt: DateTime.now().subtract(const Duration(days: 2)),
+          otd: 35120,
+          vehiclePrice: 31200,
+          lines: const [
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 31200,
+              subLine: 'Down from \$32,100',
+            ),
+            OfferLine(key: 'Doc fee', amount: 499),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 1950),
+            OfferLine(key: 'Paint protection', amount: 895),
+          ],
+          removedFees: const [OfferLine(key: 'Nitrogen fill', amount: 199)],
+        ),
+        DealerQuoteRound(
+          id: 'tl_a_3',
+          round: 3,
+          receivedAt: DateTime.now().subtract(const Duration(hours: 2)),
+          otd: 33415,
+          vehiclePrice: 30700,
+          lines: const [
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 30700,
+              subLine: 'Down from \$31,200',
+            ),
+            OfferLine(key: 'Doc fee', amount: 399, subLine: 'Down from \$499'),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 1919),
+          ],
+          removedFees: const [
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+      ],
+    ),
+    DealerTimeline(
+      letter: 'B',
+      status: DealStatus.findingBestPrice,
+      rounds: [
+        DealerQuoteRound(
+          id: 'tl_b_1',
+          round: 1,
+          receivedAt: DateTime.now().subtract(const Duration(days: 3)),
+          otd: 36977,
+          vehiclePrice: 32950,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 32950),
+            OfferLine(key: 'Doc fee', amount: 599),
+            OfferLine(key: 'Title & registration', amount: 275),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2059),
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+        DealerQuoteRound(
+          id: 'tl_b_2',
+          round: 2,
+          receivedAt: DateTime.now().subtract(const Duration(days: 1)),
+          otd: 34880,
+          vehiclePrice: 32100,
+          lines: const [
+            OfferLine(
+              key: 'Vehicle price',
+              amount: 32100,
+              subLine: 'Down from \$32,950',
+            ),
+            OfferLine(key: 'Doc fee', amount: 499, subLine: 'Down from \$599'),
+            OfferLine(key: 'Title & registration', amount: 275),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2006),
+          ],
+          removedFees: const [
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+      ],
+    ),
+    const DealerTimeline(letter: 'C', status: DealStatus.noResponse),
+  ];
+
   List<Deal> get _demoDealsList => [
     // Offer received - main demo deal
     Deal(
@@ -1287,6 +1493,7 @@ class DemoRepository {
           isLatest: true,
         ),
       ],
+      dealerTimelines: _rav4Timelines,
     ),
 
     // Finding best price
@@ -1324,6 +1531,28 @@ class DemoRepository {
         ),
       ],
       comms: const DealComms(emails: 4, texts: 2, calls: 0),
+      dealerTimelines: [
+        DealerTimeline(
+          letter: 'A',
+          status: DealStatus.findingBestPrice,
+          rounds: [
+            DealerQuoteRound(
+              id: 'tl_002_a',
+              round: 1,
+              receivedAt: DateTime.now().subtract(const Duration(days: 1)),
+              otd: 34890,
+              vehiclePrice: 30990,
+              lines: const [
+                OfferLine(key: 'Vehicle price', amount: 30990),
+                OfferLine(key: 'Doc fee', amount: 599),
+                OfferLine(key: 'Title & registration', amount: 275),
+                OfferLine(key: 'Sales tax (6.25%)', amount: 1937),
+              ],
+            ),
+          ],
+        ),
+        const DealerTimeline(letter: 'B', status: DealStatus.reachingOut),
+      ],
     ),
 
     // Reaching out (new, with undo window)
@@ -1650,7 +1879,9 @@ extension DemoRepositorySearchProfile on DemoRepository {
       user.copyWith(
         prefs: UserPrefs(
           budgetOtd: budgetOtd ?? user.prefs?.budgetOtd,
-          bodyTypes: bodyTypes.isEmpty ? (user.prefs?.bodyTypes ?? const []) : bodyTypes,
+          bodyTypes: bodyTypes.isEmpty
+              ? (user.prefs?.bodyTypes ?? const [])
+              : bodyTypes,
           tradeIn: tradeIn,
           payment: payment,
           radius: user.prefs?.radius ?? 50,
@@ -1659,8 +1890,8 @@ extension DemoRepositorySearchProfile on DemoRepository {
         locationState: zip != null
             ? LocationState.zipFallback
             : locationGranted
-                ? LocationState.granted
-                : user.locationState,
+            ? LocationState.granted
+            : user.locationState,
       ),
     );
     if (budgetOtd != null) {
@@ -1670,7 +1901,10 @@ extension DemoRepositorySearchProfile on DemoRepository {
       _remember(MemoryKind.bodyTypes, bodyTypes);
     }
     if (zip != null && zip.isNotEmpty) {
-      _remember(MemoryKind.location, {'zip': zip, 'radius': user.prefs?.radius ?? 50});
+      _remember(MemoryKind.location, {
+        'zip': zip,
+        'radius': user.prefs?.radius ?? 50,
+      });
     }
   }
 

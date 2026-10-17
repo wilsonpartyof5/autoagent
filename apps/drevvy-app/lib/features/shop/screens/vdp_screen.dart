@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/providers/app_services.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -77,6 +78,10 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       _isInDeals = isInDeals;
       _isLoading = false;
     });
+    ProductAnalytics.instance.track(AnalyticsEvents.carViewed, {
+      'listing_id': listing.id,
+      'inventory_type': listing.inventoryType,
+    });
   }
 
   /// v1.8: Handle heart tap on VDP
@@ -86,7 +91,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     HapticFeedback.lightImpact();
 
     if (_isSaved) {
-      await _repo.unsaveByListingId(_listing!.id);
+      await _repo.unsaveByListingId(_listing!.id, source: 'car_detail');
       if (!mounted) return;
       setState(() => _isSaved = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +101,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         ),
       );
     } else {
-      await _repo.saveCar(_listing!);
+      await _repo.saveCar(_listing!, source: 'car_detail');
       if (!mounted) return;
       setState(() => _isSaved = true);
       ScaffoldMessenger.of(context).showSnackBar(

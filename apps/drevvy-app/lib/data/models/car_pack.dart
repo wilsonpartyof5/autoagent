@@ -43,6 +43,9 @@ enum CarPackType {
   /// Cars granted to the `CARS` virtual currency for this pack.
   int get carsGranted => cars;
 
+  /// PostHog pack-mix dimension. Includes the 1-car pack: `1,3,5,10`.
+  static String get packMix => values.map((pack) => '${pack.cars}').join(',');
+
   /// Store product id or RevenueCat package id.
   static CarPackType? fromProductId(String productId) {
     for (final pack in values) {

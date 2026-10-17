@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 
 class ErrorScreen extends StatelessWidget {
   const ErrorScreen({
@@ -15,6 +16,16 @@ class ErrorScreen extends StatelessWidget {
 
   final String? code;
   final String? message;
+
+  void _retry(String action) {
+    final raw = code ?? '';
+    final safe = RegExp(r'^[A-Za-z0-9_-]{1,40}$').hasMatch(raw) ? raw : 'unknown';
+    ProductAnalytics.instance.track(AnalyticsEvents.errorRetry, {
+      'surface': 'navigation',
+      'code': safe,
+      'action': action,
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +44,7 @@ class ErrorScreen extends StatelessWidget {
                 children: [
                   IconButton(
                     onPressed: () {
+                      _retry('back');
                       if (context.canPop()) {
                         context.pop();
                       } else {
@@ -93,6 +105,7 @@ class ErrorScreen extends StatelessWidget {
               DrevvyPrimaryButton(
                 label: 'Try again',
                 onPressed: () {
+                  _retry('try_again');
                   if (context.canPop()) {
                     context.pop();
                   } else {
@@ -104,6 +117,7 @@ class ErrorScreen extends StatelessWidget {
               DrevvyGhostButton(
                 label: 'Go back',
                 onPressed: () {
+                  _retry('go_back');
                   context.go('/shop');
                 },
               ),

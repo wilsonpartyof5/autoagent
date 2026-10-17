@@ -11,6 +11,7 @@ void main() {
       expect(CarPackType.single.productId, 'drevvy_pack_1');
       expect(CarPackType.single.packageId, 'pack_1');
       expect(CarPackType.single.carsGranted, 1);
+      expect(CarPackType.packMix, '1,3,5,10');
 
       expect(CarPackType.starter.cars, 3);
       expect(CarPackType.starter.priceUsd, 47);

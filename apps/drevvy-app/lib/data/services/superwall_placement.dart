@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 
+import '../analytics/product_analytics.dart';
 import 'cars_balance_placement.dart';
 import 'purchase_config.dart';
 
@@ -51,13 +52,25 @@ class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
     }
 
     final handler = PaywallPresentationHandler()
-      ..onPresent((_) => presented = true)
+      ..onPresent((_) {
+        presented = true;
+        ProductAnalytics.instance.track(AnalyticsEvents.paywallViewed, {
+          'placement': placementName,
+          'provider': 'superwall',
+        });
+      })
       ..onSkip((_) => showLocal())
       ..onError((_) => showLocal())
       ..onDismiss((_, result) async {
         if (result is PurchasedPaywallResult || result is RestoredPaywallResult) {
           await continueAfterPurchase();
+          return;
         }
+        ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
+          'placement': placementName,
+          'action': 'dismiss',
+          'provider': 'superwall',
+        });
       });
 
     try {

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/app_services.dart';
+import '../../data/analytics/product_analytics.dart';
 import '../../data/notifications/local_flags.dart';
 
 /// False until the shopper finishes or skips first-run.
@@ -39,4 +40,5 @@ const onboardingStepCount = 5;
 Future<void> completeFirstRun(WidgetRef ref) async {
   await ref.read(localFlagsProvider).setBool(OnboardingFlags.complete, true);
   ref.read(onboardingCompleteProvider.notifier).state = true;
+  await ProductAnalytics.instance.onboardingCompleted();
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../../core/widgets/analytics_view.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
@@ -21,7 +23,11 @@ class NotificationPrepromptSheet extends StatelessWidget {
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'notification_prompt',
+      event: AnalyticsEvents.notificationPermissionAsked,
+      eventProperties: const {'surface': 'add_car'},
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -154,14 +160,26 @@ class NotificationPrepromptSheet extends StatelessWidget {
                 // CTAs
                 DrevvyPrimaryButton(
                   label: 'Turn on notifications',
-                  onPressed: onAllow,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.notificationPermissionGranted,
+                      {'surface': 'add_car'},
+                    );
+                    onAllow();
+                  },
                 ),
 
                 const SizedBox(height: DrevvySpace.s3),
 
                 DrevvyGhostButton(
                   label: 'Not now',
-                  onPressed: onNotNow,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.notificationPermissionDenied,
+                      {'surface': 'add_car'},
+                    );
+                    onNotNow();
+                  },
                 ),
               ],
             ),
@@ -169,6 +187,7 @@ class NotificationPrepromptSheet extends StatelessWidget {
 
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

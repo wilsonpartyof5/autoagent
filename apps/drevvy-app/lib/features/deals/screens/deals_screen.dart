@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/shell_scaffold.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/deal_card.dart';
@@ -52,9 +53,18 @@ class _DealsScreenState extends State<DealsScreen> {
       _stats = stats;
       _isLoading = false;
     });
+    if (deals.isEmpty) {
+      ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
+        'surface': 'deals',
+      });
+    }
   }
 
   void _dismissBanner(String dealId) {
+    final deal = _deals?.where((item) => item.id == dealId).firstOrNull;
+    ProductAnalytics.instance.track(AnalyticsEvents.dealBannerDismissed, {
+      'status': deal?.status.name ?? 'unknown',
+    });
     setState(() => _dismissedBannerId = dealId);
   }
 
@@ -172,7 +182,13 @@ class _DealsScreenState extends State<DealsScreen> {
                                 context.push('/deal/${deal.id}');
                               },
                               onFindSimilar: () {
-                                // Switch to Shop tab and search
+                                ProductAnalytics.instance.track(
+                                  AnalyticsEvents.findSimilarTapped,
+                                  {
+                                    'source': 'deals',
+                                    'listing_id': deal.listingId,
+                                  },
+                                );
                                 context.go('/shop');
                               },
                             ),

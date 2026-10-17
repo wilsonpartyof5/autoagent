@@ -1,3 +1,4 @@
+import '../analytics/product_analytics.dart';
 import '../services/shopper_session_store.dart';
 import 'auth_api.dart';
 import 'auth_exception.dart';
@@ -57,6 +58,10 @@ class AuthController {
       await _publish(refreshed);
       return refreshed;
     } on AuthException {
+      ProductAnalytics.instance.track(AnalyticsEvents.apiFailed, {
+        'surface': 'auth_refresh',
+        'status': 401,
+      });
       await _store.clear();
       if (ShopperSessionStore.instance.accessToken == stored.accessToken) {
         ShopperSessionStore.instance.session = null;

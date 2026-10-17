@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
 
@@ -32,7 +33,10 @@ class AcceptConfirmSheet extends StatelessWidget {
     final offer = deal.latestOffer!;
     final listing = deal.listing;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'accept_confirm',
+      properties: {'deal_id': deal.id},
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -115,6 +119,7 @@ class AcceptConfirmSheet extends StatelessWidget {
           ),
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

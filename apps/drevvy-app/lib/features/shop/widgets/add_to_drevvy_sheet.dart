@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 18: Add to Drevvy bottom sheet.
@@ -32,11 +33,22 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
   bool _isLoading = false;
   bool _showConfirmation = false;
 
+  @override
+  void initState() {
+    super.initState();
+    ProductAnalytics.instance.screen('add_to_drevvy', {
+      'listing_id': widget.listing.id,
+    });
+  }
+
   String _formatPrice(int price) {
     return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
   }
 
   Future<void> _handleAdd() async {
+    ProductAnalytics.instance.track(AnalyticsEvents.addToDrevvyConfirmed, {
+      'listing_id': widget.listing.id,
+    });
     setState(() => _isLoading = true);
     
     // Show confirmation briefly before navigating

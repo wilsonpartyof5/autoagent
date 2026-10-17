@@ -7,6 +7,8 @@ import 'core/platform/flutter_test_env.dart';
 import 'core/providers/app_services.dart';
 import 'core/router/router.dart';
 import 'core/theme/drevvy_theme.dart';
+import 'data/analytics/install_referrer.dart';
+import 'data/analytics/product_analytics.dart';
 import 'data/notifications/local_flags.dart';
 import 'data/services/purchase_bootstrap.dart';
 import 'data/services/purchase_config.dart';
@@ -21,6 +23,23 @@ Future<void> main() async {
       .getBool(OnboardingFlags.complete);
   if (onboardingDone) {
     container.read(onboardingCompleteProvider.notifier).state = true;
+  }
+  if (!isFlutterTest) {
+    final referrer = await const InstallReferrer().read();
+    await ProductAnalytics.start(
+      flags: container.read(localFlagsProvider),
+      launchRoute: WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+      installReferrer: referrer,
+    );
+    try {
+      final session = await container.read(sessionStoreProvider).read();
+      final userId = session?.consumerUserId;
+      if (userId != null && userId.isNotEmpty) {
+        ProductAnalytics.instance.identify(userId);
+      }
+    } catch (_) {
+      // A missing keychain in demo mode must not block launch.
+    }
   }
   runApp(UncontrolledProviderScope(
     container: container,

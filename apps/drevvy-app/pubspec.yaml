@@ -47,6 +47,10 @@ dependencies:
   firebase_messaging: ^16.0.2
   shared_preferences: ^2.5.3
 
+  # Product analytics. The project key is a dart-define, never a committed value.
+  # With no POSTHOG_API_KEY the SDK is not started and the app stays in demo mode.
+  posthog_flutter: ^5.9.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

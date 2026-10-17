@@ -3,7 +3,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
+import '../../common/analytics_privacy.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
@@ -29,10 +31,14 @@ class _AccountSheetState extends State<AccountSheet> {
   SearchProfile? _searchProfile;
   CarCreditBalance? _creditBalance;
   bool _isLoading = true;
+  bool _analyticsOn = true;
 
   @override
   void initState() {
     super.initState();
+    _analyticsOn = ProductAnalytics.instance.optedIn;
+    ProductAnalytics.instance.screen('profile');
+    ProductAnalytics.instance.screen('settings');
     _loadData();
   }
 
@@ -56,6 +62,14 @@ class _AccountSheetState extends State<AccountSheet> {
       _searchProfile = _searchProfile!.copyWith(personalize: value);
     });
     _repo.updateSearchProfile(_searchProfile!);
+    ProductAnalytics.instance.track(AnalyticsEvents.personalizeToggled, {
+      'enabled': value,
+    });
+  }
+
+  Future<void> _toggleAnalytics(bool value) async {
+    setState(() => _analyticsOn = value);
+    await ProductAnalytics.instance.setOptedIn(value);
   }
 
   void _showPackPicker() {
@@ -71,11 +85,13 @@ class _AccountSheetState extends State<AccountSheet> {
       builder: (sheetContext) {
         if (outOfCars) {
           return OutOfCarsSheet(
+            placement: 'account',
             onPurchase: (packType) => _buyPack(sheetContext, host, packType),
             onNotNow: () => Navigator.pop(sheetContext),
           );
         }
         return PackPickerSheet(
+          placement: 'account',
           onPurchase: (packType) => _buyPack(sheetContext, host, packType),
           onRestore: () async {
             final result = await _repo.restorePurchases();
@@ -142,6 +158,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   void _handleDeleteAccount() {
+    ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteStarted);
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -156,7 +173,10 @@ class _AccountSheetState extends State<AccountSheet> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteCancelled);
+                Navigator.pop(dialogContext);
+              },
               child: Text(
                 'Cancel',
                 style: text.body.copyWith(color: colors.muted),
@@ -164,6 +184,7 @@ class _AccountSheetState extends State<AccountSheet> {
             ),
             TextButton(
               onPressed: () {
+                ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteConfirmed);
                 Navigator.pop(dialogContext);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -182,6 +203,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   Future<void> _openMemoryFacts() async {
+    ProductAnalytics.instance.track(AnalyticsEvents.memoryOpened);
     final items = _searchProfile?.items ?? const <MemoryItem>[];
     await MemoryFactsSheet.show(
       context,
@@ -437,7 +459,11 @@ class _AccountSheetState extends State<AccountSheet> {
               size: 16,
               color: colors.muted,
             ),
-            onTap: () {},
+            onTap: () {
+              ProductAnalytics.instance.track(AnalyticsEvents.settingsRowTapped, {
+                'row': 'notifications',
+              });
+            },
           ),
           Divider(height: 1, color: colors.line),
           _SettingsRow(
@@ -449,7 +475,23 @@ class _AccountSheetState extends State<AccountSheet> {
               size: 16,
               color: colors.muted,
             ),
-            onTap: () {},
+            onTap: () {
+              ProductAnalytics.instance.track(AnalyticsEvents.settingsRowTapped, {
+                'row': 'location',
+              });
+            },
+          ),
+          Divider(height: 1, color: colors.line),
+          _SettingsRow(
+            icon: LucideIcons.chartColumn,
+            label: 'Analytics',
+            subtitle: ProductAnalytics.instance.configured
+                ? 'Product events only. Names, email, phone, and what you type stay out.'
+                : 'Saved on this device. Nothing is sent until a PostHog key is configured.',
+            trailing: Switch.adaptive(
+              value: _analyticsOn,
+              onChanged: (value) => _toggleAnalytics(value),
+            ),
           ),
           Divider(height: 1, color: colors.line),
           _SettingsRow(
@@ -478,8 +520,9 @@ class _AccountSheetState extends State<AccountSheet> {
     return GlassCard(
       child: _SettingsRow(
         label: 'Terms · Privacy',
+        subtitle: 'Analytics can be turned off in Profile',
         trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
-        onTap: () {},
+        onTap: () => showAnalyticsPrivacy(context),
       ),
     );
   }

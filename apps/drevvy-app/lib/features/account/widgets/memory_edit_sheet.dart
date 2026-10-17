@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/search_profile.dart';
 
 /// Edit sheet for memory items per spec §6.14
@@ -82,6 +83,12 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
   @override
   void initState() {
     super.initState();
+    ProductAnalytics.instance.screen('memory_edit', {
+      'kind': widget.item.kind.name,
+    });
+    ProductAnalytics.instance.track(AnalyticsEvents.memoryEditStarted, {
+      'kind': widget.item.kind.name,
+    });
     _value = widget.item.value;
 
     if (widget.item.kind == MemoryKind.budget && _value is int) {
@@ -108,6 +115,10 @@ class _MemoryEditSheetState extends State<MemoryEditSheet> {
       source: MemorySource.explicit,
       updatedAt: DateTime.now(),
     );
+    ProductAnalytics.instance.track(AnalyticsEvents.memorySaved, {
+      'kind': widget.item.kind.name,
+      'source': 'explicit',
+    });
     widget.onSave(updatedItem);
     Navigator.pop(context);
   }

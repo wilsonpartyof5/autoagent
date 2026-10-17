@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../analytics/product_analytics.dart';
 import '../auth/session_store.dart';
 import 'device_registration.dart';
 import 'local_flags.dart';
@@ -39,13 +40,13 @@ class PushNotificationService {
   Future<void> restoreWithoutPrompting() async {
     final optedIn = await _flags.getBool(PushFlags.optedIn);
     if (!optedIn) return;
-    await _capture(_messaging.resume());
+    await _capture(_messaging.resume(), prompted: false);
   }
 
   /// Called when the shopper accepts the in-app pre-prompt.
   Future<void> enable() async {
     await _flags.setBool(PushFlags.optedIn, true);
-    await _capture(_messaging.enable());
+    await _capture(_messaging.enable(), prompted: true);
   }
 
   /// Called after a successful sign-in so a token collected in demo mode
@@ -61,9 +62,18 @@ class PushNotificationService {
     if (location != null) _links.open(location);
   }
 
-  Future<void> _capture(Future<PushPermission> permissionFuture) async {
+  Future<void> _capture(
+    Future<PushPermission> permissionFuture, {
+    required bool prompted,
+  }) async {
     try {
       final permission = await permissionFuture;
+      if (prompted) {
+        ProductAnalytics.instance.track(AnalyticsEvents.notificationOsResult, {
+          'granted': permission.granted,
+          'configured': permission.configured,
+        });
+      }
       final token = permission.token;
       if (token == null || token.isEmpty) return;
       await _flags.setString(PushFlags.token, token);

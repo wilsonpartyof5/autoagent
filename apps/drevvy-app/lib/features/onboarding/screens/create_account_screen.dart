@@ -7,6 +7,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/auth/auth_controller.dart';
 import '../onboarding_controller.dart';
 
@@ -26,6 +27,9 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   Future<void> _signIn(String provider) async {
     if (_busy != null) return;
     setState(() => _busy = provider);
+    ProductAnalytics.instance.track(AnalyticsEvents.signInStarted, {
+      'provider': provider,
+    });
     final auth = ref.read(authControllerProvider);
     final result = provider == 'apple'
         ? await auth.signInWithApple()
@@ -34,13 +38,24 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     setState(() => _busy = null);
     switch (result) {
       case AuthSuccess():
+        ProductAnalytics.instance.track(AnalyticsEvents.signInCompleted, {
+          'provider': provider,
+          'identified': true,
+        });
         await completeFirstRun(ref);
         if (!mounted) return;
         context.go('/shop');
       case AuthCancelled():
-        break;
-      case AuthFailure(:final message):
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        ProductAnalytics.instance.track(AnalyticsEvents.signInCancelled, {
+          'provider': provider,
+        });
+      case AuthFailure():
+        ProductAnalytics.instance.track(AnalyticsEvents.signInFailed, {
+          'provider': provider,
+          'reason': 'auth_rejected',
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
     }
   }
 
@@ -190,6 +205,13 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     onPressed: _canContinue && _busy == null
                         ? () async {
                             // Email OTP is not a consumer auth route. Continue in demo mode.
+                            ProductAnalytics.instance.track(AnalyticsEvents.signInStarted, {
+                              'provider': 'email',
+                            });
+                            ProductAnalytics.instance.track(AnalyticsEvents.signInCompleted, {
+                              'provider': 'email',
+                              'identified': false,
+                            });
                             await completeFirstRun(ref);
                             if (!context.mounted) return;
                             context.go('/shop');
