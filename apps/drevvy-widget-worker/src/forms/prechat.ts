@@ -3,7 +3,7 @@ import type { AttemptStatus, AttemptStore, ChannelSelection, ChatPage, Transcrip
 import { selectionColumns } from '../chat/types';
 import { applyPlan } from './apply';
 import { detectPrechat } from './detect';
-import { buildIdentity, type OutreachRunConfig } from './outreach';
+import { outreachIdentity, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
 
 export type PrechatGateResult = {
@@ -34,13 +34,7 @@ export async function runPrechatGate(input: {
 
   if (await input.store.hasLiveSubmit(input.vehiclePageUrl, 'prechat')) return CONTINUE;
 
-  const identity = buildIdentity({
-    firstName: input.config.shopperFirst,
-    lastName: input.config.leadLastName,
-    phone: input.config.drevvyTextNumber,
-    email: input.config.drevvyEmail,
-    zip: input.config.leadZip,
-  });
+  const identity = outreachIdentity(input.config);
   const plan = planForm(form, identity, input.stockNumber, 'prechat');
   const transcript: TranscriptEntry[] = plan.fills.map((fill) => ({
     role: 'agent' as const,

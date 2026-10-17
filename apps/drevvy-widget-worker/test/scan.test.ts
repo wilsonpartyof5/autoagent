@@ -292,6 +292,7 @@ describe('scan snapshots', () => {
       marketcheckApiKey: null,
       marketcheckBaseUrl: 'https://api.marketcheck.com',
       seedIntervalMs: 1_000,
+      testMode: false,
     };
     const deps: CliDeps = {
       config,
@@ -460,6 +461,7 @@ function scanConfig(): AppConfig {
     marketcheckApiKey: null,
     marketcheckBaseUrl: 'https://api.marketcheck.com',
     seedIntervalMs: 1_000,
+    testMode: false,
   };
 }
 

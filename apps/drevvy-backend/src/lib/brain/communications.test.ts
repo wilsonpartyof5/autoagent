@@ -143,6 +143,7 @@ test('outbound sms and email helpers store the full copy', async () => {
   const memory = memoryStore(seededTestNumbers());
   const fetchImpl: typeof fetch = async () => jsonResponse({ data: { id: 'msg-out-1' } });
   const sms = await sendOutboundSms(memory.store, {
+    testMode: true,
     from: '+18039878296',
     to: '+18392748197',
     text: 'Outbound text that must be kept in full.',
@@ -156,6 +157,8 @@ test('outbound sms and email helpers store the full copy', async () => {
   assert.equal(memory.saved[0]?.is_test, true);
 
   const email = await storeOutboundEmail(memory.store, {
+    testMode: true,
+    displayName: 'Maya',
     from: 'agent@drevvy.example',
     to: 'desk@dealer.example',
     subject: 'Following up',

@@ -13,6 +13,7 @@ import { MemoryAttemptStore } from './chat/memory-store';
 import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptResult, AttemptStore, ChatPage, Day0Fallback, WidgetChatAttemptWrite } from './chat/types';
 import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSeedConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
+import { loadConversationContact, type ConversationContact } from './forms/identity';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { formatDirectoryReport, summarizeDirectory } from './directory/report';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
@@ -33,9 +34,9 @@ Usage:
   drevvy-widget-worker seed <zip-file-or-zip> [--radius miles] [--force]
   drevvy-widget-worker report
   drevvy-widget-worker scan <url-or-file> [--concurrency N]
-  drevvy-widget-worker lead <url-or-file> [--stock STOCK]
-  drevvy-widget-worker chat <url-or-file> [--stock STOCK]
-  drevvy-widget-worker run <url-or-file> [--force] [--hints file.json]
+  drevvy-widget-worker lead <url-or-file> [--stock STOCK] [--deal DEAL] [--dealer DEALER]
+  drevvy-widget-worker chat <url-or-file> [--stock STOCK] [--deal DEAL] [--dealer DEALER]
+  drevvy-widget-worker run <url-or-file> [--force] [--hints file.json] [--deal DEAL] [--dealer DEALER]
 
 A file has one vehicle page URL per line. An optional second column is the stock number.
 Lines starting with # are ignored.
@@ -61,6 +62,9 @@ It scans up to 3 sites at once (--concurrency) and gives each site 25 seconds.
 It does not type into a composer or submit a form. One failed URL does not stop the rest.
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
+Lead and chat read the conversation identity for --deal and --dealer: the shopper
+first name, the email alias, and the text number. DREVVY_EMAIL, DREVVY_TEXT_NUMBER,
+and SHOPPER_FIRST_NAME are used only when DREVVY_TEST_MODE=true.
 `;
 
 const COMMANDS = new Set(['research', 'scan', 'lead', 'chat', 'run', 'seed', 'report']);
@@ -82,6 +86,7 @@ export type CliDeps = {
   listDealers?: DealerSource;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
+  loadContact?: (dealId: string, dealerId: string) => Promise<ConversationContact | null>;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -102,6 +107,10 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
     if (targets.length === 0) {
       return { exitCode: 1, stdout: '', stderr: 'No vehicle page URLs were provided.\n' };
     }
+    const contact = await resolveContact(flags, deps);
+    const outreach = command === 'lead' || command === 'chat' || command === 'run'
+      ? chatSettings(deps.config, contact)
+      : null;
     const hints = flags.hintsPath ? parseHintsFile(deps.readFile(flags.hintsPath)) : {};
     const logs: string[] = [];
     const sections: string[] = [];
@@ -153,6 +162,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
         attempts: deps.attempts,
         directory: deps.directory,
         config: deps.config,
+        contact,
         log,
       });
       const dayRows: ResultRow[] = runs.map((run) => ({
@@ -173,8 +183,8 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
       if (chatRows.length > 0) sections.push(`Widget chat\n${formatResultsTable(chatRows)}`);
     }
 
-    if (command === 'lead') {
-      const settings = chatSettings(deps.config);
+    if (command === 'lead' && outreach) {
+      const settings = outreach;
       const rows: ResultRow[] = [];
       for (const target of targets) {
         const opened = await deps.openPage();
@@ -203,8 +213,8 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
       sections.push(`Lead form\n${formatResultsTable(rows)}`);
     }
 
-    if (command === 'chat') {
-      const settings = chatSettings(deps.config);
+    if (command === 'chat' && outreach) {
+      const settings = outreach;
       const rows: ResultRow[] = [];
       for (const target of targets) {
         const opened = await deps.openPage();
@@ -250,6 +260,9 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     config.supabaseUrl && config.supabaseServiceRoleKey
       ? createSupabase(config.supabaseUrl, config.supabaseServiceRoleKey)
       : null;
+  const loadContact = supabase
+    ? (dealId: string, dealerId: string) => loadConversationContact(supabase, dealId, dealerId)
+    : undefined;
   const ai: ChatClient =
     config.aiApiKey && config.aiModel
       ? createChatClient({ apiKey: config.aiApiKey, baseUrl: config.aiBaseUrl, model: config.aiModel })
@@ -274,6 +287,7 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     writeLine: (line) => {
       process.stdout.write(`${line}\n`);
     },
+    loadContact,
     listDealers: (area, pace) => {
       if (!config.marketcheckApiKey) {
         throw new Error('MARKETCHECK_API_KEY is required to seed the directory.');
@@ -436,17 +450,35 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 }
 
+async function resolveContact(
+  flags: { dealId: string | null; dealerId: string | null },
+  deps: CliDeps,
+): Promise<ConversationContact | null> {
+  if (!flags.dealId && !flags.dealerId) return null;
+  if (!flags.dealId || !flags.dealerId) throw new Error('Pass both --deal and --dealer.');
+  if (!deps.loadContact) throw new Error('Supabase is required to read a conversation identity.');
+  const contact = await deps.loadContact(flags.dealId, flags.dealerId);
+  if (!contact && !deps.config.testMode) {
+    throw new Error('No conversation identity is stored for that deal and dealer.');
+  }
+  return contact;
+}
+
 function parseFlags(argv: string[]): {
   force: boolean;
   hintsPath: string | null;
   stock: string | null;
   concurrency: number | null;
+  dealId: string | null;
+  dealerId: string | null;
   positionals: string[];
 } {
   let force = false;
   let hintsPath: string | null = null;
   let stock: string | null = null;
   let concurrency: number | null = null;
+  let dealId: string | null = null;
+  let dealerId: string | null = null;
   const positionals: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -463,6 +495,12 @@ function parseFlags(argv: string[]): {
       if (!Number.isInteger(parsed) || parsed < 1) throw new Error('--concurrency must be a positive integer.');
       concurrency = parsed;
       index += 1;
+    } else if (arg === '--deal') {
+      dealId = requiredValue(argv, index, '--deal');
+      index += 1;
+    } else if (arg === '--dealer') {
+      dealerId = requiredValue(argv, index, '--dealer');
+      index += 1;
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown flag: ${arg}`);
     } else {
@@ -470,7 +508,7 @@ function parseFlags(argv: string[]): {
     }
   }
   if (positionals.length === 0) throw new Error('Provide a vehicle page URL or a file of URLs.');
-  return { force, hintsPath, stock, concurrency, positionals };
+  return { force, hintsPath, stock, concurrency, dealId, dealerId, positionals };
 }
 
 function parseSeedFlags(argv: string[]): { force: boolean; radius: number | null; positionals: string[] } {

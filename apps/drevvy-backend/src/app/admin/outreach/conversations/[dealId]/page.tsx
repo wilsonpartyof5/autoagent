@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { loadIdentitiesForDeal } from '@/lib/admin/identities';
 import { channelLabel, outcomeLabel, stopLabel } from '@/lib/admin/outreach/analytics';
 import { when } from '@/lib/admin/format';
 import { loadConversation } from '@/lib/admin/outreach/repository';
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }: { params: Promise<{ dealId: s
 
 export default async function ConversationPage({ params }: { params: Promise<{ dealId: string }> }) {
   const { dealId } = await params;
-  const deal = await loadConversation(dealId);
+  const [deal, identities] = await Promise.all([loadConversation(dealId), loadIdentitiesForDeal(dealId)]);
   if (!deal) notFound();
 
   return (
@@ -30,6 +31,17 @@ export default async function ConversationPage({ params }: { params: Promise<{ d
           {stopLabel(deal.stop)}{deal.otdReceived ? ' · OTD received' : ''}
           {deal.isTest ? <span className="ml-2 inline-flex rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100">TEST</span> : null}
         </p>
+        {identities.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-sm text-slate-300">
+            {identities.map((identity) => (
+              <li key={identity.id}>
+                {identity.dealerId} · {identity.emailAlias} · {identity.smsNumberE164}
+                {identity.voiceNumberE164 ? ` · caller ID ${identity.voiceNumberE164}` : ''}
+                {identity.isTest ? ' · TEST' : ''}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </header>
       <ol className="space-y-3">
         {deal.events.map((event) => (

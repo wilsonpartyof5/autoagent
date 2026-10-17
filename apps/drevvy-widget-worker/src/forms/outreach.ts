@@ -30,6 +30,16 @@ export type OutreachRunConfig = {
   contactMode?: LeadContactMode;
 };
 
+export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
+  return buildIdentity({
+    firstName: config.shopperFirst,
+    lastName: config.leadLastName,
+    phone: config.drevvyTextNumber,
+    email: config.drevvyEmail,
+    zip: config.leadZip,
+  });
+}
+
 export function buildIdentity(input: {
   firstName: string;
   lastName?: string | null;

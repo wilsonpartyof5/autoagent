@@ -167,6 +167,7 @@ export type TelnyxClientState = {
   dealerId?: string;
   touchpoint?: string;
   variant?: string;
+  conversationId?: string;
 };
 
 export type CallLink = {
@@ -174,6 +175,7 @@ export type CallLink = {
   dealerId: string;
   touchpointId: string;
   variant?: string;
+  conversationId?: string;
 };
 
 /** Seeded in 20261018190000_communications_and_test_labels.sql. */
@@ -200,11 +202,13 @@ export function parseClientState(base64: string | undefined): TelnyxClientState 
     const dealerId = asString(parsed.dealerId) ?? asString(parsed.dealer_id);
     const touchpoint = asString(parsed.touchpoint) ?? asString(parsed.touchpointId) ?? asString(parsed.touchpoint_id);
     const variant = asString(parsed.variant);
+    const conversationId = asString(parsed.conversationId) ?? asString(parsed.conversation_id);
     const result: TelnyxClientState = {};
     if (dealId) result.dealId = dealId;
     if (dealerId) result.dealerId = dealerId;
     if (touchpoint) result.touchpoint = touchpoint;
     if (variant) result.variant = variant;
+    if (conversationId) result.conversationId = conversationId;
     return result;
   } catch {
     return {};
@@ -220,6 +224,7 @@ export function encodeClientState(link: CallLink): string {
     dealerId: link.dealerId,
     touchpoint: link.touchpointId,
     ...(link.variant ? { variant: link.variant } : {}),
+    ...(link.conversationId ? { conversation_id: link.conversationId, conversationId: link.conversationId } : {}),
   };
   return Buffer.from(JSON.stringify(payload)).toString('base64');
 }
@@ -282,6 +287,29 @@ export function buildOutboundCallBody(input: {
     record_channels: 'dual',
     record_format: 'mp3',
     record_track: 'both',
+  };
+}
+
+export function buildOutboundEmailBody(input: {
+  from: string;
+  replyTo: string;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string | null;
+  webhookUrl: string;
+  link?: CallLink;
+}): Record<string, unknown> {
+  return {
+    from: input.from,
+    reply_to: input.replyTo,
+    to: [{ email: input.to }],
+    subject: input.subject,
+    text: input.text,
+    ...(input.html ? { html: input.html } : {}),
+    webhook_url: input.webhookUrl,
+    webhook_url_method: 'POST',
+    ...(input.link ? { client_state: encodeClientState(input.link) } : {}),
   };
 }
 
@@ -539,6 +567,8 @@ export type NormalizedTelnyxEvent = {
   status: string | null;
   errorCode: string | null;
   errorDetail: string | null;
+  inReplyTo: string | null;
+  references: string | null;
 };
 
 export function normalizeTelnyxPayload(payload: unknown): NormalizedTelnyxEvent | null {
@@ -590,12 +620,33 @@ export function normalizeTelnyxPayload(payload: unknown): NormalizedTelnyxEvent 
     status: status.status,
     errorCode: status.errorCode,
     errorDetail: status.errorDetail,
+    inReplyTo: headerValue(inner, 'in_reply_to') ?? headerValue(inner, 'in-reply-to'),
+    references: headerValue(inner, 'references'),
   };
 }
 
 function readDirection(value: unknown): 'outbound' | 'inbound' | null {
   const raw = asString(value)?.toLowerCase();
   if (raw === 'inbound' || raw === 'outbound') return raw;
+  return null;
+}
+
+function headerValue(inner: Record<string, unknown>, name: string): string | null {
+  const direct = asString(inner[name]);
+  if (direct) return direct;
+  const headers = inner.headers;
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      if (!header || typeof header !== 'object') continue;
+      const record = header as Record<string, unknown>;
+      const key = (asString(record.name) ?? asString(record.key) ?? '').toLowerCase();
+      if (key === name) return asString(record.value) ?? null;
+    }
+  }
+  if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+    const record = headers as Record<string, unknown>;
+    return asString(record[name]) ?? asString(record[name.replace(/_/g, '-')]) ?? null;
+  }
   return null;
 }
 
@@ -826,6 +877,35 @@ export async function createOutboundCall(
     callControlId: json.data?.call_control_id ?? json.data?.call_session_id ?? null,
     clientState: String(body.client_state),
   };
+}
+
+export async function createOutboundEmail(
+  input: {
+    from: string;
+    replyTo: string;
+    to: string;
+    subject: string;
+    text: string;
+    html?: string | null;
+    webhookUrl?: string;
+    link?: CallLink;
+  },
+  options: { apiKey: string; fetchImpl?: typeof fetch },
+): Promise<{ messageId: string | null } | { error: string }> {
+  const webhookUrl = input.webhookUrl || telnyxStatusCallbackUrl();
+  if (!webhookUrl) return { error: 'Status callback URL is not configured' };
+  const body = buildOutboundEmailBody({ ...input, webhookUrl });
+  const response = await (options.fetchImpl ?? fetch)(`${TELNYX_API}/emails`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return { error: 'Telnyx email was not accepted' };
+  const json = await response.json() as { data?: { id?: string } };
+  return { messageId: json.data?.id ?? null };
 }
 
 export async function createOutboundSms(

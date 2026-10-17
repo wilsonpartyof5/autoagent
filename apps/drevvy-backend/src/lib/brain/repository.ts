@@ -35,6 +35,7 @@ export type BrainVendorEvent = {
   structured?: unknown;
   call_control_id?: string | null;
   conversation_id?: string | null;
+  conversation_identity_id?: string | null;
 };
 
 export type VendorIncident = {

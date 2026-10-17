@@ -1,3 +1,4 @@
+import { preferConversationContact, type ConversationContact } from './forms/identity';
 import { assertLeadLastName, DEFAULT_LEAD_LAST_NAME, normalizeZip } from './forms/outreach';
 import { normalizeEmail, normalizePhone } from './research/validate';
 
@@ -24,6 +25,7 @@ export type AppConfig = {
   marketcheckApiKey: string | null;
   marketcheckBaseUrl: string;
   seedIntervalMs: number;
+  testMode: boolean;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -50,6 +52,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     marketcheckApiKey: blankToNull(env.MARKETCHECK_API_KEY),
     marketcheckBaseUrl: blankToNull(env.MARKETCHECK_BASE_URL) ?? 'https://api.marketcheck.com',
     seedIntervalMs: nonNegativeInt(env.SEED_MIN_INTERVAL_MS, 1_000),
+    testMode: env.DREVVY_TEST_MODE === '1' || env.DREVVY_TEST_MODE === 'true',
   };
 }
 
@@ -109,16 +112,18 @@ export function assertSeedConfig(config: AppConfig): void {
 
 export function assertOutreachConfig(config: AppConfig, dryRun: boolean): void {
   assertSupabaseConfig(config);
-  if (!config.drevvyTextNumber || !normalizePhone(config.drevvyTextNumber)) {
-    throw new Error('DREVVY_TEXT_NUMBER must be a valid US phone number.');
+  if (config.testMode) {
+    if (!config.drevvyTextNumber || !normalizePhone(config.drevvyTextNumber)) {
+      throw new Error('DREVVY_TEXT_NUMBER must be a valid US phone number.');
+    }
+    if (!config.drevvyEmail) {
+      throw new Error('DREVVY_EMAIL must be a valid email address.');
+    }
+    if (!config.shopperFirst) {
+      throw new Error('SHOPPER_FIRST_NAME is required.');
+    }
+    assertShopperFirst(config.shopperFirst);
   }
-  if (!config.drevvyEmail) {
-    throw new Error('DREVVY_EMAIL must be a valid email address.');
-  }
-  if (!config.shopperFirst) {
-    throw new Error('SHOPPER_FIRST_NAME is required.');
-  }
-  assertShopperFirst(config.shopperFirst);
   assertLeadLastName(config.leadLastName);
   if (!dryRun && config.allowlist.length === 0) {
     throw new Error('WIDGET_CHAT_ALLOWLIST is required when DRY_RUN=false. Refusing to send.');
@@ -139,7 +144,7 @@ export function assertSupabaseConfig(config: AppConfig): void {
   }
 }
 
-export function chatSettings(config: AppConfig): {
+export function chatSettings(config: AppConfig, contact: ConversationContact | null = null): {
   dryRun: boolean;
   allowlist: string[];
   drevvyTextNumber: string;
@@ -149,15 +154,22 @@ export function chatSettings(config: AppConfig): {
   leadLastName: string;
   leadZip: string | null;
 } {
-  if (!config.drevvyTextNumber || !config.drevvyEmail || !config.shopperFirst) {
-    throw new Error('Chat settings are incomplete.');
-  }
+  const preferred = preferConversationContact({
+    contact,
+    testMode: config.testMode,
+    env: {
+      shopperFirst: config.shopperFirst,
+      email: config.drevvyEmail,
+      textNumber: config.drevvyTextNumber,
+    },
+  });
+  if ('error' in preferred) throw new Error(preferred.error);
   return {
     dryRun: config.dryRun,
     allowlist: config.allowlist,
-    drevvyTextNumber: config.drevvyTextNumber.trim(),
-    drevvyEmail: config.drevvyEmail,
-    shopperFirst: assertShopperFirst(config.shopperFirst),
+    drevvyTextNumber: preferred.textNumber,
+    drevvyEmail: preferred.email,
+    shopperFirst: assertShopperFirst(preferred.shopperFirst),
     maxTurns: config.maxTurns,
     leadLastName: assertLeadLastName(config.leadLastName),
     leadZip: config.leadZip,
