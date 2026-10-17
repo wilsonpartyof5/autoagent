@@ -1175,6 +1175,104 @@ class DemoRepository {
     ),
   ];
 
+  List<DealerTimeline> get _rav4Timelines => [
+    DealerTimeline(
+      letter: 'A',
+      status: DealStatus.offerReceived,
+      rounds: [
+        DealerQuoteRound(
+          id: 'tl_a_1',
+          round: 1,
+          receivedAt: DateTime.now().subtract(const Duration(days: 4)),
+          otd: 36450,
+          vehiclePrice: 32100,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 32100),
+            OfferLine(key: 'Doc fee', amount: 499),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2006),
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+        DealerQuoteRound(
+          id: 'tl_a_2',
+          round: 2,
+          receivedAt: DateTime.now().subtract(const Duration(days: 2)),
+          otd: 35120,
+          vehiclePrice: 31200,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 31200, subLine: 'Down from \$32,100'),
+            OfferLine(key: 'Doc fee', amount: 499),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 1950),
+            OfferLine(key: 'Paint protection', amount: 895),
+          ],
+          removedFees: const [OfferLine(key: 'Nitrogen fill', amount: 199)],
+        ),
+        DealerQuoteRound(
+          id: 'tl_a_3',
+          round: 3,
+          receivedAt: DateTime.now().subtract(const Duration(hours: 2)),
+          otd: 33415,
+          vehiclePrice: 30700,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 30700, subLine: 'Down from \$31,200'),
+            OfferLine(key: 'Doc fee', amount: 399, subLine: 'Down from \$499'),
+            OfferLine(key: 'Title & registration', amount: 250),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 1919),
+          ],
+          removedFees: const [
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+      ],
+    ),
+    DealerTimeline(
+      letter: 'B',
+      status: DealStatus.findingBestPrice,
+      rounds: [
+        DealerQuoteRound(
+          id: 'tl_b_1',
+          round: 1,
+          receivedAt: DateTime.now().subtract(const Duration(days: 3)),
+          otd: 36977,
+          vehiclePrice: 32950,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 32950),
+            OfferLine(key: 'Doc fee', amount: 599),
+            OfferLine(key: 'Title & registration', amount: 275),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2059),
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+        DealerQuoteRound(
+          id: 'tl_b_2',
+          round: 2,
+          receivedAt: DateTime.now().subtract(const Duration(days: 1)),
+          otd: 34880,
+          vehiclePrice: 32100,
+          lines: const [
+            OfferLine(key: 'Vehicle price', amount: 32100, subLine: 'Down from \$32,950'),
+            OfferLine(key: 'Doc fee', amount: 499, subLine: 'Down from \$599'),
+            OfferLine(key: 'Title & registration', amount: 275),
+            OfferLine(key: 'Sales tax (6.25%)', amount: 2006),
+          ],
+          removedFees: const [
+            OfferLine(key: 'Paint protection', amount: 895),
+            OfferLine(key: 'Nitrogen fill', amount: 199),
+          ],
+        ),
+      ],
+    ),
+    const DealerTimeline(
+      letter: 'C',
+      status: DealStatus.noResponse,
+    ),
+  ];
+
   List<Deal> get _demoDealsList => [
     // Offer received - main demo deal
     Deal(
@@ -1287,6 +1385,7 @@ class DemoRepository {
           isLatest: true,
         ),
       ],
+      dealerTimelines: _rav4Timelines,
     ),
 
     // Finding best price
@@ -1324,6 +1423,31 @@ class DemoRepository {
         ),
       ],
       comms: const DealComms(emails: 4, texts: 2, calls: 0),
+      dealerTimelines: [
+        DealerTimeline(
+          letter: 'A',
+          status: DealStatus.findingBestPrice,
+          rounds: [
+            DealerQuoteRound(
+              id: 'tl_002_a',
+              round: 1,
+              receivedAt: DateTime.now().subtract(const Duration(days: 1)),
+              otd: 34890,
+              vehiclePrice: 30990,
+              lines: const [
+                OfferLine(key: 'Vehicle price', amount: 30990),
+                OfferLine(key: 'Doc fee', amount: 599),
+                OfferLine(key: 'Title & registration', amount: 275),
+                OfferLine(key: 'Sales tax (6.25%)', amount: 1937),
+              ],
+            ),
+          ],
+        ),
+        const DealerTimeline(
+          letter: 'B',
+          status: DealStatus.reachingOut,
+        ),
+      ],
     ),
 
     // Reaching out (new, with undo window)

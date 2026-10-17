@@ -243,6 +243,12 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                         style: text.callout.copyWith(color: colors.muted),
                       ),
 
+                      const SizedBox(height: DrevvySpace.s4),
+
+                      _TimelineLink(
+                        onOpen: () => context.push('/deal/${deal.id}/timeline'),
+                      ),
+
                       const SizedBox(height: DrevvySpace.s6),
 
                       if (deal.status.isEnded) ...[
@@ -321,6 +327,51 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _TimelineLink extends StatelessWidget {
+  const _TimelineLink({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(DrevvyRadius.lg),
+          child: Padding(
+            padding: const EdgeInsets.all(DrevvySpace.s4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dealership timeline', style: text.title),
+                      const SizedBox(height: DrevvySpace.s1),
+                      Text(
+                        'Each store\'s rounds, out-the-door price, and fees taken off.',
+                        style: text.callout.copyWith(color: colors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: DrevvySpace.s3),
+                Icon(LucideIcons.chevronRight, color: colors.muted),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

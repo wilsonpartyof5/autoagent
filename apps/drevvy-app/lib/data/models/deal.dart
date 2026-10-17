@@ -23,6 +23,7 @@ class Deal extends Equatable {
     this.acceptedOffer,
     this.changedOffer,
     this.tryOnceMoreUsed = false,
+    this.dealerTimelines = const [],
   });
 
   final String id;
@@ -43,6 +44,10 @@ class Deal extends Equatable {
   final Offer? acceptedOffer;
   final Offer? changedOffer;
   final bool tryOnceMoreUsed;
+
+  /// Per-dealership written quotes. Empty means the screen builds one
+  /// timeline from this deal's own offers.
+  final List<DealerTimeline> dealerTimelines;
 
   Offer? get latestOffer => offers.isNotEmpty ? offers.last : null;
   
@@ -79,8 +84,24 @@ class Deal extends Equatable {
     return status.progressStep ?? 1;
   }
 
+  /// Each dealership's rounds. Shopper copy uses a letter until the store is revealed.
+  List<DealerTimeline> get timelines {
+    if (dealerTimelines.isNotEmpty) return dealerTimelines;
+    return [
+      DealerTimeline(
+        letter: letter,
+        status: status,
+        revealedName: status.dealerRevealed ? dealer?.name : null,
+        rounds: [
+          for (var index = 0; index < offers.length; index++)
+            DealerQuoteRound.fromOffer(offers[index], index + 1),
+        ],
+      ),
+    ];
+  }
+
   @override
-  List<Object?> get props => [id, status, offers];
+  List<Object?> get props => [id, status, offers, dealerTimelines];
 
   Deal copyWith({
     DealStatus? status,
@@ -94,6 +115,7 @@ class Deal extends Equatable {
     Offer? acceptedOffer,
     Offer? changedOffer,
     bool? tryOnceMoreUsed,
+    List<DealerTimeline>? dealerTimelines,
   }) {
     return Deal(
       id: id,
@@ -114,6 +136,7 @@ class Deal extends Equatable {
       acceptedOffer: acceptedOffer ?? this.acceptedOffer,
       changedOffer: changedOffer ?? this.changedOffer,
       tryOnceMoreUsed: tryOnceMoreUsed ?? this.tryOnceMoreUsed,
+      dealerTimelines: dealerTimelines ?? this.dealerTimelines,
     );
   }
 }
@@ -154,6 +177,69 @@ class OfferLine extends Equatable {
 
   @override
   List<Object?> get props => [key, amount];
+}
+
+/// One written quote in a dealership's price timeline.
+class DealerQuoteRound extends Equatable {
+  const DealerQuoteRound({
+    required this.id,
+    required this.round,
+    required this.receivedAt,
+    required this.otd,
+    required this.vehiclePrice,
+    required this.lines,
+    this.removedFees = const [],
+  });
+
+  final String id;
+  final int round;
+  final DateTime receivedAt;
+  final int otd;
+  final int vehiclePrice;
+  final List<OfferLine> lines;
+  final List<OfferLine> removedFees;
+
+  factory DealerQuoteRound.fromOffer(Offer offer, int round) {
+    return DealerQuoteRound(
+      id: offer.id,
+      round: round,
+      receivedAt: offer.receivedAt,
+      otd: offer.otd,
+      vehiclePrice: offer.vehiclePrice,
+      lines: offer.lines,
+      removedFees: offer.removedAddOns,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, round, otd];
+}
+
+/// One dealership on the deal timeline. [letter] is what the shopper sees
+/// until the store name is allowed to show.
+class DealerTimeline extends Equatable {
+  const DealerTimeline({
+    required this.letter,
+    required this.status,
+    this.rounds = const [],
+    this.revealedName,
+  });
+
+  final String letter;
+  final DealStatus status;
+  final List<DealerQuoteRound> rounds;
+  final String? revealedName;
+
+  String get label {
+    final name = revealedName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'Dealer $letter';
+  }
+
+  int? get latestOtd => rounds.isEmpty ? null : rounds.last.otd;
+
+  @override
+  List<Object?> get props => [letter, status, rounds];
 }
 
 class OfficialOffer extends Offer {
