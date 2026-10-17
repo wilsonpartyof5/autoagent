@@ -14,6 +14,8 @@ import {
 } from '@/lib/brain/telnyx';
 import { insertBrainVendorEvent, type BrainVendorEvent } from '@/lib/brain/repository';
 import { recordEmailOptout, endDealOnOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
+import { ingestInboundSms } from '@/lib/sms/inbound';
+import { createSupabaseSmsStore } from '@/lib/sms/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +79,24 @@ export async function POST(request: NextRequest) {
     const msgPayload = payload.data.payload as TelnyxMessagingPayload['data']['payload'];
     direction = msgPayload.direction ?? null;
     transcript = msgPayload.text ?? null;
+
+    if (direction === 'inbound') {
+      try {
+        await ingestInboundSms(createSupabaseSmsStore(supabase), {
+          from: msgPayload.from?.phone_number ?? null,
+          text: msgPayload.text ?? null,
+          vendorEventId,
+          occurredAt,
+        });
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: 'sms_opt_out_suppression_failed',
+          vendorEventId,
+          message: error instanceof Error ? error.message : 'unknown',
+        }));
+        return NextResponse.json({ error: 'opt_out_not_recorded' }, { status: 500 });
+      }
+    }
   } else if (eventType.startsWith('email.')) {
     const emailPayload = payload.data.payload as TelnyxEmailPayload['data']['payload'];
     direction = emailPayload.direction ?? null;

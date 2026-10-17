@@ -1,19 +1,27 @@
 import Link from 'next/link';
 
 import { InsightsPanel } from '@/components/admin/insights-panel';
+import { SmsOptOutLineSettingControl } from '@/components/admin/sms-opt-out-setting';
 import { channelLabel, outcomeLabel, stopLabel } from '@/lib/admin/outreach/analytics';
 import { hours } from '@/lib/admin/format';
 import type { OutreachDeal, OutreachInsight, OutreachReport, SegmentStat, VariantStat } from '@/lib/admin/outreach/types';
 import { MIN_VARIANT_SENDS, TOUCHPOINT_IDS } from '@/lib/admin/outreach/types';
+import type { SmsOptOutLineAdminState } from '@/lib/sms/settings-admin';
 
 export function OutreachDashboard({
   report,
   insight,
   preview,
+  optOutLine,
+  smsSettingSaved,
+  smsSettingError,
 }: {
   report: OutreachReport;
   insight: OutreachInsight;
   preview: OutreachDeal[];
+  optOutLine: SmsOptOutLineAdminState;
+  smsSettingSaved: 'database' | 'preview' | null;
+  smsSettingError: string | null;
 }) {
   const maxDay = Math.max(...report.firstReplyByDay.map((row) => row.count), 1);
   const maxStop = Math.max(...report.stops.map((row) => row.count), 1);
@@ -41,6 +49,16 @@ export function OutreachDashboard({
           <button type="submit" className="rounded-md bg-emerald-400 px-3 py-2 text-sm font-medium text-slate-950">Apply</button>
         </form>
       </header>
+
+      <SmsOptOutLineSettingControl
+        setting={optOutLine.setting}
+        persistence={optOutLine.persistence}
+        notice={optOutLine.notice}
+        from={report.from}
+        to={report.to}
+        saved={smsSettingSaved}
+        error={smsSettingError}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Deals contacted" value={String(report.kpis.dealsContacted)} detail="First touch in range" />
