@@ -40,6 +40,7 @@ export type OutreachMonitorRow = {
   status: MonitorStatus;
   dealerReplyText: string | null;
   cadenceDay: number | null;
+  isTest: boolean;
 };
 
 export type ChannelReplyRate = {
@@ -56,6 +57,7 @@ export type MonitorFilters = {
   status: MonitorStatus | '';
   cadenceDay: number | null;
   firstReply: MonitorChannel | '';
+  traffic: 'live' | 'test' | 'all';
 };
 
 export type OutreachMonitorView = {
@@ -73,6 +75,7 @@ export type LiveMonitorSources = {
   widgetChatAttempts: Record<string, unknown>[] | null;
   outreachEvents: Record<string, unknown>[] | null;
   outreachMessages: Record<string, unknown>[] | null;
+  brainVendorEvents?: Record<string, unknown>[] | null;
   failed: boolean;
 };
 
@@ -80,6 +83,7 @@ const SOURCE_RANK = {
   widget_chat_attempts: 0,
   outreach_events: 1,
   shopper_outreach_messages: 2,
+  brain_vendor_events: 3,
 } as const;
 
 type SourceName = keyof typeof SOURCE_RANK;
@@ -113,10 +117,11 @@ type Draft = {
   status: MonitorStatus | null;
   statusRank: number;
   optOut: boolean;
+  isTest: boolean;
 };
 
 export function emptyMonitorFilters(): MonitorFilters {
-  return { q: '', dealer: '', channel: '', status: '', cadenceDay: null, firstReply: '' };
+  return { q: '', dealer: '', channel: '', status: '', cadenceDay: null, firstReply: '', traffic: 'live' };
 }
 
 export function normalizeChannel(value: unknown): MonitorChannel | null {
@@ -147,8 +152,10 @@ export function parseMonitorFilters(params: {
   status?: string;
   day?: string;
   first?: string;
+  traffic?: string;
 }): MonitorFilters {
   const day = params.day?.trim() ?? '';
+  const traffic = params.traffic === 'test' || params.traffic === 'all' ? params.traffic : 'live';
   return {
     q: params.q?.trim() ?? '',
     dealer: params.dealer?.trim() ?? '',
@@ -156,6 +163,7 @@ export function parseMonitorFilters(params: {
     status: normalizeStatus(params.status) ?? '',
     cadenceDay: /^\d+$/.test(day) ? Number(day) : null,
     firstReply: normalizeChannel(params.first) ?? '',
+    traffic,
   };
 }
 
@@ -180,6 +188,8 @@ export function filterMonitorRows(rows: OutreachMonitorRow[], filters: MonitorFi
     if (filters.status && row.status !== filters.status) return false;
     if (filters.cadenceDay != null && row.cadenceDay !== filters.cadenceDay) return false;
     if (filters.firstReply && row.firstReplyChannel !== filters.firstReply) return false;
+    if (filters.traffic === 'live' && row.isTest) return false;
+    if (filters.traffic === 'test' && !row.isTest) return false;
     if (!needle) return true;
     return [row.dealerName, row.dealId, row.vehicle, row.shopperFirst, row.dealerReplyText ?? '']
       .join(' ')
@@ -197,6 +207,7 @@ export function presentMonitor(
   const dealers = uniqueDealers(rows);
   const cadenceDays = [...new Set(rows.map((row) => row.cadenceDay).filter((day): day is number => day != null))].sort((a, b) => a - b);
   const visible = filterMonitorRows(rows, filters);
+  const rated = filterMonitorRows(rows, { ...filters, traffic: 'live' });
   return {
     source,
     partial,
@@ -204,8 +215,8 @@ export function presentMonitor(
     dealers,
     cadenceDays,
     rows: visible,
-    total: rows.length,
-    replyRates: replyRatesByChannel(visible),
+    total: rows.filter((row) => !row.isTest).length,
+    replyRates: replyRatesByChannel(rated),
   };
 }
 
@@ -216,7 +227,8 @@ export function presentMonitor(
  * null so the caller can show the demo book.
  */
 export function assembleLiveMonitor(sources: LiveMonitorSources): { rows: OutreachMonitorRow[]; partial: boolean } | null {
-  const buckets = [sources.widgetChatAttempts, sources.outreachEvents, sources.outreachMessages];
+  const brain = sources.brainVendorEvents === undefined ? [] : sources.brainVendorEvents;
+  const buckets = [sources.widgetChatAttempts, sources.outreachEvents, sources.outreachMessages, brain];
   const anyRows = buckets.some((rows) => rows != null && rows.length > 0);
   if (!anyRows) return null;
 
@@ -224,6 +236,7 @@ export function assembleLiveMonitor(sources: LiveMonitorSources): { rows: Outrea
   absorbAll(drafts, sources.widgetChatAttempts ?? [], 'widget_chat_attempts');
   absorbAll(drafts, sources.outreachEvents ?? [], 'outreach_events');
   absorbAll(drafts, sources.outreachMessages ?? [], 'shopper_outreach_messages');
+  absorbAll(drafts, brain ?? [], 'brain_vendor_events');
 
   const rows = [...drafts.values()].map(finalize).sort((a, b) => (
     a.dealerName.localeCompare(b.dealerName) || a.dealId.localeCompare(b.dealId)
@@ -245,6 +258,7 @@ function absorbAll(drafts: Map<string, Draft>, rows: Record<string, unknown>[], 
 }
 
 function absorb(drafts: Map<string, Draft>, row: Record<string, unknown>, source: SourceName): void {
+  if (source === 'brain_vendor_events' && !visibleBrainEvent(row)) return;
   const dealId = text(row, ['deal_id', 'shopper_deal_id', 'dealId']);
   if (!dealId) return;
   const dealerId = text(row, ['dealer_id', 'dealerId']) ?? '';
@@ -264,6 +278,7 @@ function absorb(drafts: Map<string, Draft>, row: Record<string, unknown>, source
     status: null,
     statusRank: Number.POSITIVE_INFINITY,
     optOut: false,
+    isTest: false,
   };
   drafts.set(id, draft);
 
@@ -317,6 +332,17 @@ function absorb(drafts: Map<string, Draft>, row: Record<string, unknown>, source
   }
 
   if (row.opt_out === true || row.opted_out === true) draft.optOut = true;
+  if (row.is_test === true || row.conversation_type === 'ai_to_ai_test') draft.isTest = true;
+}
+
+function visibleBrainEvent(row: Record<string, unknown>): boolean {
+  const channel = normalizeChannel(row.channel);
+  if (!channel || (channel !== 'email' && channel !== 'text' && channel !== 'call')) return false;
+  const body = text(row, ['body', 'transcript', 'summary']);
+  const recording = text(row, ['recording_path']);
+  const eventType = text(row, ['event_type']) ?? '';
+  if (channel === 'email' || channel === 'text') return Boolean(body);
+  return Boolean(body || recording || /hangup|conversation\.ended|recording\.saved|analyzed|insights/.test(eventType));
 }
 
 function finalize(draft: Draft): OutreachMonitorRow {
@@ -361,6 +387,7 @@ function finalize(draft: Draft): OutreachMonitorRow {
     status,
     dealerReplyText,
     cadenceDay,
+    isTest: draft.isTest,
   };
 }
 
@@ -656,6 +683,6 @@ const DEMO: OutreachMonitorRow[] = [
   }),
 ];
 
-function row(value: OutreachMonitorRow): OutreachMonitorRow {
-  return value;
+function row(value: Omit<OutreachMonitorRow, 'isTest'> & { isTest?: boolean }): OutreachMonitorRow {
+  return { isTest: false, ...value };
 }

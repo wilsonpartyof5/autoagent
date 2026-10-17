@@ -2,7 +2,29 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPrivateKey, createPublicKey, sign } from 'crypto';
 
-import { verifyTelnyxSignature, parseClientState, mapTelnyxEventToChannel, mapTelnyxEventToStatus, stripHtml } from './telnyx';
+import {
+  verifyTelnyxSignature,
+  parseClientState,
+  encodeClientState,
+  mapTelnyxEventToChannel,
+  mapTelnyxEventToStatus,
+  stripHtml,
+  buildTexmlAiCallBody,
+  buildOutboundCallBody,
+  buildOutboundSmsBody,
+  flagTestParties,
+  seededTestNumbers,
+  parseStructuredCallResult,
+  normalizeTelnyxPayload,
+  pickRecordingUrl,
+  sanitizeTelnyxPayload,
+  isSafeRecordingUrl,
+  recordingObjectPath,
+  safeRecordingPath,
+  shouldFetchTranscript,
+  shouldDownloadRecording,
+  SEEDED_LABELED_NUMBERS,
+} from './telnyx';
 
 describe('verifyTelnyxSignature', () => {
   let privateKey: ReturnType<typeof createPrivateKey>;
@@ -247,6 +269,157 @@ describe('stripHtml', () => {
     assert.equal(result, '');
   });
 
+  it('reads deal_id, dealer_id, and touchpoint_id from client state', () => {
+    const encoded = encodeClientState({ dealId: 'deal-1', dealerId: 'dlr-2', touchpointId: 'D0-C1', variant: 'B' });
+    assert.deepEqual(parseClientState(encoded), {
+      dealId: 'deal-1',
+      dealerId: 'dlr-2',
+      touchpoint: 'D0-C1',
+      variant: 'B',
+    });
+  });
+});
+
+describe('call and message requests', () => {
+  const link = { dealId: 'deal-9', dealerId: 'dlr-3', touchpointId: 'D0-C2' };
+  const webhook = 'https://app.example.com/api/webhooks/telnyx';
+
+  it('points TeXML AI calls at the status webhook with client state', () => {
+    const body = buildTexmlAiCallBody({
+      from: '+18039878296',
+      to: '+18392748197',
+      assistantId: 'assistant-1',
+      webhookUrl: webhook,
+      link,
+    });
+    assert.equal(body.StatusCallback, webhook);
+    assert.equal(body.ConversationCallback, webhook);
+    assert.equal(body.RecordingStatusCallback, webhook);
+    assert.equal(body.StatusCallbackMethod, 'POST');
+    assert.equal(body.RecordingChannels, 'dual');
+    assert.equal(body.Record, true);
+    const state = parseClientState(String(body.ClientState));
+    assert.equal(state.dealId, 'deal-9');
+    assert.equal(state.dealerId, 'dlr-3');
+    assert.equal(state.touchpoint, 'D0-C2');
+    assert.equal(String(body.StatusCallbackEvent).includes('analyzed'), true);
+  });
+
+  it('points outbound calls at the webhook with client state and a dual mp3', () => {
+    const body = buildOutboundCallBody({
+      connectionId: 'conn-1',
+      from: '+18039878296',
+      to: '+15551212',
+      webhookUrl: webhook,
+      link,
+    });
+    assert.equal(body.webhook_url, webhook);
+    assert.equal(body.webhook_url_method, 'POST');
+    assert.equal(body.record_channels, 'dual');
+    assert.equal(body.record_format, 'mp3');
+    assert.equal(parseClientState(String(body.client_state)).touchpoint, 'D0-C2');
+  });
+
+  it('sends the full SMS body to the same webhook', () => {
+    const body = buildOutboundSmsBody({
+      from: '+18039878296',
+      to: '+15551212',
+      text: 'Full text body that must be stored.',
+      webhookUrl: webhook,
+    });
+    assert.equal(body.text, 'Full text body that must be stored.');
+    assert.equal(body.webhook_url, webhook);
+  });
+});
+
+describe('test numbers and structured call results', () => {
+  it('flags a call or text only when both parties are labeled test numbers', () => {
+    const numbers = seededTestNumbers();
+    assert.deepEqual(
+      flagTestParties('+1 (803) 987-8296', '839-274-8197', numbers),
+      { isTest: true, conversationType: 'ai_to_ai_test' },
+    );
+    assert.deepEqual(
+      flagTestParties('+18039878296', '+15551212000', numbers),
+      { isTest: false, conversationType: null },
+    );
+    assert.equal(flagTestParties('dealer@example.com', 'shopper@example.com', numbers).isTest, false);
+    assert.equal(SEEDED_LABELED_NUMBERS[0].label, 'test agent 1');
+    assert.equal(SEEDED_LABELED_NUMBERS[1].label, 'test agent 2');
+  });
+
+  it('reads a textable number, email, goal, and voicemail from the conversation', () => {
+    const result = parseStructuredCallResult({
+      texts: [
+        'The textable number is (803) 555-0199. Email: desk@dealer.example.',
+        'Goal reached after the price was confirmed.',
+      ],
+      toolCalls: [{ name: 'capture_contact', arguments: '{"voicemail_left":false}' }],
+      machine: 'human',
+    });
+    assert.equal(result.textableNumber, '+18035550199');
+    assert.equal(result.email, 'desk@dealer.example');
+    assert.equal(result.goalReached, true);
+    assert.equal(result.voicemailLeft, false);
+
+    const missed = parseStructuredCallResult({ texts: ['left a voicemail'], machine: 'machine' });
+    assert.equal(missed.voicemailLeft, true);
+    assert.equal(parseStructuredCallResult({ texts: ['goal not reached'] }).goalReached, false);
+  });
+});
+
+describe('telnyx payload normalization', () => {
+  it('keeps the SMS body and strips signed media urls from storage', () => {
+    const payload = {
+      data: {
+        id: 'evt-sms',
+        event_type: 'message.received',
+        occurred_at: '2026-10-17T12:00:00.000Z',
+        record_type: 'event',
+        payload: {
+          id: 'msg-1',
+          direction: 'inbound',
+          from: { phone_number: '+18039878296' },
+          to: [{ phone_number: '+18392748197', status: 'received' }],
+          text: 'The full inbound text.',
+          client_state: Buffer.from('{"deal_id":"deal-1"}').toString('base64'),
+        },
+      },
+    };
+    const normalized = normalizeTelnyxPayload(payload);
+    assert.equal(normalized?.channel, 'sms');
+    assert.equal(normalized?.body, 'The full inbound text.');
+    assert.equal(normalized?.direction, 'inbound');
+    assert.equal(normalized?.clientState.dealId, 'deal-1');
+    const stored = sanitizeTelnyxPayload(payload);
+    const inner = (stored.data as { payload: Record<string, unknown> }).payload;
+    assert.equal('client_state' in inner, false);
+    assert.equal(JSON.stringify(stored).includes('The full inbound text.'), true);
+  });
+
+  it('prefers the dual-channel mp3 and ignores private network urls', () => {
+    const url = pickRecordingUrl({
+      channels: 'single',
+      recording_urls: { mp3: 'https://cdn.example.com/mono.mp3?X-Amz-Signature=secret' },
+      public_recording_urls: { mp3: 'https://cdn.example.com/dual.mp3' },
+      nested: { channels: 'dual', recording_urls: { mp3: 'https://cdn.example.com/stereo.mp3?sig=1' } },
+    });
+    assert.equal(url, 'https://cdn.example.com/stereo.mp3?sig=1');
+    assert.equal(isSafeRecordingUrl('http://cdn.example.com/a.mp3'), false);
+    assert.equal(isSafeRecordingUrl('https://169.254.169.254/latest'), false);
+    const stored = sanitizeTelnyxPayload({ data: { payload: { recording_urls: { mp3: 'https://cdn.example.com/a.mp3?sig=1' } } } });
+    assert.equal(JSON.stringify(stored).includes('sig'), false);
+    assert.equal(JSON.stringify(stored).includes('recording_urls'), false);
+    const path = recordingObjectPath('v3:abc', null);
+    assert.equal(safeRecordingPath(path), path);
+    assert.equal(safeRecordingPath('../calls/a.mp3'), null);
+    assert.equal(shouldFetchTranscript('call.conversation.ended'), true);
+    assert.equal(shouldFetchTranscript('call.initiated'), false);
+    assert.equal(shouldDownloadRecording('call.recording.saved'), true);
+  });
+});
+
+describe('stripHtml extra', () => {
   it('handles plain text without HTML', () => {
     const text = 'Just plain text';
     const result = stripHtml(text);

@@ -57,6 +57,14 @@ test('shopper-facing deal JSON never includes dealer identity', () => {
   }
 });
 
+test('analytics leave out test deals', () => {
+  const shoppers = getMockShoppers().map((shopper) => ({ ...shopper, deals: shopper.deals.map((deal) => ({ ...deal })) }));
+  const before = buildAnalytics(shoppers).dealsByStage.reduce((sum, row) => sum + row.count, 0);
+  shoppers[0].deals[0].isTest = true;
+  const after = buildAnalytics(shoppers).dealsByStage.reduce((sum, row) => sum + row.count, 0);
+  assert.equal(after, before - 1);
+});
+
 test('analytics funnel counts only move forward', () => {
   const analytics = buildAnalytics();
   for (let index = 1; index < analytics.funnel.length; index += 1) {

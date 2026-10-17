@@ -25,6 +25,16 @@ export type BrainVendorEvent = {
   received_at?: string;
   signature_verified: boolean;
   payload: unknown;
+  from_address?: string | null;
+  to_address?: string | null;
+  body?: string | null;
+  recording_path?: string | null;
+  recording_status?: string | null;
+  is_test?: boolean;
+  conversation_type?: 'ai_to_ai_test' | null;
+  structured?: unknown;
+  call_control_id?: string | null;
+  conversation_id?: string | null;
 };
 
 export type VendorIncident = {
@@ -194,7 +204,7 @@ export async function getApprovedLessons(
 
 export async function getRecentFailedEvents(
   supabase: SupabaseClient,
-  options: { vendor?: string; since?: string; channel?: string; limit?: number },
+  options: { vendor?: string; since?: string; channel?: string; limit?: number; includeTest?: boolean },
 ): Promise<BrainVendorEvent[]> {
   let query = supabase
     .from('brain_vendor_events')
@@ -202,6 +212,8 @@ export async function getRecentFailedEvents(
     .not('error_code', 'is', null)
     .order('occurred_at', { ascending: false })
     .limit(options.limit ?? 100);
+
+  if (!options.includeTest) query = query.eq('is_test', false);
 
   if (options.vendor) query = query.eq('vendor', options.vendor);
   if (options.since) query = query.gte('occurred_at', options.since);
@@ -255,7 +267,7 @@ export async function getEventTranscript(
 
 export async function getEventStats(
   supabase: SupabaseClient,
-  options: { since: string; until?: string },
+  options: { since: string; until?: string; includeTest?: boolean },
 ): Promise<{
   total: number;
   byVendor: Record<string, number>;
@@ -268,6 +280,7 @@ export async function getEventStats(
     .select('vendor, channel, error_code, deal_id')
     .gte('occurred_at', options.since);
 
+  if (!options.includeTest) query = query.eq('is_test', false);
   if (options.until) query = query.lte('occurred_at', options.until);
 
   const { data } = await query;

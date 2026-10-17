@@ -14,6 +14,7 @@ export async function getOutreachDealsFromDb(
   const { data: events } = await supabase
     .from('outreach_events')
     .select('*')
+    .eq('is_test', false)
     .gte('sent_at', `${range.from}T00:00:00.000Z`)
     .lte('sent_at', `${range.to}T23:59:59.999Z`)
     .order('sent_at', { ascending: true });

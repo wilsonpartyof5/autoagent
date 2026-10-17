@@ -15,6 +15,7 @@
     "test:admin": "tsx --test src/lib/admin/*.test.ts",
     "test:brain": "tsx --test src/lib/brain/*.test.ts",
     "test:marketcheck": "tsx --test src/lib/marketcheck/*.test.ts",
+    "test:sms": "tsx --test src/lib/sms/*.test.ts",
     "clean": "rm -rf .next"
   },
   "next": {

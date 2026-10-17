@@ -121,6 +121,7 @@ async function getVendorFailures(
     .from('brain_vendor_events')
     .select('*', { count: 'exact', head: true })
     .eq('vendor', vendor)
+    .eq('is_test', false)
     .gte('occurred_at', since)
     .not('error_code', 'is', null);
 

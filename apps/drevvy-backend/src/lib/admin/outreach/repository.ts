@@ -1,6 +1,11 @@
 import { buildOutreachReport, dealsStartedBetween } from './analytics';
 import { getOutreachDeal, getOutreachDeals } from './mock-source';
-import type { ConversationQuery, OutreachDeal, OutreachReport, OutreachRange, StopReason, TouchpointId, Variant } from './types';
+import type { ConversationQuery, OutreachDeal, OutreachReport, OutreachRange, StopReason, TouchpointId, TrafficFilter, Variant } from './types';
+
+export function parseTrafficFilter(value: string | undefined): TrafficFilter {
+  if (value === 'test' || value === 'all') return value;
+  return 'live';
+}
 
 /**
  * Outreach reads go through this module.
@@ -38,6 +43,9 @@ export async function loadConversation(id: string): Promise<OutreachDeal | null>
 }
 
 function matchesConversation(deal: OutreachDeal, query: ConversationQuery, needle: string): boolean {
+  const traffic = query.traffic ?? 'live';
+  if (traffic === 'live' && deal.isTest) return false;
+  if (traffic === 'test' && !deal.isTest) return false;
   if (query.outcome && deal.stop !== query.outcome) return false;
   if (query.touchpoint) {
     const sent = deal.events.some((event) => event.direction === 'outbound' && event.touchpoint === query.touchpoint);
