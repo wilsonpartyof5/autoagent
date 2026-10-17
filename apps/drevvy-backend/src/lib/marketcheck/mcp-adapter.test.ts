@@ -150,14 +150,29 @@ test('listing detail skips VIN decode and history until those sections are opene
   const tools: string[] = [];
 
   await withFetch((call) => {
+    if (call.url.includes('/v2/decode/car/')) {
+      tools.push('decode_vin_basic');
+      assert.equal(call.url.includes('/neovin/'), false);
+      assert.equal(call.url.includes('/specs'), true);
+      return new Response(JSON.stringify({
+        is_valid: true,
+        engine: '2.0L I4',
+        city_mpg: 30,
+        highway_mpg: 38,
+        std_seating: '5',
+        drivetrain: 'FWD',
+        transmission: 'Automatic',
+        fuel_type: 'Unleaded',
+        powertrain_type: 'Combustion',
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     const body = JSON.parse(call.body) as { params: { name: string } };
     tools.push(body.params.name);
-    if (body.params.name === 'decode_vin_neovin') {
-      return jsonRpc({ data: { vin: VIN, engine: '2.0L', city_mpg: 30, highway_mpg: 38 } });
-    }
     if (body.params.name === 'get_car_history') {
       return jsonRpc([{ first_seen_at: Math.floor(Date.now() / 1000) - 86400 * 12, price: 33000 }]);
     }
+    assert.equal(body.params.name === 'decode_vin_neovin', false);
+    assert.equal(body.params.name === 'get_marketcheck_price', false);
     return jsonRpc(listingPayload('https://images.marketcheck.com/tahoe.jpg'));
   }, async (_calls, logs) => {
     assert.equal(parseDetailSections(null)?.join(','), 'listing');
@@ -172,9 +187,21 @@ test('listing detail skips VIN decode and history until those sections are opene
 
     tools.length = 0;
     const specs = await getVehicleDetailMcp('listing-1', VIN, ['vin']);
-    assert.deepEqual(tools, ['decode_vin_neovin']);
-    assert.equal(specs?.engine, '2.0L');
+    assert.deepEqual(tools, ['decode_vin_basic']);
+    assert.equal(specs?.engine, '2.0L I4');
+    assert.equal(specs?.cityMpg, 30);
+    assert.equal(specs?.highwayMpg, 38);
+    assert.equal(specs?.seatingCapacity, 5);
+    assert.equal(specs?.drivetrain, 'FWD');
+    assert.equal(specs?.transmission, 'Automatic');
+    assert.equal(specs?.fuelType, 'Unleaded');
+    assert.equal(specs?.powertrainType, 'Combustion');
     assert.deepEqual(specs?.loadedSections, ['vin']);
+
+    tools.length = 0;
+    await getVehicleDetailMcp('listing-1', VIN, ['vin']);
+    assert.deepEqual(tools, ['decode_vin_basic']);
+    assert.equal(marketCheckStoredKeyCount(), 0);
 
     tools.length = 0;
     const history = await getVehicleDetailMcp('listing-1', VIN, ['history']);
@@ -183,7 +210,9 @@ test('listing detail skips VIN decode and history until those sections are opene
 
     const joined = logs.join('\n');
     assert.equal(joined.includes(VIN), false);
-    assert.equal(joined.includes('"endpoint":"decode_vin_neovin"'), true);
+    assert.equal(joined.includes('"endpoint":"decode_vin_basic"'), true);
+    assert.equal(joined.includes('"endpoint":"decode_vin_neovin"'), false);
+    assert.equal(joined.includes('"endpoint":"get_marketcheck_price"'), false);
     assert.equal(joined.includes('"endpoint":"get_car_history"'), true);
     assert.equal(containsSecret(joined), false);
     assert.equal(containsSecret(JSON.stringify(shell)), false);

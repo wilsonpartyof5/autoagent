@@ -55,6 +55,8 @@ export type PresentedDeal = ShopperDeal & {
   endState: DealEndState;
   findSimilar: boolean;
   visit?: DealVisit;
+  /** MarketCheck Price. Present only after Unlock with agent or opening this deal. */
+  fairPrice?: { price: number; fromCache: boolean };
 };
 
 export type BuyPrompt = {

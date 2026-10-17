@@ -24,6 +24,7 @@ import {
   forwardOffer,
   getShopperCar,
   listBuyOutcomes,
+  listShopperCars,
   REMOVAL_REFUND_MS,
   removeShopperCar,
   runLifecycleSchedule,
@@ -244,6 +245,56 @@ test('adding a deal consumes one car and repeating that listing does not', async
   const second = await addCar(box, 'mc-car-consume-2');
   assert.equal(second.credits.balance, 0);
   assert.equal(box.deals.rows.length, 2);
+});
+
+test('fair price loads on unlock with agent and when a deal is opened', async () => {
+  const calls: string[] = [];
+  const box = harness();
+  box.deps.loadFairPrice = async (trigger, vehicle) => {
+    calls.push(`${trigger}:${vehicle.condition ?? ''}:${vehicle.vin ?? ''}:${vehicle.zip ?? ''}`);
+    return { price: 30100, fromCache: calls.length > 1 };
+  };
+  const vin = '1HGCM82633A004352';
+  const vehicle = { ...VEHICLE, vin, miles: 41000, condition: 'used' as const, zip: 'should-not-stick' };
+  const created = await addShopperCar('shopper-1', { listingId: 'mc-fair-1', vehicle, zip: '29730' }, box.deps);
+  assert.equal(created.deal.fairPrice?.price, 30100);
+  assert.equal(created.deal.fairPrice?.fromCache, false);
+  assert.deepEqual(calls, [`unlock_with_agent:used:${vin}:29730`]);
+  const stored = box.deals.rows[0]?.vehicle as { zip?: string; fairPrice?: unknown; vin?: string };
+  assert.equal(stored.zip, undefined);
+  assert.equal(stored.fairPrice, undefined);
+  assert.equal(stored.vin, vin);
+
+  const opened = await getShopperCar('shopper-1', created.deal.id, box.deps, { zip: '29730' });
+  assert.equal(opened.fairPrice?.fromCache, true);
+  assert.deepEqual(calls, [`unlock_with_agent:used:${vin}:29730`, `open_deal:used:${vin}:29730`]);
+
+  const listed = await listShopperCars('shopper-1', box.deps);
+  assert.equal(listed.deals[0]?.fairPrice, undefined);
+  assert.equal(calls.length, 2);
+
+  const fresh = harness();
+  fresh.deps.loadFairPrice = async (trigger) => {
+    calls.push(trigger);
+    return { price: 1, fromCache: false };
+  };
+  await addShopperCar('shopper-1', {
+    listingId: 'mc-fair-new',
+    vehicle: { ...vehicle, condition: 'new' },
+    zip: '29730',
+  }, fresh.deps);
+  assert.equal(calls.at(-1), 'unlock_with_agent');
+
+  const empty = harness('2026-10-01T16:10:00.000Z', 0);
+  empty.deps.loadFairPrice = async () => {
+    calls.push('blocked');
+    return null;
+  };
+  await assert.rejects(
+    () => addShopperCar('shopper-1', { listingId: 'mc-fair-empty', vehicle, zip: '29730' }, empty.deps),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'no_credits',
+  );
+  assert.equal(calls.includes('blocked'), false);
 });
 
 test('adding a deal with an empty balance does not create a deal', async () => {

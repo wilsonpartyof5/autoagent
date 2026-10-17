@@ -28,6 +28,7 @@ test('cache policy cites the MarketCheck sales terms and the 24 hour limit', () 
 test('only syndication, incentives, and fair price may be cached', () => {
   assert.deepEqual(MARKETCHECK_CACHE_POLICY.search_active_cars, { allowed: false, ttlMs: 0 });
   assert.deepEqual(MARKETCHECK_CACHE_POLICY.listing_detail, { allowed: false, ttlMs: 0 });
+  assert.deepEqual(MARKETCHECK_CACHE_POLICY.decode_vin_basic, { allowed: false, ttlMs: 0 });
   assert.deepEqual(MARKETCHECK_CACHE_POLICY.decode_vin_neovin, { allowed: false, ttlMs: 0 });
   assert.deepEqual(MARKETCHECK_CACHE_POLICY.get_car_history, { allowed: false, ttlMs: 0 });
   assert.deepEqual(MARKETCHECK_CACHE_POLICY.dealership_inventory, { allowed: true, ttlMs: MARKETCHECK_CACHE_TTL_MS });

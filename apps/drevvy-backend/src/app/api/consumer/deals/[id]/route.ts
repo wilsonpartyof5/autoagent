@@ -10,9 +10,10 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  *
  * Returns one deal owned by the signed-in shopper. Another shopper's deal
  * is not found. Dealer identity is not included. `visit` is included only
- * after the official offer is forwarded. DELETE removes the car from the
- * shopper's list and returns the car credit only inside the 30-minute
- * window before any outreach.
+ * after the official offer is forwarded. Opening this deal loads MarketCheck
+ * Price when `zip` is present (used or CPO, cached 24 hours). DELETE removes
+ * the car from the shopper's list and returns the car credit only inside the
+ * 30-minute window before any outreach.
  */
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,9 @@ export async function GET(
     const auth = await requireShopperAuth(request);
     const { id } = await params;
     const deps = await shopperDeps(auth.userId);
-    const data = await getShopperCar(auth.userId, id, deps);
+    const data = await getShopperCar(auth.userId, id, deps, {
+      zip: request.nextUrl.searchParams.get('zip') ?? undefined,
+    });
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return shopperDealErrorResponse(error);

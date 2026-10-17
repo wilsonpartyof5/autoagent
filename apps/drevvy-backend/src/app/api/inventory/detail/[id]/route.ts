@@ -16,7 +16,8 @@ import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
  *
  * The default response is the listing shell (search_active_cars) only.
  * Query param `sections` loads extra MarketCheck calls when that VDP section
- * is opened: `vin` (decode_vin_neovin) and `history` (get_car_history).
+ * is opened: `vin` (Basic VIN decoder) and `history` (get_car_history).
+ * MarketCheck Price is not loaded on this route.
  * Example: /api/inventory/detail/:id?vin=...&sections=vin
  *
  * Path param:  [id] — MarketCheck listing ID (from /api/inventory/search)

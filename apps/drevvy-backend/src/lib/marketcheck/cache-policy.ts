@@ -16,6 +16,7 @@ export const MARKETCHECK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const MARKETCHECK_CACHE_POLICY = {
   search_active_cars: { allowed: false, ttlMs: 0 },
   listing_detail: { allowed: false, ttlMs: 0 },
+  decode_vin_basic: { allowed: false, ttlMs: 0 },
   decode_vin_neovin: { allowed: false, ttlMs: 0 },
   get_car_history: { allowed: false, ttlMs: 0 },
   dealership_inventory: { allowed: true, ttlMs: MARKETCHECK_CACHE_TTL_MS },
@@ -27,7 +28,6 @@ export type MarketCheckCacheEndpoint = keyof typeof MARKETCHECK_CACHE_POLICY;
 
 const TOOL_ENDPOINT: Record<string, MarketCheckCacheEndpoint> = {
   search_active_cars: 'search_active_cars',
-  decode_vin_neovin: 'decode_vin_neovin',
   get_car_history: 'get_car_history',
   get_dealership_inventory: 'dealership_inventory',
   get_incentives: 'incentives',

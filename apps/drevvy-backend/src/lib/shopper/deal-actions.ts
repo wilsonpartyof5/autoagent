@@ -1,4 +1,11 @@
 import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
+import {
+  loadFairPriceIfAllowed,
+  type FairPriceQuote,
+  type FairPriceTrigger,
+  type FairPriceVehicle,
+} from '@/lib/marketcheck/price';
+import { redactSecrets } from '@/lib/marketcheck/secrets';
 import { deliverShopperPushLive } from '@/lib/push/dispatch';
 import type { ShopperPush } from '@/lib/push/events';
 import { planShopperPush, type PushIdentity, type PushTrigger } from '@/lib/push/triggers';
@@ -62,6 +69,8 @@ export type DealDeps = {
   search?: SimilarSearch;
   notify?: (push: ShopperPush) => Promise<void>;
   supabase?: SupabaseClient;
+  /** Defaults to MarketCheck Price, allowed only for unlock and open-deal. */
+  loadFairPrice?: (trigger: FairPriceTrigger, vehicle: FairPriceVehicle) => Promise<FairPriceQuote | null>;
 };
 
 let createAdminClientFn: (() => SupabaseClient) | null = null;
@@ -91,7 +100,7 @@ export const REMOVAL_REFUND_MS = 30 * 60 * 1000;
 
 export async function addShopperCar(
   userId: string,
-  input: { listingId: unknown; vehicle: unknown },
+  input: { listingId: unknown; vehicle: unknown; zip?: unknown },
   deps: DealDeps,
 ): Promise<{ deal: PresentedDeal; credits: CreditSummary }> {
   const supabase = getAdminClient(deps);
@@ -103,7 +112,7 @@ export async function addShopperCar(
       await chargeDeal(supabase, userId, deal.id, false, deps);
       const records = await deps.lifecycle.listForShopper(userId);
       return {
-        deal: presentDeal(deal, findRecord(records, deal.id)),
+        deal: await withFairPrice(presentDeal(deal, findRecord(records, deal.id)), 'unlock_with_agent', input.zip, deps),
         credits: await creditSummaryFor(supabase, userId),
       };
     }
@@ -131,9 +140,14 @@ export async function addShopperCar(
   }
 
   return {
-    deal: presentDeal(
-      provisioned.deal,
-      (await deps.lifecycle.get(userId, provisioned.deal.id)) ?? blankLifecycle(provisioned.deal, userId),
+    deal: await withFairPrice(
+      presentDeal(
+        provisioned.deal,
+        (await deps.lifecycle.get(userId, provisioned.deal.id)) ?? blankLifecycle(provisioned.deal, userId),
+      ),
+      'unlock_with_agent',
+      input.zip,
+      deps,
     ),
     credits: await creditSummaryFor(supabase, userId),
   };
@@ -154,10 +168,15 @@ export async function listShopperCars(
   };
 }
 
-export async function getShopperCar(userId: string, dealId: string, deps: DealDeps): Promise<PresentedDeal> {
+export async function getShopperCar(
+  userId: string,
+  dealId: string,
+  deps: DealDeps,
+  options?: { zip?: unknown },
+): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const record = await deps.lifecycle.get(userId, deal.id);
-  return presentDeal(deal, record);
+  return withFairPrice(presentDeal(deal, record), 'open_deal', options?.zip, deps);
 }
 
 export async function removeShopperCar(
@@ -402,6 +421,32 @@ export async function readRequestJson(request: Request): Promise<unknown> {
     return await request.json();
   } catch {
     return null;
+  }
+}
+
+async function withFairPrice(
+  deal: PresentedDeal,
+  trigger: FairPriceTrigger,
+  zip: unknown,
+  deps: DealDeps,
+): Promise<PresentedDeal> {
+  const load = deps.loadFairPrice ?? loadFairPriceIfAllowed;
+  try {
+    const quote = await load(trigger, {
+      vin: deal.vehicle.vin,
+      miles: deal.vehicle.miles,
+      condition: deal.vehicle.condition,
+      zip: typeof zip === 'string' ? zip : undefined,
+    });
+    if (!quote) return deal;
+    return { ...deal, fairPrice: quote };
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'marketcheck_price_failed',
+      trigger,
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return deal;
   }
 }
 
