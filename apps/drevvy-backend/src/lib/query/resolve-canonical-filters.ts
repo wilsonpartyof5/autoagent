@@ -3,7 +3,7 @@
  *
  * Converts AI-extracted intent (ApiCompatibleFilters) into MarketCheck-validated
  * canonical values by:
- *   1. Fetching available facet values from MCP (with location-scoped caching)
+ *   1. Fetching available facet values from MCP. Inventory search is not cached.
  *   2. Using a direct string match for free; falling back to a single AI batch
  *      call when direct matching fails
  *   3. Falling back gracefully to the existing normalized value on any failure
@@ -13,7 +13,7 @@
  *
  * Exported types:  CanonicalFilters, ResolutionMeta, ResolveResult
  * Exported fn:     resolveCanonicalFilters()
- * Exported fn:     cleanupFacetCache()   – for periodic maintenance
+ * Exported fn:     cleanupFacetCache()   – no-op; facets are not stored
  */
 
 import OpenAI from 'openai';
@@ -78,57 +78,12 @@ interface MCFacetsEnvelope {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Internal: Facet cache
-// ---------------------------------------------------------------------------
-
-interface FacetCacheEntry {
-  /** field name (e.g. "body_type") → valid value strings */
-  facets: Record<string, string[]>;
-  expiresAt: number;
-}
-
-const facetCache = new Map<string, FacetCacheEntry>();
-const FACET_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — facets are stable
-
 /**
- * Build a cache key for a given location bucket + optional make scope.
- * Rounds coordinates to 0.5° buckets so nearby searches share the same entry.
+ * Inventory-search facets are not stored. MarketCheck does not allow caching
+ * search. Simultaneous identical calls still share one in-flight request
+ * inside the MarketCheck client.
  */
-function makeFacetCacheKey(
-  lat: number,
-  lng: number,
-  radiusMiles: number,
-  make?: string,
-): string {
-  const latB = Math.round(lat * 2) / 2;
-  const lngB = Math.round(lng * 2) / 2;
-  return `${latB}|${lngB}|${radiusMiles}|${make ?? ''}`;
-}
-
-/** Probabilistic eviction — called on every cache write. */
-function evictExpiredFacets(): void {
-  if (Math.random() > 0.15) return; // ~15% chance to run on each write
-  const now = Date.now();
-  for (const [k, v] of facetCache.entries()) {
-    if (now > v.expiresAt) facetCache.delete(k);
-  }
-}
-
-/** Explicit cleanup, exported for use in periodic maintenance hooks. */
-export function cleanupFacetCache(): void {
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [k, v] of facetCache.entries()) {
-    if (now > v.expiresAt) {
-      facetCache.delete(k);
-      cleaned++;
-    }
-  }
-  if (cleaned > 0) {
-    console.log(`[canonical-resolver] Cleaned ${cleaned} expired facet cache entries`);
-  }
-}
+export function cleanupFacetCache(): void {}
 
 // ---------------------------------------------------------------------------
 // Internal: MCP facet fetch
@@ -136,7 +91,7 @@ export function cleanupFacetCache(): void {
 
 /**
  * Fetch one or more field facets from MarketCheck via MCP.
- * Results are cached by location bucket + optional make scope.
+ * Results are not stored.
  *
  * @param fields  MCP field names, e.g. ['body_type', 'powertrain_type', 'make']
  * @param scope   Optional filter context to scope make→model hierarchy
@@ -148,16 +103,6 @@ async function fetchFacets(
   fields: string[],
   scope?: { make?: string },
 ): Promise<{ data: Record<string, string[]>; fromCache: boolean }> {
-  const cacheKey = makeFacetCacheKey(latitude, longitude, radiusMiles, scope?.make);
-  const cached = facetCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
-    // Only return if all requested fields are present in the cached entry
-    const allPresent = fields.every((f) => f in cached.facets);
-    if (allPresent) {
-      return { data: cached.facets, fromCache: true };
-    }
-  }
-
   // Build facets parameter: "field|offset|limit" for each field
   const facetsParam = fields.map((f) => `${f}|0|60`).join(',');
 
@@ -201,12 +146,6 @@ async function fetchFacets(
     const items: MCFacetItem[] = raw?.data?.facets?.[field] ?? [];
     data[field] = items.map((i) => i.item).filter(Boolean);
   }
-
-  // Merge into existing cache entry so separate passes accumulate
-  const existing = facetCache.get(cacheKey);
-  const merged = { ...(existing?.facets ?? {}), ...data };
-  evictExpiredFacets();
-  facetCache.set(cacheKey, { facets: merged, expiresAt: Date.now() + FACET_CACHE_TTL_MS });
 
   return { data, fromCache: false };
 }

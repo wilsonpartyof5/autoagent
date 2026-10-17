@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { marketCheckSubject, withMarketCheckContext } from '@/lib/marketcheck/context';
 import {
   searchActiveCarsMcp as searchLiveInventory,
   boundsToRadiusMiles,
@@ -6,6 +7,7 @@ import {
   MarketCheckRateLimitError,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { payloadContainsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
 import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
@@ -358,14 +360,20 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Perform live search
     // -----------------------------------------------------------------------
-    const searchResult = await searchLiveInventory({
-      latitude: searchCenter.latitude,
-      longitude: searchCenter.longitude,
-      radiusMiles,
-      filters,
-      rows: limit,
-      start,
-    });
+    const searchResult = await withMarketCheckContext(
+      {
+        origin: request.nextUrl.origin,
+        subject: marketCheckSubject(undefined, request.headers.get('x-drevvy-subject')),
+      },
+      () => searchLiveInventory({
+        latitude: searchCenter.latitude,
+        longitude: searchCenter.longitude,
+        radiusMiles,
+        filters,
+        rows: limit,
+        start,
+      }),
+    );
 
     // -----------------------------------------------------------------------
     // Map to response contract
@@ -406,22 +414,34 @@ export async function POST(request: NextRequest) {
       totalMs,
     }));
 
-    return NextResponse.json(
-      redactShopperDealerIdentity({
-        success: true,
-        data: {
-          vehicles,
-          pagination: {
-            page,
-            limit,
-            total: cappedTotal,
-            totalPages,
-            hasNextPage,
-            hasPreviousPage,
+    const payload = redactShopperDealerIdentity({
+      success: true,
+      data: {
+        vehicles,
+        pagination: {
+          page,
+          limit,
+          total: cappedTotal,
+          totalPages,
+          hasNextPage,
+          hasPreviousPage,
+        },
+      },
+    });
+    if (payloadContainsSecret(payload)) {
+      console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'search' }));
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'An error occurred while searching inventory. Please try again.',
           },
         },
-      }),
-    );
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     const totalMs = Date.now() - reqStart;
 
@@ -447,7 +467,7 @@ export async function POST(request: NextRequest) {
       event: 'inventory_search_error',
       queryHash,
       totalMs,
-      error: error instanceof Error ? error.message : String(error),
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
     }));
 
     return NextResponse.json(
@@ -458,9 +478,7 @@ export async function POST(request: NextRequest) {
           message:
             process.env.NODE_ENV === 'production'
               ? 'An error occurred while searching inventory. Please try again.'
-              : error instanceof Error
-                ? error.message
-                : 'Internal server error',
+              : redactSecrets(error instanceof Error ? error.message : 'Internal server error'),
         },
       },
       { status: 500 },

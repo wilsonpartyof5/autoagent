@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { marketCheckEndpointTotals } from '@/lib/marketcheck/usage';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
           criticalThreshold: percentUsed >= 95,
           lastCallAt: currentRow?.last_call_at ?? null,
         },
+        endpoints: marketCheckEndpointTotals(),
         recentMonths: (rows ?? []).map((r) => ({
           month: r.month,
           totalCalls: Number(r.total_calls ?? 0),

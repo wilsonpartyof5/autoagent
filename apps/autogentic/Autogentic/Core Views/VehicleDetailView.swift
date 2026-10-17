@@ -8,7 +8,13 @@ struct VehicleDetailView: View {
   @State private var searchText: String = ""
   @State private var keyboardHeight: CGFloat = 0
   @State private var detail: VehicleDetailData? = nil
+  @State private var vinDetail: VehicleDetailData? = nil
+  @State private var historyDetail: VehicleDetailData? = nil
   @State private var isLoadingDetail: Bool = false
+  @State private var isLoadingVin: Bool = false
+  @State private var isLoadingHistory: Bool = false
+  @State private var specsOpen: Bool = false
+  @State private var historyOpen: Bool = false
   @State private var detailError: String? = nil
   
   private var availableImages: [String] {
@@ -42,6 +48,8 @@ struct VehicleDetailView: View {
             if detail != nil {
               divider
               enrichedSpecsSection
+              divider
+              vinDecodeSection
             }
 
             divider
@@ -367,6 +375,30 @@ struct VehicleDetailView: View {
           RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(Color(white: 0.08))
         )
+
+        DisclosureGroup(isExpanded: $historyOpen) {
+          if isLoadingHistory {
+            ProgressView()
+              .tint(.white)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.top, 12)
+          } else if let days = historyDetail?.daysOnMarketInt {
+            Text("Listed \(days) days")
+              .font(.system(size: 15))
+              .foregroundStyle(Color.white.opacity(0.8))
+              .padding(.top, 12)
+          }
+        } label: {
+          Text("Price history")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(.white)
+        }
+        .tint(.white)
+        .padding(.top, 16)
+        .onChange(of: historyOpen) { _, open in
+          guard open, historyDetail == nil, !isLoadingHistory else { return }
+          Task { await loadSection(sections: ["history"], into: .history) }
+        }
       }
     }
   }
@@ -447,6 +479,33 @@ struct VehicleDetailView: View {
   }
 
   // MARK: - Enriched sections (populated after detail fetch)
+
+  private var vinDecodeSection: some View {
+    DisclosureGroup(isExpanded: $specsOpen) {
+      if isLoadingVin {
+        ProgressView()
+          .tint(.white)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.top, 12)
+      } else if let engine = vinDetail?.engine {
+        featureCard(icon: "wrench.fill", title: "Engine", value: engine)
+          .padding(.top, 12)
+      }
+      if let data = vinDetail, let line = fuelEconomyLine(data) {
+        featureCard(icon: "fuelpump.fill", title: "Fuel economy", value: line)
+          .padding(.top, 12)
+      }
+    } label: {
+      Text("Full specifications")
+        .font(.system(size: 22, weight: .bold))
+        .foregroundStyle(.white)
+    }
+    .tint(.white)
+    .onChange(of: specsOpen) { _, open in
+      guard open, vinDetail == nil, !isLoadingVin else { return }
+      Task { await loadSection(sections: ["vin"], into: .vin) }
+    }
+  }
 
   @ViewBuilder
   private var enrichedSpecsSection: some View {
@@ -587,6 +646,53 @@ struct VehicleDetailView: View {
   }
 
   // MARK: - Detail fetch
+
+  private enum DetailSlice {
+    case vin
+    case history
+  }
+
+  private func fuelEconomyLine(_ data: VehicleDetailData) -> String? {
+    guard let city = data.cityMpg else { return nil }
+    if let highway = data.highwayMpg {
+      return "\(city) city / \(highway) hwy MPG"
+    }
+    return "\(city) city MPG"
+  }
+
+  private func loadSection(sections: [String], into slice: DetailSlice) async {
+    switch slice {
+    case .vin:
+      isLoadingVin = true
+    case .history:
+      isLoadingHistory = true
+    }
+    defer {
+      switch slice {
+      case .vin:
+        isLoadingVin = false
+      case .history:
+        isLoadingHistory = false
+      }
+    }
+    do {
+      let fetched = try await VehicleDetailService.fetchDetail(
+        listingId: vehicle.id,
+        vin: vehicle.vin,
+        sections: sections
+      )
+      switch slice {
+      case .vin:
+        vinDetail = fetched
+      case .history:
+        historyDetail = fetched
+      }
+    } catch {
+      #if DEBUG
+      FunnelLogger.shared.detailFailed(reason: error.localizedDescription)
+      #endif
+    }
+  }
 
   private func loadDetail() async {
     guard !isLoadingDetail else { return }

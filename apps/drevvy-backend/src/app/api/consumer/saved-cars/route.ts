@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withMarketCheckContext } from '@/lib/marketcheck/context';
 import { getVehicleDetailMcp } from '@/lib/marketcheck/mcp-adapter';
+import { payloadContainsSecret } from '@/lib/marketcheck/secrets';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import { shopperOwnsDeal, supabaseSavedCarRepository } from '@/lib/shopper/saved-car-store';
@@ -23,8 +25,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireShopperAuth(request);
-    const data = await listSavedCars(auth.userId, deps());
-    return NextResponse.json({ success: true, data });
+    const data = await withMarketCheckContext(
+      { origin: request.nextUrl.origin, subject: auth.userId },
+      () => listSavedCars(auth.userId, deps()),
+    );
+    const payload = { success: true, data };
+    if (payloadContainsSecret(payload)) {
+      console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'saved_cars' }));
+      return NextResponse.json(
+        { success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not load saved cars.' } },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     return shopperDealErrorResponse(error);
   }
@@ -33,8 +46,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireShopperAuth(request);
-    const data = await saveSavedCar(auth.userId, await readRequestJson(request), deps());
-    return NextResponse.json({ success: true, data });
+    const body = await readRequestJson(request);
+    const data = await withMarketCheckContext(
+      { origin: request.nextUrl.origin, subject: auth.userId },
+      () => saveSavedCar(auth.userId, body, deps()),
+    );
+    const payload = { success: true, data };
+    if (payloadContainsSecret(payload)) {
+      console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'saved_cars' }));
+      return NextResponse.json(
+        { success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not save this car.' } },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     return shopperDealErrorResponse(error);
   }
