@@ -38,6 +38,7 @@ Usage:
   drevvy-widget-worker lead <url-or-file> [--stock STOCK] [--deal DEAL] [--dealer DEALER]
   drevvy-widget-worker chat <url-or-file> [--stock STOCK] [--deal DEAL] [--dealer DEALER]
   drevvy-widget-worker run <url-or-file> [--force] [--hints file.json] [--deal DEAL] [--dealer DEALER]
+  drevvy-widget-worker health [url-or-file]
 
 A file has one vehicle page URL per line. An optional second column is the stock number.
 Lines starting with # are ignored.
@@ -63,15 +64,19 @@ It scans up to 3 sites at once (--concurrency) and gives each site 25 seconds.
 It does not type into a composer or submit a form. One failed URL does not stop the rest.
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
+health always runs as a dry run. It logs the lead-form fields it would fill and
+writes widget_chat_attempts with dry_run true. It does not type, submit, or send.
+With no URL it checks that the worker can start. URLs come from the argument,
+WIDGET_HEALTH_URLS, or WIDGET_HEALTH_URL_FILE.
 Lead, chat, and run assign a conversation identity for --deal and --dealer
 before the first live send. The email alias and text number stay on that deal
 and dealer. If no text number is free, the send is held. DREVVY_EMAIL,
 DREVVY_TEXT_NUMBER, and SHOPPER_FIRST_NAME are used only when DREVVY_TEST_MODE=true.
 `;
 
-const COMMANDS = new Set(['research', 'scan', 'lead', 'chat', 'run', 'seed', 'report']);
+const COMMANDS = new Set(['research', 'scan', 'lead', 'chat', 'run', 'seed', 'report', 'health']);
 
-type Command = 'research' | 'scan' | 'lead' | 'chat' | 'run' | 'seed' | 'report';
+type Command = 'research' | 'scan' | 'lead' | 'chat' | 'run' | 'seed' | 'report' | 'health';
 
 type Target = { url: string; stockNumber: string | null };
 
@@ -90,6 +95,7 @@ export type CliDeps = {
   now?: () => Date;
   loadContact?: (dealId: string, dealerId: string) => Promise<ConversationContact | null>;
   ensureContact?: (dealId: string, dealerId: string) => Promise<EnsureContactResult>;
+  env?: Record<string, string | undefined>;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -104,6 +110,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
   }
   if (command === 'report') return executeReport(deps);
   if (command === 'seed') return executeSeed(argv.slice(1), deps);
+  if (command === 'health') return executeHealth(argv.slice(1), deps);
   try {
     const flags = parseFlags(argv.slice(1));
     const targets = collectTargets(flags.positionals, flags.stock, deps);
@@ -295,6 +302,7 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     },
     loadContact,
     ensureContact,
+    env: process.env,
     listDealers: (area, pace) => {
       if (!config.marketcheckApiKey) {
         throw new Error('MARKETCHECK_API_KEY is required to seed the directory.');
@@ -309,6 +317,101 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     },
     ...overrides,
   };
+}
+
+async function executeHealth(argv: string[], deps: CliDeps): Promise<CliResult> {
+  try {
+    const positionals = parseHealthArgs(argv);
+    const targets = collectHealthTargets(positionals, deps);
+    const header = [
+      'health',
+      'dry_run true',
+      'sends false',
+    ];
+    if (!deps.config.dryRun) {
+      header.push('DRY_RUN=false is ignored. health never submits a form or sends a message.');
+    }
+    if (targets.length === 0) {
+      header.push('urls 0');
+      header.push('No vehicle pages configured. Set WIDGET_HEALTH_URLS or pass a URL file.');
+      return { exitCode: 0, stdout: `${header.join('\n')}\n`, stderr: '' };
+    }
+    const settings = healthSettings(deps.config);
+    const logs: string[] = [];
+    const log = (line: string) => {
+      if (deps.writeLine) deps.writeLine(line);
+      else logs.push(line);
+    };
+    const rows: ResultRow[] = [];
+    for (const target of targets) {
+      const opened = await deps.openPage();
+      try {
+        const result = await runLeadForm({
+          vehiclePageUrl: target.url,
+          stockNumber: target.stockNumber,
+          page: opened.page,
+          config: { ...settings, dryRun: true, allowlist: [] },
+          store: deps.attempts,
+          log,
+        });
+        const planned = result.transcript
+          .filter((entry) => entry.role === 'agent')
+          .map((entry) => entry.text)
+          .join('; ');
+        log(`[health] ${target.url} dry_run=true status=${result.status} ${planned || result.stopReason || '-'}`);
+        rows.push({
+          url: target.url,
+          vendor: result.widgetVendor ?? '-',
+          status: result.status,
+          price: result.price,
+          dryRun: 'true',
+          channel: result.channel,
+          reason: result.stopReason ?? undefined,
+        });
+      } finally {
+        await opened.close();
+      }
+    }
+    const stdout = [...header, ...logs, `Lead form\n${formatResultsTable(rows)}`].join('\n') + '\n';
+    return { exitCode: 0, stdout, stderr: '' };
+  } catch (error) {
+    return { exitCode: 1, stdout: '', stderr: `${error instanceof Error ? error.message : String(error)}\n` };
+  }
+}
+
+function healthSettings(config: AppConfig) {
+  const forced = { ...config, dryRun: true, testMode: true };
+  assertOutreachConfig(forced, true);
+  const settings = chatSettings(forced, null);
+  return { ...settings, dryRun: true as const, allowlist: [] as string[] };
+}
+
+function parseHealthArgs(argv: string[]): string[] {
+  const positionals: string[] = [];
+  for (const arg of argv) {
+    if (arg.startsWith('--')) throw new Error(`Unknown flag: ${arg}`);
+    positionals.push(arg);
+  }
+  return positionals;
+}
+
+function collectHealthTargets(positionals: string[], deps: CliDeps): Target[] {
+  if (positionals.length > 0) return collectTargets(positionals, null, deps);
+  const env = deps.env ?? {};
+  const inline = env.WIDGET_HEALTH_URLS?.trim();
+  if (inline) {
+    const targets = parseUrlList(inline.replace(/,/g, '\n'));
+    if (targets.length === 0) throw new Error('WIDGET_HEALTH_URLS did not contain a vehicle page URL.');
+    return targets;
+  }
+  const file = env.WIDGET_HEALTH_URL_FILE?.trim();
+  if (file) {
+    if (!deps.exists(file)) throw new Error(`WIDGET_HEALTH_URL_FILE was not found: ${file}`);
+    const targets = parseUrlList(deps.readFile(file));
+    if (targets.length === 0) throw new Error('WIDGET_HEALTH_URL_FILE did not contain a vehicle page URL.');
+    return targets;
+  }
+  return [];
 }
 
 async function executeReport(deps: CliDeps): Promise<CliResult> {
@@ -447,6 +550,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'scan' || command === 'report') assertSupabaseConfig(config);
     if (command === 'lead' || command === 'run') assertOutreachConfig(config, config.dryRun);
     if (command === 'chat' || command === 'run') assertChatConfig(config, config.dryRun);
+    if (command === 'health') assertSupabaseConfig(config);
     const result = await execute(argv, buildDeps(config));
     process.stdout.write(result.stdout);
     process.stderr.write(result.stderr);

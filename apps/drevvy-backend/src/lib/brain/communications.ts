@@ -15,6 +15,7 @@ import {
   createOutboundEmail,
   createTexmlAiCall,
   createOutboundCall,
+  downloadEmailBody,
   downloadRecordingMp3,
   fetchTelnyxConversation,
   flagTestParties,
@@ -178,6 +179,17 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
   const normalized = normalizeTelnyxPayload(payload);
   if (!normalized) return { httpStatus: 400, received: false, id: null };
 
+  let resolvedBody = normalized.body;
+  if (normalized.channel === 'email' && !resolvedBody && normalized.bodyUrl) {
+    const fetched = await downloadEmailBody(normalized.bodyUrl, deps.fetchImpl);
+    if (fetched) {
+      const content = fetched.trim().startsWith('<') ? stripHtml(fetched) : fetched;
+      resolvedBody = normalized.subject && content
+        ? `Subject: ${normalized.subject}\n\n${content}`
+        : content;
+    }
+  }
+
   const testNumbers = await deps.store.testNumbers();
   let dealId = normalized.clientState.dealId ?? null;
   let dealerId = normalized.clientState.dealerId ?? null;
@@ -227,8 +239,8 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
     }
   }
 
-  if ((normalized.channel === 'sms' || normalized.channel === 'email') && normalized.body) {
-    transcript = normalized.channel === 'email' ? stripHtml(normalized.body) : normalized.body;
+  if ((normalized.channel === 'sms' || normalized.channel === 'email') && resolvedBody) {
+    transcript = normalized.channel === 'email' ? stripHtml(resolvedBody) : resolvedBody;
   }
 
   const structured = normalized.channel === 'call' || normalized.channel === 'voicemail'
@@ -281,7 +293,7 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
     payload: sanitizeTelnyxPayload(payload),
     from_address: prefer(normalized.from, existing?.from_address),
     to_address: prefer(normalized.to, existing?.to_address),
-    body: prefer(normalized.body, existing?.body),
+    body: prefer(resolvedBody, existing?.body),
     recording_path: recordingPath,
     recording_status: recordingStatus,
     is_test: flag.isTest,

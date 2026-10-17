@@ -100,6 +100,17 @@ export function buildEmailAlias(firstName: string, tag: string): string | null {
   return `${slug}.${tag}@${ALIAS_DOMAIN}`;
 }
 
+/** Local part Telnyx accepts on POST /v2/email_inboxes for an offers.drevvy.com alias. */
+export function emailInboxUsername(alias: string): string | null {
+  const email = normalizeEmailAddress(alias);
+  const suffix = `@${ALIAS_DOMAIN}`;
+  if (!email?.endsWith(suffix)) return null;
+  const local = email.slice(0, -suffix.length);
+  if (local.length < 1 || local.length > 64) return null;
+  if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(local)) return null;
+  return local;
+}
+
 export function formatMailbox(displayName: string, email: string): string {
   const safe = displayName.replace(/["\\<>]/g, '').trim();
   return `"${safe}" <${email}>`;

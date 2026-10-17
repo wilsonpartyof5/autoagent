@@ -13,4 +13,4 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
-CMD ["node", "dist/cli.js"]
+CMD ["node", "dist/cli.js", "health"]
