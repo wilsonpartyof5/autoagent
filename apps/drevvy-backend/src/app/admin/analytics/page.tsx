@@ -1,6 +1,6 @@
 import { buildAnalytics } from '@/lib/admin/analytics';
 import { hours, pct, stageLabel, usd } from '@/lib/admin/format';
-import { FUNNEL_EVENT_NAME, FUNNEL_STEP_LABEL } from '@/lib/admin/types';
+import { FUNNEL_EVENT_NAME, FUNNEL_STEP_LABEL, MONTHLY_PRICE_USD } from '@/lib/admin/types';
 
 export const metadata = { title: 'Analytics | Drevvy Admin' };
 
@@ -13,7 +13,7 @@ export default async function AdminAnalyticsPage() {
       <header>
         <h2 className="text-2xl font-semibold">Shopper analytics</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          Counts come from the mock book, shaped like rows in <code>app_events</code>. Live signup and chat events already land there. Deal and payment steps are the names to write next. MRR is {usd(analytics.mrrUsd)} from {analytics.activeSubscribers} active subscriptions at $97. {analytics.churnNote}
+          Counts come from the mock book, shaped like rows in <code>app_events</code>. Live signup and chat events already land there. Deal and payment steps are the names to write next. MRR is {usd(analytics.mrrUsd)} from {analytics.activeSubscribers} active subscriptions at {usd(MONTHLY_PRICE_USD)}. {analytics.churnNote}
         </p>
       </header>
 

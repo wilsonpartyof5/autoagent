@@ -71,7 +71,7 @@ class CarPackOffering {
 
   final CarPackType packType;
 
-  /// Localized price string, e.g. "$47.00" or "€42,00".
+  /// Localized price string, e.g. "$55.00" or "€42,00".
   final String localizedPrice;
 
   /// ISO currency code, e.g. "USD".
@@ -145,30 +145,13 @@ class FakePurchaseService implements PurchaseService {
       await Future.delayed(offeringsDelay);
     }
     return [
-      CarPackOffering(
-        packType: CarPackType.single,
-        localizedPrice: '\$27.00',
-        currencyCode: 'USD',
-        priceAmount: 27.0,
-      ),
-      CarPackOffering(
-        packType: CarPackType.starter,
-        localizedPrice: '\$47.00',
-        currencyCode: 'USD',
-        priceAmount: 47.0,
-      ),
-      CarPackOffering(
-        packType: CarPackType.plus,
-        localizedPrice: '\$67.00',
-        currencyCode: 'USD',
-        priceAmount: 67.0,
-      ),
-      CarPackOffering(
-        packType: CarPackType.bestValue,
-        localizedPrice: '\$97.00',
-        currencyCode: 'USD',
-        priceAmount: 97.0,
-      ),
+      for (final pack in CarPackType.values)
+        CarPackOffering(
+          packType: pack,
+          localizedPrice: '\$${pack.priceUsd}.00',
+          currencyCode: 'USD',
+          priceAmount: pack.priceUsd.toDouble(),
+        ),
     ];
   }
 

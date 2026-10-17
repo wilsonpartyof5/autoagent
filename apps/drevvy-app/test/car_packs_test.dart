@@ -7,87 +7,87 @@ void main() {
   group('CarPackType', () {
     test('pack prices and cars are correct', () {
       expect(CarPackType.single.cars, 1);
-      expect(CarPackType.single.priceUsd, 27);
+      expect(CarPackType.single.priceUsd, 35);
       expect(CarPackType.single.productId, 'drevvy_pack_1');
       expect(CarPackType.single.packageId, 'pack_1');
       expect(CarPackType.single.carsGranted, 1);
       expect(CarPackType.packMix, '1,3,5,10');
 
       expect(CarPackType.starter.cars, 3);
-      expect(CarPackType.starter.priceUsd, 47);
+      expect(CarPackType.starter.priceUsd, 55);
       expect(CarPackType.starter.productId, 'drevvy_pack_3');
       expect(CarPackType.starter.packageId, 'pack_3');
 
       expect(CarPackType.plus.cars, 5);
-      expect(CarPackType.plus.priceUsd, 67);
+      expect(CarPackType.plus.priceUsd, 75);
       expect(CarPackType.plus.productId, 'drevvy_pack_5');
       expect(CarPackType.plus.packageId, 'pack_5');
 
       expect(CarPackType.bestValue.cars, 10);
-      expect(CarPackType.bestValue.priceUsd, 97);
+      expect(CarPackType.bestValue.priceUsd, 95);
       expect(CarPackType.bestValue.productId, 'drevvy_pack_10');
       expect(CarPackType.bestValue.packageId, 'pack_10');
     });
 
     test('per-car cost is calculated correctly', () {
-      // Single: $27 / 1 = $27.00
-      expect(CarPackType.single.perCarCost, closeTo(27.00, 0.01));
+      // Single: $35 / 1 = $35.00
+      expect(CarPackType.single.perCarCost, closeTo(35.00, 0.01));
 
-      // Starter: $47 / 3 = $15.67
-      expect(CarPackType.starter.perCarCost, closeTo(15.67, 0.01));
+      // Starter: $55 / 3 = $18.33
+      expect(CarPackType.starter.perCarCost, closeTo(18.33, 0.01));
 
-      // Plus: $67 / 5 = $13.40
-      expect(CarPackType.plus.perCarCost, closeTo(13.40, 0.01));
+      // Plus: $75 / 5 = $15.00
+      expect(CarPackType.plus.perCarCost, closeTo(15.00, 0.01));
 
-      // Best Value: $97 / 10 = $9.70
-      expect(CarPackType.bestValue.perCarCost, closeTo(9.70, 0.01));
+      // Best Value: $95 / 10 = $9.50
+      expect(CarPackType.bestValue.perCarCost, closeTo(9.50, 0.01));
     });
 
     test('per-car formatted string is correct', () {
-      expect(CarPackType.single.perCarFormatted, r'$27.00');
-      expect(CarPackType.starter.perCarFormatted, r'$15.67');
-      expect(CarPackType.plus.perCarFormatted, r'$13.40');
-      expect(CarPackType.bestValue.perCarFormatted, r'$9.70');
+      expect(CarPackType.single.perCarFormatted, r'$35.00');
+      expect(CarPackType.starter.perCarFormatted, r'$18.33');
+      expect(CarPackType.plus.perCarFormatted, r'$15.00');
+      expect(CarPackType.bestValue.perCarFormatted, r'$9.50');
     });
 
     test('savings vs the 1-car price round to one decimal', () {
       expect(CarPackType.single.savingsPercentVsSingle, isNull);
       expect(CarPackType.single.savingsText, isNull);
 
-      // (27 - 47/3) / 27 = 42.0%
+      // (35 - 55/3) / 35 = 47.6%
       expect(
         CarPackType.starter.savingsPercentVsSingle,
-        closeTo(41.975, 0.001),
+        closeTo(47.619, 0.001),
       );
-      expect(CarPackType.starter.savingsText, 'Save 42.0%/car');
+      expect(CarPackType.starter.savingsText, 'Save 47.6%/car');
 
-      // (27 - 67/5) / 27 = 50.4%
-      expect(CarPackType.plus.savingsPercentVsSingle, closeTo(50.370, 0.001));
-      expect(CarPackType.plus.savingsText, 'Save 50.4%/car');
+      // (35 - 75/5) / 35 = 57.1%
+      expect(CarPackType.plus.savingsPercentVsSingle, closeTo(57.143, 0.001));
+      expect(CarPackType.plus.savingsText, 'Save 57.1%/car');
 
-      // (27 - 9.70) / 27 = 64.1%
+      // (35 - 9.50) / 35 = 72.9%
       expect(
         CarPackType.bestValue.savingsPercentVsSingle,
-        closeTo(64.074, 0.001),
+        closeTo(72.857, 0.001),
       );
-      expect(CarPackType.bestValue.savingsText, 'Save 64.1%/car');
+      expect(CarPackType.bestValue.savingsText, 'Save 72.9%/car');
     });
 
     test('prices use dollar format', () {
-      expect(formatUsd(47), r'$47');
-      expect(formatUsd(97), r'$97');
-      expect(formatUsd(9.7, cents: true), r'$9.70');
-      expect(CarPackType.single.priceFormatted, r'$27');
-      expect(CarPackType.starter.priceFormatted, r'$47');
-      expect(CarPackType.plus.priceFormatted, r'$67');
-      expect(CarPackType.bestValue.priceFormatted, r'$97');
+      expect(formatUsd(55), r'$55');
+      expect(formatUsd(95), r'$95');
+      expect(formatUsd(9.5, cents: true), r'$9.50');
+      expect(CarPackType.single.priceFormatted, r'$35');
+      expect(CarPackType.starter.priceFormatted, r'$55');
+      expect(CarPackType.plus.priceFormatted, r'$75');
+      expect(CarPackType.bestValue.priceFormatted, r'$95');
     });
 
     test('CTA text is formatted correctly', () {
-      expect(CarPackType.single.ctaText, 'Get 1 car for \$27');
-      expect(CarPackType.starter.ctaText, 'Get 3 cars for \$47');
-      expect(CarPackType.plus.ctaText, 'Get 5 cars for \$67');
-      expect(CarPackType.bestValue.ctaText, 'Get 10 cars for \$97');
+      expect(CarPackType.single.ctaText, 'Get 1 car for \$35');
+      expect(CarPackType.starter.ctaText, 'Get 3 cars for \$55');
+      expect(CarPackType.plus.ctaText, 'Get 5 cars for \$75');
+      expect(CarPackType.bestValue.ctaText, 'Get 10 cars for \$95');
     });
 
     test('display names are correct', () {
@@ -252,16 +252,16 @@ void main() {
       expect(offerings!.length, 4);
 
       expect(offerings[0].packType, CarPackType.single);
-      expect(offerings[0].priceAmount, 27.0);
+      expect(offerings[0].priceAmount, 35.0);
 
       expect(offerings[1].packType, CarPackType.starter);
-      expect(offerings[1].priceAmount, 47.0);
+      expect(offerings[1].priceAmount, 55.0);
 
       expect(offerings[2].packType, CarPackType.plus);
-      expect(offerings[2].priceAmount, 67.0);
+      expect(offerings[2].priceAmount, 75.0);
 
       expect(offerings[3].packType, CarPackType.bestValue);
-      expect(offerings[3].priceAmount, 97.0);
+      expect(offerings[3].priceAmount, 95.0);
     });
 
     test('restore purchases returns no purchases in demo', () async {
