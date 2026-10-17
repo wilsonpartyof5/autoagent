@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
@@ -20,6 +21,14 @@ class LocationScreen extends ConsumerStatefulWidget {
 class _LocationScreenState extends ConsumerState<LocationScreen> {
   final _zipController = TextEditingController();
   bool _showZipInput = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ProductAnalytics.instance.track(AnalyticsEvents.locationPermissionAsked, {
+      'surface': 'onboarding',
+    });
+  }
 
   @override
   void dispose() {
@@ -131,6 +140,10 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
                       label: 'Continue',
                       onPressed: _zipController.text.length == 5
                           ? () {
+                              ProductAnalytics.instance.track(
+                                AnalyticsEvents.locationPermissionDenied,
+                                {'surface': 'onboarding', 'reason': 'zip_instead', 'has_zip': true},
+                              );
                               ref.read(onboardingDraftProvider.notifier).update(
                                     (draft) => draft.copyWith(
                                       zip: _zipController.text,
@@ -147,6 +160,10 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
                       label: 'Allow location',
                       icon: LucideIcons.mapPin,
                       onPressed: () {
+                        ProductAnalytics.instance.track(
+                          AnalyticsEvents.locationPermissionGranted,
+                          {'surface': 'onboarding'},
+                        );
                         ref.read(onboardingDraftProvider.notifier).update(
                               (draft) => draft.copyWith(locationGranted: true, clearZip: true),
                             );
@@ -158,7 +175,12 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
                     DrevvyButton(
                       label: 'Enter ZIP code instead',
                       variant: DrevvyButtonVariant.secondary,
-                      onPressed: () => setState(() => _showZipInput = true),
+                      onPressed: () {
+                        ProductAnalytics.instance.track(AnalyticsEvents.locationZipStarted, {
+                          'surface': 'onboarding',
+                        });
+                        setState(() => _showZipInput = true);
+                      },
                       isFullWidth: true,
                     ),
                   ],

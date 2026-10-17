@@ -3,7 +3,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
+import '../../common/analytics_privacy.dart';
 import 'pack_option_card.dart';
 
 /// Screen X: Pack picker paywall sheet shown when user taps "Unlock my price".
@@ -24,6 +26,7 @@ class PackPickerSheet extends StatefulWidget {
     required this.onRestore,
     required this.onKeepShopping,
     this.avgSavings,
+    this.placement = 'unlock_my_price',
   });
 
   /// The listing context, if shown from a VDP. Null when shown from Account sheet.
@@ -34,6 +37,7 @@ class PackPickerSheet extends StatefulWidget {
   
   /// Server-driven avg_savings stat. Hidden if null.
   final AvgSavingsConfig? avgSavings;
+  final String placement;
 
   @override
   State<PackPickerSheet> createState() => _PackPickerSheetState();
@@ -42,6 +46,31 @@ class PackPickerSheet extends StatefulWidget {
 class _PackPickerSheetState extends State<PackPickerSheet> {
   CarPackType _selectedPack = CarPackType.bestValue; // Preselected per spec
   bool _isPurchasing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ProductAnalytics.instance.screen('pack_picker', {'placement': widget.placement});
+    ProductAnalytics.instance.track(AnalyticsEvents.paywallViewed, {
+      'placement': widget.placement,
+      'provider': 'local',
+    });
+    ProductAnalytics.instance.track(AnalyticsEvents.packViewed, {
+      'placement': widget.placement,
+      'pack_count': CarPackType.values.length,
+    });
+  }
+
+  void _selectPack(CarPackType pack) {
+    setState(() => _selectedPack = pack);
+    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+      'placement': widget.placement,
+      'pack_id': pack.productId,
+      'price': pack.priceUsd,
+      'currency': 'USD',
+      'stage': 'preview',
+    });
+  }
 
   Future<void> _handlePurchase() async {
     setState(() => _isPurchasing = true);
@@ -135,19 +164,19 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 PackOptionCard(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () => setState(() => _selectedPack = CarPackType.starter),
+                  onTap: () => _selectPack(CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 PackOptionCard(
                   pack: CarPackType.plus,
                   isSelected: _selectedPack == CarPackType.plus,
-                  onTap: () => setState(() => _selectedPack = CarPackType.plus),
+                  onTap: () => _selectPack(CarPackType.plus),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 PackOptionCard(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () => setState(() => _selectedPack = CarPackType.bestValue),
+                  onTap: () => _selectPack(CarPackType.bestValue),
                   showBadge: true,
                 ),
 
@@ -183,7 +212,14 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                 Center(
                   child: DrevvyGhostButton(
                     label: 'Keep shopping free',
-                    onPressed: widget.onKeepShopping,
+                    onPressed: () {
+                      ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
+                        'placement': widget.placement,
+                        'action': 'keep_shopping',
+                        'provider': 'local',
+                      });
+                      widget.onKeepShopping();
+                    },
                     color: colors.ink,
                   ),
                 ),
@@ -213,9 +249,7 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                     ),
                     Text(' · ', style: text.callout.copyWith(color: colors.muted)),
                     TextButton(
-                      onPressed: () {
-                        // TODO: Open privacy
-                      },
+                      onPressed: () => showAnalyticsPrivacy(context),
                       child: Text(
                         'Privacy',
                         style: text.callout.copyWith(color: colors.muted),

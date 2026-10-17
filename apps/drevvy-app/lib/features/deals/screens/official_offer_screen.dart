@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/location_pickup_sheet.dart';
@@ -35,6 +36,11 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
 
   Future<void> _loadData() async {
     final deal = await _repo.getDealById(widget.dealId);
+    ProductAnalytics.instance.track(AnalyticsEvents.offerViewed, {
+      'deal_id': deal.id,
+      'surface': 'official_offer',
+      'round_count': deal.offers.length,
+    });
     setState(() {
       _deal = deal;
       _isLoading = false;
@@ -224,7 +230,10 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () {
-                                      // TODO: Open phone
+                                      ProductAnalytics.instance.track(
+                                        AnalyticsEvents.contactTapped,
+                                        {'channel': 'phone'},
+                                      );
                                     },
                                     icon: Icon(LucideIcons.phone, size: 18),
                                     label: const Text('Call'),
@@ -238,7 +247,10 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () {
-                                      // TODO: Open email
+                                      ProductAnalytics.instance.track(
+                                        AnalyticsEvents.contactTapped,
+                                        {'channel': 'email'},
+                                      );
                                     },
                                     icon: Icon(LucideIcons.mail, size: 18),
                                     label: const Text('Email'),
@@ -278,7 +290,9 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
                             const SizedBox(height: DrevvySpace.s3),
                             OutlinedButton.icon(
                               onPressed: () {
-                                // TODO: Open maps with pickup address from official offer
+                                ProductAnalytics.instance.track(
+                                  AnalyticsEvents.directionsTapped,
+                                );
                               },
                               icon: Icon(LucideIcons.navigation, size: 18),
                               label: const Text('Get directions'),
@@ -376,6 +390,9 @@ class _OfficialOfferScreenState extends State<OfficialOfferScreen> {
               child: DrevvyPrimaryButton(
                 label: "I'm all set",
                 onPressed: () {
+                  ProductAnalytics.instance.track(AnalyticsEvents.doneAction, {
+                    'action': 'continue',
+                  });
                   context.push('/deal/${deal.id}/done');
                 },
               ),

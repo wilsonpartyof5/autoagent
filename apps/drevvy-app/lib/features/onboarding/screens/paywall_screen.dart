@@ -9,6 +9,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/models/money_format.dart';
 import '../../../data/repositories/demo_repository.dart';
@@ -128,7 +129,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
+  void _selectPack(CarPackType pack) {
+    setState(() => _selected = pack);
+    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+      'placement': isOnboarding ? 'onboarding' : 'paywall',
+      'pack_id': pack.productId,
+      'price': pack.priceUsd,
+      'currency': 'USD',
+      'stage': 'preview',
+    });
+  }
+
+  void _dismiss(String action) {
+    ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
+      'placement': isOnboarding ? 'onboarding' : 'paywall',
+      'action': action,
+      'provider': 'local',
+    });
+  }
+
   Future<void> _startShoppingFree() async {
+    _dismiss('start_shopping_free');
     if (isOnboarding) {
       context.push('/account/create');
       return;
@@ -157,7 +178,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       if (isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.chevronLeft, color: colors.ink),
-                          onPressed: () => context.pop(),
+                          onPressed: () {
+                            _dismiss('back');
+                            context.pop();
+                          },
                         )
                       else
                         const SizedBox(width: 48),
@@ -166,7 +190,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       if (!isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.x, color: colors.ink),
-                          onPressed: () => context.pop(),
+                          onPressed: () {
+                            _dismiss('close');
+                            context.pop();
+                          },
                         )
                       else
                         const SizedBox(width: 48),
@@ -204,7 +231,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                             showBadge: pack == CarPackType.bestValue,
                             totalLabel: _totalLabel(pack),
                             perCarLabel: _perCarLabel(pack),
-                            onTap: () => setState(() => _selected = pack),
+                            onTap: () => _selectPack(pack),
                           ),
                           const SizedBox(height: DrevvySpace.s3),
                         ],

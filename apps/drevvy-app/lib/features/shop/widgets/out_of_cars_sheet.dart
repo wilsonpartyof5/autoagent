@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import 'pack_option_card.dart';
 
@@ -17,12 +18,14 @@ class OutOfCarsSheet extends StatefulWidget {
     this.listing,
     required this.onPurchase,
     required this.onNotNow,
+    this.placement = 'out_of_cars',
   });
 
   /// Car the shopper was trying to unlock. Omitted from the account screen.
   final Listing? listing;
   final Future<void> Function(CarPackType) onPurchase;
   final VoidCallback onNotNow;
+  final String placement;
 
   @override
   State<OutOfCarsSheet> createState() => _OutOfCarsSheetState();
@@ -31,6 +34,31 @@ class OutOfCarsSheet extends StatefulWidget {
 class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
   CarPackType _selectedPack = CarPackType.bestValue; // Preselected per spec
   bool _isPurchasing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ProductAnalytics.instance.screen('out_of_cars', {'placement': widget.placement});
+    ProductAnalytics.instance.track(AnalyticsEvents.paywallViewed, {
+      'placement': widget.placement,
+      'provider': 'local',
+    });
+    ProductAnalytics.instance.track(AnalyticsEvents.packViewed, {
+      'placement': widget.placement,
+      'pack_count': CarPackType.values.length,
+    });
+  }
+
+  void _selectPack(CarPackType pack) {
+    setState(() => _selectedPack = pack);
+    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+      'placement': widget.placement,
+      'pack_id': pack.productId,
+      'price': pack.priceUsd,
+      'currency': 'USD',
+      'stage': 'preview',
+    });
+  }
 
   Future<void> _handlePurchase() async {
     setState(() => _isPurchasing = true);
@@ -145,21 +173,19 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 PackOptionCard(
                   pack: CarPackType.starter,
                   isSelected: _selectedPack == CarPackType.starter,
-                  onTap: () =>
-                      setState(() => _selectedPack = CarPackType.starter),
+                  onTap: () => _selectPack(CarPackType.starter),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 PackOptionCard(
                   pack: CarPackType.plus,
                   isSelected: _selectedPack == CarPackType.plus,
-                  onTap: () => setState(() => _selectedPack = CarPackType.plus),
+                  onTap: () => _selectPack(CarPackType.plus),
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 PackOptionCard(
                   pack: CarPackType.bestValue,
                   isSelected: _selectedPack == CarPackType.bestValue,
-                  onTap: () =>
-                      setState(() => _selectedPack = CarPackType.bestValue),
+                  onTap: () => _selectPack(CarPackType.bestValue),
                   showBadge: true,
                 ),
 
@@ -189,7 +215,14 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                 Center(
                   child: DrevvyGhostButton(
                     label: 'Not now',
-                    onPressed: widget.onNotNow,
+                    onPressed: () {
+                      ProductAnalytics.instance.track(AnalyticsEvents.paywallDismissed, {
+                        'placement': widget.placement,
+                        'action': 'not_now',
+                        'provider': 'local',
+                      });
+                      widget.onNotNow();
+                    },
                     color: colors.ink,
                   ),
                 ),

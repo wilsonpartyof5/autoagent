@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
 import '../services/purchase_config.dart';
@@ -140,10 +141,31 @@ class DemoRepository {
 
   /// Purchase a car pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
+    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+      'pack_id': packType.productId,
+      'price': packType.priceUsd,
+      'currency': 'USD',
+      'stage': 'purchase',
+    });
     await _purchaseService.initialize();
     final result = await _purchaseService.purchasePack(packType);
     if (result is PurchaseSuccess) {
+      ProductAnalytics.instance.track(AnalyticsEvents.purchaseCompleted, {
+        'pack_id': packType.productId,
+        'price': packType.priceUsd,
+        'currency': 'USD',
+      });
       await _recordPurchase(result);
+    } else {
+      ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
+        'pack_id': packType.productId,
+        'reason': switch (result) {
+          PurchaseCancelled() => 'cancelled',
+          PurchasePending() => 'pending',
+          PurchaseError() => 'store_error',
+          PurchaseSuccess() => 'store_error',
+        },
+      });
     }
     return result;
   }
@@ -167,6 +189,7 @@ class DemoRepository {
       balance: _creditBalance.balance - 1,
       totalSpent: _creditBalance.totalSpent + 1,
     );
+    _reportBalance('unlock', -1);
 
     return true;
   }
@@ -195,6 +218,7 @@ class DemoRepository {
       balance: _creditBalance.balance + 1,
       totalRefunded: _creditBalance.totalRefunded + 1,
     );
+    _reportBalance(reason.name, 1);
 
     return true;
   }
@@ -214,6 +238,7 @@ class DemoRepository {
         result.packType,
       );
       _creditBalance = remote;
+      _reportBalance('purchase', result.creditsAdded);
       return;
     }
     _addCredits(
@@ -270,6 +295,15 @@ class DemoRepository {
       balance: _creditBalance.balance + credits,
       totalPurchased: _creditBalance.totalPurchased + credits,
     );
+    _reportBalance(reason.name, credits);
+  }
+
+  void _reportBalance(String reason, int delta) {
+    ProductAnalytics.instance.track(AnalyticsEvents.packBalanceChanged, {
+      'reason': reason,
+      'delta': delta,
+      'balance': _creditBalance.balance,
+    });
   }
 
   /// Check if a deal qualifies for early removal refund (within 30 minutes, before outreach).
@@ -287,8 +321,21 @@ class DemoRepository {
 
   /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
+    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestoreStarted);
     await _purchaseService.initialize();
     final result = await _purchaseService.restorePurchases();
+    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, {
+      'result': switch (result) {
+        RestoreSuccess(:final creditsRestored) when creditsRestored > 0 => 'success',
+        RestoreSuccess() => 'empty',
+        RestoreNoPurchases() => 'empty',
+        RestoreError() => 'error',
+      },
+      'credits': switch (result) {
+        RestoreSuccess(:final creditsRestored) => creditsRestored,
+        _ => 0,
+      },
+    });
     if (result is RestoreError) return result;
 
     final transactions = switch (result) {
@@ -476,7 +523,7 @@ class DemoRepository {
   }
 
   /// Save a car (heart tap). No credit spent, no dealer contact.
-  Future<SavedCar> saveCar(Listing listing) async {
+  Future<SavedCar> saveCar(Listing listing, {String source = 'unknown'}) async {
     final savedCar = SavedCar(
       id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -488,20 +535,39 @@ class DemoRepository {
     );
     _savedCars = [..._savedCars, savedCar];
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.carSaved, {
+      'listing_id': listing.id,
+      'inventory_type': listing.inventoryType,
+      'source': source,
+    });
     return _delay(savedCar);
   }
 
   /// Remove a saved car (unsave / swipe to remove).
-  Future<void> removeSavedCar(String savedCarId) async {
+  Future<void> removeSavedCar(String savedCarId, {String source = 'saved'}) async {
+    final listingId = _savedCars
+        .where((car) => car.id == savedCarId)
+        .map((car) => car.listingId)
+        .firstOrNull;
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
     _bumpLists();
+    if (listingId != null) {
+      ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
+        'listing_id': listingId,
+        'source': source,
+      });
+    }
     return _delay(null);
   }
 
   /// Remove saved car by listing ID.
-  Future<void> unsaveByListingId(String listingId) async {
+  Future<void> unsaveByListingId(String listingId, {String source = 'unknown'}) async {
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
+      'listing_id': listingId,
+      'source': source,
+    });
     return _delay(null);
   }
 
@@ -602,6 +668,10 @@ class DemoRepository {
       }
     }
     if (!_creditBalance.canUnlock) {
+      ProductAnalytics.instance.track(AnalyticsEvents.dealAddBlocked, {
+        'listing_id': listing.id,
+        'reason': 'no_credits',
+      });
       throw StateError('No cars left');
     }
 
@@ -623,6 +693,10 @@ class DemoRepository {
     // v1.7: Spend 1 car credit
     spendCredit(newDeal.id);
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealAdded, {
+      'deal_id': newDeal.id,
+      'listing_id': listing.id,
+    });
 
     return _delay(newDeal);
   }
@@ -630,13 +704,18 @@ class DemoRepository {
   Future<void> removeDeal(String dealId) async {
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    final refunded = canGetEarlyRemovalRefund(deal);
     _deals = _deals.where((d) => d.id != dealId).toList();
 
     // v1.7: Refund credit if within 30 minutes before outreach
-    if (canGetEarlyRemovalRefund(deal)) {
+    if (refunded) {
       refundCredit(dealId, CreditReason.refundEarlyRemoval);
     }
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealRemoved, {
+      'deal_id': dealId,
+      'refunded': refunded,
+    });
 
     return _delay(null);
   }
@@ -650,6 +729,10 @@ class DemoRepository {
     );
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealAccepted, {
+      'deal_id': dealId,
+      'listing_id': updated.listingId,
+    });
     return _delay(updated);
   }
 
@@ -659,6 +742,9 @@ class DemoRepository {
     final updated = deal.copyWith(status: DealStatus.findingBestPrice);
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
+    ProductAnalytics.instance.track(AnalyticsEvents.dealKeepGoing, {
+      'deal_id': dealId,
+    });
     return _delay(updated);
   }
 

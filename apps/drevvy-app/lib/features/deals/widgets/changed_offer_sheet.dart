@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// v1.6: Changed-after-accepted detail showing line-by-line diff
@@ -42,7 +44,10 @@ class ChangedOfferSheet extends StatelessWidget {
     final otdDiff = changedOffer.otd - acceptedOffer.otd;
     final isHigher = otdDiff > 0;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'changed_offer',
+      properties: {'deal_id': deal.id},
+      child: Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(
         color: colors.glassSolid,
@@ -197,7 +202,13 @@ class ChangedOfferSheet extends StatelessWidget {
                 DrevvyButton(
                   label: 'Accept new offer',
                   icon: LucideIcons.check,
-                  onPressed: onAcceptNew,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.changedOfferAction,
+                      {'action': 'accept_new'},
+                    );
+                    onAcceptNew();
+                  },
                   variant: DrevvyButtonVariant.accept,
                   isFullWidth: true,
                 ),
@@ -206,7 +217,13 @@ class ChangedOfferSheet extends StatelessWidget {
                   DrevvyButton(
                     label: 'Try once more (1 left)',
                     icon: LucideIcons.rotateCcw,
-                    onPressed: onTryOnceMore,
+                    onPressed: () {
+                      ProductAnalytics.instance.track(
+                        AnalyticsEvents.changedOfferAction,
+                        {'action': 'try_once_more'},
+                      );
+                      onTryOnceMore!();
+                    },
                     variant: DrevvyButtonVariant.secondary,
                     isFullWidth: true,
                   )
@@ -219,7 +236,13 @@ class ChangedOfferSheet extends StatelessWidget {
                   ),
                 const SizedBox(height: DrevvySpace.s3),
                 TextButton(
-                  onPressed: onEndDeal,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.changedOfferAction,
+                      {'action': 'end_deal'},
+                    );
+                    onEndDeal();
+                  },
                   child: Text(
                     'End deal',
                     style: text.bodyStrong.copyWith(color: colors.danger),
@@ -229,6 +252,7 @@ class ChangedOfferSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

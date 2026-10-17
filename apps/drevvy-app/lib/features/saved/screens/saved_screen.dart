@@ -7,6 +7,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/shell_scaffold.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/cars_balance_placement.dart';
@@ -69,6 +70,11 @@ class _SavedScreenState extends State<SavedScreen> {
       _listings = listings;
       _isLoading = false;
     });
+    if (savedCars.isEmpty) {
+      ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
+        'surface': 'saved',
+      });
+    }
   }
 
   List<SavedCar> get _sortedCars {
@@ -143,7 +149,7 @@ class _SavedScreenState extends State<SavedScreen> {
           label: 'Undo',
           onPressed: () async {
             if (listing != null) {
-              final restored = await _repo.saveCar(listing);
+              final restored = await _repo.saveCar(listing, source: 'undo');
               setState(() {
                 _savedCars = [..._savedCars, restored];
               });
@@ -199,8 +205,23 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
+  void _selectSort(SavedSortOption option) {
+    ProductAnalytics.instance.track(AnalyticsEvents.searchRefined, {
+      'surface': 'saved',
+      'source': 'sort',
+      'sort': option.name,
+      'has_filters': false,
+      'query_length': 0,
+      'query_category': 'unspecified',
+    });
+    setState(() => _sortOption = option);
+  }
+
   void _handleFindSimilar(SavedCar savedCar) {
-    // Navigate to shop with similar search
+    ProductAnalytics.instance.track(AnalyticsEvents.findSimilarTapped, {
+      'source': 'saved',
+      'listing_id': savedCar.listingId,
+    });
     context.go('/shop');
   }
 
@@ -402,20 +423,19 @@ class _SavedScreenState extends State<SavedScreen> {
         _SortChip(
           label: 'Recently saved',
           isSelected: _sortOption == SavedSortOption.recentlySaved,
-          onTap: () =>
-              setState(() => _sortOption = SavedSortOption.recentlySaved),
+          onTap: () => _selectSort(SavedSortOption.recentlySaved),
         ),
         const SizedBox(width: DrevvySpace.s2),
         _SortChip(
           label: 'Price',
           isSelected: _sortOption == SavedSortOption.price,
-          onTap: () => setState(() => _sortOption = SavedSortOption.price),
+          onTap: () => _selectSort(SavedSortOption.price),
         ),
         const SizedBox(width: DrevvySpace.s2),
         _SortChip(
           label: 'Distance',
           isSelected: _sortOption == SavedSortOption.distance,
-          onTap: () => setState(() => _sortOption = SavedSortOption.distance),
+          onTap: () => _selectSort(SavedSortOption.distance),
         ),
       ],
     );

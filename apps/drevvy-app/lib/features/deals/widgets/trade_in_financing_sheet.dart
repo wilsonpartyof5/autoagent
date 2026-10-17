@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 35: Trade-in & financing (optional) - shown after official offer
@@ -27,7 +29,9 @@ class TradeInFinancingSheet extends StatelessWidget {
     final hasTradeIn = userPrefs.tradeIn == TradeInPref.yes;
     final needsFinancing = userPrefs.payment == PaymentPref.finance;
 
-    return Container(
+    return AnalyticsView(
+      screen: 'trade_in',
+      child: Container(
       decoration: BoxDecoration(
         color: colors.glassSolid,
         borderRadius: const BorderRadius.vertical(
@@ -96,14 +100,26 @@ class TradeInFinancingSheet extends StatelessWidget {
                 // CTAs
                 DrevvyPrimaryButton(
                   label: 'Yes, keep going',
-                  onPressed: onYes,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.tradeInAnswered,
+                      {'answer': 'yes'},
+                    );
+                    onYes();
+                  },
                 ),
 
                 const SizedBox(height: DrevvySpace.s3),
 
                 DrevvyGhostButton(
                   label: 'No thanks',
-                  onPressed: onNoThanks,
+                  onPressed: () {
+                    ProductAnalytics.instance.track(
+                      AnalyticsEvents.tradeInAnswered,
+                      {'answer': 'no'},
+                    );
+                    onNoThanks();
+                  },
                 ),
               ],
             ),
@@ -111,6 +127,7 @@ class TradeInFinancingSheet extends StatelessWidget {
 
           SizedBox(height: bottomPadding),
         ],
+      ),
       ),
     );
   }

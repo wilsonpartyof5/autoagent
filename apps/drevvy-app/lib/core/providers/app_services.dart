@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/analytics/product_analytics.dart';
 import '../../data/auth/auth_api.dart';
 import '../../data/auth/auth_controller.dart';
 import '../../data/auth/identity_client.dart';
@@ -28,6 +29,11 @@ final deepLinkLocationsProvider = StreamProvider<String>((ref) {
 final pushMessagingProvider = Provider<PushMessaging>((ref) {
   final bus = ref.watch(deepLinkBusProvider);
   return FirebasePushMessaging(onOpened: (data) {
+    final type = (data['type'] ?? data['notificationType'] ?? '').toString().trim().toLowerCase();
+    ProductAnalytics.instance.track(AnalyticsEvents.pushOpened, {
+      'notification_type': RegExp(r'^[a-z0-9_]{1,40}$').hasMatch(type) ? type : 'unknown',
+      'has_deal': (data['dealId'] ?? data['deal_id'] ?? '').toString().trim().isNotEmpty,
+    });
     final location = locationForPush(data);
     if (location != null) bus.open(location);
   });

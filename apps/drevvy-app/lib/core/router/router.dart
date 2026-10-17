@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/analytics/analytics_route_observer.dart';
+import '../../data/analytics/product_analytics.dart';
 import '../../features/onboarding/onboarding_controller.dart';
 import '../../features/onboarding/screens/welcome_screen.dart';
 import '../../features/onboarding/screens/how_it_works_screen.dart';
@@ -33,9 +35,14 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     refreshListenable: refresh,
     initialLocation: '/onboarding/welcome',
+    observers: [AnalyticsRouteObserver()],
     redirect: (context, state) {
+      ProductAnalytics.instance.captureLocation(state.uri.toString());
       final done = ref.read(onboardingCompleteProvider);
       final location = state.matchedLocation;
+      if (location == '/open' || location == '/') {
+        return done ? '/shop' : '/onboarding/welcome';
+      }
       final fromOnboarding = state.uri.queryParameters['from'] == 'onboarding';
       final inFirstRun = location.startsWith('/onboarding') ||
           location == '/account/create' ||

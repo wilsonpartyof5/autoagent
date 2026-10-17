@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../data/analytics/product_analytics.dart';
+import '../../../data/analytics/search_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/chat_header.dart';
@@ -43,10 +45,12 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Track saved and deals listing IDs
   Set<String> _savedListingIds = {};
   Set<String> _dealsListingIds = {};
+  bool _reportedShopEmpty = false;
 
   @override
   void initState() {
     super.initState();
+    ProductAnalytics.instance.screen('ask_chat');
     _repo.onSavedSearchRun = _handleSavedSearchRun;
     _repo.savedDealsTick.addListener(_refreshSavedAndDeals);
     _loadData();
@@ -95,8 +99,12 @@ class _ShopScreenState extends State<ShopScreen> {
     });
   }
 
-  Future<void> _sendMessage(String text) async {
+  Future<void> _sendMessage(String text, {String source = 'composer'}) async {
     if (text.isEmpty) return;
+    ProductAnalytics.instance.track(
+      AnalyticsEvents.searchSubmitted,
+      searchEventProperties(surface: 'ask', query: text, source: source),
+    );
 
     setState(() => _isLoading = true);
 
@@ -112,7 +120,26 @@ class _ShopScreenState extends State<ShopScreen> {
     });
   }
 
-  Future<void> _search(String query, {SearchFilters? filters}) async {
+  Future<void> _search(
+    String query, {
+    SearchFilters? filters,
+    String source = 'composer',
+    bool userInitiated = true,
+  }) async {
+    if (userInitiated && (query.trim().isNotEmpty || filters != null)) {
+      final properties = searchEventProperties(
+        surface: 'shop',
+        query: query,
+        source: source,
+        filters: filters,
+      );
+      ProductAnalytics.instance.track(
+        filters != null && query.trim().isEmpty
+            ? AnalyticsEvents.searchRefined
+            : AnalyticsEvents.searchSubmitted,
+        properties,
+      );
+    }
     setState(() {
       _mode = ChatMode.shop;
       _isSearching = true;
@@ -125,10 +152,20 @@ class _ShopScreenState extends State<ShopScreen> {
       _listings = listings;
       _isSearching = false;
     });
+    if (listings.isEmpty) {
+      if (!_reportedShopEmpty) {
+        _reportedShopEmpty = true;
+        ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
+          'surface': 'shop',
+        });
+      }
+    } else {
+      _reportedShopEmpty = false;
+    }
   }
 
   void _handleSavedSearchRun(SavedSearch search) {
-    _search('', filters: search.filters);
+    _search('', filters: search.filters, source: 'saved_search');
   }
 
   Future<void> _onMemoryItemsChanged(Set<String> ids) async {
@@ -180,17 +217,24 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _switchMode(ChatMode mode) {
+    ProductAnalytics.instance.track(AnalyticsEvents.modeSwitched, {
+      'mode': mode == ChatMode.ask ? 'ask' : 'shop',
+    });
+    ProductAnalytics.instance.screen(mode == ChatMode.ask ? 'ask_chat' : 'shop_results');
     setState(() => _mode = mode);
     if (mode == ChatMode.shop && _listings == null) {
-      _search('');
+      _search('', userInitiated: false);
     }
   }
 
   void _openHistoryDrawer() {
+    ProductAnalytics.instance.track(AnalyticsEvents.historyOpened);
+    ProductAnalytics.instance.screen('chat_history');
     _scaffoldKey.currentState?.openDrawer();
   }
 
   void _startNewChat() {
+    ProductAnalytics.instance.track(AnalyticsEvents.chatStarted);
     setState(() {
       _thread = ChatThread(
         id: 'chat_${DateTime.now().millisecondsSinceEpoch}',
@@ -204,16 +248,20 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _selectChat(ChatThread chat) {
+    ProductAnalytics.instance.track(AnalyticsEvents.chatOpened, {
+      'mode': chat.mode == ChatMode.ask ? 'ask' : 'shop',
+    });
     setState(() {
       _thread = chat;
       _mode = chat.mode;
       if (chat.mode == ChatMode.shop) {
-        _search('');
+        _search('', userInitiated: false);
       }
     });
   }
 
   void _deleteChat(String chatId) {
+    ProductAnalytics.instance.track(AnalyticsEvents.chatDeleted);
     setState(() {
       _chatHistory = _chatHistory.where((c) => c.id != chatId).toList();
       if (_thread?.id == chatId) {
@@ -228,7 +276,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
     if (isSaved) {
       // Unsave the car
-      await _repo.unsaveByListingId(listing.id);
+      await _repo.unsaveByListingId(listing.id, source: 'shop');
       if (!mounted) return;
       setState(() {
         _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
@@ -241,7 +289,7 @@ class _ShopScreenState extends State<ShopScreen> {
       );
     } else {
       // Save the car
-      await _repo.saveCar(listing);
+      await _repo.saveCar(listing, source: 'shop');
       if (!mounted) return;
       setState(() {
         _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
@@ -256,6 +304,7 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _renameChat(String chatId, String newTitle) {
+    ProductAnalytics.instance.track(AnalyticsEvents.chatRenamed);
     setState(() {
       _chatHistory = _chatHistory.map((c) {
         if (c.id == chatId) {
@@ -326,8 +375,8 @@ class _ShopScreenState extends State<ShopScreen> {
                     ? isEmpty
                           ? ChatEmpty(
                               userName: _user?.firstName ?? 'there',
-                              onPromptTap: (prompt) => _sendMessage(prompt),
-                              onShopTap: (query) => _search(query),
+                              onPromptTap: (prompt) => _sendMessage(prompt, source: 'starter'),
+                              onShopTap: (query) => _search(query, source: 'starter'),
                               starters: _starters,
                               hasHistory:
                                   _searchProfile?.personalize == true &&
@@ -338,7 +387,7 @@ class _ShopScreenState extends State<ShopScreen> {
                           : ChatMessages(
                               thread: _thread!,
                               isLoading: _isLoading,
-                              onShopTap: (query) => _search(query),
+                              onShopTap: (query) => _search(query, source: 'ask_handoff'),
                               memoryItems: _searchProfile?.personalize == true
                                   ? _searchProfile?.items
                                   : null,

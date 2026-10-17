@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/chat.dart';
 
 /// Chat history drawer per spec §6.13 (v1.6.1):
@@ -52,7 +53,13 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
   void _onSearchChanged(String value) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 200), () {
+      final query = value.trim();
       setState(() => _searchQuery = value.toLowerCase());
+      if (query.isNotEmpty) {
+        ProductAnalytics.instance.track(AnalyticsEvents.historyFiltered, {
+          'query_length': query.length,
+        });
+      }
     });
   }
 

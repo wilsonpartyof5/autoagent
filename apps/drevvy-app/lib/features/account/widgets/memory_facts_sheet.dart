@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/search_profile.dart';
 import 'memory_edit_sheet.dart';
 
@@ -44,6 +45,7 @@ class _MemoryFactsSheetState extends State<MemoryFactsSheet> {
   void initState() {
     super.initState();
     _items = List<MemoryItem>.of(widget.items);
+    ProductAnalytics.instance.screen('memory');
   }
 
   void _publish() {
@@ -74,6 +76,9 @@ class _MemoryFactsSheetState extends State<MemoryFactsSheet> {
       _items = _items.where((entry) => entry.id != item.id).toList();
     });
     _publish();
+    ProductAnalytics.instance.track(AnalyticsEvents.memoryDeleted, {
+      'kind': item.kind.name,
+    });
 
     _messengerKey.currentState?.showSnackBar(
       SnackBar(
@@ -83,6 +88,10 @@ class _MemoryFactsSheetState extends State<MemoryFactsSheet> {
           label: 'Undo',
           onPressed: () {
             if (!mounted) return;
+            ProductAnalytics.instance.track(
+              AnalyticsEvents.memoryDeleteUndone,
+              {'kind': item.kind.name},
+            );
             setState(() {
               final restored = List<MemoryItem>.of(_items);
               restored.insert(index.clamp(0, restored.length), item);
@@ -139,6 +148,9 @@ class _MemoryFactsSheetState extends State<MemoryFactsSheet> {
     );
     if (kind == null || !mounted) return;
 
+    ProductAnalytics.instance.track(AnalyticsEvents.memoryAdded, {
+      'kind': kind.name,
+    });
     final draft = MemoryItem(
       id: 'mem_${DateTime.now().millisecondsSinceEpoch}',
       kind: kind,

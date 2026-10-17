@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 
@@ -208,6 +209,9 @@ class _DoneScreenState extends State<DoneScreen> {
                   DrevvyPrimaryButton(
                     label: 'Back to Deals',
                     onPressed: () {
+                      ProductAnalytics.instance.track(AnalyticsEvents.doneAction, {
+                        'action': 'back_to_deals',
+                      });
                       context.go('/deals');
                     },
                   ),
@@ -215,6 +219,18 @@ class _DoneScreenState extends State<DoneScreen> {
                   DrevvyGhostButton(
                     label: 'Find another car',
                     onPressed: () {
+                      ProductAnalytics.instance.track(AnalyticsEvents.doneAction, {
+                        'action': 'find_another',
+                      });
+                      final listingId = _deal?.listingId;
+                      ProductAnalytics.instance.track(
+                        AnalyticsEvents.findSimilarTapped,
+                        {
+                          'source': 'deal_done',
+                          if (listingId != null && listingId.isNotEmpty)
+                            'listing_id': listingId,
+                        },
+                      );
                       context.go('/shop');
                     },
                   ),
