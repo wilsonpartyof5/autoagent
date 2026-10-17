@@ -2,6 +2,7 @@ import type { ChatClient } from '../ai/types';
 import { runWidgetChat } from '../chat/agent';
 import type { AttemptResult, AttemptStore, ChatPage } from '../chat/types';
 import { chatSettings, type AppConfig } from '../config';
+import type { ConversationContact } from '../forms/identity';
 import type { DirectoryStore } from '../directory/types';
 import { runLeadForm } from '../forms/lead';
 import { runScan, type ScanResult } from '../scan/run';
@@ -26,10 +27,11 @@ export async function runDay0(input: {
   attempts: AttemptStore;
   directory: DirectoryStore;
   config: AppConfig;
+  contact?: ConversationContact | null;
   log?: (line: string) => void;
 }): Promise<Day0Run[]> {
   const log = input.log ?? (() => undefined);
-  const settings = chatSettings(input.config);
+  const settings = chatSettings(input.config, input.contact ?? null);
   const runs: Day0Run[] = [];
   for (const target of input.targets) {
     try {

@@ -7,7 +7,7 @@ import { hasCaptchaChallenge } from '../widgets/guards';
 import { extractStockNumber } from '../widgets/script';
 import { applyPlan } from './apply';
 import { detectLeadForms } from './detect';
-import { blockWallSignature, buildIdentity, type OutreachRunConfig } from './outreach';
+import { blockWallSignature, outreachIdentity, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
 
 export async function runLeadForm(input: {
@@ -150,13 +150,7 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  const identity = buildIdentity({
-    firstName: input.config.shopperFirst,
-    lastName: input.config.leadLastName,
-    phone: input.config.drevvyTextNumber,
-    email: input.config.drevvyEmail,
-    zip: input.config.leadZip,
-  });
+  const identity = outreachIdentity(input.config);
   const mode = input.config.contactMode ?? 'full';
   const plan = planForm(form, identity, stock, 'lead_form', mode);
   recordPlan(transcript, plan, now);

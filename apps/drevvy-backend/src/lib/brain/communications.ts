@@ -7,8 +7,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { insertBrainVendorEvent, type BrainVendorEvent } from './repository';
+import { selectSender, voiceNumberLeaks, type ConversationIdentity } from './identity';
+import type { IdentityRouter } from './identity-store';
 import {
   createOutboundSms,
+  createOutboundEmail,
   createTexmlAiCall,
   createOutboundCall,
   downloadRecordingMp3,
@@ -64,6 +67,7 @@ export type CallArtifactPatch = {
   structured: StructuredCallResult | null;
   from: string | null;
   to: string | null;
+  conversationIdentityId?: string | null;
 };
 
 export type CommunicationsStore = {
@@ -85,6 +89,7 @@ type IngestDeps = {
   store: CommunicationsStore;
   apiKey: string | null;
   fetchImpl?: typeof fetch;
+  router?: IdentityRouter;
 };
 
 export function supabaseCommunicationsStore(supabase: SupabaseClient): CommunicationsStore {
@@ -176,6 +181,22 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
   let dealId = normalized.clientState.dealId ?? null;
   let dealerId = normalized.clientState.dealerId ?? null;
   let touchpoint = normalized.clientState.touchpoint ?? null;
+  let identityId = normalized.clientState.conversationId ?? null;
+  if (deps.router) {
+    const routed = await deps.router.route({
+      channel: normalized.channel,
+      to: normalized.to,
+      from: normalized.from,
+      inReplyTo: normalized.inReplyTo,
+      references: normalized.references,
+      clientState: normalized.clientState,
+    });
+    if (routed) {
+      identityId = routed.conversationId;
+      dealId = routed.dealId;
+      dealerId = routed.dealerId;
+    }
+  }
   if (!dealId) {
     const prior = await deps.store.findCallContext({
       callControlId: normalized.callControlId,
@@ -267,6 +288,7 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
     structured: mergeStructured(structured, existing?.structured),
     call_control_id: normalized.callControlId,
     conversation_id: normalized.conversationId,
+    conversation_identity_id: identityId,
   };
 
   const saved = await deps.store.save(event);
@@ -293,7 +315,21 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
     structured,
     from: event.from_address ?? null,
     to: event.to_address ?? null,
+    conversationIdentityId: identityId,
   });
+
+  const inbound = normalized.direction === 'inbound' || normalized.eventType.endsWith('.received');
+  if (deps.router && inbound && !dealId && !identityId && normalized.channel) {
+    await deps.router.recordUnmatched({
+      channel: normalized.channel,
+      from: normalized.from,
+      to: normalized.to,
+      body: event.body ?? null,
+      inReplyTo: normalized.inReplyTo,
+      references: normalized.references,
+      isTest: flag.isTest,
+    });
+  }
 
   if (recordingFailed || transcriptMissing) {
     return { httpStatus: 500, received: true, id: saved.id };
@@ -312,15 +348,29 @@ export async function placeTexmlAiCall(
     link: CallLink;
     apiKey: string;
     fetchImpl?: typeof fetch;
+    identity?: ConversationIdentity | null;
+    testMode?: boolean;
+    script?: string | null;
   },
 ): Promise<{ callSid: string | null } | { error: string }> {
-  const created = await createTexmlAiCall(input, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
+  const sender = selectSender({
+    channel: 'voice',
+    identity: input.identity ?? null,
+    testMode: input.testMode === true,
+    fallback: { voice: input.from, sms: input.from },
+  });
+  if ('error' in sender) return sender;
+  if (input.script && voiceNumberLeaks(input.script, sender.from)) {
+    return { error: 'The voice agent must not give its caller ID out.' };
+  }
+  const link = withConversation(input.link, sender.conversationId);
+  const created = await createTexmlAiCall({ ...input, from: sender.from, link }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
   if ('error' in created) return created;
   await rememberCall(store, {
     callControlId: created.callSid,
-    from: input.from,
+    from: sender.from,
     to: input.to,
-    link: input.link,
+    link,
     eventType: 'call.queued',
   });
   return { callSid: created.callSid };
@@ -336,15 +386,25 @@ export async function placeOutboundCall(
     link: CallLink;
     apiKey: string;
     fetchImpl?: typeof fetch;
+    identity?: ConversationIdentity | null;
+    testMode?: boolean;
   },
 ): Promise<{ callControlId: string | null } | { error: string }> {
-  const created = await createOutboundCall(input, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
+  const sender = selectSender({
+    channel: 'voice',
+    identity: input.identity ?? null,
+    testMode: input.testMode === true,
+    fallback: { voice: input.from, sms: input.from },
+  });
+  if ('error' in sender) return sender;
+  const link = withConversation(input.link, sender.conversationId);
+  const created = await createOutboundCall({ ...input, from: sender.from, link }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
   if ('error' in created) return created;
   await rememberCall(store, {
     callControlId: created.callControlId,
-    from: input.from,
+    from: sender.from,
     to: input.to,
-    link: input.link,
+    link,
     eventType: 'call.queued',
   });
   return { callControlId: created.callControlId };
@@ -360,19 +420,105 @@ export async function sendOutboundSms(
     link?: CallLink;
     apiKey: string;
     fetchImpl?: typeof fetch;
+    identity?: ConversationIdentity | null;
+    testMode?: boolean;
+    router?: IdentityRouter;
   },
 ): Promise<{ messageId: string | null } | { error: string }> {
-  const created = await createOutboundSms(input, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
+  const sender = selectSender({
+    channel: 'sms',
+    identity: input.identity ?? null,
+    testMode: input.testMode === true,
+    fallback: { sms: input.from },
+  });
+  if ('error' in sender) return sender;
+  const link = input.link ? withConversation(input.link, sender.conversationId) : undefined;
+  const created = await createOutboundSms({ ...input, from: sender.from }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
   if ('error' in created) return created;
   await storeMessage(store, {
-    vendorEventId: created.messageId ?? `sms-${input.link?.dealId ?? 'na'}-${Date.now()}`,
+    vendorEventId: created.messageId ?? `sms-${link?.dealId ?? 'na'}-${Date.now()}`,
     eventType: 'message.submitted',
     channel: 'sms',
-    from: input.from,
+    from: sender.from,
     to: input.to,
     body: input.text,
-    link: input.link ?? null,
+    link: link ?? null,
+    conversationIdentityId: sender.conversationId,
   });
+  if (input.router && sender.conversationId) {
+    await input.router.remember({
+      conversationId: sender.conversationId,
+      channel: 'sms',
+      ourAddress: sender.from,
+      theirAddress: input.to,
+      messageId: created.messageId,
+    });
+  }
+  return created;
+}
+
+export async function sendOutboundEmail(
+  store: CommunicationsStore,
+  input: {
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+    html?: string | null;
+    webhookUrl?: string;
+    link?: CallLink | null;
+    apiKey: string;
+    fetchImpl?: typeof fetch;
+    identity?: ConversationIdentity | null;
+    testMode?: boolean;
+    displayName?: string | null;
+    router?: IdentityRouter;
+  },
+): Promise<{ messageId: string | null } | { error: string }> {
+  const sender = selectSender({
+    channel: 'email',
+    identity: input.identity ?? null,
+    testMode: input.testMode === true,
+    fallback: { email: input.from, firstName: input.displayName },
+  });
+  if ('error' in sender || !sender.replyTo) return 'error' in sender ? sender : { error: 'Email needs a reply address.' };
+  const link = input.link ? withConversation(input.link, sender.conversationId) : undefined;
+  const created = await createOutboundEmail({
+    from: sender.from,
+    replyTo: sender.replyTo,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+    webhookUrl: input.webhookUrl,
+    link,
+  }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
+  if ('error' in created) return created;
+  const vendorEventId = created.messageId ?? `email-${link?.dealId ?? 'na'}-${Date.now()}`;
+  const stored = await storeOutboundEmail(store, {
+    from: sender.from,
+    replyTo: sender.replyTo,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+    vendorEventId,
+    link,
+    identity: input.identity,
+    testMode: true,
+    displayName: sender.displayName,
+    conversationIdentityId: sender.conversationId,
+  });
+  if ('error' in stored) return stored;
+  if (input.router && sender.conversationId) {
+    await input.router.remember({
+      conversationId: sender.conversationId,
+      channel: 'email',
+      ourAddress: sender.replyTo,
+      theirAddress: input.to,
+      messageId: created.messageId,
+    });
+  }
   return created;
 }
 
@@ -386,8 +532,26 @@ export async function storeOutboundEmail(
     html?: string | null;
     vendorEventId?: string;
     link?: CallLink | null;
+    identity?: ConversationIdentity | null;
+    testMode?: boolean;
+    displayName?: string | null;
+    replyTo?: string | null;
+    conversationIdentityId?: string | null;
   },
 ): Promise<{ id: string } | { error: string }> {
+  const sender = input.replyTo
+    ? {
+      from: input.from,
+      replyTo: input.replyTo,
+      conversationId: input.conversationIdentityId ?? input.identity?.id ?? null,
+    }
+    : selectSender({
+      channel: 'email',
+      identity: input.identity ?? null,
+      testMode: input.testMode === true,
+      fallback: { email: input.from, firstName: input.displayName },
+    });
+  if ('error' in sender) return sender;
   const copy = input.html?.trim()
     ? `Subject: ${input.subject}\n\n${input.html}`
     : `Subject: ${input.subject}\n\n${input.text}`;
@@ -395,10 +559,12 @@ export async function storeOutboundEmail(
     vendorEventId: input.vendorEventId ?? `email-${input.link?.dealId ?? 'na'}-${Date.now()}`,
     eventType: 'email.submitted',
     channel: 'email',
-    from: input.from,
+    from: sender.from,
     to: input.to,
     body: copy,
-    link: input.link ?? null,
+    link: input.link ? withConversation(input.link, sender.conversationId) : null,
+    replyTo: sender.replyTo,
+    conversationIdentityId: sender.conversationId,
   });
 }
 
@@ -443,6 +609,7 @@ async function rememberCall(
     structured: null,
     call_control_id: input.callControlId,
     conversation_id: null,
+    conversation_identity_id: input.link.conversationId ?? null,
   });
 }
 
@@ -456,6 +623,8 @@ async function storeMessage(
     to: string;
     body: string;
     link: CallLink | null;
+    replyTo?: string | null;
+    conversationIdentityId?: string | null;
   },
 ): Promise<{ id: string } | { error: string }> {
   const numbers = await store.testNumbers();
@@ -478,7 +647,10 @@ async function storeMessage(
     summary: null,
     occurred_at: new Date().toISOString(),
     signature_verified: false,
-    payload: { stored: `outbound_${input.channel}` },
+    payload: {
+      stored: `outbound_${input.channel}`,
+      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+    },
     from_address: input.from,
     to_address: input.to,
     body: input.body,
@@ -489,6 +661,7 @@ async function storeMessage(
     structured: null,
     call_control_id: null,
     conversation_id: null,
+    conversation_identity_id: input.conversationIdentityId ?? input.link?.conversationId ?? null,
   });
   if ('error' in saved) return saved;
   await store.attach({
@@ -509,8 +682,14 @@ async function storeMessage(
     structured: null,
     from: input.from,
     to: input.to,
+    conversationIdentityId: input.conversationIdentityId ?? input.link?.conversationId ?? null,
   });
   return saved;
+}
+
+function withConversation(link: CallLink, conversationId: string | null): CallLink {
+  if (!conversationId || link.conversationId) return link;
+  return { ...link, conversationId };
 }
 
 async function attachCallArtifacts(supabase: SupabaseClient, patch: CallArtifactPatch): Promise<void> {
@@ -529,6 +708,7 @@ async function attachCallArtifacts(supabase: SupabaseClient, patch: CallArtifact
   if (patch.to) vendorUpdate.to_address = patch.to;
   if (patch.dealId) vendorUpdate.deal_id = patch.dealId;
   if (patch.touchpoint) vendorUpdate.touchpoint = patch.touchpoint;
+  if (patch.conversationIdentityId) vendorUpdate.conversation_identity_id = patch.conversationIdentityId;
 
   if (patch.callControlId) {
     await supabase.from('brain_vendor_events').update(vendorUpdate).eq('vendor', 'telnyx').eq('call_control_id', patch.callControlId);
@@ -545,6 +725,7 @@ async function attachCallArtifacts(supabase: SupabaseClient, patch: CallArtifact
   if (patch.from) outreachUpdate.from_address = patch.from;
   if (patch.to) outreachUpdate.to_address = patch.to;
   if (patch.recordingPath) outreachUpdate.recording_path = patch.recordingPath;
+  if (patch.conversationIdentityId) outreachUpdate.conversation_identity_id = patch.conversationIdentityId;
   if (patch.durationS != null && (patch.channel === 'call' || patch.channel === 'voicemail')) {
     outreachUpdate.call_duration_s = patch.durationS;
   }

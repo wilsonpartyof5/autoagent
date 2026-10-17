@@ -169,9 +169,10 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key. The tables are locked to `service_role`. |
 | `DRY_RUN` | no | Default true. Set to `false` to allow sends. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
-| `DREVVY_TEXT_NUMBER` | lead and chat | Drevvy Telnyx text number. Used in the handoff line and in lead and pre-chat phone fields. |
-| `DREVVY_EMAIL` | lead and chat | Drevvy email. Used in the handoff line, the lead message, and lead email fields. |
-| `SHOPPER_FIRST_NAME` | lead and chat | First name only. Used on lead forms and in the bot disclosure. |
+| `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead and chat read the conversation identity for `--deal` and `--dealer`. |
+| `DREVVY_TEXT_NUMBER` | test mode | Fallback text number. Live runs use the conversation identity. |
+| `DREVVY_EMAIL` | test mode | Fallback email. Live runs use the conversation alias. |
+| `SHOPPER_FIRST_NAME` | test mode | Fallback first name. Live runs use the name stored on the conversation, which comes from the shopper profile. |
 | `LEAD_LAST_NAME` | no | Last-name box on a lead form. Default `via Drevvy`. |
 | `DREVVY_ZIP` | when a form has ZIP | Five-digit ZIP, or ZIP+4. A ZIP field without this value stops the form. |
 | `RESEARCH_FETCH_TIMEOUT_MS` | no | Page fetch timeout. Default `15000`. |

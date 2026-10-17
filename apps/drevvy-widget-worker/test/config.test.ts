@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { assertChatConfig, assertOutreachConfig, assertSeedConfig, isAllowlisted, loadConfig, resolveMaxTurns } from '../src/config';
+import { assertChatConfig, assertOutreachConfig, assertSeedConfig, chatSettings, isAllowlisted, loadConfig, resolveMaxTurns } from '../src/config';
 
 describe('config', () => {
   it('keeps dry run on unless DRY_RUN is exactly false', () => {
@@ -70,6 +70,25 @@ describe('config', () => {
       WIDGET_CHAT_ALLOWLIST: 'https://www.example-motors.test',
     });
     assert.throws(() => assertOutreachConfig(named, false), /LEAD_LAST_NAME/);
+  });
+
+  it('keeps global contact variables as a test-mode fallback', () => {
+    const live = loadConfig({
+      DRY_RUN: 'false',
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service',
+      WIDGET_CHAT_ALLOWLIST: 'https://www.example-motors.test',
+    });
+    assert.equal(live.testMode, false);
+    assert.doesNotThrow(() => assertOutreachConfig(live, false));
+    assert.throws(() => chatSettings(live), /conversation identity/);
+    const testMode = loadConfig({
+      DREVVY_TEST_MODE: '1',
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service',
+    });
+    assert.equal(testMode.testMode, true);
+    assert.throws(() => assertOutreachConfig(testMode, true), /DREVVY_TEXT_NUMBER/);
   });
 
   it('requires a MarketCheck key to seed', () => {

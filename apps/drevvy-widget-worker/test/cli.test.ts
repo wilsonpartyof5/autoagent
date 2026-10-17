@@ -33,6 +33,7 @@ const config: AppConfig = {
   marketcheckApiKey: null,
   marketcheckBaseUrl: 'https://api.marketcheck.com',
   seedIntervalMs: 1_000,
+  testMode: true,
 };
 
 describe('cli', () => {
