@@ -287,6 +287,7 @@ void main() {
       'lib/features/shop/car_unlock.dart',
       'lib/features/saved/screens/saved_screen.dart',
       'lib/features/deals/screens/deal_detail_screen.dart',
+      'lib/features/deals/screens/deal_timeline_screen.dart',
     ];
     for (final path in files) {
       final text = File(path).readAsStringSync().toLowerCase();

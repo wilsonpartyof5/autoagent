@@ -13,6 +13,7 @@ import '../../features/shop/screens/shop_screen.dart';
 import '../../features/shop/screens/vdp_screen.dart';
 import '../../features/deals/screens/deals_screen.dart';
 import '../../features/deals/screens/deal_detail_screen.dart';
+import '../../features/deals/screens/deal_timeline_screen.dart';
 import '../../features/deals/screens/official_offer_screen.dart';
 import '../../features/deals/screens/done_screen.dart';
 import '../../features/saved/screens/saved_screen.dart';
@@ -118,6 +119,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final listingId = state.pathParameters['listingId']!;
           return VdpScreen(listingId: listingId);
+        },
+      ),
+      GoRoute(
+        path: '/deal/:dealId/timeline',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final dealId = state.pathParameters['dealId']!;
+          return DealTimelineScreen(dealId: dealId);
         },
       ),
       GoRoute(
