@@ -91,30 +91,6 @@ function formatDollars(amount: number) {
   return `$${amount.toLocaleString('en-US')}`;
 }
 
-const packs = [
-  {
-    name: 'Starter',
-    price: '$47',
-    cars: '3 cars',
-    detail: '$15.67 per car',
-    best: false,
-  },
-  {
-    name: 'Plus',
-    price: '$67',
-    cars: '5 cars',
-    detail: '$13.40 per car · save 14.5%',
-    best: false,
-  },
-  {
-    name: 'Best Value',
-    price: '$97',
-    cars: '10 cars',
-    detail: '$9.70 per car · save 38.1%',
-    best: true,
-  },
-];
-
 const faqs = [
   {
     question: 'What is an out-the-door price?',
@@ -132,12 +108,6 @@ const faqs = [
     question: 'Do dealers know who I am?',
     answer:
       'No. Dealers see an anonymous shopper (“Dealer A” on your side). Your name is shared only when you accept an offer.',
-    open: false,
-  },
-  {
-    question: 'How do car packs work?',
-    answer:
-      'Each car you unlock uses one. Packs are one-time purchases (3 for $47, 5 for $67, 10 for $97) and never expire. If a dealer never replies, you get the car back.',
     open: false,
   },
   {
@@ -165,9 +135,6 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-8 lg:flex" aria-label="Primary">
             <a href="#how-it-works" className={navLinkClass}>
               How it works
-            </a>
-            <a href="#pricing" className={navLinkClass}>
-              Pricing
             </a>
             <a href="#faq" className={navLinkClass}>
               FAQ
@@ -342,42 +309,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="scroll-mt-24 px-5 pb-16 text-center md:px-10 md:pb-20 lg:px-20 lg:pb-24">
-        <div className="mx-auto max-w-[1000px]">
-          <Eyebrow>Car packs</Eyebrow>
-          <h2 className="mt-2.5 text-[32px] font-extrabold leading-[1.05] tracking-[-0.035em] sm:text-5xl lg:text-[54px]">
-            Pay per car. Never expires.
-          </h2>
-          <div className="mt-12 grid grid-cols-1 gap-6 pt-2 md:grid-cols-3 md:gap-4 lg:gap-5">
-            {packs.map((pack) => (
-              <article
-                key={pack.name}
-                className={
-                  pack.best
-                    ? 'relative rounded-3xl border-2 border-[#5B4FE9] bg-white/80 px-6 py-8 shadow-[0_0_0_6px_#ECEAFF,0_20px_50px_rgba(70,80,220,0.2)]'
-                    : 'relative rounded-3xl border border-white bg-white/80 px-6 py-8 shadow-[0_10px_30px_rgba(40,50,110,0.08)]'
-                }
-              >
-                {pack.best ? (
-                  <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-[10px] bg-gradient-to-r from-[#5B4FE9] to-[#3A6FF0] px-3 py-1 text-base font-extrabold tracking-[0.08em] text-white md:text-xs">
-                    BEST VALUE
-                  </span>
-                ) : null}
-                <p className="font-extrabold text-[#6A7086]">{pack.name}</p>
-                <p className="mt-1.5 text-[56px] font-extrabold tabular-nums leading-none tracking-[-0.04em]">{pack.price}</p>
-                <p className="mt-2 text-lg font-extrabold">{pack.cars}</p>
-                <p className={pack.best ? 'mt-1.5 text-base font-extrabold text-[#4B3FD9] md:text-sm' : 'mt-1.5 text-base font-semibold text-[#6A7086] md:text-sm'}>
-                  {pack.detail}
-                </p>
-              </article>
-            ))}
-          </div>
-          <p className="mx-auto mt-6 max-w-xl font-bold text-[#4E5568]">
-            One-time purchase. No subscription. Your cars never expire. Asking and shopping are always free.
-          </p>
-        </div>
-      </section>
-
       <section id="faq" className="scroll-mt-24 px-5 pb-16 text-center md:px-10 md:pb-20 lg:px-20 lg:pb-28">
         <div className="mx-auto max-w-[820px]">
           <Eyebrow>FAQ</Eyebrow>
@@ -417,7 +348,7 @@ export default function LandingPage() {
             Know the real price before you go.
           </h2>
           <p className="mx-auto mt-3.5 max-w-[640px] text-[17px] font-medium leading-relaxed text-[#4E5568] lg:text-[21px]">
-            Asking and shopping are free. Unlock a price only on the car you want.
+            Get the app, ask and shop free.
           </p>
           <StoreCta />
         </div>

@@ -23,9 +23,6 @@ export function Footer() {
           <Link href="/#how-it-works" className={linkClass}>
             How it works
           </Link>
-          <Link href="/#pricing" className={linkClass}>
-            Pricing
-          </Link>
           <Link href="/#faq" className={linkClass}>
             FAQ
           </Link>
