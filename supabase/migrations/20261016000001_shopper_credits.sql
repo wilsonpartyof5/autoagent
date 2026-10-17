@@ -1,5 +1,5 @@
 -- Shopper car credits system. Replaces monthly quota with one-time car packs.
--- Car packs (3/$47, 5/$67, 10/$97) never expire and never reset monthly.
+-- Car packs (1/$35, 3/$55, 5/$75, 10/$95) never expire and never reset monthly.
 -- Credits are refunded on: sold, ended_no_response, dealer_declined.
 -- The credit_events table ensures idempotent refunds (exactly once per deal).
 

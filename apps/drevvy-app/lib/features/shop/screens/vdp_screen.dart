@@ -703,7 +703,7 @@ class _StickyCta extends StatelessWidget {
           Text(
             hasCredits
                 ? 'Drevvy contacts Dealer A during business hours'
-                : 'From \$9.70/car · Car packs never expire',
+                : 'From ${CarPackType.bestValue.perCarFormatted}/car · Car packs never expire',
             style: text.callout.copyWith(color: colors.muted),
           ),
         ],

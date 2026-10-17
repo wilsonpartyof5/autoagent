@@ -14,10 +14,10 @@ import {
 } from './credits';
 
 export const CREDIT_PRODUCTS = {
-  drevvy_pack_1: { size: 1, priceUsd: 27 },
-  drevvy_pack_3: { size: 3, priceUsd: 47 },
-  drevvy_pack_5: { size: 5, priceUsd: 67 },
-  drevvy_pack_10: { size: 10, priceUsd: 97 },
+  drevvy_pack_1: { size: 1, priceUsd: 35 },
+  drevvy_pack_3: { size: 3, priceUsd: 55 },
+  drevvy_pack_5: { size: 5, priceUsd: 75 },
+  drevvy_pack_10: { size: 10, priceUsd: 95 },
 } as const;
 
 /** RevenueCat package identifier → store product. Grants are 1/3/5/10 CARS. */

@@ -42,9 +42,9 @@ export const LEGAL = {
    * Store product ids: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10.
    */
   CAR_PACKS: [
-    { cars: 1, price: '$27', perCar: '$27.00', name: 'Single' },
-    { cars: 3, price: '$47', perCar: '$15.67', name: 'Starter' },
-    { cars: 5, price: '$67', perCar: '$13.40', name: 'Plus' },
-    { cars: 10, price: '$97', perCar: '$9.70', name: 'Best Value' },
+    { cars: 1, price: '$35', perCar: '$35.00', name: 'Single' },
+    { cars: 3, price: '$55', perCar: '$18.33', name: 'Starter' },
+    { cars: 5, price: '$75', perCar: '$15.00', name: 'Plus' },
+    { cars: 10, price: '$95', perCar: '$9.50', name: 'Best Value' },
   ],
 } as const;

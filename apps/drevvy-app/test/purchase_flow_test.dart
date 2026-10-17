@@ -105,10 +105,10 @@ void main() {
       final offerings = await service.getOfferings();
       expect(offerings, isNotNull);
       expect(offerings!.map((offering) => offering.priceAmount), [
-        27,
-        47,
-        67,
-        97,
+        35,
+        55,
+        75,
+        95,
       ]);
     });
   });
@@ -271,27 +271,27 @@ class _FakeStore implements StoreGateway {
     return const [
       CarPackOffering(
         packType: CarPackType.single,
-        localizedPrice: r'$27.00',
+        localizedPrice: r'$35.00',
         currencyCode: 'USD',
-        priceAmount: 27,
+        priceAmount: 35,
       ),
       CarPackOffering(
         packType: CarPackType.starter,
-        localizedPrice: r'$47.00',
+        localizedPrice: r'$55.00',
         currencyCode: 'USD',
-        priceAmount: 47,
+        priceAmount: 55,
       ),
       CarPackOffering(
         packType: CarPackType.plus,
-        localizedPrice: r'$67.00',
+        localizedPrice: r'$75.00',
         currencyCode: 'USD',
-        priceAmount: 67,
+        priceAmount: 75,
       ),
       CarPackOffering(
         packType: CarPackType.bestValue,
-        localizedPrice: r'$97.00',
+        localizedPrice: r'$95.00',
         currencyCode: 'USD',
-        priceAmount: 97,
+        priceAmount: 95,
       ),
     ];
   }

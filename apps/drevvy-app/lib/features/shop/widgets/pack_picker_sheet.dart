@@ -13,10 +13,10 @@ import 'pack_option_card.dart';
 /// v1.7: Replaces monthly subscription with one-time car packs.
 ///
 /// Pack options, full-width rows, 10-pack preselected:
-/// - 1 car (Single) $27 — $27.00/car, "One-time · never expires"
-/// - 3 cars (Starter) $47 — $15.67/car, Save 42.0%/car
-/// - 5 cars (Plus) $67 — $13.40/car, Save 50.4%/car
-/// - 10 cars (Best Value) $97 — $9.70/car, Save 64.1%/car
+/// - 1 car (Single) $35 — $35.00/car, "One-time · never expires"
+/// - 3 cars (Starter) $55 — $18.33/car, Save 47.6%/car
+/// - 5 cars (Plus) $75 — $15.00/car, Save 57.1%/car
+/// - 10 cars (Best Value) $95 — $9.50/car, Save 72.9%/car
 ///
 /// Products drevvy_pack_1/3/5/10, packages pack_1/3/5/10, 1/3/5/10 CARS.
 /// Superwall placement: unlock_my_price

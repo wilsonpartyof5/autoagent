@@ -25,18 +25,18 @@ import { consumeCredit, purchaseCredits, purchaseIdempotencyKey, reversePurchase
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 test('product ids map to packs and unknown ids do not', () => {
-  assert.deepEqual(packForProductId('drevvy_pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 27 });
-  assert.deepEqual(packForProductId('pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 27 });
-  assert.deepEqual(packForProductId('pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 47 });
-  assert.deepEqual(packForProductId('pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 97 });
-  assert.deepEqual(packForProductId('drevvy_pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 47 });
-  assert.deepEqual(packForProductId('drevvy_pack_5'), { productId: 'drevvy_pack_5', size: 5, priceUsd: 67 });
-  assert.deepEqual(packForProductId('drevvy_pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 97 });
+  assert.deepEqual(packForProductId('drevvy_pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 35 });
+  assert.deepEqual(packForProductId('pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 35 });
+  assert.deepEqual(packForProductId('pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 55 });
+  assert.deepEqual(packForProductId('pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 95 });
+  assert.deepEqual(packForProductId('drevvy_pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 55 });
+  assert.deepEqual(packForProductId('drevvy_pack_5'), { productId: 'drevvy_pack_5', size: 5, priceUsd: 75 });
+  assert.deepEqual(packForProductId('drevvy_pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 95 });
   assert.equal(packForProductId('drevvy_pack_99'), null);
   assert.equal(packForProductId('credits:100'), null);
 });
 
-test('the 1-car pack grants one credit at $27 and a refund reverses it', async () => {
+test('the 1-car pack grants one credit at $35 and a refund reverses it', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
   const verified = findVerifiedPurchase({
@@ -45,7 +45,7 @@ test('the 1-car pack grants one credit at $27 and a refund reverses it', async (
     },
   }, 'store_1', 'drevvy_pack_1');
   assert.equal(verified?.size, 1);
-  assert.equal(verified?.priceUsd, 27);
+  assert.equal(verified?.priceUsd, 35);
   assert.equal(verified?.transactionId, 'store_1');
 
   const granted = await applyRevenueCatEvent(supabase, {
@@ -86,7 +86,7 @@ test('verification uses the RevenueCat product, not a client credit count', () =
   };
   const verified = findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_3');
   assert.equal(verified?.size, 3);
-  assert.equal(verified?.priceUsd, 47);
+  assert.equal(verified?.priceUsd, 55);
   assert.equal(findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_10'), null);
   assert.equal(findVerifiedPurchase(subscriber, 'missing', 'drevvy_pack_3'), null);
 });
@@ -102,7 +102,7 @@ test('a client alias and the webhook share the store transaction id', () => {
   assert.equal(byAlias?.transactionId, 'store_3');
   assert.equal(byStore?.transactionId, 'store_3');
   assert.equal(byAlias?.size, 3);
-  assert.equal(byAlias?.priceUsd, 47);
+  assert.equal(byAlias?.priceUsd, 55);
 });
 
 test('restore finds the pack from the transaction when the client sends no product', () => {
@@ -151,8 +151,8 @@ test('subscriber lookup sends the secret and does not treat an error as a purcha
 test('purchase and reversal share one grant key and subtract once', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
-  const first = await purchaseCredits(supabase, userId, 10, 97, 'txn_10');
-  const second = await purchaseCredits(supabase, userId, 10, 97, 'txn_10');
+  const first = await purchaseCredits(supabase, userId, 10, 95, 'txn_10');
+  const second = await purchaseCredits(supabase, userId, 10, 95, 'txn_10');
   assert.equal(first.credits.balance, 10);
   assert.equal(first.credits.lifetimePurchased, 10);
   assert.equal(second.credits.balance, 10);
@@ -166,7 +166,7 @@ test('purchase and reversal share one grant key and subtract once', async () => 
   assert.equal(again.alreadyReversed, true);
   assert.equal(again.credits.balance, 0);
 
-  const afterRefund = await purchaseCredits(supabase, userId, 10, 97, 'txn_10');
+  const afterRefund = await purchaseCredits(supabase, userId, 10, 95, 'txn_10');
   assert.equal(afterRefund.credits.balance, 0);
 });
 
@@ -175,7 +175,7 @@ test('a refund that arrives first blocks the later purchase', async () => {
   const userId = '11111111-1111-4111-8111-111111111111';
   const early = await reversePurchaseCredits(supabase, userId, 5, 'txn_5');
   assert.equal(early.reversed, false);
-  const purchase = await purchaseCredits(supabase, userId, 5, 67, 'txn_5');
+  const purchase = await purchaseCredits(supabase, userId, 5, 75, 'txn_5');
   assert.equal(purchase.credits.balance, 0);
   assert.equal(purchase.credits.lifetimePurchased, 0);
 });
@@ -272,7 +272,7 @@ test('balance credits exactly once per purchase transaction id', async () => {
 test('refunds deduct each pack once and do not go below zero', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
-  await purchaseCredits(supabase, userId, 3, 47, 'txn_3');
+  await purchaseCredits(supabase, userId, 3, 55, 'txn_3');
   await consumeCredit(supabase, userId, '22222222-2222-4222-8222-222222222222');
   await consumeCredit(supabase, userId, '33333333-3333-4333-8333-333333333333');
   const refund = await applyRevenueCatEvent(supabase, {
@@ -294,12 +294,12 @@ test('refunds deduct each pack once and do not go below zero', async () => {
   assert.equal(again.credits?.balance, 0);
   assert.equal(again.credits?.lifetimeRefunded, 3);
 
-  await purchaseCredits(supabase, userId, 5, 67, 'txn_5');
+  await purchaseCredits(supabase, userId, 5, 75, 'txn_5');
   const pack5 = await reversePurchaseCredits(supabase, userId, 5, 'txn_5');
   assert.equal(pack5.reversed, true);
   assert.equal(pack5.credits.balance, 0);
   assert.equal(pack5.credits.lifetimeRefunded, 8);
-  await purchaseCredits(supabase, userId, 10, 97, 'txn_10');
+  await purchaseCredits(supabase, userId, 10, 95, 'txn_10');
   const pack10 = await reversePurchaseCredits(supabase, userId, 10, 'txn_10');
   assert.equal(pack10.reversed, true);
   assert.equal(pack10.credits.balance, 0);
@@ -312,7 +312,7 @@ test('refunds deduct each pack once and do not go below zero', async () => {
 test('GET /api/consumer/credits returns the car balance for the signed-in shopper', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
-  await purchaseCredits(supabase, userId, 5, 67, 'txn_balance');
+  await purchaseCredits(supabase, userId, 5, 75, 'txn_balance');
   const response = await handleGetCreditBalance(new Request('http://localhost/api/consumer/credits'), {
     requireAuth: async () => ({ userId }),
     supabase: () => supabase,

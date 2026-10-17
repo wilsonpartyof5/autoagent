@@ -56,17 +56,17 @@ void main() {
         ),
       );
 
-      expect(find.text(r'$27.00/car'), findsOneWidget);
-      expect(find.text(r'$15.67/car'), findsOneWidget);
-      expect(find.text(r'$13.40/car'), findsOneWidget);
-      expect(find.text(r'$9.70/car'), findsOneWidget);
+      expect(find.text(r'$35.00/car'), findsOneWidget);
+      expect(find.text(r'$18.33/car'), findsOneWidget);
+      expect(find.text(r'$15.00/car'), findsOneWidget);
+      expect(find.text(r'$9.50/car'), findsOneWidget);
       expect(find.text('1 car · Single'), findsOneWidget);
       expect(find.text('3 cars · Starter'), findsOneWidget);
       expect(find.text('5 cars · Plus'), findsOneWidget);
       expect(find.text('10 cars · Best Value'), findsOneWidget);
-      expect(find.text('Save 42.0%/car'), findsOneWidget);
-      expect(find.text('Save 50.4%/car'), findsOneWidget);
-      expect(find.text('Save 64.1%/car'), findsOneWidget);
+      expect(find.text('Save 47.6%/car'), findsOneWidget);
+      expect(find.text('Save 57.1%/car'), findsOneWidget);
+      expect(find.text('Save 72.9%/car'), findsOneWidget);
       expect(find.text('One-time · never expires'), findsOneWidget);
       expect(find.text(PackPickerColumn.footnote), findsOneWidget);
       expect(find.text('BEST VALUE'), findsOneWidget);
@@ -84,7 +84,7 @@ void main() {
       expect(find.text('3–5%'), findsOneWidget);
       expect(find.textContaining('Source: CarEdge'), findsOneWidget);
       expect(find.text('Restore purchases'), findsOneWidget);
-      expect(find.text('Get 10 cars for \$97'), findsOneWidget);
+      expect(find.text('Get 10 cars for \$95'), findsOneWidget);
     },
   );
 
@@ -105,14 +105,14 @@ void main() {
       );
 
       expect(find.text('0 CARS LEFT'), findsOneWidget);
-      expect(find.text(r'$27.00/car'), findsOneWidget);
-      expect(find.text(r'$15.67/car'), findsOneWidget);
-      expect(find.text(r'$9.70/car'), findsOneWidget);
-      expect(find.text('Save 42.0%/car'), findsOneWidget);
-      expect(find.text('Save 64.1%/car'), findsOneWidget);
+      expect(find.text(r'$35.00/car'), findsOneWidget);
+      expect(find.text(r'$18.33/car'), findsOneWidget);
+      expect(find.text(r'$9.50/car'), findsOneWidget);
+      expect(find.text('Save 47.6%/car'), findsOneWidget);
+      expect(find.text('Save 72.9%/car'), findsOneWidget);
       expect(find.text('One-time · never expires'), findsOneWidget);
       expect(find.text(PackPickerColumn.footnote), findsOneWidget);
-      expect(find.text('Get 10 cars for \$97'), findsOneWidget);
+      expect(find.text('Get 10 cars for \$95'), findsOneWidget);
       expect(find.byType(SingleChildScrollView), findsNothing);
     },
   );
@@ -133,18 +133,18 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(find.text(r'$27'), findsOneWidget);
-    expect(find.text(r'$47'), findsOneWidget);
-    expect(find.text(r'$67'), findsOneWidget);
-    expect(find.text(r'$97'), findsOneWidget);
+    expect(find.text(r'$35'), findsOneWidget);
+    expect(find.text(r'$55'), findsOneWidget);
+    expect(find.text(r'$75'), findsOneWidget);
+    expect(find.text(r'$95'), findsOneWidget);
     expect(find.text('BEST VALUE'), findsOneWidget);
-    expect(find.text('Get 10 cars for \$97'), findsOneWidget);
+    expect(find.text('Get 10 cars for \$95'), findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsNothing);
     expect(find.textContaining('negotiat'), findsNothing);
 
     await tester.tap(find.text('1 car · Single'));
     await tester.pump();
-    expect(find.text('Get 1 car for \$27'), findsOneWidget);
+    expect(find.text('Get 1 car for \$35'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

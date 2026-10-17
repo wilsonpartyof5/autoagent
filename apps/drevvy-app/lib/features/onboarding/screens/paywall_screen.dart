@@ -25,7 +25,7 @@ import '../widgets/progress_dots.dart';
 ///
 /// Superwall placement `onboarding_paywall` can replace this screen when a
 /// key exists. With no store keys, the four demo packs render here:
-/// 1 car $27, 3 cars $47, 5 cars $67, 10 cars $97. Best value is 10 at $9.70 per car.
+/// 1 car $35, 3 cars $55, 5 cars $75, 10 cars $95. Best value is 10 at $9.50 per car.
 /// Asking and shopping stay free; this screen can be skipped.
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key, this.from, this.placement, this.repository});
@@ -234,7 +234,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         ),
                         const SizedBox(height: DrevvySpace.s3),
                         Text(
-                          'From \$9.70/car · Car packs 1 · 3 · 5 · 10 · One-time. Never expire.',
+                          'From ${CarPackType.bestValue.perCarFormatted}/car · Car packs 1 · 3 · 5 · 10 · One-time. Never expire.',
                           style: text.callout.copyWith(color: colors.ink),
                           textAlign: TextAlign.center,
                         ),

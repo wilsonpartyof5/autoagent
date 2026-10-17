@@ -8,20 +8,20 @@ import 'money_format.dart';
 enum CarPackType {
   single(
     cars: 1,
-    priceUsd: 27,
+    priceUsd: 35,
     productId: 'drevvy_pack_1',
     packageId: 'pack_1',
   ),
   starter(
     cars: 3,
-    priceUsd: 47,
+    priceUsd: 55,
     productId: 'drevvy_pack_3',
     packageId: 'pack_3',
   ),
-  plus(cars: 5, priceUsd: 67, productId: 'drevvy_pack_5', packageId: 'pack_5'),
+  plus(cars: 5, priceUsd: 75, productId: 'drevvy_pack_5', packageId: 'pack_5'),
   bestValue(
     cars: 10,
-    priceUsd: 97,
+    priceUsd: 95,
     productId: 'drevvy_pack_10',
     packageId: 'pack_10',
   );
@@ -59,10 +59,10 @@ enum CarPackType {
   /// Per-car cost in cents.
   double get perCarCost => priceUsd / cars;
 
-  /// Per-car cost formatted as dollars, e.g. "$9.70".
+  /// Per-car cost formatted as dollars, e.g. "$9.50".
   String get perCarFormatted => formatUsd(perCarCost, cents: true);
 
-  /// Pack price formatted as dollars, e.g. "$97".
+  /// Pack price formatted as dollars, e.g. "$95".
   String get priceFormatted => formatUsd(priceUsd);
 
   /// Display name for the pack.
@@ -84,14 +84,14 @@ enum CarPackType {
     return ((baseline - perCarCost) / baseline) * 100;
   }
 
-  /// Chip copy: "Save 42.0%/car". Null on the 1-car pack.
+  /// Chip copy: "Save 47.6%/car". Null on the 1-car pack.
   String? get savingsText {
     final pct = savingsPercentVsSingle;
     if (pct == null) return null;
     return 'Save ${pct.toStringAsFixed(1)}%/car';
   }
 
-  /// CTA button text: "Get 1 car for $27" or "Get 10 cars for $97".
+  /// CTA button text: "Get 1 car for $35" or "Get 10 cars for $95".
   String get ctaText => 'Get $carsLabel for $priceFormatted';
 }
 
