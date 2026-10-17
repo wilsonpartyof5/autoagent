@@ -9,6 +9,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { insertBrainVendorEvent, type BrainVendorEvent } from './repository';
 import { selectSender, voiceNumberLeaks, type ConversationIdentity } from './identity';
 import type { IdentityRouter } from './identity-store';
+import { resolveLiveIdentity, type LiveAssignment } from './live-send';
 import {
   createOutboundSms,
   createOutboundEmail,
@@ -350,12 +351,22 @@ export async function placeTexmlAiCall(
     fetchImpl?: typeof fetch;
     identity?: ConversationIdentity | null;
     testMode?: boolean;
+    assignment?: LiveAssignment | null;
     script?: string | null;
   },
-): Promise<{ callSid: string | null } | { error: string }> {
+): Promise<{ callSid: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const resolved = await resolveLiveIdentity({
+    channel: 'voice',
+    testMode: input.testMode === true,
+    identity: input.identity,
+    assignment: input.assignment,
+    dealId: input.link.dealId,
+    dealerId: input.link.dealerId,
+  });
+  if (resolved.held) return resolved;
   const sender = selectSender({
     channel: 'voice',
-    identity: input.identity ?? null,
+    identity: resolved.identity,
     testMode: input.testMode === true,
     fallback: { voice: input.from, sms: input.from },
   });
@@ -388,11 +399,21 @@ export async function placeOutboundCall(
     fetchImpl?: typeof fetch;
     identity?: ConversationIdentity | null;
     testMode?: boolean;
+    assignment?: LiveAssignment | null;
   },
-): Promise<{ callControlId: string | null } | { error: string }> {
+): Promise<{ callControlId: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const resolved = await resolveLiveIdentity({
+    channel: 'voice',
+    testMode: input.testMode === true,
+    identity: input.identity,
+    assignment: input.assignment,
+    dealId: input.link.dealId,
+    dealerId: input.link.dealerId,
+  });
+  if (resolved.held) return resolved;
   const sender = selectSender({
     channel: 'voice',
-    identity: input.identity ?? null,
+    identity: resolved.identity,
     testMode: input.testMode === true,
     fallback: { voice: input.from, sms: input.from },
   });
@@ -422,12 +443,22 @@ export async function sendOutboundSms(
     fetchImpl?: typeof fetch;
     identity?: ConversationIdentity | null;
     testMode?: boolean;
+    assignment?: LiveAssignment | null;
     router?: IdentityRouter;
   },
-): Promise<{ messageId: string | null } | { error: string }> {
+): Promise<{ messageId: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const resolved = await resolveLiveIdentity({
+    channel: 'sms',
+    testMode: input.testMode === true,
+    identity: input.identity,
+    assignment: input.assignment,
+    dealId: input.link?.dealId,
+    dealerId: input.link?.dealerId,
+  });
+  if (resolved.held) return resolved;
   const sender = selectSender({
     channel: 'sms',
-    identity: input.identity ?? null,
+    identity: resolved.identity,
     testMode: input.testMode === true,
     fallback: { sms: input.from },
   });
@@ -471,13 +502,23 @@ export async function sendOutboundEmail(
     fetchImpl?: typeof fetch;
     identity?: ConversationIdentity | null;
     testMode?: boolean;
+    assignment?: LiveAssignment | null;
     displayName?: string | null;
     router?: IdentityRouter;
   },
-): Promise<{ messageId: string | null } | { error: string }> {
+): Promise<{ messageId: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const resolved = await resolveLiveIdentity({
+    channel: 'email',
+    testMode: input.testMode === true,
+    identity: input.identity,
+    assignment: input.assignment,
+    dealId: input.link?.dealId,
+    dealerId: input.link?.dealerId,
+  });
+  if (resolved.held) return resolved;
   const sender = selectSender({
     channel: 'email',
-    identity: input.identity ?? null,
+    identity: resolved.identity,
     testMode: input.testMode === true,
     fallback: { email: input.from, firstName: input.displayName },
   });

@@ -169,7 +169,7 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key. The tables are locked to `service_role`. |
 | `DRY_RUN` | no | Default true. Set to `false` to allow sends. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
-| `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead and chat read the conversation identity for `--deal` and `--dealer`. |
+| `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead, chat, and run assign the conversation identity for `--deal` and `--dealer` before the first live send. A missing text number holds the send. |
 | `DREVVY_TEXT_NUMBER` | test mode | Fallback text number. Live runs use the conversation identity. |
 | `DREVVY_EMAIL` | test mode | Fallback email. Live runs use the conversation alias. |
 | `SHOPPER_FIRST_NAME` | test mode | Fallback first name. Live runs use the name stored on the conversation, which comes from the shopper profile. |

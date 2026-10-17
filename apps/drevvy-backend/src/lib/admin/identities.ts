@@ -5,6 +5,7 @@ import {
   parseIdentitySettings,
   parsePoolNumber,
   parseVoiceNumber,
+  purchaseFlagVisible,
   smsPoolHealth,
   type ConversationIdentity,
 } from '@/lib/brain/identity';
@@ -57,6 +58,7 @@ export type IdentityAdmin = {
   cooldownDays: number;
   watermark: number;
   livePool: { active: number; watermark: number; low: boolean };
+  purchaseFlag: boolean;
 };
 
 const EMPTY: IdentityAdmin = {
@@ -68,6 +70,7 @@ const EMPTY: IdentityAdmin = {
   cooldownDays: 90,
   watermark: 2,
   livePool: { active: 0, watermark: 2, low: false },
+  purchaseFlag: false,
 };
 
 export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<IdentityAdmin> {
@@ -95,7 +98,7 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
       unmatchedQuery,
       admin.from('sms_number_pool').select('phone_e164, label, status, is_test, last_assigned_at').order('created_at', { ascending: true }),
       admin.from('voice_numbers').select('state_code, phone_e164, label').order('state_code'),
-      admin.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark').eq('id', 1).maybeSingle(),
+      admin.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark, purchase_needed').eq('id', 1).maybeSingle(),
     ]);
 
     const poolRows: PoolRow[] = (pool.data ?? []).map((row) => ({
@@ -106,6 +109,7 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
       lastAssignedAt: row.last_assigned_at,
     }));
     const watermark = settings.data?.sms_pool_low_watermark ?? 2;
+    const livePool = smsPoolHealth(poolRows, watermark, false);
     return {
       configured: true,
       identities: (identities.data ?? []).map((row) => publicIdentity(mapIdentity(row as Record<string, unknown>))),
@@ -126,7 +130,8 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
       })),
       cooldownDays: settings.data?.sms_cooldown_days ?? 90,
       watermark,
-      livePool: smsPoolHealth(poolRows, watermark, false),
+      livePool,
+      purchaseFlag: purchaseFlagVisible(livePool, settings.data?.purchase_needed === true),
     };
   } catch {
     return { ...EMPTY, configured: true };
@@ -159,6 +164,12 @@ export async function savePoolNumber(input: { phone: string; label: string; isTe
     is_test: parsed.isTest,
   });
   if (error) return { error: 'Could not add that text number.' };
+  if (!parsed.isTest) {
+    await admin.from('identity_settings').update({
+      purchase_needed: false,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+  }
   return { ok: true };
 }
 
