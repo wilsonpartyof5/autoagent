@@ -21,17 +21,33 @@ enum VehicleDetailError: Error, LocalizedError {
 }
 
 enum VehicleDetailService {
-  static func fetchDetail(listingId: String, dealerId: String? = nil) async throws -> VehicleDetailData {
+  static func fetchDetail(
+    listingId: String,
+    dealerId: String? = nil,
+    vin: String? = nil,
+    sections: [String]? = nil
+  ) async throws -> VehicleDetailData {
     guard let apiKey = Config.inventoryApiKey else {
       throw VehicleDetailError.missingApiKey
     }
 
-    var urlString = "\(Config.inventoryDetailBaseURL)/\(listingId)"
-    if let dealerId, !dealerId.isEmpty {
-      urlString += "?dealerId=\(dealerId)"
+    guard var components = URLComponents(string: "\(Config.inventoryDetailBaseURL)/\(listingId)") else {
+      throw VehicleDetailError.networkError("Invalid detail URL")
     }
-
-    guard let url = URL(string: urlString) else {
+    var items: [URLQueryItem] = []
+    if let dealerId, !dealerId.isEmpty {
+      items.append(URLQueryItem(name: "dealerId", value: dealerId))
+    }
+    if let vin, !vin.isEmpty {
+      items.append(URLQueryItem(name: "vin", value: vin))
+    }
+    if let sections, !sections.isEmpty {
+      items.append(URLQueryItem(name: "sections", value: sections.joined(separator: ",")))
+    }
+    if !items.isEmpty {
+      components.queryItems = items
+    }
+    guard let url = components.url else {
       throw VehicleDetailError.networkError("Invalid detail URL")
     }
 

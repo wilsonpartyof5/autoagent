@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { marketCheckSubject, withMarketCheckContext } from '@/lib/marketcheck/context';
 import {
   getVehicleDetailMcp,
+  parseDetailSections,
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
 } from '@/lib/marketcheck/mcp-adapter';
+import { payloadContainsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
 import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
@@ -11,14 +14,14 @@ import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
  *
  * Vehicle Detail + Enrichment Endpoint — MCP-first.
  *
- * Assembles a rich vehicle detail payload by orchestrating three parallel
- * MarketCheck MCP tool calls:
- *   1. search_active_cars  — current listing (price, photos, dealer, condition)
- *   2. decode_vin_neovin   — build specs, MSRP, features, options
- *   3. get_car_history     — days on market, price change history
+ * The default response is the listing shell (search_active_cars) only.
+ * Query param `sections` loads extra MarketCheck calls when that VDP section
+ * is opened: `vin` (decode_vin_neovin) and `history` (get_car_history).
+ * Example: /api/inventory/detail/:id?vin=...&sections=vin
  *
  * Path param:  [id] — MarketCheck listing ID (from /api/inventory/search)
- * Query param: vin  — optional VIN hint to improve MCP enrichment accuracy
+ * Query param: vin  — optional VIN hint. Pass it with sections=vin so the
+ *                     decode does not need a second listing search.
  *
  * Shopper JSON passes through redactShopperDealerIdentity. Price, specs,
  * photos, city/state, coordinates, and days on market stay. dealerName is
@@ -65,11 +68,24 @@ export async function GET(
   }
 
   const vinHint = request.nextUrl.searchParams.get('vin') ?? undefined;
+  const sections = parseDetailSections(request.nextUrl.searchParams.get('sections'));
+  if (!sections) {
+    return NextResponse.json(
+      { success: false, error: { code: 'INVALID_SECTION', message: 'sections must be listing, vin, or history' } },
+      { status: 400 },
+    );
+  }
 
-  console.log(JSON.stringify({ event: 'mc_mcp_detail_start', listingId, hasVin: !!vinHint }));
+  console.log(JSON.stringify({ event: 'mc_mcp_detail_start', listingId, hasVin: !!vinHint, sections }));
 
   try {
-    const detail = await getVehicleDetailMcp(listingId, vinHint);
+    const detail = await withMarketCheckContext(
+      {
+        origin: request.nextUrl.origin,
+        subject: marketCheckSubject(undefined, request.headers.get('x-drevvy-subject')),
+      },
+      () => getVehicleDetailMcp(listingId, vinHint, sections),
+    );
 
     if (!detail) {
       return NextResponse.json(
@@ -87,7 +103,15 @@ export async function GET(
     const latencyMs = Date.now() - reqStart;
     console.log(JSON.stringify({ event: 'mc_mcp_detail_served', listingId, partial: detail.partial, latencyMs }));
 
-    return NextResponse.json(redactShopperDealerIdentity({ success: true, data: detail }));
+    const payload = redactShopperDealerIdentity({ success: true, data: detail });
+    if (payloadContainsSecret(payload)) {
+      console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'detail' }));
+      return NextResponse.json(
+        { success: false, error: { code: 'INTERNAL_ERROR', message: 'An error occurred fetching vehicle details.' } },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     const latencyMs = Date.now() - reqStart;
 
@@ -113,7 +137,7 @@ export async function GET(
       event: 'mc_mcp_detail_error',
       listingId,
       latencyMs,
-      error: error instanceof Error ? error.message : String(error),
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
     }));
 
     return NextResponse.json(

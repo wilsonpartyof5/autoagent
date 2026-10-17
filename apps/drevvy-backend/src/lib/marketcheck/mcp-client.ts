@@ -11,11 +11,17 @@
  * - Typed errors for quota (402) and rate-limit (429) so callers can surface them.
  */
 
-const MC_MCP_URL = (
-  process.env.MARKETCHECK_MCP_URL ?? 'https://api.marketcheck.com/mcp'
-).replace(/\/+$/, '');
+import { dedupeInflight, loadMarketCheck, policyEndpointForTool, stableStringify } from './cache-policy';
+import { redactSecrets } from './secrets';
+import { recordMarketCheckCall } from './usage';
 
-const MC_API_KEY = process.env.MARKETCHECK_API_KEY ?? '';
+function marketCheckMcpUrl(): string {
+  return (process.env.MARKETCHECK_MCP_URL ?? 'https://api.marketcheck.com/mcp').replace(/\/+$/, '');
+}
+
+function marketCheckApiKey(): string {
+  return process.env.MARKETCHECK_API_KEY ?? '';
+}
 
 // --------------------------------------------------------------------------
 // Typed errors
@@ -94,11 +100,29 @@ export async function callMcpTool<T = unknown>(
   args: Record<string, unknown>,
   timeoutMs = 8000,
 ): Promise<T | null> {
-  if (!MC_API_KEY) {
+  const key = stableStringify(args);
+  const endpoint = policyEndpointForTool(toolName);
+  // Fair price is stored only by getMarketCheckPrice, keyed by VIN + ZIP area.
+  if (!endpoint || endpoint === 'marketcheck_price') {
+    return dedupeInflight(`mcp:${toolName}:${key}`, () => callMcpToolNetwork<T>(toolName, args, timeoutMs));
+  }
+  const { value } = await loadMarketCheck(endpoint, key, () => callMcpToolNetwork<T>(toolName, args, timeoutMs));
+  return value;
+}
+
+async function callMcpToolNetwork<T = unknown>(
+  toolName: string,
+  args: Record<string, unknown>,
+  timeoutMs = 8000,
+): Promise<T | null> {
+  const apiKey = marketCheckApiKey();
+  if (!apiKey) {
     throw new Error('MARKETCHECK_API_KEY is not configured');
   }
 
-  const url = `${MC_MCP_URL}?api_key=${MC_API_KEY}`;
+  recordMarketCheckCall(toolName);
+
+  const url = `${marketCheckMcpUrl()}?api_key=${apiKey}`;
   const id = ++requestCounter;
 
   const payload = JSON.stringify({
@@ -148,7 +172,7 @@ export async function callMcpTool<T = unknown>(
           event: 'mc_mcp_http_error',
           tool: toolName,
           status: res.status,
-          body: body.substring(0, 300),
+          body: redactSecrets(body.substring(0, 300)),
         }),
       );
       return null;
@@ -170,12 +194,17 @@ export async function callMcpTool<T = unknown>(
     }
 
     const isTimeout = err instanceof Error && err.name === 'AbortError';
+    const message = err instanceof Error ? err.message : String(err);
+    const cause = err && typeof err === 'object' && 'cause' in err
+      ? (err as { cause?: unknown }).cause
+      : undefined;
+    const causeText = cause instanceof Error ? cause.message : cause == null ? '' : String(cause);
     console.error(
       JSON.stringify({
         event: isTimeout ? 'mc_mcp_timeout' : 'mc_mcp_exception',
         tool: toolName,
         timeoutMs,
-        error: err instanceof Error ? err.message : String(err),
+        error: redactSecrets(causeText ? `${message} ${causeText}` : message),
       }),
     );
     return null;
@@ -193,7 +222,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null
         event: 'mc_mcp_rpc_error',
         tool: toolName,
         code: json.error.code,
-        message: json.error.message,
+        message: redactSecrets(json.error.message),
       }),
     );
     return null;
@@ -203,7 +232,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null
   if (!result) return null;
 
   if (result.isError) {
-    const msg = result.content?.[0]?.text ?? 'unknown MCP tool error';
+    const msg = redactSecrets(result.content?.[0]?.text ?? 'unknown MCP tool error');
     console.error(JSON.stringify({ event: 'mc_mcp_tool_error', tool: toolName, msg }));
     return null;
   }

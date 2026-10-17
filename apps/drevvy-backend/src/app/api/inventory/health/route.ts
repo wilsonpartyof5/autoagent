@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callMcpTool, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
+import { redactSecrets } from '@/lib/marketcheck/secrets';
 
 /**
  * GET /api/inventory/health
@@ -58,7 +59,6 @@ export async function GET(request: NextRequest) {
   // Check 2: MCP URL configured (has default so always ok)
   checks.mcp_url_configured = {
     ok: true,
-    ...(process.env.MARKETCHECK_MCP_URL && { note: process.env.MARKETCHECK_MCP_URL } as Record<string, unknown>),
   };
 
   // Check 3: Live MCP connectivity — use free get_server_info tool
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       mcpOk = true;
       mcpError = 'rate_limited (but MCP connection is alive)';
     } else {
-      mcpError = err instanceof Error ? err.message : String(err);
+      mcpError = redactSecrets(err instanceof Error ? err.message : String(err));
     }
   }
 

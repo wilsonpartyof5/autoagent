@@ -14,6 +14,7 @@ import {
   type CanonicalFilters,
 } from '@/lib/query/resolve-canonical-filters';
 
+import { marketCheckSubject, withMarketCheckContext } from '@/lib/marketcheck/context';
 import {
   searchActiveCarsMcp,
   MarketCheckQuotaError,
@@ -21,6 +22,7 @@ import {
   type LiveVehicle,
   type LiveSearchFilters,
 } from '@/lib/marketcheck/mcp-adapter';
+import { payloadContainsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
 import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
@@ -406,14 +408,20 @@ export async function POST(request: NextRequest) {
 
   let searchResult: Awaited<ReturnType<typeof searchActiveCarsMcp>>;
   try {
-    searchResult = await searchActiveCarsMcp({
-      latitude: center.latitude,
-      longitude: center.longitude,
-      radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
-      filters: searchFilters,
-      rows: 25,
-      start: 0,
-    });
+    searchResult = await withMarketCheckContext(
+      {
+        origin: request.nextUrl.origin,
+        subject: marketCheckSubject(undefined, request.headers.get('x-drevvy-subject')),
+      },
+      () => searchActiveCarsMcp({
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
+        filters: searchFilters,
+        rows: 25,
+        start: 0,
+      }),
+    );
   } catch (error) {
     if (error instanceof MarketCheckQuotaError) {
       console.error(JSON.stringify({
@@ -439,7 +447,10 @@ export async function POST(request: NextRequest) {
       if (error.retryAfter) res.headers.set('Retry-After', String(error.retryAfter));
       return res;
     }
-    console.error('[chat-search] MCP search error:', error);
+    console.error(JSON.stringify({
+      event: 'chat_search_mcp_error',
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
     return NextResponse.json(
       { success: false, error: { code: 'SEARCH_ERROR', message: 'Failed to search inventory. Please try again.' } },
       { status: 500 },
@@ -525,5 +536,13 @@ export async function POST(request: NextRequest) {
     canonicalFilters,
   };
 
-  return NextResponse.json(redactShopperDealerIdentity({ success: true, data: responseData }));
+  const payload = redactShopperDealerIdentity({ success: true, data: responseData });
+  if (payloadContainsSecret(payload)) {
+    console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'chat_search' }));
+    return NextResponse.json(
+      { success: false, error: { code: 'SEARCH_ERROR', message: 'Failed to search inventory. Please try again.' } },
+      { status: 500 },
+    );
+  }
+  return NextResponse.json(payload);
 }

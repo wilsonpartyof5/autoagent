@@ -14,6 +14,8 @@
  * identical shape regardless of whether data came from REST or MCP.
  */
 
+import { toClientPhotoUrl } from './photos';
+import { redactSecrets } from './secrets';
 import {
   callMcpTool,
   McpQuotaError,
@@ -263,29 +265,25 @@ export interface DetailResponse {
   };
   enrichedAt: string;
   partial: boolean;
+  /** Sections whose MarketCheck calls ran for this response. */
+  loadedSections?: DetailSection[];
 }
 
-// --------------------------------------------------------------------------
-// In-memory caches
-// --------------------------------------------------------------------------
+export type DetailSection = 'listing' | 'vin' | 'history';
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
+const DETAIL_SECTIONS = new Set<DetailSection>(['listing', 'vin', 'history']);
 
-const searchCache = new Map<string, CacheEntry<LiveSearchResult>>();
-const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
-
-const detailCache = new Map<string, CacheEntry<DetailResponse>>();
-const DETAIL_CACHE_TTL_MS = 10 * 60 * 1000;
-
-function maybeEvict<T>(cache: Map<string, CacheEntry<T>>): void {
-  if (Math.random() > 0.05) return;
-  const now = Date.now();
-  for (const [k, v] of cache.entries()) {
-    if (now > v.expiresAt) cache.delete(k);
+/** Missing or blank means the listing shell only. VIN decode and history stay unloaded. */
+export function parseDetailSections(raw: string | null | undefined): DetailSection[] | null {
+  if (!raw || !raw.trim()) return ['listing'];
+  const parts = raw.split(',').map((part) => part.trim().toLowerCase()).filter(Boolean);
+  const out: DetailSection[] = [];
+  for (const part of parts) {
+    if (!DETAIL_SECTIONS.has(part as DetailSection)) return null;
+    const section = part as DetailSection;
+    if (!out.includes(section)) out.push(section);
   }
+  return out.length > 0 ? out : ['listing'];
 }
 
 // --------------------------------------------------------------------------
@@ -299,17 +297,12 @@ function normalizeCondition(listing: MCListing): 'new' | 'used' | 'certified' {
 }
 
 /**
- * Append the MarketCheck API key to MarketCheck-hosted CDN URLs only.
- * Third-party dealer CDN URLs (e.g. dealercenter.net, overfuel.com) don't
- * require authentication and should be passed through unchanged.
+ * Client photo URL. Dealer CDNs and the public MarketCheck image CDN are
+ * returned with any API key removed. Hosts that require the key are rewritten
+ * to the photo proxy, which adds the credential server-side.
  */
-function withApiKey(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  if (!url.includes('api.marketcheck.com')) return url;
-  const apiKey = process.env.MARKETCHECK_API_KEY;
-  if (!apiKey) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}api_key=${apiKey}`;
+function clientPhoto(url: string | undefined): string | undefined {
+  return toClientPhotoUrl(url);
 }
 
 function normalizeListing(listing: MCListing): LiveVehicle | null {
@@ -341,9 +334,9 @@ function normalizeListing(listing: MCListing): LiveVehicle | null {
     msrp: listing.msrp,
     miles: typeof miles === 'number' ? Math.max(miles, 0) : undefined,
     bodyType: listing.build?.body_type,
-    thumbnailUrl: withApiKey(thumbnailPhoto),
-    primaryPhotoUrl: withApiKey(galleryPhotos[0] ?? thumbnailPhoto),
-    photoUrls: galleryPhotos.length > 0 ? galleryPhotos.map(withApiKey).filter((u): u is string => !!u) : undefined,
+    thumbnailUrl: clientPhoto(thumbnailPhoto),
+    primaryPhotoUrl: clientPhoto(galleryPhotos[0] ?? thumbnailPhoto),
+    photoUrls: galleryPhotos.length > 0 ? galleryPhotos.map(clientPhoto).filter((u): u is string => !!u) : undefined,
     location: {
       latitude: lat,
       longitude: lng,
@@ -358,27 +351,6 @@ function normalizeListing(listing: MCListing): LiveVehicle | null {
 // canonical values. No client-side filtering needed.
 function applyClientFilters(vehicles: LiveVehicle[]): LiveVehicle[] {
   return vehicles;
-}
-
-function buildSearchCacheKey(params: LiveSearchParams): string {
-  const f = params.filters ?? {};
-  return [
-    params.latitude.toFixed(4),
-    params.longitude.toFixed(4),
-    params.radiusMiles,
-    params.rows ?? 25,
-    params.start ?? 0,
-    f.make ?? '',
-    f.model ?? '',
-    f.year ?? '',
-    f.minYear ?? '',
-    f.maxYear ?? '',
-    f.minPrice ?? '',
-    f.maxPrice ?? '',
-    f.maxMiles ?? '',
-    f.condition ?? '',
-    f.bodyType ?? '',
-  ].join('|');
 }
 
 // --------------------------------------------------------------------------
@@ -437,13 +409,6 @@ function buildSearchArgs(params: LiveSearchParams, rows: number, start: number):
 }
 
 async function searchOnePage(params: LiveSearchParams, rows: number, start: number): Promise<LiveSearchResult> {
-  maybeEvict(searchCache);
-  const cacheKey = buildSearchCacheKey({ ...params, rows, start });
-  const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
-    return { ...cached.data, fromCache: true, latencyMs: 0 };
-  }
-
   const t0 = Date.now();
   const raw = await callMcpTool<MCSearchResponse>('search_active_cars', buildSearchArgs(params, rows, start));
   const latencyMs = Date.now() - t0;
@@ -472,9 +437,7 @@ async function searchOnePage(params: LiveSearchParams, rows: number, start: numb
     latencyMs,
   }));
 
-  const result: LiveSearchResult = { vehicles, numFound, returned: listings.length, start, rows, fromCache: false, latencyMs };
-  searchCache.set(cacheKey, { data: result, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
-  return result;
+  return { vehicles, numFound, returned: listings.length, start, rows, fromCache: false, latencyMs };
 }
 
 /**
@@ -503,10 +466,8 @@ export function boundsToRadiusMiles(bounds: { north: number; south: number; east
 
 // --------------------------------------------------------------------------
 // Public: getVehicleDetailMcp
-// Assembles a full DetailResponse by calling:
-//   1. search_active_cars (by VIN) for current listing/photos
-//   2. decode_vin_neovin  for build specs, features, options
-//   3. get_car_history    for DOM and price changes
+// The listing shell is search_active_cars. decode_vin_neovin and
+// get_car_history run only when `sections` includes `vin` or `history`.
 // --------------------------------------------------------------------------
 
 function normalizeOptions(
@@ -529,14 +490,19 @@ function normalizeDealerWebsite(raw?: string): string | undefined {
   }
 }
 
-export async function getVehicleDetailMcp(listingId: string, vin?: string): Promise<DetailResponse | null> {
-  maybeEvict(detailCache);
-  const cacheKey = listingId;
-  const cached = detailCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.data;
-  }
+function safeError(error: unknown): string {
+  return redactSecrets(error instanceof Error ? error.message : String(error));
+}
 
+export async function getVehicleDetailMcp(
+  listingId: string,
+  vin?: string,
+  sections?: readonly DetailSection[],
+): Promise<DetailResponse | null> {
+  const wanted = new Set<DetailSection>(sections && sections.length > 0 ? sections : ['listing']);
+  const wantListing = wanted.has('listing');
+  const wantVin = wanted.has('vin');
+  const wantHistory = wanted.has('history');
   const t0 = Date.now();
 
   // Three parallel MCP calls:
@@ -556,22 +522,34 @@ export async function getVehicleDetailMcp(listingId: string, vin?: string): Prom
     searchArgs.listing_id = listingId;
   }
 
-  // Run all three calls; allow individual failures to return null without
-  // aborting the others.
-  const [searchRes, vinEnvelope, historyRaw] = await Promise.all([
-    callMcpTool<MCSearchResponse>('search_active_cars', searchArgs).catch((e) => {
-      console.error(JSON.stringify({ event: 'mc_detail_search_threw', error: String(e) }));
-      return null;
-    }),
-    vin ? callMcpTool<MCVinDecodeEnvelope>('decode_vin_neovin', { vin }).catch((e) => {
-      console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: String(e) }));
+  // Listing is the VDP shell. VIN decode and history run only when that
+  // section was requested, so opening the page does not pay for them.
+  const needListing = wantListing || (wantVin && !vin);
+  const [searchRes, vinEnvelopeFirst, historyRaw] = await Promise.all([
+    needListing ? callMcpTool<MCSearchResponse>('search_active_cars', searchArgs).catch((e) => {
+      console.error(JSON.stringify({ event: 'mc_detail_search_threw', error: safeError(e) }));
       return null;
     }) : Promise.resolve(null),
-    callMcpTool<MCCarHistoryEntry[]>('get_car_history', vin ? { vin } : { listing_id: listingId }).catch((e) => {
-      console.error(JSON.stringify({ event: 'mc_detail_history_threw', error: String(e) }));
+    wantVin && vin ? callMcpTool<MCVinDecodeEnvelope>('decode_vin_neovin', { vin }).catch((e) => {
+      console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
       return null;
-    }),
+    }) : Promise.resolve(null),
+    wantHistory ? callMcpTool<MCCarHistoryEntry[]>('get_car_history', vin ? { vin } : { listing_id: listingId }).catch((e) => {
+      console.error(JSON.stringify({ event: 'mc_detail_history_threw', error: safeError(e) }));
+      return null;
+    }) : Promise.resolve(null),
   ]);
+
+  let vinEnvelope = vinEnvelopeFirst;
+  if (wantVin && !vin) {
+    const discovered = searchRes?.data?.listings?.[0]?.vin;
+    if (discovered) {
+      vinEnvelope = await callMcpTool<MCVinDecodeEnvelope>('decode_vin_neovin', { vin: discovered }).catch((e) => {
+        console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
+        return null;
+      });
+    }
+  }
 
   // MCP wraps the REST response in a `data` envelope for both search and VIN decode
   const listing: MCListing | null = searchRes?.data?.listings?.[0] ?? null;
@@ -598,7 +576,7 @@ export async function getVehicleDetailMcp(listingId: string, vin?: string): Prom
   const allPhotos = primaryPhoto && !galleryPhotos.includes(primaryPhoto)
     ? [primaryPhoto, ...galleryPhotos]
     : [...galleryPhotos];
-  const allPhotosWithKey = allPhotos.map(withApiKey).filter((u): u is string => !!u);
+  const allPhotosWithKey = allPhotos.map(clientPhoto).filter((u): u is string => !!u);
 
   // Build features list — combine VIN decode + listing build info
   const buildFeatures: string[] = [];
@@ -689,7 +667,12 @@ export async function getVehicleDetailMcp(listingId: string, vin?: string): Prom
       dealerHours: dealerSource?.hours,
     },
     enrichedAt: new Date().toISOString(),
-    partial: !(listing && (vinData || allFeatures.length > 0)),
+    partial: (needListing && !listing) || (wantVin && !vinData) || (wantHistory && historyList.length === 0),
+    loadedSections: [
+      ...(needListing && listing ? ['listing' as const] : []),
+      ...(wantVin && vinData ? ['vin' as const] : []),
+      ...(wantHistory && historyList.length > 0 ? ['history' as const] : []),
+    ],
   };
 
   console.log(JSON.stringify({
@@ -702,8 +685,8 @@ export async function getVehicleDetailMcp(listingId: string, vin?: string): Prom
     photoCount: allPhotos.length,
     featureCount: allFeatures.length,
     latencyMs,
+    sections: [...wanted],
   }));
 
-  detailCache.set(cacheKey, { data: response, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
   return response;
 }
