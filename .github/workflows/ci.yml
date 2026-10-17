@@ -37,7 +37,7 @@ jobs:
         run: pnpm --filter @drevvy/backend typecheck
 
       - name: Test shopper APIs
-        run: pnpm --filter @drevvy/backend test:shopper && pnpm --filter @drevvy/backend test:shopper-deals && pnpm --filter @drevvy/backend test:admin && pnpm --filter @drevvy/backend test:get && pnpm --filter @drevvy/backend test:sms
+        run: pnpm --filter @drevvy/backend test:shopper && pnpm --filter @drevvy/backend test:shopper-deals && pnpm --filter @drevvy/backend test:admin && pnpm --filter @drevvy/backend test:get && pnpm --filter @drevvy/backend test:sms && pnpm --filter @drevvy/backend test:marketcheck
 
       - name: Build backend
         run: pnpm --filter @drevvy/backend build

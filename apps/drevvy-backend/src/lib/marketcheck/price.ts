@@ -1,10 +1,33 @@
 import { loadMarketCheck, marketCheckPriceCacheKey, zipArea } from './cache-policy';
 import { callMcpTool } from './mcp-client';
+import { redactSecrets } from './secrets';
 
 /**
  * MarketCheck Price (fair price). Cached for 24 hours under VIN + ZIP area
  * + miles. Search, listing detail, VIN decode, and history are not cached.
+ *
+ * A shopper call is allowed only when they tap Unlock with agent or open a
+ * deal. Browsing a listing does not load it. New cars are not priced.
  */
+
+export const FAIR_PRICE_TRIGGERS = ['unlock_with_agent', 'open_deal'] as const;
+export type FairPriceTrigger = (typeof FAIR_PRICE_TRIGGERS)[number];
+
+export type FairPriceQuote = {
+  price: number;
+  fromCache: boolean;
+};
+
+export type FairPriceVehicle = {
+  vin?: string;
+  miles?: number;
+  zip?: string;
+  condition?: 'new' | 'used' | 'certified';
+};
+
+export function fairPriceTriggerAllowed(trigger: string): trigger is FairPriceTrigger {
+  return (FAIR_PRICE_TRIGGERS as readonly string[]).includes(trigger);
+}
 
 const VIN = /^[A-HJ-NPR-Z0-9]{17}$/;
 
@@ -36,6 +59,36 @@ export async function getMarketCheckPrice(
   );
   if (!value) return null;
   return { ...value, fromCache };
+}
+
+/**
+ * Shopper fair price. Returns null without a MarketCheck call unless the
+ * trigger is Unlock with agent or opening a deal, and the car is used or CPO
+ * with a VIN, miles, and ZIP.
+ */
+export async function loadFairPriceIfAllowed(
+  trigger: string,
+  vehicle: FairPriceVehicle,
+): Promise<FairPriceQuote | null> {
+  if (!fairPriceTriggerAllowed(trigger)) return null;
+  if (vehicle.condition === 'new') return null;
+  if (!vehicle.vin || vehicle.miles == null || !vehicle.zip) return null;
+  try {
+    const quote = await getMarketCheckPrice({
+      vin: vehicle.vin,
+      miles: vehicle.miles,
+      zip: vehicle.zip,
+    });
+    if (!quote) return null;
+    return { price: quote.price, fromCache: quote.fromCache };
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'marketcheck_price_failed',
+      trigger,
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return null;
+  }
 }
 
 async function fetchMarketCheckPrice(

@@ -7,7 +7,7 @@
  *
  * Tool mapping:
  *   search    → search_active_cars
- *   vin info  → decode_vin_neovin
+ *   vin info  → Basic VIN decoder (GET /v2/decode/car/{vin}/specs)
  *   history   → get_car_history
  *
  * The normalization logic mirrors live-search.ts so existing callers see an
@@ -21,6 +21,7 @@ import {
   McpQuotaError,
   McpRateLimitError,
 } from './mcp-client';
+import { decodeVinBasic, type BasicVinSpecs } from './vin-decode';
 
 export { McpQuotaError as MarketCheckQuotaError, McpRateLimitError as MarketCheckRateLimitError };
 
@@ -100,34 +101,6 @@ interface MCSearchResponse {
     start?: string | number;
     rows?: string | number;
   };
-}
-
-interface MCVinDecodeResult {
-  vin?: string;
-  year?: number;
-  make?: string;
-  model?: string;
-  trim?: string;
-  msrp?: number;
-  body_type?: string;
-  drivetrain?: string;
-  drive_train?: string;
-  fuel_type?: string;
-  transmission?: string;
-  engine?: string;
-  city_mpg?: number;
-  highway_mpg?: number;
-  seating_capacity?: number;
-  powertrain_type?: string;
-  features?: string[];
-  high_value_features?: string[];
-  options?: Array<{ name?: string; code?: string; description?: string } | string>;
-}
-
-interface MCVinDecodeEnvelope {
-  success?: boolean;
-  service?: string;
-  data?: MCVinDecodeResult;
 }
 
 interface MCCarHistoryEntry {
@@ -466,8 +439,9 @@ export function boundsToRadiusMiles(bounds: { north: number; south: number; east
 
 // --------------------------------------------------------------------------
 // Public: getVehicleDetailMcp
-// The listing shell is search_active_cars. decode_vin_neovin and
+// The listing shell is search_active_cars. The Basic VIN decoder and
 // get_car_history run only when `sections` includes `vin` or `history`.
+// MarketCheck Price is not loaded here.
 // --------------------------------------------------------------------------
 
 function normalizeOptions(
@@ -505,10 +479,9 @@ export async function getVehicleDetailMcp(
   const wantHistory = wanted.has('history');
   const t0 = Date.now();
 
-  // Three parallel MCP calls:
   // (a) search by listing ID / VIN to get current price, photos, dealer
-  // (b) VIN decode for build specs (only if VIN available)
-  // (c) car history for DOM and price changes
+  // (b) Basic VIN decode for specs-card fields (only when that section is open)
+  // (c) car history for DOM and price changes (only when that section is open)
   const searchArgs: Record<string, unknown> = {
     rows: 1,
     start: 0,
@@ -525,12 +498,12 @@ export async function getVehicleDetailMcp(
   // Listing is the VDP shell. VIN decode and history run only when that
   // section was requested, so opening the page does not pay for them.
   const needListing = wantListing || (wantVin && !vin);
-  const [searchRes, vinEnvelopeFirst, historyRaw] = await Promise.all([
+  const [searchRes, vinSpecsFirst, historyRaw] = await Promise.all([
     needListing ? callMcpTool<MCSearchResponse>('search_active_cars', searchArgs).catch((e) => {
       console.error(JSON.stringify({ event: 'mc_detail_search_threw', error: safeError(e) }));
       return null;
     }) : Promise.resolve(null),
-    wantVin && vin ? callMcpTool<MCVinDecodeEnvelope>('decode_vin_neovin', { vin }).catch((e) => {
+    wantVin && vin ? decodeVinBasic(vin).catch((e) => {
       console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
       return null;
     }) : Promise.resolve(null),
@@ -540,20 +513,19 @@ export async function getVehicleDetailMcp(
     }) : Promise.resolve(null),
   ]);
 
-  let vinEnvelope = vinEnvelopeFirst;
+  let vinData: BasicVinSpecs | null = vinSpecsFirst;
   if (wantVin && !vin) {
     const discovered = searchRes?.data?.listings?.[0]?.vin;
     if (discovered) {
-      vinEnvelope = await callMcpTool<MCVinDecodeEnvelope>('decode_vin_neovin', { vin: discovered }).catch((e) => {
+      vinData = await decodeVinBasic(discovered).catch((e) => {
         console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
         return null;
       });
     }
   }
 
-  // MCP wraps the REST response in a `data` envelope for both search and VIN decode
+  // MCP wraps the search response in a `data` envelope. Basic decode is already mapped.
   const listing: MCListing | null = searchRes?.data?.listings?.[0] ?? null;
-  const vinData: MCVinDecodeResult | null = vinEnvelope?.data ?? null;
   // get_car_history returns a plain array (no wrapper)
   const historyList: MCCarHistoryEntry[] = Array.isArray(historyRaw) ? historyRaw : [];
 
@@ -586,11 +558,10 @@ export async function getVehicleDetailMcp(
   }
   // Guard against API returning features as object instead of array (causes spread TypeError)
   const safeArr = (v: unknown): string[] => Array.isArray(v) ? v as string[] : [];
-  const vinFeatures = [...safeArr(vinData?.features), ...safeArr(vinData?.high_value_features)];
   const listingFeatures = safeArr(listing?.features);
-  const allFeatures = [...new Set([...buildFeatures, ...vinFeatures, ...listingFeatures])];
+  const allFeatures = [...new Set([...buildFeatures, ...listingFeatures])];
 
-  const rawOptions = Array.isArray(listing?.options) ? listing!.options : (Array.isArray(vinData?.options) ? vinData!.options : undefined);
+  const rawOptions = Array.isArray(listing?.options) ? listing!.options : undefined;
   const options = normalizeOptions(rawOptions);
 
   // Condition
@@ -603,11 +574,11 @@ export async function getVehicleDetailMcp(
   const make = listing?.build?.make ?? vinData?.make ?? 'Unknown';
   const model = listing?.build?.model ?? vinData?.model ?? 'Vehicle';
   const trim = listing?.build?.trim ?? vinData?.trim;
-  const bodyType = listing?.build?.body_type ?? vinData?.body_type;
-  const drivetrain = listing?.build?.drivetrain ?? listing?.build?.drive_train ?? vinData?.drivetrain ?? vinData?.drive_train;
-  const fuelType = listing?.build?.fuel_type ?? vinData?.fuel_type;
+  const bodyType = listing?.build?.body_type ?? vinData?.bodyType;
+  const drivetrain = listing?.build?.drivetrain ?? listing?.build?.drive_train ?? vinData?.drivetrain;
+  const fuelType = listing?.build?.fuel_type ?? vinData?.fuelType;
   const transmission = listing?.build?.transmission ?? vinData?.transmission;
-  const msrp = listing?.msrp ?? vinData?.msrp;
+  const msrp = listing?.msrp;
   const miles = listing?.miles ?? listing?.mileage;
   // history entries have `first_seen_at` (Unix seconds) — compute DOM if listing doesn't have it
   const domFromHistory = historyList.length > 0
@@ -642,10 +613,10 @@ export async function getVehicleDetailMcp(
     fuelType,
     transmission,
     engine: vinData?.engine,
-    cityMpg: vinData?.city_mpg,
-    highwayMpg: vinData?.highway_mpg,
-    seatingCapacity: vinData?.seating_capacity,
-    powertrainType: vinData?.powertrain_type,
+    cityMpg: vinData?.cityMpg,
+    highwayMpg: vinData?.highwayMpg,
+    seatingCapacity: vinData?.seatingCapacity,
+    powertrainType: vinData?.powertrainType,
     sellerComments: listing?.seller_comments,
     description: listing?.description,
     features: allFeatures.length > 0 ? allFeatures : undefined,
