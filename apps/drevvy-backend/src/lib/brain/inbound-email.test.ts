@@ -28,6 +28,10 @@ test('the offers runbook names the Telnyx domain, DNS records, and email.receive
   assert.match(doc, /"events": \["email\.received"\]/);
   assert.equal(emailInboxUsername(ALIAS), 'maya.ab12');
   assert.equal(emailInboxUsername('Maya <maya.ab12@offers.drevvy.com>'), 'maya.ab12');
+  assert.equal(emailInboxUsername('maya.ab12@deals.drevvy.com'), 'maya.ab12');
+  assert.equal(emailInboxUsername('maya.ab12@quotes.drevvy.com'), 'maya.ab12');
+  assert.equal(emailInboxUsername('maya.ab12@buyers.drevvy.com'), 'maya.ab12');
+  assert.equal(emailInboxUsername('maya.ab12@drevvy.com'), null);
   assert.equal(emailInboxUsername('desk@dealer.example'), null);
 });
 

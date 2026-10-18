@@ -205,12 +205,14 @@ export function pickAliasDomain(input: {
   return tied[stableIndex(input.dealerId, tied.length)] ?? domains[0];
 }
 
-/** Local part Telnyx accepts on POST /v2/email_inboxes for an offers.drevvy.com alias. */
+/** Local part Telnyx accepts on POST /v2/email_inboxes for a sending-domain alias. */
 export function emailInboxUsername(alias: string): string | null {
   const email = normalizeEmailAddress(alias);
-  const suffix = `@${ALIAS_DOMAIN}`;
-  if (!email?.endsWith(suffix)) return null;
-  const local = email.slice(0, -suffix.length);
+  if (!email) return null;
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return null;
+  const local = email.slice(0, at);
+  if (!normalizeAliasDomain(email.slice(at + 1))) return null;
   if (local.length < 1 || local.length > 64) return null;
   if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(local)) return null;
   return local;
