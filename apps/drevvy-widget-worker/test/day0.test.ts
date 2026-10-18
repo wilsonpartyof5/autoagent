@@ -261,6 +261,31 @@ describe('day-0 channel selection', () => {
     const scan = store.attempts.find((attempt) => attempt.status === 'composer_not_found');
     assert.equal(scan?.selected_channels, 'lead_form');
     assert.match(scan?.channel_reason ?? '', /composer_not_found/);
-    assert.equal(run?.lead?.stopReason, 'no_lead_form');
+    assert.equal(run?.lead?.stopReason, 'unsupported_vendor');
+  });
+
+  it('skips the widget channel when the dealer is call/email only', async () => {
+    const pages: FakeChatPage[] = [];
+    const directory = new MemoryDirectoryStore();
+    await directory.markCallEmailOnly('https://www.example-motors.test');
+    const [run] = await runDay0({
+      targets: [{ url: pageUrl, stockNumber: null }],
+      openPage: async () => {
+        const page = new FakeChatPage(readFixture('gubagoo-ready-phone.html'), { replies: ['This unit has been sold.'] });
+        pages.push(page);
+        return { page, close: () => page.close() };
+      },
+      ai: quietAi,
+      attempts: new MemoryAttemptStore(),
+      directory,
+      config,
+    });
+
+    assert.deepEqual(run?.plan.channels, ['lead_form']);
+    assert.match(run?.plan.reason ?? '', /widget channel is skipped/i);
+    assert.equal(run?.chat, null);
+    assert.equal(pages.length, 2);
+    assert.equal(pages.every((page) => page.sent.length === 0), true);
+    assert.equal((await directory.findBySiteUrl('https://www.example-motors.test'))?.call_email_only, true);
   });
 });

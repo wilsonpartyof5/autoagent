@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { dealerAskedForShopperContact, dealerAskedIfBot, sharesDisallowedContact } from '../src/widgets/guards';
@@ -71,5 +73,14 @@ describe('chat script', () => {
     assert.equal(sharesDisallowedContact(script.continue_offline, allowed), false);
     assert.equal(sharesDisallowedContact('Reach the shopper at 212-555-0199.', allowed), true);
     assert.equal(sharesDisallowedContact('Email maya.shopper@example.test', allowed), true);
+  });
+
+  it('keeps the honesty answer and does not say negotiate', () => {
+    assert.equal(script.bot_disclosure, "I'm Drevvy's AI, working for Maya.");
+    const sources = ['widgets/script.ts', 'chat/agent.ts', 'forms/outreach.ts'].map((file) =>
+      readFileSync(path.join(__dirname, '../src', file), 'utf8'),
+    );
+    for (const source of sources) assert.equal(/negotiat/i.test(source), false);
+    assert.match(sources[0] ?? '', /I'm Drevvy's AI, working for/);
   });
 });

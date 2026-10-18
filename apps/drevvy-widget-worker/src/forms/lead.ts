@@ -1,14 +1,18 @@
 import { isAllowlisted } from '../config';
 import type { AttemptResult, AttemptStatus, AttemptStore, ChannelSelection, ChatPage, TranscriptEntry } from '../chat/types';
 import { selectionColumns } from '../chat/types';
+import type { DirectoryStore } from '../directory/types';
 import { siteUrlFromVehiclePage } from '../research/urls';
-import { detectWidgetVendor } from '../widgets/detect';
 import { hasCaptchaChallenge } from '../widgets/guards';
+import { isTimeoutError } from '../widgets/timeout';
 import { extractStockNumber } from '../widgets/script';
 import { applyPlan } from './apply';
-import { detectLeadForms, type ParsedForm } from './detect';
+import type { ParsedForm } from './detect';
+import { locateLeadForm } from './open';
 import { blockWallSignature, outreachIdentity, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
+import { isNoFormStop, shouldMarkCallEmailOnly, NO_FORM_STOPS } from './stops';
+import { isHoneypotField, type VendorFormPattern } from './vendor-patterns';
 
 export async function runLeadForm(input: {
   vehiclePageUrl: string;
@@ -16,9 +20,11 @@ export async function runLeadForm(input: {
   page: ChatPage;
   config: OutreachRunConfig;
   store: AttemptStore;
+  directory?: DirectoryStore | null;
   now?: () => Date;
   log?: (line: string) => void;
   selection?: ChannelSelection;
+  saveScreenshot?: (bytes: Buffer) => Promise<string | null>;
 }): Promise<AttemptResult> {
   const now = input.now ?? (() => new Date());
   const log = input.log ?? (() => undefined);
@@ -30,8 +36,17 @@ export async function runLeadForm(input: {
   let vendor: string | null = null;
   let stock = input.stockNumber?.trim() || null;
   let site: string | null = null;
+  let opened = false;
+  let screenshotUrl: string | null = null;
 
   const finish = async (): Promise<AttemptResult> => {
+    if (opened && input.saveScreenshot && screenshotUrl == null) {
+      try {
+        screenshotUrl = await input.saveScreenshot(await input.page.screenshot());
+      } catch {
+        screenshotUrl = null;
+      }
+    }
     const firstReply = site ? await input.store.currentFirstReply(input.vehiclePageUrl).catch(() => null) : null;
     const result: AttemptResult = {
       id: null,
@@ -63,9 +78,11 @@ export async function runLeadForm(input: {
         finished_at: now().toISOString(),
         channel: 'lead_form',
         first_reply_channel: firstReply,
+        screenshot_url: screenshotUrl,
         ...selectionColumns(input.selection),
       });
       result.id = saved.id;
+      if (site && isNoFormStop(stopReason)) await rememberNoForm(input.directory, input.store, site, log);
     } catch (storeError) {
       result.error = result.error ?? (storeError instanceof Error ? storeError.message : 'Could not save the attempt.');
       result.status = 'error';
@@ -112,17 +129,18 @@ export async function runLeadForm(input: {
 
   try {
     await input.page.goto(input.vehiclePageUrl);
+    opened = true;
   } catch (gotoError) {
-    status = 'error';
-    stopReason = 'navigation_failed';
+    const timedOut = isTimeoutError(gotoError);
+    status = timedOut ? 'page_timeout' : 'error';
+    stopReason = timedOut ? 'timeout' : 'navigation_failed';
     error = gotoError instanceof Error ? gotoError.message : 'Could not open the vehicle page.';
     return finish();
   }
 
-  await input.page.settle();
-  await input.page.dismissOverlays();
-  const html = await input.page.content();
-  vendor = detectWidgetVendor(html);
+  const located = await locateLeadForm(input.page);
+  const html = located.html;
+  vendor = located.vendor;
   if (!stock) stock = extractStockNumber(html);
 
   const wall = blockWallSignature(html, input.page.httpStatus());
@@ -134,20 +152,24 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  let forms = await readLeadForms(input.page);
-  if (forms.length === 0 && (await input.page.clickLeadOpener())) {
-    forms = await readLeadForms(input.page);
-  }
-  const form = forms[0];
-  if (!form) {
-    status = 'unknown';
-    stopReason = 'no_lead_form';
-    note('No vehicle lead form found.');
-    log(`[lead] ${input.vehiclePageUrl} no lead form`);
+  if (located.stop) {
+    status = located.stop === 'captcha' ? 'captcha' : located.stop === 'timeout' ? 'page_timeout' : 'unknown';
+    stopReason = located.stop;
+    note(located.note ?? located.stop);
+    log(`[lead] ${input.vehiclePageUrl} ${located.stop}`);
     return finish();
   }
 
-  if (hasCaptchaChallenge(html)) {
+  const form = located.form;
+  if (!form) {
+    status = 'unknown';
+    stopReason = 'form_not_found';
+    note('No vehicle lead form found after the page settled.');
+    log(`[lead] ${input.vehiclePageUrl} form_not_found`);
+    return finish();
+  }
+
+  if (hasCaptchaChallenge(form.html) || hasCaptchaChallenge(html)) {
     status = 'captcha';
     stopReason = 'captcha';
     note('Stopped: captcha.');
@@ -157,7 +179,13 @@ export async function runLeadForm(input: {
 
   const identity = outreachIdentity(input.config);
   const mode = input.config.contactMode ?? 'full';
-  const plan = planForm(form, identity, stock, 'lead_form', mode);
+  const pattern = located.pattern;
+  const plannedForm: ParsedForm = {
+    ...form,
+    buttonText: submitLabel(form, pattern),
+    fields: form.fields.filter((field) => !isHoneypotField(pattern, field)),
+  };
+  const plan = planForm(plannedForm, identity, stock, 'lead_form', mode);
   recordPlan(transcript, plan, now);
   log(`[lead] ${input.vehiclePageUrl} ${describePlan(plan)}`);
 
@@ -197,9 +225,26 @@ export async function runLeadForm(input: {
   return finish();
 }
 
-async function readLeadForms(page: ChatPage): Promise<ParsedForm[]> {
-  const [html, frames, shadow] = await Promise.all([page.content(), page.frames(), page.shadowHtml()]);
-  return detectLeadForms([html, ...frames.map((frame) => frame.html), shadow].join('\n'));
+function submitLabel(form: ParsedForm, pattern: VendorFormPattern | null): string | null {
+  if (pattern && form.html.toLowerCase().includes(pattern.submitButtonText.toLowerCase())) return pattern.submitButtonText;
+  return form.buttonText;
+}
+
+async function rememberNoForm(
+  directory: DirectoryStore | null | undefined,
+  store: AttemptStore,
+  site: string,
+  log: (line: string) => void,
+): Promise<void> {
+  if (!directory) return;
+  try {
+    const count = await store.countStopReasons(site, NO_FORM_STOPS);
+    if (!shouldMarkCallEmailOnly(count)) return;
+    await directory.markCallEmailOnly(site);
+    log(`[lead] ${site} call/email only after ${count} no-form failures`);
+  } catch (error) {
+    log(`[lead] ${site} could not record call/email only: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function recordPlan(transcript: TranscriptEntry[], plan: FormPlan, now: () => Date): void {

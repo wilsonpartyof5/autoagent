@@ -6,7 +6,8 @@ import type { ConversationContact } from '../forms/identity';
 import type { DirectoryStore } from '../directory/types';
 import { runLeadForm } from '../forms/lead';
 import { runScan, type ScanResult } from '../scan/run';
-import { selectDay0Channels, selectionRecord, type Day0Plan } from './channels';
+import { applyCallEmailOnly, selectDay0Channels, selectionRecord, type Day0Plan } from './channels';
+import { siteUrlFromVehiclePage } from '../research/urls';
 
 export type Day0Target = { url: string; stockNumber: string | null };
 
@@ -29,6 +30,7 @@ export async function runDay0(input: {
   config: AppConfig;
   contact?: ConversationContact | null;
   log?: (line: string) => void;
+  saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
 }): Promise<Day0Run[]> {
   const log = input.log ?? (() => undefined);
   const settings = chatSettings(input.config, input.contact ?? null);
@@ -54,6 +56,7 @@ async function runOne(
     attempts: AttemptStore;
     directory: DirectoryStore;
     config: AppConfig;
+    saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
   },
   settings: ReturnType<typeof chatSettings>,
   log: (line: string) => void,
@@ -75,7 +78,8 @@ async function runOne(
     log(`[day0] ${target.url} scan failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const plan = selectDay0Channels(scan?.status ?? 'error');
+  let plan = selectDay0Channels(scan?.status ?? 'error');
+  plan = applyCallEmailOnly(plan, await callEmailOnly(target.url, input.directory, log));
   const selection = selectionRecord(plan);
   if (scan?.id) {
     try {
@@ -121,8 +125,12 @@ async function runOne(
           page,
           config: { ...settings, contactMode },
           store: input.attempts,
+          directory: input.directory,
           log,
           selection,
+          saveScreenshot: input.saveScreenshot
+            ? (bytes) => input.saveScreenshot?.(bytes, target.url) ?? Promise.resolve(null)
+            : undefined,
         }),
       );
     } catch (error) {
@@ -131,6 +139,17 @@ async function runOne(
   }
 
   return { url: target.url, plan, scan, lead, chat };
+}
+
+async function callEmailOnly(vehiclePageUrl: string, directory: DirectoryStore, log: (line: string) => void): Promise<boolean> {
+  try {
+    const site = siteUrlFromVehiclePage(vehiclePageUrl);
+    const dealer = await directory.findBySiteUrl(site);
+    return dealer?.call_email_only === true;
+  } catch (error) {
+    log(`[day0] ${vehiclePageUrl} could not read call/email only: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 }
 
 async function withPage<T>(openPage: () => Promise<OpenedPage>, work: (page: ChatPage) => Promise<T>): Promise<T> {

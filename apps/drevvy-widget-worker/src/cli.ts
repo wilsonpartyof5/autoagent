@@ -19,7 +19,8 @@ import { MemoryDirectoryStore } from './directory/memory-store';
 import { formatDirectoryReport, summarizeDirectory } from './directory/report';
 import { createSupabaseDirectoryStore } from './directory/supabase-store';
 import type { DirectoryStore } from './directory/types';
-import { formatResultsTable, parseUrlList, type ResultRow } from './cli/format';
+import { formatHealthSummary, formatResultsTable, parseUrlList, type ResultRow } from './cli/format';
+import { createScreenshotSaver } from './forms/screenshots';
 import { parseHintsFile } from './research/hints';
 import { createHttpFetcher, researchVehiclePage, type PageFetcher } from './research/job';
 import { siteUrlFromVehiclePage } from './research/urls';
@@ -67,7 +68,8 @@ it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 health always runs as a dry run. It logs the lead-form fields it would fill and
 writes widget_chat_attempts with dry_run true. It may click a vehicle-page
 control such as Check Availability or Ask a Question so a late form can render.
-It does not type, submit, or send.
+It prints vendor and stop-reason counts. It does not type, submit, or send.
+A dealer marked call/email only is skipped on the widget channel.
 With no URL it checks that the worker can start. URLs come from the argument,
 WIDGET_HEALTH_URLS, or WIDGET_HEALTH_URL_FILE.
 Lead, chat, and run assign a conversation identity for --deal and --dealer
@@ -98,6 +100,7 @@ export type CliDeps = {
   loadContact?: (dealId: string, dealerId: string) => Promise<ConversationContact | null>;
   ensureContact?: (dealId: string, dealerId: string) => Promise<EnsureContactResult>;
   env?: Record<string, string | undefined>;
+  saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
 };
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -176,6 +179,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
         config: deps.config,
         contact,
         log,
+        saveScreenshot: deps.saveScreenshot,
       });
       const dayRows: ResultRow[] = runs.map((run) => ({
         url: run.url,
@@ -207,7 +211,9 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             page: opened.page,
             config: settings,
             store: deps.attempts,
+            directory: deps.directory,
             log,
+            saveScreenshot: shotFor(deps, target.url),
           });
           rows.push({
             url: target.url,
@@ -216,6 +222,7 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
             price: result.price,
             dryRun: String(result.dryRun),
             channel: result.channel,
+            reason: result.stopReason ?? undefined,
           });
           if (result.error) log(`[lead] ${target.url} ${result.error}`);
         } finally {
@@ -229,6 +236,19 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
       const settings = outreach;
       const rows: ResultRow[] = [];
       for (const target of targets) {
+        if (await dealerSkipsWidget(target.url, deps)) {
+          log(`[chat] ${target.url} call/email only. Widget channel skipped.`);
+          rows.push({
+            url: target.url,
+            vendor: '-',
+            status: 'skipped',
+            price: null,
+            dryRun: String(deps.config.dryRun),
+            channel: 'widget',
+            reason: 'call_email_only',
+          });
+          continue;
+        }
         const opened = await deps.openPage();
         try {
           const result = await runWidgetChat({
@@ -297,6 +317,10 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
       const launched = await launchChatBrowser(config.scanSettleMs);
       return { page: launched.chatPage, close: launched.close };
     },
+    saveScreenshot: createScreenshotSaver(
+      process.env.WIDGET_SCREENSHOT_DIR?.trim() || 'screenshots',
+      process.env.WIDGET_SCREENSHOT_BASE_URL,
+    ),
     readFile: (filePath) => readFileSync(filePath, 'utf8'),
     exists: (filePath) => existsSync(filePath),
     writeLine: (line) => {
@@ -354,7 +378,9 @@ async function executeHealth(argv: string[], deps: CliDeps): Promise<CliResult> 
           page: opened.page,
           config: { ...settings, dryRun: true, allowlist: [] },
           store: deps.attempts,
+          directory: deps.directory,
           log,
+          saveScreenshot: shotFor(deps, target.url),
         });
         const planned = result.transcript
           .filter((entry) => entry.role === 'agent')
@@ -374,10 +400,24 @@ async function executeHealth(argv: string[], deps: CliDeps): Promise<CliResult> 
         await opened.close();
       }
     }
-    const stdout = [...header, ...logs, `Lead form\n${formatResultsTable(rows)}`].join('\n') + '\n';
+    const stdout = [...header, ...logs, `Lead form\n${formatResultsTable(rows)}`, formatHealthSummary(rows)].join('\n') + '\n';
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
     return { exitCode: 1, stdout: '', stderr: `${error instanceof Error ? error.message : String(error)}\n` };
+  }
+}
+
+function shotFor(deps: CliDeps, vehiclePageUrl: string): ((bytes: Buffer) => Promise<string | null>) | undefined {
+  if (!deps.saveScreenshot) return undefined;
+  return (bytes) => deps.saveScreenshot?.(bytes, vehiclePageUrl) ?? Promise.resolve(null);
+}
+
+async function dealerSkipsWidget(vehiclePageUrl: string, deps: CliDeps): Promise<boolean> {
+  try {
+    const dealer = await deps.directory.findBySiteUrl(siteUrlFromVehiclePage(vehiclePageUrl));
+    return dealer?.call_email_only === true;
+  } catch {
+    return false;
   }
 }
 

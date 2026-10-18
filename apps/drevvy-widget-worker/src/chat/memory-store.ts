@@ -37,6 +37,13 @@ export class MemoryAttemptStore implements AttemptStore {
     return this.attempts.find((attempt) => attempt.vehicle_page_url === vehiclePageUrl && attempt.first_reply_channel)?.first_reply_channel ?? null;
   }
 
+  async countStopReasons(dealerSiteUrl: string, reasons: readonly string[]): Promise<number> {
+    const wanted = new Set(reasons);
+    return this.attempts.filter(
+      (attempt) => attempt.dealer_site_url === dealerSiteUrl && attempt.stop_reason != null && wanted.has(attempt.stop_reason),
+    ).length;
+  }
+
   async setFirstReply(vehiclePageUrl: string, channel: AttemptChannel): Promise<void> {
     const existing = await this.currentFirstReply(vehiclePageUrl);
     if (existing) return;

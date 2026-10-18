@@ -43,6 +43,22 @@ export function parseUrlList(text: string): Array<{ url: string; stockNumber: st
   return targets;
 }
 
+export function formatHealthSummary(rows: Array<{ vendor: string; status: string; reason?: string }>): string {
+  const vendors = tally(rows.map((row) => (row.vendor && row.vendor !== '-' ? row.vendor : 'unknown')));
+  const reasons = tally(rows.map((row) => (row.reason && row.reason !== '-' ? row.reason : row.status)));
+  return `Health summary\nvendors: ${vendors}\nreasons: ${reasons}`;
+}
+
+function tally(values: string[]): string {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  if (counts.size === 0) return '(none)';
+  return [...counts.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([key, count]) => `${key}=${count}`)
+    .join(', ');
+}
+
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;

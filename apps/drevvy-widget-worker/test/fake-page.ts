@@ -43,6 +43,9 @@ export class FakeChatPage implements ChatPage {
       httpStatus?: number | null;
       contentError?: Error;
       gotoDelayMs?: number;
+      htmlAfterOpener?: string;
+      unreadableLeadFrame?: boolean;
+      settleError?: Error;
     } = {},
   ) {
     this.currentHtml = html;
@@ -131,6 +134,7 @@ export class FakeChatPage implements ChatPage {
   }
 
   async settle(): Promise<void> {
+    if (this.options.settleError) throw this.options.settleError;
     if (this.options.afterSettleHtml) this.currentHtml = this.options.afterSettleHtml;
   }
 
@@ -144,6 +148,19 @@ export class FakeChatPage implements ChatPage {
     this.leadOpens.push(label);
     if (this.options.htmlAfterLeadOpen) this.currentHtml = this.options.htmlAfterLeadOpen;
     return true;
+  }
+
+  async clickOpener(selectors: string[], text: RegExp): Promise<boolean> {
+    this.clicks.push(selectors);
+    const selectorHit = htmlHasAnySelector(this.currentHtml, selectors);
+    const textHit = text.test(this.currentHtml.replace(/<[^>]+>/g, ' '));
+    if (!selectorHit && !textHit) return false;
+    if (this.options.htmlAfterOpener) this.currentHtml = this.options.htmlAfterOpener;
+    return true;
+  }
+
+  async unreadableFrame(_urlPattern: RegExp): Promise<boolean> {
+    return this.options.unreadableLeadFrame === true;
   }
 
   networkUrls(): string[] {
