@@ -7,16 +7,21 @@ import { fileURLToPath } from 'node:url';
 import { ingestTelnyxPayload, sendOutboundEmail, sendOutboundSms, type CommunicationsStore } from './communications';
 import {
   buildEmailAlias,
+  DEFAULT_ALIAS_DOMAINS,
   emailDisplayName,
   formatMailbox,
+  normalizeAliasDomain,
+  pickAliasDomain,
   pickSmsNumber,
   pickVoiceNumber,
   randomAliasTag,
   readShopperFirstName,
+  resolveAliasDomains,
   resolveAssignment,
   routeInbound,
   selectSender,
   smsPoolHealth,
+  threadMessageId,
   voiceNumberLeaks,
   type ConversationIdentity,
   type PoolNumber,
@@ -54,11 +59,91 @@ test('email alias is opaque and the display name is only the first name', () => 
   assert.equal(alias?.includes('deal-1234'), false);
   assert.equal(buildEmailAlias('Maya', 'deal-1234'), null);
   assert.equal(emailDisplayName('Maya'), 'Maya');
+  assert.equal(emailDisplayName('Adele'), 'Adele');
   assert.equal(emailDisplayName('Drevvy'), null);
   assert.equal(emailDisplayName('Special Offers'), null);
+  assert.equal(emailDisplayName('Deals'), null);
+  assert.equal(emailDisplayName('De Als'), null);
+  assert.equal(emailDisplayName('Quotes'), null);
+  assert.equal(emailDisplayName('Buyers'), null);
+  assert.equal(emailDisplayName('Vip', ['vip.drevvy.com']), null);
+  assert.equal(emailDisplayName('Maya', ['vip.drevvy.com']), 'Maya');
+  assert.equal(buildEmailAlias('Deals', 'ab12'), null);
+  assert.equal(buildEmailAlias('Maya', 'deals'), null);
+  assert.equal(buildEmailAlias('Maya', 'ab12', 'quotes.drevvy.com'), 'maya.ab12@quotes.drevvy.com');
+  assert.equal(buildEmailAlias('Maya', 'ab12', 'drevvy.com'), null);
   const mailbox = formatMailbox('Maya', alias ?? '');
   assert.equal(mailbox, `"Maya" <${alias}>`);
   assert.equal(/offers|drevvy/i.test('Maya'), false);
+});
+
+test('sending domains come from the env, then settings, then the four defaults', () => {
+  assert.deepEqual(resolveAliasDomains({
+    env: ' deals.drevvy.com, quotes.drevvy.com ',
+    settings: ['offers.drevvy.com'],
+  }), ['deals.drevvy.com', 'quotes.drevvy.com']);
+  assert.deepEqual(resolveAliasDomains({
+    env: 'not-a-domain, drevvy.com',
+    settings: ['buyers.drevvy.com'],
+  }), ['buyers.drevvy.com']);
+  assert.deepEqual(resolveAliasDomains({ env: '', settings: null }), [...DEFAULT_ALIAS_DOMAINS]);
+  assert.equal(normalizeAliasDomain('Offers.Drevvy.com'), 'offers.drevvy.com');
+  assert.equal(normalizeAliasDomain('drevvy.com'), null);
+  assert.equal(normalizeAliasDomain('mail.offers.drevvy.com'), null);
+});
+
+test('each dealer keeps one domain and new dealers spread across the list', () => {
+  const assigned: { dealerId: string; domain: string }[] = [];
+  for (let index = 0; index < 8; index += 1) {
+    const dealerId = `dealer-${index}`;
+    const domain = pickAliasDomain({ dealerId, domains: DEFAULT_ALIAS_DOMAINS, assigned });
+    assigned.push({ dealerId, domain });
+  }
+  for (const domain of DEFAULT_ALIAS_DOMAINS) {
+    assert.equal(assigned.filter((row) => row.domain === domain).length, 2);
+  }
+  assert.equal(pickAliasDomain({
+    dealerId: 'dealer-0',
+    domains: DEFAULT_ALIAS_DOMAINS,
+    assigned,
+  }), assigned[0]?.domain);
+  assert.equal(pickAliasDomain({
+    dealerId: 'dealer-a',
+    domains: ['deals.drevvy.com'],
+    assigned: [{ dealerId: 'dealer-a', domain: 'offers.drevvy.com' }],
+  }), 'offers.drevvy.com');
+  const crowded = pickAliasDomain({
+    dealerId: 'dealer-new',
+    domains: DEFAULT_ALIAS_DOMAINS,
+    assigned: [
+      { dealerId: 'dealer-a', domain: 'offers.drevvy.com' },
+      { dealerId: 'dealer-b', domain: 'offers.drevvy.com' },
+    ],
+  });
+  assert.equal(crowded === 'offers.drevvy.com', false);
+});
+
+test('alias domain migration keeps the stored domain and the four senders', () => {
+  const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261019200000_alias_domains.sql'), 'utf8');
+  assert.match(sql, /alias_domains text\[\]/);
+  assert.match(sql, /deals\.drevvy\.com/);
+  assert.match(sql, /quotes\.drevvy\.com/);
+  assert.match(sql, /buyers\.drevvy\.com/);
+  assert.match(sql, /add column if not exists alias_domain text/);
+  assert.match(sql, /new\.alias_domain is distinct from old\.alias_domain/);
+  assert.match(sql, /dealer already has a sending domain/);
+  assert.match(sql, /dealer sending domain is locked/);
+  assert.match(sql, /shopper_first_name !~\* 'deals'/);
+  assert.match(sql, /shopper_first_name !~\* 'quotes'/);
+  assert.match(sql, /shopper_first_name !~\* 'buyers'/);
+  assert.match(sql, /split_part\(email_alias, '@', 1\) !~\* 'deals'/);
+  assert.match(sql, /dealer_alias_domains/);
+  assert.match(sql, /\[a-z0-9\]\(\[a-z0-9-\]\{0,61\}\[a-z0-9\]\)\?\\.drevvy\\.com/);
+  const page = readFileSync(join(HERE, '../../components/admin/conversation-identities.tsx'), 'utf8');
+  assert.match(page, /row\.aliasDomain/);
+  assert.match(page, /admin\.aliasDomains/);
+  const detail = readFileSync(join(HERE, '../../app/admin/outreach/conversations/[dealId]/page.tsx'), 'utf8');
+  assert.match(detail, /identity\.aliasDomain/);
 });
 
 test('shopper first name comes from the profile before sign-in metadata', () => {
@@ -70,9 +155,18 @@ test('shopper first name comes from the profile before sign-in metadata', () => 
 });
 
 test('an assigned identity is kept when a later draft picks different addresses', () => {
-  const existing = sampleIdentity({ smsNumberE164: '+18035550100', emailAlias: 'maya.ab12@offers.drevvy.com' });
-  const draft = sampleIdentity({ smsNumberE164: '+18035550199', emailAlias: 'maya.zz99@offers.drevvy.com' });
+  const existing = sampleIdentity({
+    smsNumberE164: '+18035550100',
+    emailAlias: 'maya.ab12@offers.drevvy.com',
+    aliasDomain: 'offers.drevvy.com',
+  });
+  const draft = sampleIdentity({
+    smsNumberE164: '+18035550199',
+    emailAlias: 'maya.zz99@deals.drevvy.com',
+    aliasDomain: 'deals.drevvy.com',
+  });
   assert.equal(resolveAssignment(existing, draft).smsNumberE164, '+18035550100');
+  assert.equal(resolveAssignment(existing, draft).aliasDomain, 'offers.drevvy.com');
   assert.equal(resolveAssignment(null, draft).emailAlias, draft.emailAlias);
 });
 
@@ -338,6 +432,36 @@ test('inbound mail finds the conversation by alias, text pair, thread, then clie
     threads: [],
   });
   assert.equal(ambiguous, null);
+
+  for (const domain of ['deals.drevvy.com', 'quotes.drevvy.com', 'buyers.drevvy.com']) {
+    const alias = `maya.k7qd@${domain}`;
+    const row = routeRow({ id: `conv-${domain}`, emailAlias: alias });
+    assert.equal(routeInbound({
+      channel: 'email',
+      to: `Maya <${alias}>`,
+      from: 'desk@dealer.example',
+      inReplyTo: null,
+      references: null,
+      clientState: {},
+      identities: [row],
+      parties: [],
+      threads: [],
+    })?.conversationId, row.id);
+  }
+
+  const buyersThread = threadMessageId('conv-live', 'msg.abc', 'buyers.drevvy.com');
+  assert.equal(buyersThread, '<msgabc.convlive@buyers.drevvy.com>');
+  assert.equal(routeInbound({
+    channel: 'email',
+    to: 'unknown@buyers.drevvy.com',
+    from: 'desk@dealer.example',
+    inReplyTo: buyersThread,
+    references: null,
+    clientState: {},
+    identities,
+    parties,
+    threads: [{ conversationId: 'conv-live', messageId: buyersThread }],
+  })?.via, 'thread');
 });
 
 test('the send gateway reads the identity and unmatched inbound is kept for review', async () => {
@@ -442,6 +566,7 @@ function sampleIdentity(overrides: Partial<ConversationIdentity>): ConversationI
     shopperId: 'shopper-1',
     shopperFirstName: 'Maya',
     emailAlias: 'maya.k7qd@offers.drevvy.com',
+    aliasDomain: 'offers.drevvy.com',
     smsNumberE164: '+18035550101',
     voiceNumberE164: '+18035551000',
     lockedAt: NOW.toISOString(),

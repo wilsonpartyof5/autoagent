@@ -1,18 +1,27 @@
 /**
  * Stable contact identity for one shopper, one car, and one dealer.
- * The email alias and text number are chosen once. A later send reads the
- * same row so the dealer CRM does not open a second lead.
+ * The email alias, its sending domain, and the text number are chosen once.
+ * A later send reads the same row so the dealer CRM does not open a second lead.
+ * A dealer keeps one sending domain. New dealers are spread across the list.
  */
 
 import { normalizePhone } from './telnyx';
 
-export const ALIAS_DOMAIN = 'offers.drevvy.com';
+export const DEFAULT_ALIAS_DOMAINS = [
+  'offers.drevvy.com',
+  'deals.drevvy.com',
+  'quotes.drevvy.com',
+  'buyers.drevvy.com',
+] as const;
+
+/** First default domain. Assignment passes an explicit domain instead. */
+export const ALIAS_DOMAIN = DEFAULT_ALIAS_DOMAINS[0];
 export const DEFAULT_COOLDOWN_DAYS = 90;
 export const DEFAULT_LOW_WATERMARK = 2;
 
 const FIRST_NAME = /^[A-Za-z][A-Za-z .'-]{0,39}$/;
 const TAG_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-const BRAND_WORD = /offers|drevvy/i;
+const ALIAS_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.drevvy\.com$/;
 
 export type ConversationIdentity = {
   id: string;
@@ -21,12 +30,18 @@ export type ConversationIdentity = {
   shopperId: string;
   shopperFirstName: string;
   emailAlias: string;
+  aliasDomain: string;
   smsNumberE164: string;
   voiceNumberE164: string | null;
   lockedAt: string;
   createdAt: string;
   isTest: boolean;
   endedAt: string | null;
+};
+
+export type DealerDomainAssignment = {
+  dealerId: string;
+  domain: string;
 };
 
 export type PoolNumber = {
@@ -53,6 +68,7 @@ export type OutboundEnvelope = {
 export function readShopperFirstName(
   profileFirst: string | null | undefined,
   metadata: Record<string, unknown> | null | undefined,
+  domains: readonly string[] = DEFAULT_ALIAS_DOMAINS,
 ): string | null {
   const candidates = [
     profileFirst,
@@ -63,17 +79,19 @@ export function readShopperFirstName(
     firstToken(metadataString(metadata, 'name')),
   ];
   for (const candidate of candidates) {
-    const name = emailDisplayName(candidate ?? '');
+    const name = emailDisplayName(candidate ?? '', domains);
     if (name) return name;
   }
   return null;
 }
 
-export function emailDisplayName(firstName: string): string | null {
+export function emailDisplayName(firstName: string, domains: readonly string[] = DEFAULT_ALIAS_DOMAINS): string | null {
   const trimmed = firstName.trim();
   if (!FIRST_NAME.test(trimmed)) return null;
-  if (BRAND_WORD.test(trimmed)) return null;
   if (/[@\d]/.test(trimmed)) return null;
+  const slug = aliasSlug(trimmed);
+  const brand = brandWordPattern(domains);
+  if (!slug || brand.test(trimmed) || brand.test(slug)) return null;
   return trimmed;
 }
 
@@ -93,19 +111,108 @@ export function randomAliasTag(random: () => number = Math.random): string {
   return tag;
 }
 
-export function buildEmailAlias(firstName: string, tag: string): string | null {
+export function buildEmailAlias(
+  firstName: string,
+  tag: string,
+  domain: string = ALIAS_DOMAIN,
+  domains: readonly string[] = DEFAULT_ALIAS_DOMAINS,
+): string | null {
   const slug = aliasSlug(firstName);
   if (!slug) return null;
   if (!/^[a-z0-9]{4,6}$/.test(tag)) return null;
-  return `${slug}.${tag}@${ALIAS_DOMAIN}`;
+  const host = normalizeAliasDomain(domain);
+  if (!host) return null;
+  const brand = brandWordPattern(domains);
+  if (brand.test(firstName) || brand.test(slug) || brand.test(tag)) return null;
+  return `${slug}.${tag}@${host}`;
 }
 
-/** Local part Telnyx accepts on POST /v2/email_inboxes for an offers.drevvy.com alias. */
+/** A single-label subdomain of drevvy.com. The apex domain is not a sender. */
+export function normalizeAliasDomain(value: string): string | null {
+  const domain = value.trim().toLowerCase().replace(/\.$/, '');
+  if (!ALIAS_DOMAIN_PATTERN.test(domain)) return null;
+  return domain;
+}
+
+export function aliasDomainOf(email: string): string | null {
+  const at = email.lastIndexOf('@');
+  if (at < 0) return null;
+  return normalizeAliasDomain(email.slice(at + 1));
+}
+
+/** Drop blanks, the apex, and any host that is not a drevvy.com subdomain. */
+export function parseAliasDomains(value: string | readonly string[] | null | undefined): string[] {
+  const parts = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  const domains: string[] = [];
+  for (const part of parts) {
+    const domain = normalizeAliasDomain(String(part));
+    if (domain && !domains.includes(domain)) domains.push(domain);
+  }
+  return domains;
+}
+
+/**
+ * Env wins when it lists at least one sending domain. Otherwise the settings
+ * row. Otherwise the four Telnyx domains.
+ */
+export function resolveAliasDomains(input: {
+  env?: string | null;
+  settings?: string | readonly string[] | null;
+}): string[] {
+  const fromEnv = parseAliasDomains(input.env);
+  if (input.env?.trim() && fromEnv.length > 0) return fromEnv;
+  const fromSettings = parseAliasDomains(input.settings);
+  if (fromSettings.length > 0) return fromSettings;
+  return [...DEFAULT_ALIAS_DOMAINS];
+}
+
+/** Domain labels plus drevvy, so a local part does not read as brand mail. */
+export function brandWordPattern(domains: readonly string[] = DEFAULT_ALIAS_DOMAINS): RegExp {
+  const labels = new Set<string>(['drevvy']);
+  for (const domain of domains) {
+    const label = normalizeAliasDomain(domain)?.split('.')[0];
+    if (label) labels.add(label);
+  }
+  const body = [...labels].sort().map(escapeRegExp).join('|');
+  return new RegExp(body, 'i');
+}
+
+/**
+ * One domain per dealer. An existing assignment is kept, even when that
+ * domain is no longer in the configured list. A new dealer takes a domain
+ * with the fewest dealers. Ties use a stable hash so the same dealer id
+ * keeps resolving to the same domain for a given count snapshot.
+ */
+export function pickAliasDomain(input: {
+  dealerId: string;
+  domains: readonly string[];
+  assigned: readonly DealerDomainAssignment[];
+}): string {
+  const usable = parseAliasDomains(input.domains);
+  const domains = usable.length > 0 ? usable : [...DEFAULT_ALIAS_DOMAINS];
+  const existing = input.assigned.find((row) => row.dealerId === input.dealerId);
+  const kept = existing ? normalizeAliasDomain(existing.domain) : null;
+  if (kept) return kept;
+
+  const counts = new Map<string, Set<string>>(domains.map((domain) => [domain, new Set()]));
+  for (const row of input.assigned) {
+    const domain = normalizeAliasDomain(row.domain);
+    const dealers = domain ? counts.get(domain) : undefined;
+    if (dealers) dealers.add(row.dealerId);
+  }
+  const min = Math.min(...[...counts.values()].map((dealers) => dealers.size));
+  const tied = domains.filter((domain) => counts.get(domain)?.size === min);
+  return tied[stableIndex(input.dealerId, tied.length)] ?? domains[0];
+}
+
+/** Local part Telnyx accepts on POST /v2/email_inboxes for a sending-domain alias. */
 export function emailInboxUsername(alias: string): string | null {
   const email = normalizeEmailAddress(alias);
-  const suffix = `@${ALIAS_DOMAIN}`;
-  if (!email?.endsWith(suffix)) return null;
-  const local = email.slice(0, -suffix.length);
+  if (!email) return null;
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return null;
+  const local = email.slice(0, at);
+  if (!normalizeAliasDomain(email.slice(at + 1))) return null;
   if (local.length < 1 || local.length > 64) return null;
   if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(local)) return null;
   return local;
@@ -340,10 +447,11 @@ export function extractMessageIds(value: string | null | undefined): string[] {
   return [...new Set(ids.map((id) => id.toLowerCase()))];
 }
 
-export function threadMessageId(conversationId: string, nonce: string): string {
+export function threadMessageId(conversationId: string, nonce: string, domain: string): string {
   const clean = nonce.replace(/[^a-z0-9]/gi, '').slice(0, 24) || 'msg';
   const suffix = conversationId.replace(/-/g, '').slice(0, 12) || 'conv';
-  return `<${clean}.${suffix}@${ALIAS_DOMAIN}>`;
+  const host = normalizeAliasDomain(domain) ?? ALIAS_DOMAIN;
+  return `<${clean}.${suffix}@${host}>`;
 }
 
 export function routeInbound(input: {
@@ -360,6 +468,8 @@ export function routeInbound(input: {
   const byId = new Map(input.identities.map((row) => [row.id, row]));
 
   if (input.channel === 'email' || input.channel == null) {
+    // Match the full stored alias. That address already carries its sending domain,
+    // so offers, deals, quotes, buyers, and any later configured domain all route.
     const tos = addressList(input.to, 'email');
     const aliasHit = chooseRoute(input.identities.filter((row) => tos.includes(row.emailAlias.toLowerCase())));
     if (aliasHit) return finishRoute(aliasHit, 'email_alias');
@@ -422,6 +532,20 @@ function chooseRoute(matches: RouteIdentity[]): RouteIdentity | null {
   if (live.length > 1) return null;
   if (unique.length === 1) return unique[0];
   return null;
+}
+
+function stableIndex(key: string, size: number): number {
+  if (size <= 1) return 0;
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % size;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string | null {

@@ -26,7 +26,7 @@ export function ConversationIdentities({
     <article className="rounded-xl border border-slate-800 p-4">
       <h3 className="font-medium">Conversation identities</h3>
       <p className="mt-1 max-w-3xl text-sm text-slate-400">
-        Each shopper, car, and dealer keeps one email alias and one text number. Voice numbers are caller ID only. The voice agent does not give that number out. It asks for a textable number or an email.
+        Each shopper, car, and dealer keeps one email alias and one text number. Each dealer keeps one sending domain: {admin.aliasDomains.join(', ')}. Voice numbers are caller ID only. The voice agent does not give that number out. It asks for a textable number or an email.
       </p>
       {notice ? <p className="mt-3 text-sm text-emerald-200">{notice}</p> : null}
       {!admin.configured ? (
@@ -73,6 +73,7 @@ function IdentityTable({
         <thead className="text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th className="py-2 pr-3 font-medium">Dealer</th>
+            <th className="py-2 pr-3 font-medium">Domain</th>
             <th className="py-2 pr-3 font-medium">Alias</th>
             <th className="py-2 pr-3 font-medium">Text number</th>
             <th className="py-2 pr-3 font-medium">Caller ID</th>
@@ -86,6 +87,7 @@ function IdentityTable({
                 <p>{row.dealerId}</p>
                 <p className="text-xs text-slate-500">{row.shopperFirstName} · deal {row.dealId}</p>
               </td>
+              <td className="py-2 pr-3">{row.aliasDomain}</td>
               <td className="py-2 pr-3">
                 <p>{row.emailAlias}</p>
                 <p className="text-xs text-slate-500">From and reply use this alias. Display name is {row.shopperFirstName}.</p>
