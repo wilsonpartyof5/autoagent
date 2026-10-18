@@ -8,7 +8,7 @@ Standalone Node worker for day-0 dealer outreach:
 4. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
 5. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
-Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.`
+Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. Widget chat opens with `Hi, this is Drevvy, working for {first}.` and does not lead with "I'm an AI". If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.` The worker never denies being an AI.
 
 MarketCheck contact data can be passed as a hint file. Hints are not written to the database. A phone, email, or name is stored only when it appears on the fetched dealer page. Do not point this worker at a MarketCheck listing URL.
 
@@ -152,10 +152,10 @@ A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's f
 
 Script:
 
-1. `Is this unit still available?` plus the stock number when we have one. No introduction.
+1. `Hi, this is Drevvy, working for {SHOPPER_FIRST_NAME}. Is this unit still available?` plus the stock number when we have one. The opening does not say "I'm an AI".
 2. If the dealer says it is available: `What is the listing price?`
 3. When a price is given: `Thanks. I'd like to continue over text and email, please reach us at {DREVVY_TEXT_NUMBER} or {DREVVY_EMAIL}.`
-4. If they ask whether it is a bot: `I'm Drevvy's AI, working for {SHOPPER_FIRST_NAME}.`
+4. If they ask whether it is a bot or AI: `I'm Drevvy's AI, working for {SHOPPER_FIRST_NAME}.` That is the only AI sentence. The worker never denies being an AI and never claims to be human.
 
 Each turn reads the latest dealer message as text. If that text is missing, the turn sends a screenshot to the model. The model returns JSON with `status` (`available`, `sold`, `price_given`, `asked_contact`, `human_handoff`, `unknown`), `price`, and `next_message` limited to the script ids. The worker still decides the next line from the status so a mismatched `next_message` is not sent.
 

@@ -12,19 +12,30 @@
  * 7. Present offer immediately when $750+ under fair
  * 8. Request itemization when price isn't itemized
  * 9. "Price first, then we're happy to set that up" for come-in/call-me requests
- * 10. Honest AI disclosure ("I'm Drevvy's AI, working for {first}")
+ * 10. Honest AI disclosure only when asked ("I'm Drevvy's AI, working for {first}"). Never deny being an AI.
  * 11. Escalate (block counter) when fair OTD is unknown
  * 12. Never use the phrase "automated assistant"
+ * 13. Never say "negotiate"
+ * 14. Openings do not lead with "I'm an AI" ("Hi, this is Drevvy, working for {first}.")
  */
 
+import {
+  CALL_OPENER,
+  agentOpener,
+  aiDisclosure,
+  deniesBeingAi,
+  dealerAskedIfAi,
+  leadsWithAiIdentity,
+} from '../agent-voice';
 import { PUSHBACK_THRESHOLD } from './config';
 
-export const CALL_OPENER = "Hi, this is Drevvy calling for {first}. Quick heads-up, this call is recorded.";
+export { CALL_OPENER, agentOpener, dealerAskedIfAi };
 
 export type GuardrailInput = {
   action: string | null;
   draft: string | null;
   dealerState?: string;
+  dealerMessage?: string;
   channel: 'sms' | 'email' | 'call';
   hasOptedInToText: boolean;
   hasTextedBefore: boolean;
@@ -45,6 +56,8 @@ export type GuardrailResult = {
     noShopperContactInfo: boolean;
     noAutomatedAssistant: boolean;
     noNegotiateWord: boolean;
+    noAiDenial: boolean;
+    noLeadingAi: boolean;
     fairOtdKnownForCounter: boolean;
   };
 };
@@ -110,6 +123,16 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
     violations.push('negotiate_word_used');
   }
 
+  const noAiDenial = checkNoAiDenial(draft);
+  if (!noAiDenial) {
+    violations.push('ai_denial');
+  }
+
+  const noLeadingAi = checkNoLeadingAi(draft, input.dealerMessage);
+  if (!noLeadingAi) {
+    violations.push('led_with_ai');
+  }
+
   const fairOtdKnownForCounter = checkFairOtdKnownForCounter(input.action, input.fairOtd);
   if (!fairOtdKnownForCounter) {
     violations.push('fair_otd_unknown_for_counter');
@@ -126,6 +149,8 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
       noShopperContactInfo,
       noAutomatedAssistant,
       noNegotiateWord,
+      noAiDenial,
+      noLeadingAi,
       fairOtdKnownForCounter,
     },
   };
@@ -181,6 +206,17 @@ function checkNoNegotiateWord(draft: string): boolean {
   return !NEGOTIATE_PATTERN.test(draft);
 }
 
+function checkNoAiDenial(draft: string): boolean {
+  if (!draft) return true;
+  return !deniesBeingAi(draft);
+}
+
+function checkNoLeadingAi(draft: string, dealerMessage: string | undefined): boolean {
+  if (!draft) return true;
+  if (!leadsWithAiIdentity(draft)) return true;
+  return dealerAskedIfAi(dealerMessage ?? '');
+}
+
 function checkFairOtdKnownForCounter(action: string | null, fairOtd: number | null): boolean {
   if (action !== 'counter') return true;
   return fairOtd !== null;
@@ -223,6 +259,7 @@ export type PlaybookDecision =
   | { action: 'present_to_shopper'; reason: string }
   | { action: 'request_itemization'; reason: string }
   | { action: 'price_first_response'; reason: string }
+  | { action: 'honest_ai_disclosure'; reason: string }
   | { action: 'escalate_to_human'; reason: string }
   | { action: 'continue'; reason: string };
 
@@ -233,6 +270,10 @@ export function applyPlaybookRules(input: {
   dealerMessage: string;
   shopperFirst: string;
 }): PlaybookDecision {
+  if (dealerAskedIfAi(input.dealerMessage)) {
+    return { action: 'honest_ai_disclosure', reason: 'Dealer asked whether this is a bot or AI' };
+  }
+
   if (input.fairOtd === null) {
     return { action: 'escalate_to_human', reason: 'Fair OTD is unknown; cannot evaluate offer' };
   }
@@ -283,7 +324,7 @@ export function applyPlaybookRules(input: {
 }
 
 export function getAiDisclosure(shopperFirst: string): string {
-  return `I'm Drevvy's AI, working for ${shopperFirst}.`;
+  return aiDisclosure(shopperFirst);
 }
 
 export function getPriceFirstResponse(): string {

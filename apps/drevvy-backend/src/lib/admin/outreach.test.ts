@@ -5,7 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildOutreachReport, wilson, withoutTestTraffic } from './outreach/analytics';
-import { callOpener, voicemailScript } from './outreach/copy';
+import { callOpener, emailCopy, smsCopy, voicemailScript } from './outreach/copy';
 import { clearOutreachInsightCache, getOutreachInsight } from './outreach/insights';
 import { getOutreachDeals } from './outreach/mock-source';
 import { defaultOutreachRange } from './outreach/repository';
@@ -19,6 +19,43 @@ test('cadence uses the spec touchpoint ids', () => {
   ]);
   const seen = new Set(getOutreachDeals().flatMap((deal) => deal.events.map((event) => event.touchpoint)));
   for (const id of TOUCHPOINT_IDS) assert.equal(seen.has(id), true, id);
+});
+
+test('openings are a short hello and do not lead with being an AI', () => {
+  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123' };
+  const opener = 'Hi, this is Drevvy, working for Maya.';
+  const leadsWithAi = /i'm an ai|i am an ai|i'm drevvy's ai|i am drevvy's ai/i;
+  for (const touchpoint of ['D0-E1', 'D1-E2', 'D4-E3', 'D5-E4'] as const) {
+    for (const variant of ['A', 'B', 'C'] as const) {
+      const email = emailCopy(touchpoint, variant, ctx);
+      assert.ok(email, `${touchpoint} ${variant}`);
+      assert.equal(email.body.startsWith(opener), true, email.body);
+      assert.equal(leadsWithAi.test(email.body), false, email.body);
+      assert.equal(/negotiate/i.test(email.body), false, email.body);
+      assert.equal(email.body.includes('@'), false, email.body);
+    }
+  }
+  for (const touchpoint of ['D0-T1', 'D0-TS', 'D1-T2', 'D2-T3', 'D4-T4'] as const) {
+    for (const variant of ['A', 'B', 'C'] as const) {
+      const sms = smsCopy(touchpoint, variant, ctx);
+      assert.ok(sms, `${touchpoint} ${variant}`);
+      assert.equal(sms.startsWith(opener), true, sms);
+      assert.equal(leadsWithAi.test(sms), false, sms);
+      assert.equal(/negotiate/i.test(sms), false, sms);
+    }
+  }
+  for (const touchpoint of ['D0-C1', 'D0-C2', 'D2-C3'] as const) {
+    for (const variant of ['A', 'B', 'C'] as const) {
+      const line = callOpener(touchpoint, variant, ctx);
+      assert.equal(line.startsWith(opener), true, line);
+      assert.equal(leadsWithAi.test(line), false, line);
+      assert.equal(/negotiate/i.test(line), false, line);
+    }
+  }
+  const vm = voicemailScript(ctx);
+  assert.equal(vm.startsWith(opener), true, vm);
+  assert.equal(leadsWithAi.test(vm), false);
+  assert.equal(/negotiate/i.test(vm), false);
 });
 
 test('call scripts introduce Drevvy and never say automated assistant', () => {

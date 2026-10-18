@@ -14,7 +14,8 @@ const script = renderScript({
 
 describe('chat script', () => {
   it('uses the fixed lines', () => {
-    assert.equal(script.availability, 'Is this unit still available? Stock #H24118');
+    assert.equal(script.availability, 'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118');
+    assert.equal(/i'm an ai|i'm drevvy's ai/i.test(script.availability), false);
     assert.equal(script.listing_price, 'What is the listing price?');
     assert.equal(
       script.continue_offline,

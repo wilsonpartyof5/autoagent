@@ -74,9 +74,9 @@ export default function DealersPage() {
                 </li>
               </ol>
               <p className="text-muted-foreground mt-4">
-                We identify ourselves as Drevvy and explain that we&apos;re reaching out on behalf of a shopper
-                interested in a specific vehicle. We share the shopper&apos;s first name and general location for
-                tax estimation purposes.
+                We open with a short hello: &quot;Hi, this is Drevvy, working for [first name].&quot; We do not lead
+                with &quot;I&apos;m an AI.&quot; We share the shopper&apos;s first name and general location for tax
+                estimation purposes.
               </p>
             </section>
 
@@ -84,8 +84,9 @@ export default function DealersPage() {
               <h2 className="text-2xl font-semibold mb-4">AI Caller and Call Recording Notice</h2>
               <p className="text-muted-foreground mb-4">
                 <strong>Our caller is an AI.</strong> When Drevvy calls your dealership, the call is made by an
-                AI-powered voice agent, not a human. If you ask whether you&apos;re speaking with an AI, our agent
-                will confirm that it is.
+                AI-powered voice agent, not a human. The opening is still &quot;Hi, this is Drevvy, working for
+                [first name].&quot; If you ask whether you&apos;re speaking with an AI, our agent tells the truth:
+                &quot;I&apos;m Drevvy&apos;s AI, working for [first name].&quot; It will not deny being an AI.
               </p>
               <p className="text-muted-foreground mb-4">
                 <strong>Calls may be recorded.</strong> For quality assurance, training, dispute resolution, and

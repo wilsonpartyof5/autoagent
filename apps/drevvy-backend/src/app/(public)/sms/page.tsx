@@ -106,8 +106,8 @@ export default function SMSPage() {
                 <div className="bg-card p-4 rounded-lg border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Initial outreach follow-up:</p>
                   <p className="font-mono text-sm">
-                    Hi, this is Drevvy following up for [First Name] on the 2023 Honda Accord (Stock #12345).
-                    Could you share an itemized out-the-door price? Reply STOP to opt out.
+                    Hi, this is Drevvy, working for [First Name]. Following up on the 2023 Honda Accord
+                    (Stock #12345). Could you share an itemized out-the-door price? Reply STOP to opt out.
                   </p>
                 </div>
 
@@ -122,8 +122,8 @@ export default function SMSPage() {
                 <div className="bg-card p-4 rounded-lg border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Follow-up:</p>
                   <p className="font-mono text-sm">
-                    Hi, Drevvy here. Just checking on the OTD quote for the 2023 Accord for [First Name]. Let us
-                    know if you need any info. Reply STOP to opt out.
+                    Hi, this is Drevvy, working for [First Name]. Just checking on the out-the-door quote for
+                    the 2023 Accord. Reply STOP to opt out.
                   </p>
                 </div>
 

@@ -6,6 +6,7 @@
 import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { agentOpener } from '../agent-voice';
 import { BRAIN_CONFIG, SHADOW_MODE } from './config';
 import {
   type GuardrailResult,
@@ -47,16 +48,20 @@ export type ReplyDecisionResult = {
   reasoning: string;
 };
 
-const REPLY_DECISION_PROMPT = `You are Drevvy's AI assistant, helping shoppers get the best price on a car. Analyze the dealer's message and decide on the best response.
+export const REPLY_DECISION_PROMPT = `You are Drevvy, working for a shopper to get a clear out-the-door price on a car. Analyze the dealer's message and decide on the best response.
 
 RULES (enforced by code, not suggestions):
+- Open short and friendly. The first line, when you introduce yourself, is: "Hi, this is Drevvy, working for {first}."
+- Do not lead with "I'm an AI", "I'm a bot", or "I'm Drevvy's AI".
+- If the dealer sincerely asks whether this is a bot, AI, or a person, answer truthfully with exactly: "I'm Drevvy's AI, working for {first}."
+- Never deny being an AI. Never claim to be a human.
 - Never contest taxes, title, or registration fees
 - Never share shopper contact info (phone, email, last name)
+- Never use the word "negotiate"
 - Maximum 2 pushback rounds per deal
 - Push back only when offer exceeds fair OTD by threshold
 - Text only dealers who have opted in or texted first
 - If dealer asks buyer to "come in" or requests their contact info, respond "Price first, then we're happy to set that up"
-- Always identify yourself honestly: "I'm Drevvy's AI, working for {first}"
 - Request itemized pricing if price is not broken down
 
 Given the dealer message and deal context, decide:
@@ -98,6 +103,7 @@ export async function runReplyDecision(
 
   const runId = runResult.id;
   const aiDisclosure = getAiDisclosure(input.dealContext.shopperFirst);
+  const opener = agentOpener(input.dealContext.shopperFirst);
 
   try {
     const playbookDecision = applyPlaybookRules({
@@ -107,6 +113,49 @@ export async function runReplyDecision(
       dealerMessage: input.dealerMessage,
       shopperFirst: input.dealContext.shopperFirst,
     });
+
+    if (playbookDecision.action === 'honest_ai_disclosure') {
+      const draft = aiDisclosure;
+      const guardrailResult = runGuardrails({
+        action: 'clarify',
+        draft,
+        dealerState: input.dealerState,
+        dealerMessage: input.dealerMessage,
+        channel: input.channel,
+        hasOptedInToText: input.dealContext.hasOptedInToText,
+        hasTextedBefore: input.dealContext.hasTextedBefore,
+        fairOtd: input.dealContext.fairOtd,
+        currentOfferOtd: input.dealContext.currentOfferOtd,
+        pushbackCount: input.dealContext.pushbackCount,
+        shopperFirst: input.dealContext.shopperFirst,
+      });
+
+      const result: ReplyDecisionResult = {
+        runId,
+        decision: guardrailResult.blocked ? 'skip' : 'respond',
+        action: guardrailResult.blocked ? null : 'clarify',
+        draft: guardrailResult.blocked ? null : draft,
+        guardrailResult,
+        playbookDecision,
+        aiDisclosure,
+        shadowMode: SHADOW_MODE,
+        reasoning: guardrailResult.blocked
+          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
+          : playbookDecision.reason,
+      };
+
+      await updateBrainRun(supabase, runId, {
+        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        output: result,
+        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
+        finished_at: new Date().toISOString(),
+      });
+
+      return result;
+    }
 
     if (playbookDecision.action === 'escalate_to_human') {
       const guardrailResult = runGuardrails({
@@ -120,6 +169,7 @@ export async function runReplyDecision(
         currentOfferOtd: input.dealContext.currentOfferOtd,
         pushbackCount: input.dealContext.pushbackCount,
         shopperFirst: input.dealContext.shopperFirst,
+        dealerMessage: input.dealerMessage,
       });
 
       const result: ReplyDecisionResult = {
@@ -160,6 +210,7 @@ export async function runReplyDecision(
         currentOfferOtd: input.dealContext.currentOfferOtd,
         pushbackCount: input.dealContext.pushbackCount,
         shopperFirst: input.dealContext.shopperFirst,
+        dealerMessage: input.dealerMessage,
       });
 
       const result: ReplyDecisionResult = {
@@ -201,6 +252,7 @@ export async function runReplyDecision(
         currentOfferOtd: input.dealContext.currentOfferOtd,
         pushbackCount: input.dealContext.pushbackCount,
         shopperFirst: input.dealContext.shopperFirst,
+        dealerMessage: input.dealerMessage,
       });
 
       const result: ReplyDecisionResult = {
@@ -241,6 +293,7 @@ export async function runReplyDecision(
         currentOfferOtd: input.dealContext.currentOfferOtd,
         pushbackCount: input.dealContext.pushbackCount,
         shopperFirst: input.dealContext.shopperFirst,
+        dealerMessage: input.dealerMessage,
       });
 
       const result: ReplyDecisionResult = {
@@ -287,7 +340,8 @@ export async function runReplyDecision(
 - Opted in to text: ${input.dealContext.hasOptedInToText}
 - Has texted before: ${input.dealContext.hasTextedBefore}
 - Dealer state: ${input.dealerState ?? 'unknown'}
-- AI disclosure to include: ${aiDisclosure}
+- Opening line: ${opener}
+- Do not lead with "I'm an AI". Use this sentence only if they asked whether this is a bot or AI: ${aiDisclosure}
 ${lessonsContext}
 
 Dealer message (via ${input.channel}):
@@ -327,6 +381,7 @@ ${input.dealerMessage}`;
       currentOfferOtd: input.dealContext.currentOfferOtd,
       pushbackCount: input.dealContext.pushbackCount,
       shopperFirst: input.dealContext.shopperFirst,
+      dealerMessage: input.dealerMessage,
     });
 
     const inputTokens = response.usage?.prompt_tokens ?? 0;

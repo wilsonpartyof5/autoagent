@@ -11,9 +11,10 @@ export function renderScript(input: {
   shopperFirst: string;
 }): RenderedScript {
   const stock = input.stockNumber?.trim();
+  const opener = `Hi, this is Drevvy, working for ${input.shopperFirst}.`;
   const availability = stock
-    ? `Is this unit still available? Stock #${stock}`
-    : 'Is this unit still available?';
+    ? `${opener} Is this unit still available? Stock #${stock}`
+    : `${opener} Is this unit still available?`;
   return {
     availability,
     listing_price: 'What is the listing price?',

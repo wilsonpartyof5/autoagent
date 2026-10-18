@@ -431,8 +431,77 @@ describe('CALL_OPENER', () => {
     assert.ok(CALL_OPENER.includes('{first}'));
   });
 
-  it('introduces Drevvy', () => {
-    assert.ok(CALL_OPENER.includes('Drevvy'));
+  it('introduces Drevvy in a short hello', () => {
+    assert.equal(CALL_OPENER.startsWith('Hi, this is Drevvy, working for {first}.'), true);
+    assert.equal(/i'm an ai|i'm drevvy's ai/i.test(CALL_OPENER), false);
+  });
+});
+
+describe('AI honesty', () => {
+  const baseInput: GuardrailInput = {
+    action: 'respond',
+    draft: 'Thank you for the offer.',
+    dealerState: 'SC',
+    channel: 'email',
+    hasOptedInToText: true,
+    hasTextedBefore: true,
+    fairOtd: 30000,
+    currentOfferOtd: 31000,
+    pushbackCount: 0,
+    shopperFirst: 'Maya',
+  };
+
+  it('answers a sincere bot question with the honest sentence', () => {
+    const result = applyPlaybookRules({
+      fairOtd: null,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'Are you a bot or a real person?',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'honest_ai_disclosure');
+    const disclosure = getAiDisclosure('Maya');
+    assert.equal(disclosure, "I'm Drevvy's AI, working for Maya.");
+    const guard = runGuardrails({
+      ...baseInput,
+      draft: disclosure,
+      dealerMessage: 'Are you a bot or a real person?',
+    });
+    assert.equal(guard.blocked, false);
+    assert.equal(guard.checks.noLeadingAi, true);
+    assert.equal(guard.checks.noAiDenial, true);
+    assert.equal(guard.checks.noNegotiateWord, true);
+  });
+
+  it('blocks an opening that leads with being an AI', () => {
+    const guard = runGuardrails({
+      ...baseInput,
+      draft: "I'm an AI working for Maya. What's your out-the-door price?",
+      dealerMessage: 'Can you send the out-the-door price?',
+    });
+    assert.equal(guard.blocked, true);
+    assert.ok(guard.violations.includes('led_with_ai'));
+  });
+
+  it('allows the short opener', () => {
+    const guard = runGuardrails({
+      ...baseInput,
+      draft: "Hi, this is Drevvy, working for Maya. What's your out-the-door price?",
+      dealerMessage: 'Can you send the out-the-door price?',
+    });
+    assert.equal(guard.checks.noLeadingAi, true);
+    assert.equal(guard.checks.noAiDenial, true);
+    assert.equal(guard.blocked, false);
+  });
+
+  it('blocks a denial and a claim to be human', () => {
+    const denial = runGuardrails({
+      ...baseInput,
+      draft: "I'm not a bot. I'm a real person.",
+      dealerMessage: 'Are you an AI?',
+    });
+    assert.equal(denial.blocked, true);
+    assert.ok(denial.violations.includes('ai_denial'));
   });
 });
 
@@ -473,7 +542,7 @@ describe('no automated assistant rule', () => {
   it('allows drafts without the phrase', () => {
     const input: GuardrailInput = {
       ...baseInput,
-      draft: "I'm Drevvy's AI, working for Maya.",
+      draft: 'Thanks, I will pass that along.',
     };
     const result = runGuardrails(input);
     assert.equal(result.checks.noAutomatedAssistant, true);
