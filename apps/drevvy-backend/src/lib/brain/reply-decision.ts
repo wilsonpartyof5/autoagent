@@ -1,22 +1,33 @@
 /**
- * Per-dealer-reply decision pass in SHADOW MODE.
- * Logs decisions but sends nothing until DW approves.
+ * Per-dealer-reply loop, in shadow mode unless BRAIN_SHADOW_MODE=false.
+ *
+ * Load state, ask a model for one proposed action, check it in code, perform
+ * at most one outbound side effect, save, and exit. This does not use the
+ * Agents API. Shadow mode logs the decision and sends nothing.
  */
 
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { agentOpener } from '../agent-voice';
 import { BRAIN_CONFIG, SHADOW_MODE } from './config';
+import { estimateCost } from './cost';
 import {
-  type GuardrailResult,
-  runGuardrails,
   applyPlaybookRules,
   getAiDisclosure,
-  getPriceFirstResponse,
+  type GuardrailResult,
   type PlaybookDecision,
 } from './guardrails';
+import { buildModelUserContent } from './model-input';
+import { logModelAnswer, requestDealProposal } from './model-request';
+import type { DealProposal } from './proposal';
+import { computeOtd, emptyQuote, type ExtractedQuote, type OtdComputation } from './quote';
 import { insertBrainRun, updateBrainRun, getApprovedLessons } from './repository';
+import { routeDealerMessage } from './routing';
+import {
+  validateProposal,
+  type OutboundSideEffect,
+  type ShopperMandate,
+} from './validate';
 
 export type ReplyDecisionInput = {
   dealId: string;
@@ -24,8 +35,12 @@ export type ReplyDecisionInput = {
   dealerState?: string;
   channel: 'sms' | 'email' | 'call';
   dealerMessage: string;
+  messageRef?: string | null;
   dealContext: {
     shopperFirst: string;
+    shopperPhone?: string | null;
+    shopperEmail?: string | null;
+    shopperLast?: string | null;
     vehicle: string;
     fairOtd: number | null;
     currentOfferOtd: number | null;
@@ -33,6 +48,7 @@ export type ReplyDecisionInput = {
     hasOptedInToText: boolean;
     hasTextedBefore: boolean;
     isItemized: boolean;
+    mandate?: ShopperMandate | null;
   };
 };
 
@@ -40,41 +56,44 @@ export type ReplyDecisionResult = {
   runId: string;
   decision: 'respond' | 'escalate' | 'skip';
   action: string | null;
+  proposedAction: DealProposal['proposed_action'];
   draft: string | null;
+  quote: ExtractedQuote;
+  otd: OtdComputation;
   guardrailResult: GuardrailResult;
   playbookDecision: PlaybookDecision | null;
   aiDisclosure: string;
   shadowMode: boolean;
   reasoning: string;
+  model: string;
+  usedFallback: boolean;
+  sideEffect: OutboundSideEffect | null;
 };
 
-export const REPLY_DECISION_PROMPT = `You are Drevvy, working for a shopper to get a clear out-the-door price on a car. Analyze the dealer's message and decide on the best response.
+export const REPLY_DECISION_PROMPT = `You are Drevvy, working for a shopper to get a clear out-the-door price on a car. Read the dealer message and propose one next action.
 
 RULES (enforced by code, not suggestions):
 - Open short and friendly. The first line, when you introduce yourself, is: "Hi, this is Drevvy, working for {first}."
 - Do not lead with "I'm an AI", "I'm a bot", or "I'm Drevvy's AI".
 - If the dealer sincerely asks whether this is a bot, AI, or a person, answer truthfully with exactly: "I'm Drevvy's AI, working for {first}."
 - Never deny being an AI. Never claim to be a human.
-- Never contest taxes, title, or registration fees
-- Never share shopper contact info (phone, email, last name)
-- Never use the word "negotiate"
-- Maximum 2 pushback rounds per deal
-- Push back only when offer exceeds fair OTD by threshold
-- Text only dealers who have opted in or texted first
-- If dealer asks buyer to "come in" or requests their contact info, respond "Price first, then we're happy to set that up"
-- Request itemized pricing if price is not broken down
+- Never contest taxes, title, or registration fees.
+- Never share shopper contact info (phone, email, last name). You will not be given those details. Do not ask the shopper to hand them over, and do not invent them.
+- Never use the word "negotiate".
+- Maximum 2 pushback rounds per deal.
+- If the dealer asks the buyer to come in, call, or share contact info, the reply is "Price first, then we're happy to set that up."
+- If the dealer opts out, propose wait and leave the draft null.
 
-Given the dealer message and deal context, decide:
-1. Should we respond, escalate to human, or skip?
-2. If responding, what action and draft message?
+Propose exactly one action:
+- ask_for_itemization: a price is missing its breakdown
+- request_fee_clarification: a fee or total conflicts, or a stated number does not match the lines
+- send_reply: send the draft
+- wait: do not reply
+- escalate: a person should take this
 
-Return JSON:
-{
-  "decision": "respond" | "escalate" | "skip",
-  "action": "accept" | "counter" | "clarify" | "decline" | null,
-  "draft": "message to dealer" | null,
-  "reasoning": "explanation of decision"
-}`;
+Extract quote fields only when the message states them. Each amount needs a source_snippet copied from the message and message_ref from the prompt. Use null for the whole field when it is unknown. Do not guess. Do not compute an out-the-door total; code adds the lines and checks them. dealer_stated_otd is only the total the dealer themselves stated.
+
+Return only the structured proposal.`;
 
 export async function runReplyDecision(
   supabase: SupabaseClient,
@@ -103,7 +122,6 @@ export async function runReplyDecision(
 
   const runId = runResult.id;
   const aiDisclosure = getAiDisclosure(input.dealContext.shopperFirst);
-  const opener = agentOpener(input.dealContext.shopperFirst);
 
   try {
     const playbookDecision = applyPlaybookRules({
@@ -114,323 +132,115 @@ export async function runReplyDecision(
       shopperFirst: input.dealContext.shopperFirst,
     });
 
-    if (playbookDecision.action === 'honest_ai_disclosure') {
-      const draft = aiDisclosure;
-      const guardrailResult = runGuardrails({
-        action: 'clarify',
-        draft,
-        dealerState: input.dealerState,
-        dealerMessage: input.dealerMessage,
-        channel: input.channel,
-        hasOptedInToText: input.dealContext.hasOptedInToText,
-        hasTextedBefore: input.dealContext.hasTextedBefore,
-        fairOtd: input.dealContext.fairOtd,
-        currentOfferOtd: input.dealContext.currentOfferOtd,
-        pushbackCount: input.dealContext.pushbackCount,
-        shopperFirst: input.dealContext.shopperFirst,
-      });
-
-      const result: ReplyDecisionResult = {
-        runId,
-        decision: guardrailResult.blocked ? 'skip' : 'respond',
-        action: guardrailResult.blocked ? null : 'clarify',
-        draft: guardrailResult.blocked ? null : draft,
-        guardrailResult,
-        playbookDecision,
-        aiDisclosure,
-        shadowMode: SHADOW_MODE,
-        reasoning: guardrailResult.blocked
-          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
-          : playbookDecision.reason,
-      };
-
-      await updateBrainRun(supabase, runId, {
-        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: 0,
-        output: result,
-        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
-        finished_at: new Date().toISOString(),
-      });
-
-      return result;
-    }
-
-    if (playbookDecision.action === 'escalate_to_human') {
-      const guardrailResult = runGuardrails({
-        action: null,
-        draft: null,
-        dealerState: input.dealerState,
-        channel: input.channel,
-        hasOptedInToText: input.dealContext.hasOptedInToText,
-        hasTextedBefore: input.dealContext.hasTextedBefore,
-        fairOtd: input.dealContext.fairOtd,
-        currentOfferOtd: input.dealContext.currentOfferOtd,
-        pushbackCount: input.dealContext.pushbackCount,
-        shopperFirst: input.dealContext.shopperFirst,
-        dealerMessage: input.dealerMessage,
-      });
-
-      const result: ReplyDecisionResult = {
-        runId,
-        decision: 'escalate',
-        action: null,
-        draft: null,
-        guardrailResult,
-        playbookDecision,
-        aiDisclosure,
-        shadowMode: SHADOW_MODE,
-        reasoning: playbookDecision.reason,
-      };
-
-      await updateBrainRun(supabase, runId, {
-        status: 'ok',
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: 0,
-        output: result,
-        guardrail_hits: null,
-        finished_at: new Date().toISOString(),
-      });
-
-      return result;
-    }
-
-    if (playbookDecision.action === 'price_first_response') {
-      const draft = getPriceFirstResponse();
-      const guardrailResult = runGuardrails({
-        action: 'clarify',
-        draft,
-        dealerState: input.dealerState,
-        channel: input.channel,
-        hasOptedInToText: input.dealContext.hasOptedInToText,
-        hasTextedBefore: input.dealContext.hasTextedBefore,
-        fairOtd: input.dealContext.fairOtd,
-        currentOfferOtd: input.dealContext.currentOfferOtd,
-        pushbackCount: input.dealContext.pushbackCount,
-        shopperFirst: input.dealContext.shopperFirst,
-        dealerMessage: input.dealerMessage,
-      });
-
-      const result: ReplyDecisionResult = {
-        runId,
-        decision: guardrailResult.blocked ? 'skip' : 'respond',
-        action: guardrailResult.blocked ? null : 'clarify',
-        draft: guardrailResult.blocked ? null : draft,
-        guardrailResult,
-        playbookDecision,
-        aiDisclosure,
-        shadowMode: SHADOW_MODE,
-        reasoning: guardrailResult.blocked
-          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
-          : playbookDecision.reason,
-      };
-
-      await updateBrainRun(supabase, runId, {
-        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: 0,
-        output: result,
-        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
-        finished_at: new Date().toISOString(),
-      });
-
-      return result;
-    }
-
-    if (playbookDecision.action === 'present_to_shopper') {
-      const guardrailResult = runGuardrails({
-        action: 'accept',
-        draft: null,
-        dealerState: input.dealerState,
-        channel: input.channel,
-        hasOptedInToText: input.dealContext.hasOptedInToText,
-        hasTextedBefore: input.dealContext.hasTextedBefore,
-        fairOtd: input.dealContext.fairOtd,
-        currentOfferOtd: input.dealContext.currentOfferOtd,
-        pushbackCount: input.dealContext.pushbackCount,
-        shopperFirst: input.dealContext.shopperFirst,
-        dealerMessage: input.dealerMessage,
-      });
-
-      const result: ReplyDecisionResult = {
-        runId,
-        decision: 'respond',
-        action: 'accept',
-        draft: null,
-        guardrailResult,
-        playbookDecision,
-        aiDisclosure,
-        shadowMode: SHADOW_MODE,
-        reasoning: playbookDecision.reason,
-      };
-
-      await updateBrainRun(supabase, runId, {
-        status: 'ok',
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: 0,
-        output: result,
-        guardrail_hits: null,
-        finished_at: new Date().toISOString(),
-      });
-
-      return result;
-    }
-
-    if (playbookDecision.action === 'request_itemization') {
-      const draft = 'Could you please provide an itemized breakdown of the price?';
-      const guardrailResult = runGuardrails({
-        action: 'clarify',
-        draft,
-        dealerState: input.dealerState,
-        channel: input.channel,
-        hasOptedInToText: input.dealContext.hasOptedInToText,
-        hasTextedBefore: input.dealContext.hasTextedBefore,
-        fairOtd: input.dealContext.fairOtd,
-        currentOfferOtd: input.dealContext.currentOfferOtd,
-        pushbackCount: input.dealContext.pushbackCount,
-        shopperFirst: input.dealContext.shopperFirst,
-        dealerMessage: input.dealerMessage,
-      });
-
-      const result: ReplyDecisionResult = {
-        runId,
-        decision: guardrailResult.blocked ? 'skip' : 'respond',
-        action: guardrailResult.blocked ? null : 'clarify',
-        draft: guardrailResult.blocked ? null : draft,
-        guardrailResult,
-        playbookDecision,
-        aiDisclosure,
-        shadowMode: SHADOW_MODE,
-        reasoning: guardrailResult.blocked
-          ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
-          : playbookDecision.reason,
-      };
-
-      await updateBrainRun(supabase, runId, {
-        status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: 0,
-        output: result,
-        guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
-        finished_at: new Date().toISOString(),
-      });
-
-      return result;
-    }
-
-    const lessons = await getApprovedLessons(supabase, {
-      dealer_type: undefined,
-    });
-
-    const lessonsContext = lessons.length > 0
-      ? `\n\nApproved lessons to consider:\n${lessons.map((l) => `- ${l.lesson}`).join('\n')}`
-      : '';
-
-    const userMessage = `Deal context:
-- Shopper: ${input.dealContext.shopperFirst}
-- Vehicle: ${input.dealContext.vehicle}
-- Fair OTD: ${input.dealContext.fairOtd ? `$${input.dealContext.fairOtd.toLocaleString()}` : 'unknown'}
-- Current offer: ${input.dealContext.currentOfferOtd ? `$${input.dealContext.currentOfferOtd.toLocaleString()}` : 'none'}
-- Pushback rounds so far: ${input.dealContext.pushbackCount}
-- Opted in to text: ${input.dealContext.hasOptedInToText}
-- Has texted before: ${input.dealContext.hasTextedBefore}
-- Dealer state: ${input.dealerState ?? 'unknown'}
-- Opening line: ${opener}
-- Do not lead with "I'm an AI". Use this sentence only if they asked whether this is a bot or AI: ${aiDisclosure}
-${lessonsContext}
-
-Dealer message (via ${input.channel}):
-${input.dealerMessage}`;
-
-    const response = await openai.chat.completions.create({
-      model: BRAIN_CONFIG.model,
-      messages: [
-        { role: 'system', content: REPLY_DECISION_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      temperature: 0.2,
-      max_tokens: 500,
-      response_format: { type: 'json_object' },
-    });
-
-    const content = response.choices[0].message.content ?? '{}';
-    const parsed = JSON.parse(content) as {
-      decision?: string;
-      action?: string;
-      draft?: string;
-      reasoning?: string;
-    };
-
-    const decision = (['respond', 'escalate', 'skip'] as const).includes(parsed.decision as 'respond')
-      ? (parsed.decision as 'respond' | 'escalate' | 'skip')
-      : 'skip';
-
-    const guardrailResult = runGuardrails({
-      action: parsed.action ?? null,
-      draft: parsed.draft ?? null,
-      dealerState: input.dealerState,
+    const proposed = await loadProposal(supabase, openai, input, playbookDecision, runId);
+    const otd = computeOtd(proposed.proposal.quote);
+    const validated = validateProposal({
+      proposal: proposed.proposal,
+      otd,
+      playbook: playbookDecision,
+      dealerMessage: input.dealerMessage,
       channel: input.channel,
+      dealerState: input.dealerState,
       hasOptedInToText: input.dealContext.hasOptedInToText,
       hasTextedBefore: input.dealContext.hasTextedBefore,
       fairOtd: input.dealContext.fairOtd,
       currentOfferOtd: input.dealContext.currentOfferOtd,
       pushbackCount: input.dealContext.pushbackCount,
       shopperFirst: input.dealContext.shopperFirst,
-      dealerMessage: input.dealerMessage,
+      mandate: input.dealContext.mandate ?? null,
+      shadowMode: SHADOW_MODE,
     });
 
-    const inputTokens = response.usage?.prompt_tokens ?? 0;
-    const outputTokens = response.usage?.completion_tokens ?? 0;
+    if (SHADOW_MODE && validated.sideEffect) {
+      throw new Error('Shadow mode tried to send a dealer reply.');
+    }
+    const sideEffect = validated.sideEffect;
 
     const result: ReplyDecisionResult = {
       runId,
-      decision: guardrailResult.blocked ? 'skip' : decision,
-      action: guardrailResult.blocked ? null : (parsed.action ?? null),
-      draft: guardrailResult.blocked ? null : (parsed.draft ?? null),
-      guardrailResult,
+      decision: validated.decision,
+      action: validated.action,
+      proposedAction: validated.proposedAction,
+      draft: validated.draft,
+      quote: proposed.proposal.quote,
+      otd,
+      guardrailResult: validated.guardrailResult,
       playbookDecision,
       aiDisclosure,
       shadowMode: SHADOW_MODE,
-      reasoning: guardrailResult.blocked
-        ? `Blocked by guardrails: ${guardrailResult.violations.join(', ')}`
-        : (parsed.reasoning ?? 'No reasoning provided'),
+      reasoning: validated.reasoning,
+      model: proposed.model,
+      usedFallback: proposed.usedFallback,
+      sideEffect,
     };
 
     await updateBrainRun(supabase, runId, {
-      status: guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      cost_usd: estimateCost(inputTokens, outputTokens, BRAIN_CONFIG.model),
+      model: proposed.model,
+      status: validated.guardrailResult.blocked ? 'blocked_by_guardrail' : 'ok',
+      input_tokens: proposed.usage.inputTokens,
+      output_tokens: proposed.usage.outputTokens,
+      cost_usd: estimateCost(
+        proposed.usage.inputTokens,
+        proposed.usage.outputTokens,
+        proposed.model === 'rules' ? BRAIN_CONFIG.model : proposed.model,
+        proposed.usage.cachedTokens,
+      ),
       output: result,
-      guardrail_hits: guardrailResult.violations.length > 0 ? guardrailResult.violations : null,
+      guardrail_hits: validated.guardrailResult.violations.length > 0
+        ? validated.guardrailResult.violations
+        : null,
       finished_at: new Date().toISOString(),
     });
 
     return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
     await updateBrainRun(supabase, runId, {
       status: 'error',
       error: errorMessage,
       finished_at: new Date().toISOString(),
     });
-
     throw error;
   }
 }
 
-function estimateCost(inputTokens: number, outputTokens: number, model: string): number {
-  const rates: Record<string, { input: number; output: number }> = {
-    'gpt-4o': { input: 0.005, output: 0.015 },
-    'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-    'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  };
-  const rate = rates[model] ?? rates['gpt-4o'];
-  return (inputTokens / 1000) * rate.input + (outputTokens / 1000) * rate.output;
+async function loadProposal(
+  supabase: SupabaseClient,
+  openai: OpenAI,
+  input: ReplyDecisionInput,
+  playbook: PlaybookDecision,
+  runId: string,
+): Promise<{
+  proposal: DealProposal;
+  model: string;
+  usedFallback: boolean;
+  usage: { inputTokens: number; outputTokens: number; cachedTokens: number };
+}> {
+  if (playbook.action === 'honest_ai_disclosure') {
+    logModelAnswer({ model: 'rules', role: 'rules', usedFallback: false, lane: 'rules', runId });
+    return {
+      proposal: {
+        proposed_action: 'send_reply',
+        draft: getAiDisclosure(input.dealContext.shopperFirst),
+        reasoning: playbook.reason,
+        quote: emptyQuote(),
+      },
+      model: 'rules',
+      usedFallback: false,
+      usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+    };
+  }
+
+  const lessons = await getApprovedLessons(supabase, { dealer_type: undefined });
+  const route = routeDealerMessage(input.dealerMessage);
+  const called = await requestDealProposal({
+    create: (params) => openai.responses.create(params),
+    model: route.lane === 'fast' ? BRAIN_CONFIG.fastModel : BRAIN_CONFIG.model,
+    fallbackModel: BRAIN_CONFIG.fallbackModel,
+    role: route.lane,
+    instructions: REPLY_DECISION_PROMPT,
+    userContent: buildModelUserContent(input, lessons.map((lesson) => ({ lesson: lesson.lesson })), route),
+    runId,
+  });
+  return called;
 }

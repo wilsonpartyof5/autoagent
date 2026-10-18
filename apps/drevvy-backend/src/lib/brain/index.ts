@@ -2,7 +2,21 @@
  * Brain module exports.
  */
 
-export { BRAIN_CONFIG, SHADOW_MODE, PUSHBACK_THRESHOLD } from './config';
+export {
+  BRAIN_CONFIG,
+  SHADOW_MODE,
+  PUSHBACK_THRESHOLD,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_FALLBACK_MODEL,
+  DEFAULT_OPENAI_FAST_MODEL,
+  shadowModeFromEnv,
+} from './config';
+
+export { estimateCost, MODEL_RATES, rateForModel } from './cost';
+
+export { computeOtd, emptyQuote, QUOTE_FIELDS, type ExtractedQuote, type OtdComputation } from './quote';
+
+export { routeDealerMessage, type RouteDecision } from './routing';
 
 export {
   verifyTelnyxSignature,
@@ -45,7 +59,7 @@ export { fetchVendorStatus, fetchAllVendorStatuses, type VendorStatusResult } fr
 
 export { runHealthCheck, type HealthCheckResult } from './health-check';
 
-export { TOOL_DEFINITIONS, executeTool, type BrainToolCall } from './tools';
+export { TOOL_DEFINITIONS, RESPONSE_TOOLS, executeTool, type BrainToolCall } from './tools';
 
 export { runDailyDigest, type DigestResult } from './digest';
 

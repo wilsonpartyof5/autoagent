@@ -7,7 +7,9 @@ import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { BRAIN_CONFIG } from './config';
-import { TOOL_DEFINITIONS, executeTool, type BrainToolCall } from './tools';
+import { estimateCost } from './cost';
+import { modelSampling } from './model-request';
+import { RESPONSE_TOOLS, executeTool, type BrainToolCall } from './tools';
 import { insertBrainRun, updateBrainRun } from './repository';
 
 export type DigestResult = {
@@ -70,54 +72,58 @@ export async function runDailyDigest(
   const toolCalls: BrainToolCall[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCachedTokens = 0;
 
   try {
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: 'system', content: DAILY_DIGEST_PROMPT },
-      { role: 'user', content: `Generate the daily digest for ${new Date().toISOString().split('T')[0]}.` },
-    ];
-
-    let response = await openai.chat.completions.create({
+    const sampling = modelSampling(BRAIN_CONFIG.model, 'main');
+    let response = await openai.responses.create({
       model: BRAIN_CONFIG.model,
-      messages,
-      tools: TOOL_DEFINITIONS,
-      tool_choice: 'auto',
-      temperature: 0.3,
-      max_tokens: 2000,
+      instructions: DAILY_DIGEST_PROMPT,
+      input: `Generate the daily digest for ${new Date().toISOString().split('T')[0]}.`,
+      max_output_tokens: 2000,
+      store: false,
+      tools: RESPONSE_TOOLS,
+      ...sampling,
     });
+    totalInputTokens += response.usage?.input_tokens ?? 0;
+    totalOutputTokens += response.usage?.output_tokens ?? 0;
+    totalCachedTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
 
-    totalInputTokens += response.usage?.prompt_tokens ?? 0;
-    totalOutputTokens += response.usage?.completion_tokens ?? 0;
-
-    while (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
-      const assistantMessage = response.choices[0].message;
-      messages.push(assistantMessage);
-
-      const currentToolCalls = assistantMessage.tool_calls ?? [];
-      for (const toolCall of currentToolCalls) {
-        const result = await executeTool(supabase, toolCall, runId);
+    let functionCalls = response.output.filter(isFunctionCall);
+    let rounds = 0;
+    while (functionCalls.length > 0 && rounds < 4) {
+      rounds += 1;
+      const outputs: OpenAI.Responses.ResponseInputItem.FunctionCallOutput[] = [];
+      for (const call of functionCalls) {
+        const result = await executeTool(supabase, {
+          id: call.call_id,
+          type: 'function',
+          function: { name: call.name, arguments: call.arguments },
+        }, runId);
         toolCalls.push(result);
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result.result),
+        outputs.push({
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: JSON.stringify(result.result),
         });
       }
 
-      response = await openai.chat.completions.create({
+      response = await openai.responses.create({
         model: BRAIN_CONFIG.model,
-        messages,
-        tools: TOOL_DEFINITIONS,
-        tool_choice: 'auto',
-        temperature: 0.3,
-        max_tokens: 2000,
+        previous_response_id: response.id,
+        input: outputs,
+        max_output_tokens: 2000,
+        store: false,
+        tools: RESPONSE_TOOLS,
+        ...sampling,
       });
-
-      totalInputTokens += response.usage?.prompt_tokens ?? 0;
-      totalOutputTokens += response.usage?.completion_tokens ?? 0;
+      totalInputTokens += response.usage?.input_tokens ?? 0;
+      totalOutputTokens += response.usage?.output_tokens ?? 0;
+      totalCachedTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
+      functionCalls = response.output.filter(isFunctionCall);
     }
 
-    const content = response.choices[0].message.content ?? '{}';
+    const content = response.output_text || '{}';
     let parsed: Partial<Omit<DigestResult, 'runId' | 'tokens' | 'cost'>>;
 
     try {
@@ -127,7 +133,7 @@ export async function runDailyDigest(
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
     }
 
-    const cost = estimateCost(totalInputTokens, totalOutputTokens, BRAIN_CONFIG.model);
+    const cost = estimateCost(totalInputTokens, totalOutputTokens, BRAIN_CONFIG.model, totalCachedTokens);
 
     const result: DigestResult = {
       runId,
@@ -187,12 +193,8 @@ function asLessonArray(value: unknown): Array<{ lesson: string; confidence: numb
     }));
 }
 
-function estimateCost(inputTokens: number, outputTokens: number, model: string): number {
-  const rates: Record<string, { input: number; output: number }> = {
-    'gpt-4o': { input: 0.005, output: 0.015 },
-    'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-    'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  };
-  const rate = rates[model] ?? rates['gpt-4o'];
-  return (inputTokens / 1000) * rate.input + (outputTokens / 1000) * rate.output;
+function isFunctionCall(
+  item: OpenAI.Responses.Response['output'][number],
+): item is OpenAI.Responses.ResponseFunctionToolCall {
+  return item.type === 'function_call';
 }
