@@ -1,3 +1,4 @@
+import { findLeadOpener } from '../src/forms/detect';
 import type { OutreachFill } from '../src/forms/outreach';
 import { isPrivateFieldHint } from '../src/forms/outreach';
 import type { ChatPage } from '../src/chat/types';
@@ -17,6 +18,7 @@ export class FakeChatPage implements ChatPage {
   readonly submits: Array<{ formId: string | null; buttonText: string | null }> = [];
   readonly points: Array<{ x: number; y: number }> = [];
   readonly dismissed: string[] = [];
+  readonly leadOpens: string[] = [];
   screenshots = 0;
   private currentHtml: string;
   private composerOpen = false;
@@ -31,6 +33,8 @@ export class FakeChatPage implements ChatPage {
       failSubmit?: boolean;
       gotoError?: Error;
       afterSettleHtml?: string;
+      htmlAfterLeadOpen?: string;
+      shadowHtml?: string;
       htmlAfterDismiss?: string;
       networkUrls?: string[];
       frames?: FrameSnapshot[];
@@ -128,6 +132,18 @@ export class FakeChatPage implements ChatPage {
 
   async settle(): Promise<void> {
     if (this.options.afterSettleHtml) this.currentHtml = this.options.afterSettleHtml;
+  }
+
+  async shadowHtml(): Promise<string> {
+    return this.options.shadowHtml ?? '';
+  }
+
+  async clickLeadOpener(): Promise<boolean> {
+    const label = findLeadOpener(this.currentHtml);
+    if (!label) return false;
+    this.leadOpens.push(label);
+    if (this.options.htmlAfterLeadOpen) this.currentHtml = this.options.htmlAfterLeadOpen;
+    return true;
   }
 
   networkUrls(): string[] {

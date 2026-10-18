@@ -241,7 +241,7 @@ Set these on the Railway service. Names only are listed here; values stay in Rai
 | `AI_MODEL` | no for `health` | Not called by `health`. |
 | `WIDGET_CHAT_ALLOWLIST` | no for `health` | Leave empty while testing. Live `lead`, `chat`, and `run` need it only when `DRY_RUN=false`. |
 
-`health` opens each page, logs the lead-form fields it would fill, and inserts a `widget_chat_attempts` row with `dry_run = true` and `channel = lead_form`. It does not type into the form, click submit, send chat, or call an external messaging API.
+`health` opens each page, waits for a late vehicle page, and clicks one control such as Check Availability or Ask a Question when that is what reveals the lead form. It logs the fields it would fill and inserts a `widget_chat_attempts` row with `dry_run = true` and `channel = lead_form`. It does not type into the form, click submit, send chat, or call an external messaging API. A form that is already in the page, including one inside an iframe or an open shadow root, is read without that click.
 
 `examples/health-urls.txt` is a placeholder with three public dealer vehicle pages (Jay Honda, Paragon Honda, and Honda Superstore of Joliet). The image copies it to `/app/examples/health-urls.txt`. Nothing reads that file until you set one of the URL sources. `WIDGET_HEALTH_URLS` is a comma-separated list and wins when both are set:
 
