@@ -2,10 +2,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 import { endConversationIdentity } from '@/lib/brain/identity-store';
 import {
+  DEFAULT_ALIAS_DOMAINS,
   parseIdentitySettings,
   parsePoolNumber,
   parseVoiceNumber,
   purchaseFlagVisible,
+  resolveAliasDomains,
   smsPoolHealth,
   type ConversationIdentity,
 } from '@/lib/brain/identity';
@@ -18,6 +20,7 @@ export type IdentityRow = {
   dealerId: string;
   shopperFirstName: string;
   emailAlias: string;
+  aliasDomain: string;
   smsNumberE164: string;
   voiceNumberE164: string | null;
   isTest: boolean;
@@ -57,6 +60,7 @@ export type IdentityAdmin = {
   voices: VoiceRow[];
   cooldownDays: number;
   watermark: number;
+  aliasDomains: string[];
   livePool: { active: number; watermark: number; low: boolean };
   purchaseFlag: boolean;
 };
@@ -69,6 +73,7 @@ const EMPTY: IdentityAdmin = {
   voices: [],
   cooldownDays: 90,
   watermark: 2,
+  aliasDomains: [...DEFAULT_ALIAS_DOMAINS],
   livePool: { active: 0, watermark: 2, low: false },
   purchaseFlag: false,
 };
@@ -79,7 +84,7 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
     const admin = createAdminClient();
     let identitiesQuery = admin
       .from('conversation_identities')
-      .select('id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at')
+      .select('id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, alias_domain, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at')
       .order('created_at', { ascending: false })
       .limit(100);
     if (traffic === 'live') identitiesQuery = identitiesQuery.eq('is_test', false);
@@ -98,7 +103,7 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
       unmatchedQuery,
       admin.from('sms_number_pool').select('phone_e164, label, status, is_test, last_assigned_at').order('created_at', { ascending: true }),
       admin.from('voice_numbers').select('state_code, phone_e164, label').order('state_code'),
-      admin.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark, purchase_needed').eq('id', 1).maybeSingle(),
+      admin.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark, purchase_needed, alias_domains').eq('id', 1).maybeSingle(),
     ]);
 
     const poolRows: PoolRow[] = (pool.data ?? []).map((row) => ({
@@ -130,6 +135,12 @@ export async function loadIdentityAdmin(traffic: TrafficFilter): Promise<Identit
       })),
       cooldownDays: settings.data?.sms_cooldown_days ?? 90,
       watermark,
+      aliasDomains: resolveAliasDomains({
+        env: process.env.ALIAS_DOMAINS,
+        settings: Array.isArray(settings.data?.alias_domains)
+          ? settings.data.alias_domains.filter((item: unknown): item is string => typeof item === 'string')
+          : null,
+      }),
       livePool,
       purchaseFlag: purchaseFlagVisible(livePool, settings.data?.purchase_needed === true),
     };
@@ -144,7 +155,7 @@ export async function loadIdentitiesForDeal(dealId: string): Promise<IdentityRow
     const admin = createAdminClient();
     const { data } = await admin
       .from('conversation_identities')
-      .select('id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at')
+      .select('id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, alias_domain, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at')
       .eq('deal_id', dealId);
     return (data ?? []).map((row) => publicIdentity(mapIdentity(row as Record<string, unknown>)));
   } catch {
@@ -224,6 +235,7 @@ function publicIdentity(identity: ConversationIdentity): IdentityRow {
     dealerId: identity.dealerId,
     shopperFirstName: identity.shopperFirstName,
     emailAlias: identity.emailAlias,
+    aliasDomain: identity.aliasDomain,
     smsNumberE164: identity.smsNumberE164,
     voiceNumberE164: identity.voiceNumberE164,
     isTest: identity.isTest,

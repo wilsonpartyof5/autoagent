@@ -1,19 +1,28 @@
 /**
  * Assign the conversation identity before a live widget send.
  * Rules match ensureConversationIdentity: one live text number per dealer,
- * cooldown before a different shopper reuses it, and the stored alias and
- * number do not change. DREVVY_TEST_MODE does not call this.
+ * one sending domain per dealer, cooldown before a different shopper reuses
+ * a number, and the stored alias and number do not change.
+ * DREVVY_TEST_MODE does not call this.
+ * Domain helpers match apps/drevvy-backend/src/lib/brain/identity.ts.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { ConversationContact } from './identity';
 
-const ALIAS_DOMAIN = 'offers.drevvy.com';
+const DEFAULT_ALIAS_DOMAINS = [
+  'offers.drevvy.com',
+  'deals.drevvy.com',
+  'quotes.drevvy.com',
+  'buyers.drevvy.com',
+];
 const TAG_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const FIRST_NAME = /^[A-Za-z][A-Za-z .'-]{0,39}$/;
-const BRAND_WORD = /offers|drevvy/i;
+const ALIAS_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.drevvy\.com$/;
 const DEFAULT_COOLDOWN_DAYS = 90;
+
+type DealerDomain = { dealerId: string; domain: string };
 
 type PoolNumber = {
   phoneE164: string;
@@ -43,19 +52,26 @@ export async function ensureConversationContact(
   const deal = await loadDeal(client, input.dealId);
   if (!deal.shopperId) return hold('The deal has no shopper.', false);
 
-  const firstName = await loadShopperFirstName(client, deal.shopperId);
+  const settings = await loadSettings(client);
+  const firstName = await loadShopperFirstName(client, deal.shopperId, settings.aliasDomains);
   if (!firstName) return hold('The shopper first name is not on the profile.', await purchaseFlag(client));
 
-  const [settings, pool, assignments, voices] = await Promise.all([
-    loadSettings(client),
+  const [pool, assignments, voices, dealerDomains] = await Promise.all([
     loadPool(client),
     loadAssignments(client, input.dealerId),
     loadVoices(client),
+    loadDealerDomains(client),
   ]);
   const voiceNumberE164 = pickVoiceNumber(voices, deal.state);
   const random = input.random ?? Math.random;
+  let assigned = dealerDomains;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
+    const domain = pickAliasDomain({
+      dealerId: input.dealerId,
+      domains: settings.aliasDomains,
+      assigned,
+    });
     const picked = pickSmsNumber({
       pool,
       assignments,
@@ -68,8 +84,8 @@ export async function ensureConversationContact(
       await markPurchaseNeeded(client);
       return hold('No text number is free for this dealer. Purchase another Telnyx number.', true);
     }
-    const alias = buildEmailAlias(firstName, randomAliasTag(random));
-    if (!alias) return hold('Could not build an email alias from the shopper first name.', await purchaseFlag(client));
+    const alias = buildEmailAlias(firstName, randomAliasTag(random), domain, settings.aliasDomains);
+    if (!alias) continue;
 
     const { data, error } = await client
       .from('conversation_identities')
@@ -79,6 +95,7 @@ export async function ensureConversationContact(
         shopper_id: deal.shopperId,
         shopper_first_name: firstName,
         email_alias: alias,
+        alias_domain: domain,
         sms_number_e164: picked.phoneE164,
         voice_number_e164: voiceNumberE164,
         is_test: false,
@@ -98,6 +115,10 @@ export async function ensureConversationContact(
 
     const raced = await loadExisting(client, input.dealId, input.dealerId);
     if (raced) return raced;
+    if (/sending domain/i.test(error.message ?? '')) {
+      assigned = await loadDealerDomains(client);
+      continue;
+    }
     if (/email_alias/i.test(error.message ?? '')) continue;
     assignments.push({
       dealerId: input.dealerId,
@@ -142,7 +163,7 @@ function stateFromSnapshot(snapshot: unknown): string | null {
   return /^[A-Z]{2}$/.test(code) ? code : null;
 }
 
-async function loadShopperFirstName(client: SupabaseClient, shopperId: string): Promise<string | null> {
+async function loadShopperFirstName(client: SupabaseClient, shopperId: string, domains: readonly string[]): Promise<string | null> {
   const { data: profile } = await client.from('consumer_profiles').select('first_name').eq('user_id', shopperId).maybeSingle();
   let metadata: Record<string, unknown> | null = null;
   try {
@@ -152,19 +173,31 @@ async function loadShopperFirstName(client: SupabaseClient, shopperId: string): 
   } catch {
     metadata = null;
   }
-  const name = readShopperFirstName(typeof profile?.first_name === 'string' ? profile.first_name : null, metadata);
+  const name = readShopperFirstName(typeof profile?.first_name === 'string' ? profile.first_name : null, metadata, domains);
   if (name && profile && !profile.first_name) {
     await client.from('consumer_profiles').update({ first_name: name }).eq('user_id', shopperId).is('first_name', null);
   }
   return name;
 }
 
-async function loadSettings(client: SupabaseClient): Promise<{ cooldownDays: number; watermark: number }> {
-  const { data } = await client.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark').eq('id', 1).maybeSingle();
+async function loadSettings(client: SupabaseClient): Promise<{ cooldownDays: number; watermark: number; aliasDomains: string[] }> {
+  const { data } = await client.from('identity_settings').select('sms_cooldown_days, sms_pool_low_watermark, alias_domains').eq('id', 1).maybeSingle();
+  const settingsDomains = Array.isArray(data?.alias_domains)
+    ? data.alias_domains.filter((item: unknown): item is string => typeof item === 'string')
+    : null;
   return {
     cooldownDays: typeof data?.sms_cooldown_days === 'number' ? data.sms_cooldown_days : DEFAULT_COOLDOWN_DAYS,
     watermark: typeof data?.sms_pool_low_watermark === 'number' ? data.sms_pool_low_watermark : 2,
+    aliasDomains: resolveAliasDomains({ env: process.env.ALIAS_DOMAINS, settings: settingsDomains }),
   };
+}
+
+async function loadDealerDomains(client: SupabaseClient): Promise<DealerDomain[]> {
+  const side = await client.from('dealer_alias_domains').select('dealer_id, alias_domain');
+  const sideRows = domainRows(side.error ? null : side.data);
+  if (sideRows.length > 0) return sideRows;
+  const identities = await client.from('conversation_identities').select('dealer_id, alias_domain, email_alias');
+  return domainRows(identities.data);
 }
 
 async function loadPool(client: SupabaseClient): Promise<PoolNumber[]> {
@@ -249,7 +282,11 @@ function pickVoiceNumber(numbers: { state: string; phoneE164: string }[], state:
   return numbers.find((number) => number.state.trim().toUpperCase() === code)?.phoneE164 ?? null;
 }
 
-function readShopperFirstName(profileFirst: string | null, metadata: Record<string, unknown> | null): string | null {
+function readShopperFirstName(
+  profileFirst: string | null,
+  metadata: Record<string, unknown> | null,
+  domains: readonly string[],
+): string | null {
   const candidates = [
     profileFirst,
     metadataString(metadata, 'first_name'),
@@ -259,24 +296,114 @@ function readShopperFirstName(profileFirst: string | null, metadata: Record<stri
     firstToken(metadataString(metadata, 'name')),
   ];
   for (const candidate of candidates) {
-    const name = displayName(candidate ?? '');
+    const name = displayName(candidate ?? '', domains);
     if (name) return name;
   }
   return null;
 }
 
-function displayName(firstName: string): string | null {
+function displayName(firstName: string, domains: readonly string[]): string | null {
   const trimmed = firstName.trim();
   if (!FIRST_NAME.test(trimmed)) return null;
-  if (BRAND_WORD.test(trimmed)) return null;
   if (/[@\d]/.test(trimmed)) return null;
+  const slug = trimmed.normalize('NFKD').replace(/[^A-Za-z]/g, '').toLowerCase();
+  const brand = brandWordPattern(domains);
+  if (!slug || brand.test(trimmed) || brand.test(slug)) return null;
   return trimmed;
 }
 
-function buildEmailAlias(firstName: string, tag: string): string | null {
+function buildEmailAlias(firstName: string, tag: string, domain: string, domains: readonly string[]): string | null {
   const slug = firstName.normalize('NFKD').replace(/[^A-Za-z]/g, '').toLowerCase().slice(0, 20);
-  if (!slug || !/^[a-z0-9]{4,6}$/.test(tag)) return null;
-  return `${slug}.${tag}@${ALIAS_DOMAIN}`;
+  const host = normalizeAliasDomain(domain);
+  if (!slug || !host || !/^[a-z0-9]{4,6}$/.test(tag)) return null;
+  const brand = brandWordPattern(domains);
+  if (brand.test(firstName) || brand.test(slug) || brand.test(tag)) return null;
+  return `${slug}.${tag}@${host}`;
+}
+
+function normalizeAliasDomain(value: string): string | null {
+  const domain = value.trim().toLowerCase().replace(/\.$/, '');
+  if (!ALIAS_DOMAIN_PATTERN.test(domain)) return null;
+  return domain;
+}
+
+function parseAliasDomains(value: string | readonly string[] | null | undefined): string[] {
+  const parts = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  const domains: string[] = [];
+  for (const part of parts) {
+    const domain = normalizeAliasDomain(String(part));
+    if (domain && !domains.includes(domain)) domains.push(domain);
+  }
+  return domains;
+}
+
+function resolveAliasDomains(input: { env?: string | null; settings?: readonly string[] | null }): string[] {
+  const fromEnv = parseAliasDomains(input.env);
+  if (input.env?.trim() && fromEnv.length > 0) return fromEnv;
+  const fromSettings = parseAliasDomains(input.settings);
+  if (fromSettings.length > 0) return fromSettings;
+  return [...DEFAULT_ALIAS_DOMAINS];
+}
+
+function brandWordPattern(domains: readonly string[]): RegExp {
+  const labels = new Set<string>(['drevvy']);
+  for (const domain of domains) {
+    const label = normalizeAliasDomain(domain)?.split('.')[0];
+    if (label) labels.add(label);
+  }
+  const body = [...labels].sort().map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return new RegExp(body, 'i');
+}
+
+function pickAliasDomain(input: {
+  dealerId: string;
+  domains: readonly string[];
+  assigned: readonly DealerDomain[];
+}): string {
+  const parsed = parseAliasDomains(input.domains);
+  const domains = parsed.length > 0 ? parsed : [...DEFAULT_ALIAS_DOMAINS];
+  const existing = input.assigned.find((row) => row.dealerId === input.dealerId);
+  const kept = existing ? normalizeAliasDomain(existing.domain) : null;
+  if (kept) return kept;
+
+  const counts = new Map<string, Set<string>>(domains.map((domain) => [domain, new Set()]));
+  for (const row of input.assigned) {
+    const domain = normalizeAliasDomain(row.domain);
+    const dealers = domain ? counts.get(domain) : undefined;
+    if (dealers) dealers.add(row.dealerId);
+  }
+  const min = Math.min(...[...counts.values()].map((dealers) => dealers.size));
+  const tied = domains.filter((domain) => counts.get(domain)?.size === min);
+  return tied[stableIndex(input.dealerId, tied.length)] ?? domains[0];
+}
+
+function stableIndex(key: string, size: number): number {
+  if (size <= 1) return 0;
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % size;
+}
+
+function domainRows(data: unknown): DealerDomain[] {
+  if (!Array.isArray(data)) return [];
+  const rows: DealerDomain[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { dealer_id?: unknown; alias_domain?: unknown; email_alias?: unknown };
+    const dealerId = typeof row.dealer_id === 'string' ? row.dealer_id : '';
+    if (!dealerId) continue;
+    const stored = typeof row.alias_domain === 'string' ? normalizeAliasDomain(row.alias_domain) : null;
+    const email = typeof row.email_alias === 'string' ? row.email_alias : '';
+    const at = email.lastIndexOf('@');
+    const fromEmail = at >= 0 ? normalizeAliasDomain(email.slice(at + 1)) : null;
+    const domain = stored ?? fromEmail;
+    if (!domain) continue;
+    rows.push({ dealerId, domain });
+  }
+  return rows;
 }
 
 function randomAliasTag(random: () => number): string {

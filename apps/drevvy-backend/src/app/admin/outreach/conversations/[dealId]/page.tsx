@@ -35,7 +35,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ d
           <ul className="mt-3 space-y-1 text-sm text-slate-300">
             {identities.map((identity) => (
               <li key={identity.id}>
-                {identity.dealerId} · {identity.emailAlias} · {identity.smsNumberE164}
+                {identity.dealerId} · {identity.aliasDomain} · {identity.emailAlias} · {identity.smsNumberE164}
                 {identity.voiceNumberE164 ? ` · caller ID ${identity.voiceNumberE164}` : ''}
                 {identity.isTest ? ' · TEST' : ''}
               </li>

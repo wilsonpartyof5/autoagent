@@ -6,28 +6,34 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  ALIAS_DOMAIN,
   addressList,
+  aliasDomainOf,
   buildEmailAlias,
   DEFAULT_COOLDOWN_DAYS,
   DEFAULT_LOW_WATERMARK,
   extractMessageIds,
+  normalizeAliasDomain,
   normalizeEmailAddress,
+  pickAliasDomain,
   pickSmsNumber,
   pickVoiceNumber,
   randomAliasTag,
   readShopperFirstName,
+  resolveAliasDomains,
   routeInbound,
   purchaseFlagVisible,
   smsPoolHealth,
   threadMessageId,
   type ConversationIdentity,
+  type DealerDomainAssignment,
   type InboundRoute,
   type PoolNumber,
   type SmsAssignment,
 } from './identity';
 import { normalizePhone, type TelnyxClientState } from './telnyx';
 
-const IDENTITY_COLUMNS = 'id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at';
+const IDENTITY_COLUMNS = 'id, deal_id, dealer_id, shopper_id, shopper_first_name, email_alias, alias_domain, sms_number_e164, voice_number_e164, locked_at, created_at, is_test, ended_at';
 
 export type IdentityRouter = {
   route(input: {
@@ -180,20 +186,27 @@ export async function ensureConversationIdentity(
   const existing = await findIdentity(supabase, input.dealId, input.dealerId);
   if (existing) return existing;
 
-  const firstName = await loadShopperFirstName(supabase, input.shopperId);
+  const test = input.isTest === true;
+  const settings = await loadSettings(supabase);
+  const firstName = await loadShopperFirstName(supabase, input.shopperId, settings.aliasDomains);
   if (!firstName) return { error: 'The shopper first name is not on the profile.' };
 
-  const test = input.isTest === true;
-  const [settings, pool, assignments, voices] = await Promise.all([
-    loadSettings(supabase),
+  const [pool, assignments, voices, dealerDomains] = await Promise.all([
     loadPool(supabase),
     loadAssignments(supabase, input.dealerId),
     loadVoices(supabase),
+    loadDealerDomains(supabase),
   ]);
   const voiceNumberE164 = pickVoiceNumber(voices, input.dealerState);
   const random = input.random ?? Math.random;
+  let assigned = dealerDomains;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
+    const domain = pickAliasDomain({
+      dealerId: input.dealerId,
+      domains: settings.aliasDomains,
+      assigned,
+    });
     const picked = pickSmsNumber({
       pool,
       assignments,
@@ -207,8 +220,8 @@ export async function ensureConversationIdentity(
       if (!test) await markLivePurchaseNeeded(supabase);
       return { error: 'No text number is free for this dealer. Purchase another Telnyx number.' };
     }
-    const alias = buildEmailAlias(firstName, randomAliasTag(random));
-    if (!alias) return { error: 'Could not build an email alias from the shopper first name.' };
+    const alias = buildEmailAlias(firstName, randomAliasTag(random), domain, settings.aliasDomains);
+    if (!alias) continue;
 
     const { data, error } = await supabase
       .from('conversation_identities')
@@ -218,6 +231,7 @@ export async function ensureConversationIdentity(
         shopper_id: input.shopperId,
         shopper_first_name: firstName,
         email_alias: alias,
+        alias_domain: domain,
         sms_number_e164: picked.phoneE164,
         voice_number_e164: voiceNumberE164,
         is_test: test,
@@ -233,6 +247,10 @@ export async function ensureConversationIdentity(
 
     const raced = await findIdentity(supabase, input.dealId, input.dealerId);
     if (raced) return raced;
+    if (/sending domain/i.test(error?.message ?? '')) {
+      assigned = await loadDealerDomains(supabase);
+      continue;
+    }
     if (/email_alias/i.test(error?.message ?? '')) continue;
 
     assignments.push({
@@ -280,6 +298,7 @@ export function mapIdentity(row: Record<string, unknown>): ConversationIdentity 
     shopperId: String(row.shopper_id),
     shopperFirstName: String(row.shopper_first_name),
     emailAlias: String(row.email_alias),
+    aliasDomain: domainFromIdentityRow(row),
     smsNumberE164: String(row.sms_number_e164),
     voiceNumberE164: row.voice_number_e164 ? String(row.voice_number_e164) : null,
     lockedAt: String(row.locked_at),
@@ -289,7 +308,11 @@ export function mapIdentity(row: Record<string, unknown>): ConversationIdentity 
   };
 }
 
-async function loadShopperFirstName(supabase: SupabaseClient, shopperId: string): Promise<string | null> {
+async function loadShopperFirstName(
+  supabase: SupabaseClient,
+  shopperId: string,
+  domains: readonly string[],
+): Promise<string | null> {
   const { data: profile } = await supabase
     .from('consumer_profiles')
     .select('first_name')
@@ -303,7 +326,11 @@ async function loadShopperFirstName(supabase: SupabaseClient, shopperId: string)
   } catch {
     metadata = null;
   }
-  const name = readShopperFirstName(typeof profile?.first_name === 'string' ? profile.first_name : null, metadata);
+  const name = readShopperFirstName(
+    typeof profile?.first_name === 'string' ? profile.first_name : null,
+    metadata,
+    domains,
+  );
   if (name && profile && !profile.first_name) {
     await supabase.from('consumer_profiles').update({ first_name: name }).eq('user_id', shopperId).is('first_name', null);
   }
@@ -334,15 +361,23 @@ async function markLivePurchaseNeeded(supabase: SupabaseClient): Promise<void> {
   }).eq('id', 1);
 }
 
-async function loadSettings(supabase: SupabaseClient): Promise<{ cooldownDays: number; watermark: number }> {
+async function loadSettings(supabase: SupabaseClient): Promise<{
+  cooldownDays: number;
+  watermark: number;
+  aliasDomains: string[];
+}> {
   const { data } = await supabase
     .from('identity_settings')
-    .select('sms_cooldown_days, sms_pool_low_watermark')
+    .select('sms_cooldown_days, sms_pool_low_watermark, alias_domains')
     .eq('id', 1)
     .maybeSingle();
   return {
     cooldownDays: typeof data?.sms_cooldown_days === 'number' ? data.sms_cooldown_days : DEFAULT_COOLDOWN_DAYS,
     watermark: typeof data?.sms_pool_low_watermark === 'number' ? data.sms_pool_low_watermark : DEFAULT_LOW_WATERMARK,
+    aliasDomains: resolveAliasDomains({
+      env: process.env.ALIAS_DOMAINS,
+      settings: domainList(data?.alias_domains),
+    }),
   };
 }
 
@@ -367,6 +402,43 @@ async function loadAssignments(supabase: SupabaseClient, dealerId: string): Prom
     smsNumberE164: row.sms_number_e164,
     endedAt: row.ended_at,
   }));
+}
+
+async function loadDealerDomains(supabase: SupabaseClient): Promise<DealerDomainAssignment[]> {
+  const side = await supabase.from('dealer_alias_domains').select('dealer_id, alias_domain');
+  const sideRows = domainRows(side.error ? null : side.data);
+  if (sideRows.length > 0) return sideRows;
+
+  const identities = await supabase.from('conversation_identities').select('dealer_id, alias_domain, email_alias');
+  return domainRows(identities.data);
+}
+
+function domainRows(data: unknown): DealerDomainAssignment[] {
+  if (!Array.isArray(data)) return [];
+  const rows: DealerDomainAssignment[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { dealer_id?: unknown; alias_domain?: unknown; email_alias?: unknown };
+    const dealerId = typeof row.dealer_id === 'string' ? row.dealer_id : '';
+    if (!dealerId) continue;
+    const stored = typeof row.alias_domain === 'string' ? row.alias_domain : '';
+    const email = typeof row.email_alias === 'string' ? row.email_alias : '';
+    const domain = normalizeAliasDomain(stored) ?? aliasDomainOf(email);
+    if (!domain) continue;
+    rows.push({ dealerId, domain });
+  }
+  return rows;
+}
+
+function domainList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function domainFromIdentityRow(row: Record<string, unknown>): string {
+  const stored = typeof row.alias_domain === 'string' ? normalizeAliasDomain(row.alias_domain) : null;
+  if (stored) return stored;
+  return aliasDomainOf(String(row.email_alias ?? '')) ?? ALIAS_DOMAIN;
 }
 
 async function loadVoices(supabase: SupabaseClient): Promise<{ state: string; phoneE164: string }[]> {
@@ -401,8 +473,8 @@ function toRouteIdentity(identity: ConversationIdentity) {
   };
 }
 
-export function outboundThreadId(conversationId: string, vendorEventId: string): string {
-  return threadMessageId(conversationId, vendorEventId);
+export function outboundThreadId(conversationId: string, vendorEventId: string, domain: string): string {
+  return threadMessageId(conversationId, vendorEventId, domain);
 }
 
 export { smsPoolHealth };

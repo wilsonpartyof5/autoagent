@@ -33,9 +33,12 @@ describe('live widget assignment', () => {
     assert.equal('smsNumber' in first && 'smsNumber' in again && first.smsNumber === again.smsNumber, true);
     assert.equal(db.rows('conversation_identities').length, 1);
     assert.equal(db.rows('conversation_identities')[0]?.voice_number_e164, '+18035551000');
+    assert.match(String(db.rows('conversation_identities')[0]?.alias_domain), /^(offers|deals|quotes|buyers)\.drevvy\.com$/);
 
     const second = await ensureConversationContact(db.client, { dealId: 'deal-2', dealerId: 'dealer-a', random: () => 0.2 });
     assert.equal('smsNumber' in first && 'smsNumber' in second && first.smsNumber !== second.smsNumber, true);
+    const domains = new Set(db.rows('conversation_identities').map((row) => row.alias_domain));
+    assert.equal(domains.size, 1);
     const third = await ensureConversationContact(db.client, { dealId: 'deal-3', dealerId: 'dealer-a', random: () => 0.2 });
     assert.equal('held' in third && third.held, true);
     assert.equal('purchaseFlag' in third && third.purchaseFlag, true);
@@ -74,6 +77,54 @@ describe('live widget assignment', () => {
     assert.equal(db.rows('conversation_identities').length, 1);
     assert.equal(db.rows('conversation_identities')[0]?.shopper_id, 'shopper-a');
     assert.equal(db.rows('identity_settings')[0]?.purchase_needed, true);
+  });
+
+  it('keeps a dealer on its sending domain and rejects a brand-like first name', async () => {
+    const db = memoryDb({
+      deals: [deal('deal-new', 'shopper-b'), deal('deal-other', 'shopper-c')],
+      profiles: [
+        { user_id: 'shopper-b', first_name: 'Luis' },
+        { user_id: 'shopper-c', first_name: 'Ana' },
+      ],
+      pool: [number('+18035550101'), number('+18035550102'), number('+18035550103')],
+      identities: [{
+        id: 'conv-old',
+        deal_id: 'deal-old',
+        dealer_id: 'dealer-a',
+        shopper_id: 'shopper-a',
+        shopper_first_name: 'Maya',
+        email_alias: 'maya.abcd@quotes.drevvy.com',
+        alias_domain: 'quotes.drevvy.com',
+        sms_number_e164: '+18035550101',
+        voice_number_e164: null,
+        ended_at: null,
+      }],
+      settings: { sms_cooldown_days: 90, sms_pool_low_watermark: 0, purchase_needed: false },
+    });
+    const sameDealer = await ensureConversationContact(db.client, { dealId: 'deal-new', dealerId: 'dealer-a', random: () => 0.2 });
+    assert.equal('emailAlias' in sameDealer && sameDealer.emailAlias.endsWith('@quotes.drevvy.com'), true);
+    const otherDealer = await ensureConversationContact(db.client, { dealId: 'deal-other', dealerId: 'dealer-b', random: () => 0.2 });
+    assert.equal('emailAlias' in otherDealer && otherDealer.emailAlias.endsWith('@quotes.drevvy.com'), false);
+
+    const branded = memoryDb({
+      deals: [deal('deal-brand', 'shopper-d')],
+      profiles: [{ user_id: 'shopper-d', first_name: 'Deals' }],
+      pool: [number('+18035550101')],
+      settings: { sms_cooldown_days: 90, sms_pool_low_watermark: 0, purchase_needed: false },
+    });
+    const held = await ensureConversationContact(branded.client, { dealId: 'deal-brand', dealerId: 'dealer-c', random: () => 0.2 });
+    assert.equal('held' in held && held.held, true);
+    assert.equal(branded.rows('conversation_identities').length, 0);
+
+    const spaced = memoryDb({
+      deals: [deal('deal-spaced', 'shopper-e')],
+      profiles: [{ user_id: 'shopper-e', first_name: 'De Als' }],
+      pool: [number('+18035550101')],
+      settings: { sms_cooldown_days: 90, sms_pool_low_watermark: 0, purchase_needed: false },
+    });
+    const spacedHeld = await ensureConversationContact(spaced.client, { dealId: 'deal-spaced', dealerId: 'dealer-d', random: () => 0.2 });
+    assert.equal('held' in spacedHeld && spacedHeld.held, true);
+    assert.equal(spaced.rows('conversation_identities').length, 0);
   });
 
   it('does not assign in test mode and holds a live lead before the page opens', async () => {

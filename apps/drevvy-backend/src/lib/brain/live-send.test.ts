@@ -23,6 +23,7 @@ test('the purchase flag is the low pool or a held live send', () => {
   const page = readFileSync(join(HERE, '../../components/admin/conversation-identities.tsx'), 'utf8');
   assert.match(page, /admin\.purchaseFlag/);
   assert.match(page, /Purchase another Telnyx number/);
+  assert.match(page, /row\.aliasDomain/);
 });
 
 test('the first live email and text keep one alias and one number', async () => {
@@ -57,7 +58,7 @@ test('the first live email and text keep one alias and one number', async () => 
   });
   assert.equal('messageId' in email, true);
   const alias = String(sent[0]?.reply_to);
-  assert.match(alias, /^maya\.[a-z0-9]{4,6}@offers\.drevvy\.com$/);
+  assert.match(alias, /^maya\.[a-z0-9]{4,6}@(offers|deals|quotes|buyers)\.drevvy\.com$/);
   assert.equal(String(sent[0]?.from), `"Maya" <${alias}>`);
   assert.equal(alias.includes('deal-1'), false);
 
@@ -75,6 +76,7 @@ test('the first live email and text keep one alias and one number', async () => 
   assert.equal(sent[1]?.from, '+18035550101');
   assert.equal(db.rows('conversation_identities').length, 1);
   assert.equal(db.rows('conversation_identities')[0]?.email_alias, alias);
+  assert.equal(db.rows('conversation_identities')[0]?.alias_domain, alias.split('@')[1]);
   assert.equal(db.rows('conversation_identities')[0]?.sms_number_e164, '+18035550101');
   assert.equal(db.rows('conversation_identities')[0]?.voice_number_e164, '+18035551000');
 });
@@ -97,6 +99,7 @@ test('one dealer never has the same text number live twice', async () => {
   assert.notEqual(sent[0]?.from, sent[1]?.from);
   const live = db.rows('conversation_identities').filter((row) => row.ended_at == null && row.dealer_id === 'dealer-a');
   assert.equal(new Set(live.map((row) => row.sms_number_e164)).size, live.length);
+  assert.equal(new Set(live.map((row) => row.alias_domain)).size, 1);
 
   const third = await sendSms(db, 'deal-3', 'dealer-a', sent);
   assert.equal('held' in third && third.held, true);
@@ -180,6 +183,9 @@ test('the same shopper can use a cooled number again, and an empty live pool nev
   const again = await sendSms(cooled, 'deal-next', 'dealer-a', sent);
   assert.equal('messageId' in again, true);
   assert.equal(sent[0]?.from, '+18035550101');
+  const next = cooled.rows('conversation_identities').find((row) => row.deal_id === 'deal-next');
+  assert.equal(next?.alias_domain, 'offers.drevvy.com');
+  assert.match(String(next?.email_alias), /@offers\.drevvy\.com$/);
 
   const empty = memoryDb({
     deals: [deal('deal-1', 'shopper-1', 'SC')],
