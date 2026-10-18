@@ -6,7 +6,7 @@
 export const BRAIN_CONFIG = {
   model: process.env.OPENAI_MODEL ?? 'gpt-4o',
   fastModel: process.env.OPENAI_FAST_MODEL ?? 'gpt-4o-mini',
-  promptVersion: process.env.BRAIN_PROMPT_VERSION ?? '1.0.0',
+  promptVersion: process.env.BRAIN_PROMPT_VERSION ?? '1.1.0',
 } as const;
 
 export const PUSHBACK_THRESHOLD = {

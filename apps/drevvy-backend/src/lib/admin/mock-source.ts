@@ -300,7 +300,7 @@ function buildTranscripts(vehicle: DemoVehicle, dealers: DealerContact[], create
       channel: 'sms' as const,
       direction: 'outbound' as const,
       dealerName: dealer.name,
-      body: `Hi, this is Drevvy for a shopper. Can you send the out-the-door price on the ${title}, stock matching VIN ${vehicle.vin}?`,
+      body: `Hi, this is Drevvy, working for the shopper. Can you send the out-the-door price on the ${title}, stock matching VIN ${vehicle.vin}?`,
     });
     messages.push({
       id: `${dealer.id}-email-out`,

@@ -44,7 +44,7 @@ Rules:
 - price_given: a listing price was stated. Put that price in price. next_message = continue_offline.
 - asked_contact: they want the shopper's name, phone, or email. next_message = none.
 - human_handoff: a person will take over or call. next_message = none.
-- If they ask whether this is a bot, AI, or human, next_message = bot_disclosure.
+- If they ask whether this is a bot, AI, or human, next_message = bot_disclosure. That line tells the truth. Never choose a line that would deny being an AI.
 - unknown for anything else. next_message = none.
 - Never invent a phone number or email.`;
 

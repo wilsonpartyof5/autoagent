@@ -105,7 +105,7 @@ function sampleInsight(range: OutreachRange, realDeals: OutreachDeal[] | null = 
       {
         touchpoint: 'D0-C1',
         hypothesis: 'Leading with the buyer\'s first name and the number ask in the first sentence raises number capture.',
-        sketch: 'Hi, this is Drevvy calling for {first}. What\'s the best number to text a salesperson about stock {stock}?',
+        sketch: 'Hi, this is Drevvy, working for {first}. What\'s the best number to text a salesperson about stock {stock}?',
       },
     ],
   };
@@ -126,7 +126,7 @@ async function llmInsight(range: OutreachRange, apiKey: string, realDeals: Outre
       messages: [{
         role: 'user',
         content: `You advise a human on Drevvy's dealer outreach cadence. Suggestions only. Do not say the cadence changed.
-Rules: calls introduce themselves as Drevvy calling for the buyer by first name. Never write "automated assistant". Never use the word "negotiate". Never include a shopper phone, email, or last name.
+Rules: openings are short and friendly: "Hi, this is Drevvy, working for {first}." Do not lead with "I'm an AI". If a dealer asks whether this is a bot or AI, the truthful answer is "I'm Drevvy's AI, working for {first}." Never deny being an AI. Never write "automated assistant". Never use the word "negotiate". Never include a shopper phone, email, or last name.
 Return JSON with keys working, notWorking, bottlenecks, nextSteps (string arrays) and proposedVariants (array of {touchpoint, hypothesis, sketch}). touchpoint must be one of ${TOUCHPOINT_IDS.join(', ')}. Propose 1 or 2 variants.
 
 Metrics:
