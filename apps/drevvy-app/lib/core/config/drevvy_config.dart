@@ -29,16 +29,18 @@ class DrevvyConfig {
   /// Consumer device registry. A 404 or 405 is treated as "not shipped yet".
   static const devicesPath = '/api/consumer/devices';
 
-  /// TODO: Web/server OAuth client ID. Required for Google ID tokens on Android.
+  /// Web OAuth client ID. Required for Google ID tokens on Android.
+  /// Override with `--dart-define=DREVVY_GOOGLE_SERVER_CLIENT_ID=...`.
   static const googleServerClientId = String.fromEnvironment(
     'DREVVY_GOOGLE_SERVER_CLIENT_ID',
-    defaultValue: '',
+    defaultValue: '802176042106-majjp9ij3jof60rpd5rdlr0rsvl5d4rj.apps.googleusercontent.com',
   );
 
-  /// TODO: iOS OAuth client ID. Also set GIDClientID in ios/Runner/Info.plist.
+  /// iOS OAuth client ID. Also set as GIDClientID in ios/Runner/Info.plist.
+  /// Override with `--dart-define=DREVVY_GOOGLE_IOS_CLIENT_ID=...`.
   static const googleIosClientId = String.fromEnvironment(
     'DREVVY_GOOGLE_IOS_CLIENT_ID',
-    defaultValue: '',
+    defaultValue: '802176042106-4crn4kfl0mf52k8rrsdb1k1ti5gpuhoa.apps.googleusercontent.com',
   );
 
   /// TODO: Apple Services ID for Sign in with Apple on Android and web.
