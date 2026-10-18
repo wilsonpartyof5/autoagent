@@ -4,7 +4,7 @@ Standalone Node worker for day-0 dealer outreach:
 
 1. **Research.** Given a dealer vehicle page, fetch that page and the dealer site, ask an OpenAI-compatible model for the widget vendor, phone numbers, and emails, check those values against the page, and upsert `dealer_directory`.
 2. **Scan.** Open the page, wait for a late widget, and record whether the chat widget is ready.
-3. **Day-0 channels.** `run` uses that scan. A ready widget gets the widget chat and the lead form. Every other widget status gets the lead form only. A bot wall gets neither, and is marked for email, text, and call.
+3. **Day-0 channels.** `run` uses that scan. A ready widget gets the widget chat and the lead form. Every other widget status gets the lead form only. A bot wall gets neither, and is marked for email, text, and call. A dealer flagged call/email only skips the widget channel.
 4. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
 5. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
@@ -19,6 +19,7 @@ Migrations, applied separately from this package:
 - `supabase/migrations/20261018120000_widget_playbooks.sql` adds `dealer_directory.widget_playbook` and the scan statuses `widget_offline`, `page_timeout`, and `composer_not_found`.
 - `supabase/migrations/20261018150000_day0_channel_selection.sql` adds `selected_channels`, `channel_reason`, and `fallback` on `widget_chat_attempts`. `fallback` is `email_text_call` when a bot wall skips both channels.
 - `supabase/migrations/20261018180000_dealer_directory_blocked_status.sql` allows `dealer_directory.status = blocked` when a dealer site presents a bot wall.
+- `supabase/migrations/20261019210000_widget_screenshot_and_call_email.sql` adds `widget_chat_attempts.screenshot_url` and `dealer_directory.call_email_only`. The flag skips the widget channel after repeated no-form failures.
 
 ## Commands
 
@@ -171,6 +172,8 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `DRY_RUN` | no | Default true. Set to `false` to allow sends. `health` ignores `false` and never sends. |
 | `WIDGET_HEALTH_URLS` | health batch | Comma-separated vehicle page URLs. The Railway cron reads this when no file is passed. |
 | `WIDGET_HEALTH_URL_FILE` | health batch | Path to a URL file. Used when `WIDGET_HEALTH_URLS` is empty. |
+| `WIDGET_SCREENSHOT_DIR` | no | Directory for attempt screenshots. Default `screenshots`. |
+| `WIDGET_SCREENSHOT_BASE_URL` | no | When set, `screenshot_url` is this base plus the file path. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
 | `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead, chat, and run assign the conversation identity for `--deal` and `--dealer` before the first live send. A missing text number holds the send. |
 | `DREVVY_TEXT_NUMBER` | test mode | Fallback text number. Live runs use the conversation identity. |
@@ -241,7 +244,7 @@ Set these on the Railway service. Names only are listed here; values stay in Rai
 | `AI_MODEL` | no for `health` | Not called by `health`. |
 | `WIDGET_CHAT_ALLOWLIST` | no for `health` | Leave empty while testing. Live `lead`, `chat`, and `run` need it only when `DRY_RUN=false`. |
 
-`health` opens each page, waits for a late vehicle page, and clicks one control such as Check Availability or Ask a Question when that is what reveals the lead form. It logs the fields it would fill and inserts a `widget_chat_attempts` row with `dry_run = true` and `channel = lead_form`. It does not type into the form, click submit, send chat, or call an external messaging API. A form that is already in the page, including one inside an iframe or an open shadow root, is read without that click.
+`health` opens each page, waits for a late vehicle page, and clicks one control such as Check Availability or Ask a Question when that is what reveals the lead form. Matador has its own opener selectors when that shared control is missing. It logs the fields it would fill and inserts a `widget_chat_attempts` row with `dry_run = true`, `channel = lead_form`, and a screenshot path or URL. The summary counts vendors and stop reasons (`form_not_found`, `opener_not_found`, `captcha`, `iframe_blocked`, `timeout`, `unsupported_vendor`). It does not type into the form, click submit, send chat, or call an external messaging API. A form that is already in the page, including one inside an iframe or an open shadow root, is read without that click. Honeypot fields are left blank. Three no-form failures on one dealer site set `call_email_only`, and later widget sends skip that channel.
 
 `examples/health-urls.txt` is a placeholder with three public dealer vehicle pages (Jay Honda, Paragon Honda, and Honda Superstore of Joliet). The image copies it to `/app/examples/health-urls.txt`. Nothing reads that file until you set one of the URL sources. `WIDGET_HEALTH_URLS` is a comma-separated list and wins when both are set:
 

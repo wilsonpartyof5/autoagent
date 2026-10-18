@@ -113,7 +113,7 @@ describe('cli', () => {
     const scans = attempts.attempts.filter((attempt) => attempt.channel === 'widget');
     assert.equal(leads.length, 2);
     assert.equal(scans.length, 2);
-    assert.equal(leads.every((attempt) => attempt.status === 'unknown' && attempt.stop_reason === 'no_lead_form'), true);
+    assert.equal(leads.every((attempt) => attempt.status === 'unknown' && attempt.stop_reason === 'unsupported_vendor'), true);
     assert.equal(leads.every((attempt) => attempt.selected_channels === 'lead_form'), true);
     assert.equal(
       scans.every(
@@ -142,6 +142,9 @@ describe('cli', () => {
     assert.equal(attempts.attempts[0]?.dry_run, true);
     assert.equal(attempts.attempts[0]?.status, 'dry_run');
     assert.equal(attempts.attempts[0]?.channel, 'lead_form');
+    assert.match(result.stdout, /Health summary/);
+    assert.match(result.stdout, /vendors: unknown=1/);
+    assert.match(result.stdout, /reasons: dry_run=1/);
   });
 
   it('health with no urls writes nothing and does not open a page', async () => {
@@ -175,6 +178,25 @@ describe('cli', () => {
     assert.equal(page.outreach.length, 0);
     assert.equal(attempts.attempts[0]?.dry_run, true);
     assert.equal(attempts.attempts[0]?.status, 'dry_run');
+  });
+
+  it('chat skips the widget channel for a call/email-only dealer', async () => {
+    const directory = new MemoryDirectoryStore();
+    await directory.markCallEmailOnly('https://www.example-motors.test');
+    let opened = 0;
+    const result = await execute(['chat', pageUrl], {
+      ...healthDeps(new MemoryAttemptStore(), new FakeChatPage(availability)),
+      directory,
+      openPage: async () => {
+        opened += 1;
+        const page = new FakeChatPage(availability);
+        return { page, close: () => page.close() };
+      },
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(result.stdout, /Widget channel skipped/);
+    assert.match(result.stdout, /call_email_only/);
+    assert.equal(opened, 0);
   });
 });
 

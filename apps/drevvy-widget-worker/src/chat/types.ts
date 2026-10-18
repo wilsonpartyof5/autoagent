@@ -68,6 +68,7 @@ export type WidgetChatAttemptWrite = {
   selected_channels?: string | null;
   channel_reason?: string | null;
   fallback?: Day0Fallback | null;
+  screenshot_url?: string | null;
 };
 
 export function selectionColumns(selection: ChannelSelection | null | undefined): Partial<ChannelSelection> {
@@ -86,6 +87,7 @@ export interface AttemptStore {
   hasLiveSubmit(vehiclePageUrl: string, channel: AttemptChannel): Promise<boolean>;
   currentFirstReply(vehiclePageUrl: string): Promise<AttemptChannel | null>;
   setFirstReply(vehiclePageUrl: string, channel: AttemptChannel): Promise<void>;
+  countStopReasons(dealerSiteUrl: string, reasons: readonly string[]): Promise<number>;
 }
 
 export type AttemptResult = {
@@ -131,4 +133,6 @@ export interface ChatPage {
   launcherVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean>;
   composerVisible(selectors: string[], frameUrl: RegExp | null): Promise<boolean>;
   clickPoint(x: number, y: number): Promise<boolean>;
+  clickOpener(selectors: string[], text: RegExp): Promise<boolean>;
+  unreadableFrame(urlPattern: RegExp): Promise<boolean>;
 }

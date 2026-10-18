@@ -1,3 +1,4 @@
+import { CallEmailOnlyPanel } from '@/components/admin/call-email-only';
 import { CommunicationsLog } from '@/components/admin/communications-log';
 import { ConversationIdentities } from '@/components/admin/conversation-identities';
 import { OutreachDashboard } from '@/components/admin/outreach-dashboard';
@@ -5,6 +6,7 @@ import { loadStoredCommunications } from '@/lib/admin/communications-store';
 import { loadIdentityAdmin } from '@/lib/admin/identities';
 import { getOutreachInsight } from '@/lib/admin/outreach/insights';
 import { loadConversations, loadOutreachReport, parseOutreachRange, parseTrafficFilter } from '@/lib/admin/outreach/repository';
+import { loadCallEmailOnlyDealers } from '@/lib/admin/call-email-only';
 import { readSmsOptOutLineAdminState } from '@/lib/sms/settings-admin';
 
 export const dynamic = 'force-dynamic';
@@ -18,16 +20,18 @@ export default async function OutreachPage({
   const params = await searchParams;
   const range = parseOutreachRange(params.from, params.to);
   const traffic = parseTrafficFilter(params.traffic);
-  const [report, insight, preview, stored, optOutLine, identities] = await Promise.all([
+  const [report, insight, preview, stored, optOutLine, identities, callEmailOnly] = await Promise.all([
     loadOutreachReport(range),
     getOutreachInsight(range),
     loadConversations({ ...range, traffic }),
     loadStoredCommunications(traffic),
     readSmsOptOutLineAdminState(),
     loadIdentityAdmin(traffic),
+    loadCallEmailOnlyDealers(),
   ]);
   return (
     <div className="space-y-8">
+      <CallEmailOnlyPanel configured={callEmailOnly.configured} dealers={callEmailOnly.dealers} />
       <ConversationIdentities admin={identities} traffic={traffic} from={range.from} to={range.to} notice={params.notice ?? null} />
       <CommunicationsLog rows={stored.rows} traffic={traffic} from={range.from} to={range.to} configured={stored.configured} />
       <OutreachDashboard

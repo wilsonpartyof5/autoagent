@@ -56,6 +56,16 @@ export function createSupabaseAttemptStore(client: SupabaseClient): AttemptStore
       return null;
     },
 
+    async countStopReasons(dealerSiteUrl: string, reasons: readonly string[]) {
+      const { count, error } = await client
+        .from('widget_chat_attempts')
+        .select('id', { count: 'exact', head: true })
+        .eq('dealer_site_url', dealerSiteUrl)
+        .in('stop_reason', [...reasons]);
+      if (error) throw new Error(`widget_chat_attempts lookup failed: ${error.message}`);
+      return count ?? 0;
+    },
+
     async setFirstReply(vehiclePageUrl: string, channel: AttemptChannel) {
       const existing = await this.currentFirstReply(vehiclePageUrl);
       if (existing) return;

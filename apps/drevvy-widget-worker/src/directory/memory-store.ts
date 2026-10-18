@@ -23,8 +23,35 @@ export class MemoryDirectoryStore implements DirectoryStore {
       id: existing?.id ?? randomUUID(),
       created_at: existing?.created_at ?? now,
       updated_at: now,
+      call_email_only: existing?.call_email_only ?? false,
     };
     this.rows.set(row.site_url, saved);
     return saved;
+  }
+
+  async markCallEmailOnly(siteUrl: string): Promise<void> {
+    const existing = this.rows.get(siteUrl);
+    const now = new Date().toISOString();
+    if (existing) {
+      existing.call_email_only = true;
+      existing.updated_at = now;
+      return;
+    }
+    this.rows.set(siteUrl, {
+      id: randomUUID(),
+      site_url: siteUrl,
+      name: null,
+      phones: [],
+      emails: [],
+      widget_vendor: null,
+      widget_playbook: null,
+      source_urls: [],
+      confidence: null,
+      last_checked_at: null,
+      status: 'needs_review',
+      call_email_only: true,
+      created_at: now,
+      updated_at: now,
+    });
   }
 }

@@ -424,6 +424,51 @@ export class PlaywrightChatPage implements ChatPage {
     return false;
   }
 
+  async clickOpener(selectors: string[], text: RegExp): Promise<boolean> {
+    if (await this.click(selectors)) return true;
+    return this.clickMatchingText(text);
+  }
+
+  async unreadableFrame(urlPattern: RegExp): Promise<boolean> {
+    for (const frame of this.page.frames()) {
+      if (frame === this.page.mainFrame() || !urlPattern.test(frame.url())) continue;
+      try {
+        const html = await frame.content();
+        if (!html.trim()) return true;
+      } catch {
+        return true;
+      }
+    }
+    const locator = this.page.locator('iframe');
+    const count = Math.min(await locator.count().catch(() => 0), 20);
+    for (let index = 0; index < count; index += 1) {
+      const src = (await locator.nth(index).getAttribute('src').catch(() => null)) ?? '';
+      if (!urlPattern.test(src)) continue;
+      const readable = this.page.frames().some((frame) => frame !== this.page.mainFrame() && urlPattern.test(frame.url()));
+      if (!readable) return true;
+    }
+    return false;
+  }
+
+  private async clickMatchingText(pattern: RegExp): Promise<boolean> {
+    for (const frame of this.page.frames()) {
+      const buttons = frame.locator('button, a, [role="button"], input[type="button"], input[type="submit"]');
+      const count = Math.min(await buttons.count().catch(() => 0), 40);
+      for (let index = 0; index < count; index += 1) {
+        const button = buttons.nth(index);
+        try {
+          const label = ((await button.innerText()) || (await button.getAttribute('value')) || (await button.getAttribute('aria-label')) || '').trim();
+          if (!pattern.test(label)) continue;
+          await button.click({ timeout: 2_000 });
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+    return false;
+  }
+
   async clickPoint(x: number, y: number): Promise<boolean> {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 4000 || y > 4000) return false;
     await this.page.mouse.click(x, y);
