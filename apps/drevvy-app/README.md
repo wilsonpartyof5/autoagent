@@ -65,6 +65,20 @@ flutter build appbundle --release
 flutter build web
 ```
 
+## Google sign-in
+
+The web and iOS OAuth client IDs are the compile-time defaults. Pass `--dart-define` to override them:
+
+```bash
+flutter run \
+  --dart-define=DREVVY_GOOGLE_SERVER_CLIENT_ID=802176042106-majjp9ij3jof60rpd5rdlr0rsvl5d4rj.apps.googleusercontent.com \
+  --dart-define=DREVVY_GOOGLE_IOS_CLIENT_ID=802176042106-4crn4kfl0mf52k8rrsdb1k1ti5gpuhoa.apps.googleusercontent.com
+```
+
+`DREVVY_GOOGLE_SERVER_CLIENT_ID` is the web client ID. `DREVVY_GOOGLE_IOS_CLIENT_ID` is the iOS client ID.
+
+The backend `GOOGLE_OAUTH_CLIENT_IDS` must list the web and iOS client IDs. When that variable is unset, `POST /api/consumer/auth/google` responds 503.
+
 ## Architecture
 
 ```

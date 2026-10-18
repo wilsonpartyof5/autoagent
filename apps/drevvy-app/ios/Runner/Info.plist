@@ -4,9 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<!-- TODO: Replace with the iOS OAuth client ID. The reversed form below must match it. -->
 	<key>GIDClientID</key>
-	<string>000000000000-placeholder.apps.googleusercontent.com</string>
+	<string>802176042106-4crn4kfl0mf52k8rrsdb1k1ti5gpuhoa.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -14,7 +13,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.000000000000-placeholder</string>
+				<string>com.googleusercontent.apps.802176042106-4crn4kfl0mf52k8rrsdb1k1ti5gpuhoa</string>
 			</array>
 		</dict>
 		<dict>
