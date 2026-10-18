@@ -6,7 +6,7 @@ import { detectWidgetVendor } from '../widgets/detect';
 import { hasCaptchaChallenge } from '../widgets/guards';
 import { extractStockNumber } from '../widgets/script';
 import { applyPlan } from './apply';
-import { detectLeadForms } from './detect';
+import { detectLeadForms, type ParsedForm } from './detect';
 import { blockWallSignature, outreachIdentity, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
 
@@ -119,6 +119,8 @@ export async function runLeadForm(input: {
     return finish();
   }
 
+  await input.page.settle();
+  await input.page.dismissOverlays();
   const html = await input.page.content();
   vendor = detectWidgetVendor(html);
   if (!stock) stock = extractStockNumber(html);
@@ -132,7 +134,10 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  const forms = detectLeadForms(html);
+  let forms = await readLeadForms(input.page);
+  if (forms.length === 0 && (await input.page.clickLeadOpener())) {
+    forms = await readLeadForms(input.page);
+  }
   const form = forms[0];
   if (!form) {
     status = 'unknown';
@@ -190,6 +195,11 @@ export async function runLeadForm(input: {
   stopReason = 'submitted';
   note('Lead form submitted.', 'text');
   return finish();
+}
+
+async function readLeadForms(page: ChatPage): Promise<ParsedForm[]> {
+  const [html, frames, shadow] = await Promise.all([page.content(), page.frames(), page.shadowHtml()]);
+  return detectLeadForms([html, ...frames.map((frame) => frame.html), shadow].join('\n'));
 }
 
 function recordPlan(transcript: TranscriptEntry[], plan: FormPlan, now: () => Date): void {

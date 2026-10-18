@@ -118,6 +118,13 @@ export interface ChatPage {
   fillOutreach(fill: OutreachFill): Promise<boolean>;
   submitForm(formId: string | null, buttonText: string | null): Promise<boolean>;
   settle(): Promise<void>;
+  /** Open shadow-root form markup. Light-DOM HTML stays on `content()`. */
+  shadowHtml(): Promise<string>;
+  /**
+   * Clicks one visible vehicle-page control that reveals a lead form.
+   * Does not click a submit button that is already inside a form.
+   */
+  clickLeadOpener(): Promise<boolean>;
   networkUrls(): string[];
   frames(): Promise<FrameSnapshot[]>;
   dismissOverlays(): Promise<string[]>;

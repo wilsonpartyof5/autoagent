@@ -65,7 +65,9 @@ It does not type into a composer or submit a form. One failed URL does not stop 
 DRY_RUN defaults to true. A dry run opens the page and logs the message or form fields
 it would send. Live sending requires DRY_RUN=false and WIDGET_CHAT_ALLOWLIST.
 health always runs as a dry run. It logs the lead-form fields it would fill and
-writes widget_chat_attempts with dry_run true. It does not type, submit, or send.
+writes widget_chat_attempts with dry_run true. It may click a vehicle-page
+control such as Check Availability or Ask a Question so a late form can render.
+It does not type, submit, or send.
 With no URL it checks that the worker can start. URLs come from the argument,
 WIDGET_HEALTH_URLS, or WIDGET_HEALTH_URL_FILE.
 Lead, chat, and run assign a conversation identity for --deal and --dealer

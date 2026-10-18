@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import { runWidgetChat } from '../src/chat/agent';
 import { MemoryAttemptStore } from '../src/chat/memory-store';
-import { detectLeadForms, detectPrechat } from '../src/forms/detect';
+import { detectLeadForms, detectPrechat, findLeadOpener } from '../src/forms/detect';
 import { runLeadForm } from '../src/forms/lead';
 import { leadMessage } from '../src/forms/outreach';
 import { planForm } from '../src/forms/plan';
@@ -143,6 +143,7 @@ describe('lead forms', () => {
     assert.equal(dry.status, 'dry_run');
     assert.deepEqual(dryPage.outreach, []);
     assert.deepEqual(dryPage.submits, []);
+    assert.deepEqual(dryPage.leadOpens, []);
     assert.equal(dry.transcript.some((entry) => entry.text.includes(message)), true);
 
     const blocked = new FakeChatPage(readFixture('check-availability.html'));
@@ -239,6 +240,105 @@ describe('lead forms', () => {
     assert.equal(chatResult.status, 'blocked');
     assert.deepEqual(chat.gotos, []);
     assert.equal(store.attempts.length, 1);
+  });
+
+  it('opens a late Team Velocity lead form and records the fields without submitting', async () => {
+    const shell = '<html><body><script src="https://chat.matador.ai/widget.js"></script><p>Stock #277375A</p></body></html>';
+    const page = new FakeChatPage(shell, {
+      afterSettleHtml: readFixture('teamvelocity-vdp.html'),
+      htmlAfterLeadOpen: readFixture('teamvelocity-lead.html'),
+    });
+    const result = await runLeadForm({
+      vehiclePageUrl: pageUrl,
+      page,
+      config: { ...live, dryRun: true, allowlist: [] },
+      store: new MemoryAttemptStore(),
+    });
+
+    assert.equal(result.status, 'dry_run');
+    assert.equal(result.stopReason, 'dry_run');
+    assert.equal(result.widgetVendor, 'matador');
+    assert.equal(result.stockNumber, '277375A');
+    assert.deepEqual(page.leadOpens, ['Check Availability']);
+    assert.deepEqual(page.outreach, []);
+    assert.deepEqual(page.submits, []);
+    assert.equal(page.sent.length, 0);
+    assert.equal(result.transcript.some((entry) => entry.text === 'first_name: Maya'), true);
+    assert.equal(result.transcript.some((entry) => entry.text === 'last_name: via Drevvy'), true);
+    assert.equal(result.transcript.some((entry) => entry.text === 'phone: 803-555-0148'), true);
+    assert.equal(result.transcript.some((entry) => entry.text === 'email: deals@drevvy.test'), true);
+    assert.equal(result.transcript.some((entry) => entry.text === 'zip: 29201'), true);
+    assert.equal(result.transcript.some((entry) => entry.text.startsWith('message:')), true);
+    assert.equal(result.transcript.some((entry) => /honeypot/i.test(entry.text)), false);
+    assert.equal(result.transcript.some((entry) => entry.text === 'Dry run: the lead form was not submitted.'), true);
+  });
+
+  it('submits a lead form that appears only after the vehicle CTA click', async () => {
+    const page = new FakeChatPage(readFixture('teamvelocity-vdp.html').replace(/<a class="check-availability"[\s\S]*?<\/a>/, ''), {
+      htmlAfterLeadOpen: readFixture('teamvelocity-lead.html'),
+    });
+    const result = await runLeadForm({
+      vehiclePageUrl: pageUrl,
+      page,
+      config: live,
+      store: new MemoryAttemptStore(),
+    });
+
+    assert.equal(result.status, 'submitted');
+    assert.deepEqual(page.leadOpens, ['Ask a Question']);
+    assert.equal(filled(page).first_name, 'Maya');
+    assert.equal(filled(page).email, 'deals@drevvy.test');
+    assert.equal(filled(page).phone, '803-555-0148');
+    assert.equal(Object.keys(filled(page)).includes('honeypot'), false);
+    assert.deepEqual(page.submits, [{ formId: null, buttonText: 'Submit' }]);
+  });
+
+  it('reads a lead form from an iframe or an open shadow root without clicking', async () => {
+    const form = readFixture('teamvelocity-lead.html');
+    const host = '<html><body><p>Stock #277375A</p><a href="/contactus">Contact Us</a></body></html>';
+    const framed = new FakeChatPage(host, { frames: [{ url: 'https://apps.dealer.test/lead', html: form }] });
+    const frameResult = await runLeadForm({
+      vehiclePageUrl: pageUrl,
+      page: framed,
+      config: { ...live, dryRun: true, allowlist: [] },
+      store: new MemoryAttemptStore(),
+    });
+    assert.equal(frameResult.status, 'dry_run');
+    assert.deepEqual(framed.leadOpens, []);
+    assert.deepEqual(framed.submits, []);
+    assert.equal(frameResult.transcript.some((entry) => entry.text === 'email: deals@drevvy.test'), true);
+
+    const shadowed = new FakeChatPage(host, { shadowHtml: form });
+    const shadowResult = await runLeadForm({
+      vehiclePageUrl: pageUrl,
+      page: shadowed,
+      config: { ...live, dryRun: true, allowlist: [] },
+      store: new MemoryAttemptStore(),
+    });
+    assert.equal(shadowResult.status, 'dry_run');
+    assert.deepEqual(shadowed.leadOpens, []);
+    assert.deepEqual(shadowed.outreach, []);
+    assert.equal(shadowResult.transcript.some((entry) => entry.text === 'phone: 803-555-0148'), true);
+  });
+
+  it('detects Confirm Availability and ignores footer contact links', () => {
+    const confirmed = detectLeadForms(readFixture('confirm-availability.html'));
+    assert.equal(confirmed.length, 1);
+    assert.equal(confirmed[0]?.buttonText, 'Confirm Availability');
+
+    const revealed = detectLeadForms(readFixture('teamvelocity-lead.html'));
+    assert.equal(revealed.length, 1);
+    assert.equal(revealed[0]?.fields.some((field) => field.id === 'honeypot'), false);
+    assert.equal(revealed[0]?.buttonText, 'Submit');
+
+    const closed = readFixture('teamvelocity-vdp.html');
+    assert.equal(detectLeadForms(closed).length, 0);
+    assert.equal(findLeadOpener(closed), 'Check Availability');
+    assert.equal(findLeadOpener('<a href="/contactus">Contact Us</a><button>Finance Application</button>'), null);
+    assert.equal(
+      findLeadOpener('<form><button type="submit">Check Availability</button></form>'),
+      null,
+    );
   });
 
   it('leaves footer forms and widget pre-chat forms out of the lead pass', () => {

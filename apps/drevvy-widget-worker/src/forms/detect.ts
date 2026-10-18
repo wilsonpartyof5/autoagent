@@ -19,14 +19,56 @@ export type ParsedForm = {
 };
 
 const LEAD_CTA =
-  /ask a question|check availability|get today'?s price|unlock instant price|today'?s price|get e-?price|request (?:more )?info|email us|contact (?:the )?dealer|get a quote|check current price|instant price/i;
+  /ask a question|check availability|confirm availability|get today'?s price|unlock(?:\s+\S+){0,4}\s+price|out the door price|today'?s price|get e-?price|request (?:more )?info|email us|contact (?:the )?dealer|get a quote|check current price|instant price/i;
+
+/** Ordered. A lower index wins when several vehicle-page controls are visible. */
+export const LEAD_OPENER_PATTERNS = [
+  'check availability',
+  'ask a question',
+  'confirm availability',
+  "get today'?s price|today'?s price|get e-?price|instant price|check current price",
+  'unlock\\s+\\S+(?:\\s+\\S+){0,3}\\s+price|out the door price',
+  'request (?:more )?info|email us|contact (?:the )?dealer|get a quote',
+] as const;
+
+const VEHICLE_LEAD_MARK = /lead-form|contactform|e-price-lead/i;
 
 const WIDGET_BLOCK =
   /<div\b[^>]*(?:gubagoo|gg-chat|podium-bubble|podium-website-widget|ae-chat|cn-chat|kenect-widget|cao-widget|als-widget|impel-chat|matador-chat)[^>]*>[\s\S]*?<\/div>/gi;
 
 export function detectLeadForms(html: string): ParsedForm[] {
   const withoutWidgets = html.replace(WIDGET_BLOCK, ' ');
-  return formsIn(withoutWidgets).filter((form) => LEAD_CTA.test(`${form.title} ${form.buttonText ?? ''}`));
+  return formsIn(withoutWidgets).filter((form) => isVehicleLeadForm(form));
+}
+
+export function leadOpenerRank(text: string): number | null {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length > 40) return null;
+  const index = LEAD_OPENER_PATTERNS.findIndex((source) => new RegExp(source, 'i').test(cleaned));
+  return index === -1 ? null : index;
+}
+
+/** Label of a vehicle-page control that reveals a lead form. Submit buttons inside a form are ignored. */
+export function findLeadOpener(html: string): string | null {
+  const withoutForms = html.replace(/<form\b[\s\S]*?<\/form>/gi, ' ');
+  let best: { rank: number; text: string } | null = null;
+  for (const match of withoutForms.matchAll(/<(a|button)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
+    const text = visible(match[2] ?? '');
+    const rank = leadOpenerRank(text);
+    if (rank == null) continue;
+    if (!best || rank < best.rank) best = { rank, text };
+  }
+  return best?.text ?? null;
+}
+
+function isVehicleLeadForm(form: ParsedForm): boolean {
+  if (LEAD_CTA.test(`${form.title} ${form.buttonText ?? ''}`)) return true;
+  const open = form.html.match(/^<form\b([^>]*)>/i)?.[1] ?? '';
+  if (!VEHICLE_LEAD_MARK.test(`${open} ${form.id ?? ''}`)) return false;
+  const kinds = new Set(form.fields.map((field) => field.kind));
+  const identity = kinds.has('first_name') || kinds.has('last_name') || kinds.has('full_name');
+  const reach = kinds.has('phone') || kinds.has('email');
+  return identity && reach;
 }
 
 export function detectPrechat(widgetHtml: string): ParsedForm | null {
@@ -82,6 +124,8 @@ function parseFields(formHtml: string): ParsedField[] {
     if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image'].includes(type)) continue;
     const id = attr(attrs, 'id');
     const name = attr(attrs, 'name');
+    const className = attr(attrs, 'class') ?? '';
+    if (/\bhoneypot\b/i.test(`${name ?? ''} ${id ?? ''} ${className}`)) continue;
     const key = `${name ?? ''}|${id ?? ''}|${type}`;
     if (seen.has(key)) continue;
     seen.add(key);

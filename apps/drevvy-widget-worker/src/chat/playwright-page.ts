@@ -1,5 +1,6 @@
 import type { Frame, Page } from 'playwright';
 
+import { detectLeadForms, LEAD_OPENER_PATTERNS } from '../forms/detect';
 import { isPrivateFieldHint, type OutreachFill } from '../forms/outreach';
 import type { FrameSnapshot } from '../widgets/evidence';
 import { asksForShopperContact, hasCaptchaChallenge, isContactField, isForbiddenContactSelector } from '../widgets/guards';
@@ -226,6 +227,118 @@ export class PlaywrightChatPage implements ChatPage {
 
   async contactFormVisible(vendor: WidgetVendor | null): Promise<boolean> {
     return asksForShopperContact(await this.widgetHtml(vendor));
+  }
+
+  async shadowHtml(): Promise<string> {
+    const chunks: string[] = [];
+    for (const frame of this.page.frames()) {
+      try {
+        const html = await frame.evaluate(() => {
+          type NodeLike = {
+            shadowRoot?: NodeLike | null;
+            outerHTML?: string;
+            querySelectorAll: (selector: string) => ArrayLike<NodeLike>;
+          };
+          const found: string[] = [];
+          const visit = (root: NodeLike) => {
+            const nodes = root.querySelectorAll('*');
+            for (let index = 0; index < nodes.length; index += 1) {
+              const shadow = nodes[index]?.shadowRoot;
+              if (!shadow) continue;
+              const forms = shadow.querySelectorAll('form');
+              for (let formIndex = 0; formIndex < forms.length; formIndex += 1) {
+                const markup = forms[formIndex]?.outerHTML;
+                if (markup) found.push(markup);
+              }
+              visit(shadow);
+            }
+          };
+          const doc = (globalThis as { document?: NodeLike }).document;
+          if (doc) visit(doc);
+          return found.join('\n');
+        });
+        if (html) chunks.push(html);
+      } catch {
+        continue;
+      }
+    }
+    return chunks.join('\n');
+  }
+
+  async clickLeadOpener(): Promise<boolean> {
+    const marker = 'data-drevvy-lead-opener';
+    let best: { rank: number; y: number; frame: Frame } | null = null;
+    for (const frame of this.page.frames()) {
+      let found: { rank: number; y: number };
+      try {
+        found = await frame.evaluate(({ patterns, markerName }) => {
+          type Candidate = {
+            closest: (selector: string) => unknown;
+            innerText?: string;
+            getAttribute: (name: string) => string | null;
+            setAttribute: (name: string, value: string) => void;
+            removeAttribute: (name: string) => void;
+            getBoundingClientRect: () => { width: number; height: number; y: number };
+          };
+          const docs = (globalThis as { document?: { querySelectorAll: (selector: string) => ArrayLike<Candidate> } }).document;
+          const nodes = docs ? docs.querySelectorAll('a, button, [role="button"]') : [];
+          const ranks = patterns.map((source) => new RegExp(source, 'i'));
+          let choice: { element: Candidate; rank: number; y: number } | null = null;
+          for (let index = 0; index < nodes.length; index += 1) {
+            const element = nodes[index];
+            if (!element || element.closest('form')) continue;
+            element.removeAttribute(markerName);
+            const text = (element.innerText || element.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+            if (!text || text.length > 40) continue;
+            const rank = ranks.findIndex((pattern) => pattern.test(text));
+            if (rank < 0) continue;
+            const box = element.getBoundingClientRect();
+            if (box.width < 8 || box.height < 8) continue;
+            if (!choice || rank < choice.rank || (rank === choice.rank && box.y < choice.y)) {
+              choice = { element, rank, y: box.y };
+            }
+          }
+          if (!choice) return { rank: 99, y: 0 };
+          choice.element.setAttribute(markerName, '1');
+          return { rank: choice.rank, y: choice.y };
+        }, { patterns: [...LEAD_OPENER_PATTERNS], markerName: marker });
+      } catch {
+        continue;
+      }
+      if (found.rank > 90) continue;
+      if (!best || found.rank < best.rank || (found.rank === best.rank && found.y < best.y)) {
+        best = { rank: found.rank, y: found.y, frame };
+      }
+    }
+    if (!best) return false;
+    const marked = best.frame.locator(`[${marker}="1"]`).first();
+    try {
+      if ((await marked.count()) > 0) await marked.click({ timeout: 3_000 });
+    } catch {
+      try {
+        await best.frame.evaluate((markerName) => {
+          const docs = (globalThis as { document?: { querySelector: (selector: string) => { dispatchEvent: (event: Event) => boolean } | null } }).document;
+          const clickEvent = (globalThis as { MouseEvent?: new (type: string, init: { bubbles: boolean; cancelable: boolean }) => Event }).MouseEvent;
+          const target = docs?.querySelector(`[${markerName}="1"]`);
+          if (clickEvent && target) target.dispatchEvent(new clickEvent('click', { bubbles: true, cancelable: true }));
+        }, marker);
+      } catch {
+        return false;
+      }
+    }
+    const deadline = Date.now() + 3_000;
+    while (Date.now() < deadline) {
+      try {
+        const html = await this.page.content();
+        const shadow = await this.shadowHtml();
+        const frames = await this.frames();
+        if (detectLeadForms([html, shadow, ...frames.map((frame) => frame.html)].join('\n')).length > 0) return true;
+      } catch {
+        // The click can replace the document. The next read retries.
+      }
+      await delay(200);
+    }
+    return true;
   }
 
   async settle(): Promise<void> {
