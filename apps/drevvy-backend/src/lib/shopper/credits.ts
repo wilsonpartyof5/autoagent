@@ -1,11 +1,11 @@
 /**
  * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
- * that never expire and never reset monthly. Credits are refunded on:
- * - sold: shopper bought the car
- * - ended_no_response: dealer didn't respond in 5 days
- * - dealer_declined: dealer opted out or marked as spam
+ * that never expire and never reset monthly. A credit returns only when:
+ * - the shopper removes the deal within 30 minutes of adding it, before outreach
+ * - the dealer declines or opts out
  *
- * Refunds are idempotent (exactly once per deal) via the idempotency_key.
+ * Buying the car does not return a credit. Refunds are idempotent (exactly
+ * once per deal) via the idempotency_key.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -118,7 +118,7 @@ export async function refundCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
-  reason: 'sold' | 'ended_no_response' | 'dealer_declined' | 'removed',
+  reason: 'dealer_declined' | 'removed',
 ): Promise<{ refunded: boolean; newBalance: number; alreadyRefunded: boolean }> {
   const idempotencyKey = `refund:${dealId}`;
 
