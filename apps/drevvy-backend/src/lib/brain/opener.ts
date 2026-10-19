@@ -80,6 +80,7 @@ const EMPTY_GUARD: GuardrailResult = {
     noAiDenial: true,
     noLeadingAi: true,
     fairOtdKnownForCounter: true,
+    noAcceptForShopper: true,
   },
 };
 

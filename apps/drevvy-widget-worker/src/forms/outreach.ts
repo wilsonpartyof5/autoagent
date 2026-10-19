@@ -90,27 +90,21 @@ export function normalizeZip(value: string | null | undefined): string | null {
 }
 
 export function leadMessage(input: {
+  shopperFirst?: string;
   stockNumber: string | null;
   vin?: string | null;
   dealerFirstName?: string | null;
-  phone: string;
+  vehicle?: string | null;
+  phone?: string;
   email?: string | null;
-  /** Check Availability has no phone field and must not name a number. */
+  /** Check Availability has no phone field. The message never names a number. */
   omitPhone?: boolean;
 }): string {
-  const ask = availabilityLine({
+  return availabilityLine({
     stockNumber: input.stockNumber,
     vin: input.vin,
     dealerFirstName: input.dealerFirstName,
   });
-  const reach = input.omitPhone
-    ? input.email
-      ? `Please email us at ${input.email}.`
-      : ''
-    : input.email
-      ? `Please text or email us at ${input.phone} / ${input.email}.`
-      : `Please text us at ${input.phone}.`;
-  return reach ? `${ask} ${reach}` : ask;
 }
 
 export function outreachValue(
@@ -130,11 +124,10 @@ export function outreachValue(
   if (kind === 'email') return mode === 'name_and_phone' ? null : identity.email;
   if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
   return leadMessage({
+    shopperFirst: identity.firstName,
     stockNumber,
     vin: cue.vin,
     dealerFirstName: cue.dealerFirstName,
-    phone: identity.phone,
-    email: mode === 'name_and_phone' ? null : identity.email,
     omitPhone: mode === 'check_availability',
   });
 }

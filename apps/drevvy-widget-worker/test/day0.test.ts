@@ -11,8 +11,9 @@ import { FakeChatPage } from './fake-page';
 import { readFixture } from './fixture';
 
 const pageUrl = 'https://www.example-motors.test/inventory/civic';
-const phoneMessage = leadMessage({ stockNumber: 'H24118', phone: '803-555-0148' });
+const phoneMessage = leadMessage({ shopperFirst: 'Maya', stockNumber: 'H24118', phone: '803-555-0148' });
 const fullMessage = leadMessage({
+  shopperFirst: 'Maya',
   stockNumber: 'H24118',
   phone: '803-555-0148',
   email: 'deals@drevvy.test',

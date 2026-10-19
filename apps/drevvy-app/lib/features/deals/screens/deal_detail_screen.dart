@@ -186,7 +186,12 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
     final listing = deal.listing;
     final offer = deal.latestOffer;
     final hasOffer = offer != null;
-    final showActions = deal.status == DealStatus.offerReceived;
+    final showAccept = hasOffer &&
+        (deal.status == DealStatus.offerReceived ||
+            deal.status == DealStatus.findingBestPrice ||
+            deal.status == DealStatus.paused ||
+            deal.status == DealStatus.watchingForDrops);
+    final showKeepGoing = showAccept && deal.status == DealStatus.offerReceived;
 
     return Scaffold(
       body: Stack(
@@ -352,7 +357,13 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                       ),
 
                       // Space for sticky CTA
-                      SizedBox(height: showActions ? 160 + bottomPadding : 80),
+                      SizedBox(
+                        height: showKeepGoing
+                            ? 180 + bottomPadding
+                            : showAccept
+                                ? 120 + bottomPadding
+                                : 80,
+                      ),
                     ],
                   ),
                 ),
@@ -361,7 +372,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
           ),
 
           // Sticky CTA (for Offer received status)
-          if (showActions)
+          if (showAccept)
             Positioned(
               left: 0,
               right: 0,
@@ -369,6 +380,7 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
               child: _StickyActions(
                 onAccept: _acceptOffer,
                 onKeepGoing: _keepGoing,
+                showKeepGoing: showKeepGoing,
               ),
             ),
         ],
@@ -851,14 +863,20 @@ class _CommStat extends StatelessWidget {
 }
 
 class _StickyActions extends StatelessWidget {
-  const _StickyActions({required this.onAccept, required this.onKeepGoing});
+  const _StickyActions({
+    required this.onAccept,
+    required this.onKeepGoing,
+    required this.showKeepGoing,
+  });
 
   final VoidCallback onAccept;
   final VoidCallback onKeepGoing;
+  final bool showKeepGoing;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
+    final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -884,10 +902,17 @@ class _StickyActions extends StatelessWidget {
             onPressed: onAccept,
             variant: DrevvyButtonVariant.accept,
           ),
+          if (showKeepGoing) ...[
+            const SizedBox(height: DrevvySpace.s3),
+            DrevvyGhostButton(
+              label: 'Ask Drevvy to keep going',
+              onPressed: onKeepGoing,
+            ),
+          ],
           const SizedBox(height: DrevvySpace.s3),
-          DrevvyGhostButton(
-            label: 'Ask Drevvy to keep going',
-            onPressed: onKeepGoing,
+          Text(
+            'Your call. Drevvy never accepts for you.',
+            style: text.micro.copyWith(color: colors.muted),
           ),
         ],
       ),

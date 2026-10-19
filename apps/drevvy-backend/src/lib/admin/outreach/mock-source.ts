@@ -60,18 +60,18 @@ type Step = { id: TouchpointId; channel: OutreachChannel; minutes: number; call?
 const STEPS: Step[] = [
   { id: 'D0-E1', channel: 'email', minutes: 0 },
   { id: 'D0-C1', channel: 'call', minutes: 45, call: true },
-  { id: 'D0-T1', channel: 'sms', minutes: 52 },
   { id: 'D0-C2', channel: 'call', minutes: 360, call: true },
   { id: 'D1-E2', channel: 'email', minutes: 24 * 60 + 90 },
-  { id: 'D1-T2', channel: 'sms', minutes: 24 * 60 + 270 },
   { id: 'D2-C3', channel: 'call', minutes: 2 * 24 * 60 + 150, call: true },
-  { id: 'D2-T3', channel: 'sms', minutes: 2 * 24 * 60 + 180 },
   { id: 'D4-E3', channel: 'email', minutes: 4 * 24 * 60 + 90 },
-  { id: 'D4-T4', channel: 'sms', minutes: 4 * 24 * 60 + 270 },
   { id: 'D5-E4', channel: 'email', minutes: 5 * 24 * 60 + 90 },
 ];
 
 const VARIANTS: Variant[] = ['A', 'B', 'C'];
+
+function sampleVin(index: number): string {
+  return `1HGCM8263${String(10000000 + index).slice(-8)}`;
+}
 
 function startFor(index: number): Date {
   if (index >= 90) return new Date(Date.UTC(2026, 9, 9, 14, (index % 6) * 8, 0));
@@ -129,7 +129,7 @@ function shouldReply(touchpoint: TouchpointId, variant: Variant, index: number):
     if (variant === 'A') return slot < 1;
     return slot < 2;
   }
-  if (touchpoint === 'D0-T1' || touchpoint === 'D0-TS') {
+  if (touchpoint === 'D0-TS') {
     if (variant === 'B') return slot < 5;
     if (variant === 'A') return slot < 2;
     return slot < 3;
@@ -144,7 +144,7 @@ function shouldReply(touchpoint: TouchpointId, variant: Variant, index: number):
 }
 
 function shouldOptOut(touchpoint: TouchpointId, variant: Variant, index: number): boolean {
-  if (touchpoint !== 'D1-T2') return false;
+  if (touchpoint !== 'D1-E2') return false;
   const slot = index % 10;
   if (variant === 'C') return slot < 4;
   if (variant === 'A') return slot === 0;
@@ -188,6 +188,7 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
     vehicleShort: vehicle.short,
     stock,
     price,
+    vin: sampleVin(index),
   });
   const dealId = `cadence-${String(index + 1).padStart(3, '0')}`;
   const events: OutreachEvent[] = [];
@@ -208,9 +209,14 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
       break;
     }
     const local = localStamp(when, dealer.tz);
-    const touchpoint: TouchpointId = step.id === 'D0-T1' && salesperson ? 'D0-TS' : step.id;
+    const touchpoint: TouchpointId = step.id;
     const variant = variantFor(index, stepIndex, dealer.id, local.iso.slice(0, 10), touchpoint, used);
     const toType = touchpoint === 'D0-TS' || (step.channel === 'sms' && salesperson) ? 'salesperson' : step.channel === 'email' ? 'email' : 'main_line';
+
+    const dealerTextedFirst = events.some((row) => row.direction === 'inbound' && row.channel === 'sms');
+    if (step.channel === 'sms' && !dealerTextedFirst) {
+      continue;
+    }
 
     if (step.channel === 'sms' && !salesperson && !dealer.textable) {
       events.push(event({
@@ -252,7 +258,8 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
       continue;
     }
 
-    const email = step.channel === 'email' ? emailCopy(touchpoint, variant, ctx) : null;
+    const textSent = events.some((row) => row.channel === 'sms' && row.direction === 'outbound' && row.status === 'delivered');
+    const email = step.channel === 'email' ? emailCopy(touchpoint, variant, { ...ctx, textSent }) : null;
     const sms = step.channel === 'sms' ? smsCopy(touchpoint, variant, ctx) : null;
     const bounced = step.channel === 'email' && index % 23 === 0 && touchpoint !== 'D0-E1';
     const status: SendStatus = bounced ? 'bounced' : 'delivered';
@@ -265,6 +272,11 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
     events.push(outbound);
 
     if (bounced) continue;
+    if (step.channel === 'email' && shouldOptOut(touchpoint, variant, index)) {
+      outbound.optOut = true;
+      finish('opt_out', outbound.sentAt);
+      break;
+    }
     if (step.channel === 'sms' && shouldOptOut(touchpoint, variant, index)) {
       outbound.optOut = true;
       const replyAt = new Date(when.getTime() + 25 * 60 * 1000);

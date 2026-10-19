@@ -1,7 +1,6 @@
 export const TOUCHPOINT_IDS = [
   'D0-E1',
   'D0-C1',
-  'D0-T1',
   'D0-TS',
   'D0-C2',
   'D1-E2',

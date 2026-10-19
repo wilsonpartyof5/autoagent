@@ -52,16 +52,17 @@ export default function SMSPage() {
             <section>
               <h2 className="text-2xl font-semibold mb-4">How This SMS Program Works</h2>
               <p className="text-muted-foreground mb-4">
-                Our system sends text messages to dealership sales personnel in the following scenarios:
+                Drevvy does not send a cold text. A text goes to a dealership salesperson only after that
+                person texts our number first.
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
                 <li>
-                  <strong>After inbound contact:</strong> When a dealership representative texts our number
-                  first, or responds to our initial email or phone outreach
+                  <strong>They text first:</strong> A dealership salesperson texts our number about a vehicle
+                  inquiry. Later texts stay on that thread.
                 </li>
                 <li>
-                  <strong>With consent:</strong> When a dealership representative agrees during a phone call or
-                  in writing to receive text messages about a specific vehicle inquiry
+                  <strong>No cold texts:</strong> A phone call, an email reply, or a verbal yes is not enough
+                  to start a text. We wait until that salesperson texts us.
                 </li>
               </ul>
               <p className="text-muted-foreground mt-4">
@@ -74,25 +75,20 @@ export default function SMSPage() {
             <section className="bg-muted/50 p-6 rounded-xl">
               <h2 className="text-2xl font-semibold mb-4">Consent Collection</h2>
               <p className="text-muted-foreground mb-4">
-                Dealership personnel are added to our SMS program only when:
+                A dealership salesperson is added to this SMS program only when they text our number first.
               </p>
               <ol className="list-decimal pl-6 text-muted-foreground space-y-2">
                 <li>
-                  <strong>They initiate contact:</strong> A dealership representative texts our number in
-                  response to a vehicle inquiry
+                  <strong>They text us:</strong> A salesperson sends the first text about a vehicle inquiry.
                 </li>
                 <li>
-                  <strong>They respond to other channels:</strong> A representative replies to our email or
-                  answers our phone call and the conversation continues via text
-                </li>
-                <li>
-                  <strong>They explicitly agree:</strong> A representative verbally or in writing agrees to
-                  receive text updates about a specific shopper&apos;s vehicle inquiry
+                  <strong>We reply on that thread:</strong> Later messages stay with the person who texted,
+                  about that same inquiry.
                 </li>
               </ol>
               <p className="text-muted-foreground mt-4">
-                We do not send unsolicited text messages to dealerships that have not engaged with us through
-                one of these methods.
+                We do not send a cold text to a dealership&apos;s main line, and we do not start a text because
+                someone agreed on a call or answered an email.
               </p>
             </section>
 
@@ -104,18 +100,17 @@ export default function SMSPage() {
 
               <div className="space-y-4">
                 <div className="bg-card p-4 rounded-lg border border-border">
-                  <p className="text-sm text-muted-foreground mb-2">Initial outreach follow-up:</p>
+                  <p className="text-sm text-muted-foreground mb-2">After a salesperson texts us:</p>
                   <p className="font-mono text-sm">
-                    Hi, this is Drevvy, working for [First Name]. Following up on the 2023 Honda Accord
-                    (Stock #12345). Could you share an itemized out-the-door price? Reply STOP to opt out.
+                    Hi, is stock #12345 still available? Reply STOP to opt out.
                   </p>
                 </div>
 
                 <div className="bg-card p-4 rounded-lg border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Pricing request:</p>
                   <p className="font-mono text-sm">
-                    Thanks for your call. Could you text me the full OTD breakdown when ready? [First Name] is
-                    interested in this vehicle. Msg&amp;data rates apply. STOP to opt out.
+                    Hi, this is Drevvy, working for [First Name]. Thanks for your call. Could you text the
+                    full out-the-door breakdown when ready? Msg&amp;data rates apply. STOP to opt out.
                   </p>
                 </div>
 
@@ -130,8 +125,8 @@ export default function SMSPage() {
                 <div className="bg-card p-4 rounded-lg border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Thank you/confirmation:</p>
                   <p className="font-mono text-sm">
-                    Got it, thanks! We&apos;ll share this with [First Name]. They&apos;ll reach out if they want to
-                    proceed. HELP for help, STOP to stop.
+                    Hi, this is Drevvy, working for [First Name]. Got it, thanks. We&apos;ll share this with
+                    them. HELP for help, STOP to stop.
                   </p>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import { dealerAskedForShopperContact, dealerAskedIfBot, sharesDisallowedContact } from '../src/widgets/guards';
 import { availabilityLine, isExactScriptMessage, renderScript } from '../src/widgets/script';
+import { listedPriceQuestion } from '../src/widgets/questions';
 import { resolveNextMessage } from '../src/chat/resolve';
 
 const script = renderScript({
@@ -37,6 +38,26 @@ describe('chat script', () => {
     assert.equal(script.bot_disclosure, "I'm Drevvy's AI, working for Maya.");
     assert.equal(isExactScriptMessage(script.availability, script), true);
     assert.equal(isExactScriptMessage('Hi, this is Maya.', script), false);
+  });
+
+  it('uses the last 8 of the VIN when the stock number is missing', () => {
+    assert.equal(
+      availabilityLine({ stockNumber: null, vin: '1HGCV1F16NA000123', dealerFirstName: 'Jordan' }),
+      'Hi, is VIN ending NA000123 still available?',
+    );
+    const vinOnly = renderScript({
+      stockNumber: null,
+      vin: '1HGCV1F16NA000123',
+      listedPrice: 24995,
+      daysOnMarket: 70,
+      drevvyTextNumber: '803-555-0148',
+      drevvyEmail: 'deals@drevvy.test',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(vinOnly.availability, 'Hi, is VIN ending NA000123 still available?');
+    assert.equal(/2024|honda|civic|1HGCV1F16NA000123/i.test(vinOnly.availability), false);
+    assert.equal(vinOnly.listing_price, 'We see $24,995 listed. Is that still current?');
+    assert.equal(listedPriceQuestion({ listedPrice: 24995, priceChangedRecently: true }), 'We see $24,995 listed. Is that still current?');
   });
 
   it('asks the price after an available reply even if the model picks the handoff', () => {
