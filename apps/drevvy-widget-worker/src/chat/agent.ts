@@ -11,7 +11,7 @@ import { prepareInspection } from '../widgets/inspect';
 import { actionsFor } from '../widgets/playbooks';
 import { isTimeoutError } from '../widgets/timeout';
 import { extractWidgetScope, type WidgetVendor } from '../widgets/vendors';
-import { extractStockNumber, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
+import { extractStockNumber, extractVin, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
 import { siteUrlFromVehiclePage } from '../research/urls';
 import type { AttemptChannel, AttemptResult, AttemptStatus, AttemptStore, ChannelSelection, ChatPage, TranscriptEntry } from './types';
 import { selectionColumns } from './types';
@@ -23,6 +23,9 @@ export type WidgetChatConfig = {
   drevvyTextNumber: string;
   drevvyEmail: string;
   shopperFirst: string;
+  dealerFirstName?: string | null;
+  listedPrice?: number | null;
+  vin?: string | null;
   maxTurns: number;
   leadLastName?: string;
   leadZip?: string | null;
@@ -169,8 +172,12 @@ export async function runWidgetChat(input: {
   }
   vendor = inspection.vendor;
   if (!stock) stock = extractStockNumber(html);
+  const vin = stock ? null : input.config.vin?.trim() || extractVin(html);
   const script = renderScript({
     stockNumber: stock,
+    vin,
+    dealerFirstName: input.config.dealerFirstName,
+    listedPrice: input.config.listedPrice,
     drevvyTextNumber: input.config.drevvyTextNumber,
     drevvyEmail: input.config.drevvyEmail,
     shopperFirst: input.config.shopperFirst,

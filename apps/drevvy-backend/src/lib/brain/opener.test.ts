@@ -59,12 +59,14 @@ function started() {
   });
 }
 
-test('the first message asks only about this vehicle and keeps the short intro', () => {
+test('the first message asks only about the stock number and signs email with the shopper', () => {
   const turn = started();
-  const line = 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?';
+  const line = 'Hi, is stock #A1234 still available?\n\nMaya';
   assert.equal(turn.draft, line);
   assert.equal(openingAvailabilityLine('Maya', vehicle, 'email'), line);
+  assert.equal(openingAvailabilityLine('Maya', vehicle, 'sms'), 'Hi, is stock #A1234 still available?');
   assert.equal(turn.draft?.includes('$'), false);
+  assert.equal(/2024|toyota|rav4|xle/i.test(turn.draft ?? ''), false);
   assert.equal(/out-the-door|negotiat/i.test(turn.draft ?? ''), false);
   assert.equal(turn.record.opening?.marketcheckListingId, 'mc-listing-9');
   assert.equal(turn.record.opening?.listedPrice, 34990);
@@ -81,26 +83,38 @@ test('the first message asks only about this vehicle and keeps the short intro',
 
 test('the availability question names the stock number, or the last 8 of the VIN when there is no stock number', () => {
   const withStock = availabilityQuestion({
-    vehicle: '2024 Toyota RAV4 XLE',
-    stock: '#A1234',
+    dealerFirstName: 'Jordan',
+    stock: '#17646',
     vin: '1HGBH41JXMN109186',
   });
-  assert.equal(withStock, 'Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?');
+  assert.equal(withStock, 'Hey Jordan, is stock #17646 still available?');
   assert.equal(withStock.includes('VIN'), false);
   assert.equal(withStock.includes('1HGBH41JXMN109186'), false);
+  assert.equal(/2024|toyota|rav4|xle/i.test(withStock), false);
 
-  const stockLine = openingAvailabilityLine('Maya', vehicle, 'email');
-  assert.equal(stockLine, 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?');
+  const unnamed = availabilityQuestion({ stock: 'A1234', vin: '1HGBH41JXMN109186' });
+  assert.equal(unnamed, 'Hi, is stock #A1234 still available?');
+
+  const stockLine = openingAvailabilityLine('Maya', { ...vehicle, dealerFirstName: 'Jordan', stock: '17646' }, 'email');
+  assert.equal(stockLine, 'Hey Jordan, is stock #17646 still available?\n\nMaya');
+  assert.equal(
+    openingAvailabilityLine('Maya', { ...vehicle, dealerFirstName: 'Jordan', stock: '17646' }, 'sms'),
+    'Hey Jordan, is stock #17646 still available?',
+  );
 
   const vinOnly = availabilityQuestion({
-    vehicle: '2024 Toyota RAV4 XLE',
+    dealerFirstName: 'Jordan',
     stock: '  ',
     vin: '1hgbh41jxmn109186',
   });
-  assert.equal(vinOnly, 'Is the 2024 Toyota RAV4 XLE, VIN MN109186, still available?');
+  assert.equal(vinOnly, 'Hi, is VIN ending MN109186 still available?');
 
-  const vinLine = openingAvailabilityLine('Maya', { ...vehicle, stock: null }, 'sms');
-  assert.equal(vinLine, 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, VIN MN109186, still available?');
+  const vinLine = openingAvailabilityLine('Maya', { ...vehicle, stock: null, dealerFirstName: 'Jordan' }, 'sms');
+  assert.equal(vinLine, 'Hi, is VIN ending MN109186 still available?');
+  assert.equal(
+    openingAvailabilityLine('Maya', { ...vehicle, stock: null }, 'email'),
+    'Hi, is VIN ending MN109186 still available?\n\nMaya',
+  );
 });
 
 test('a yes sends the listed price next, and a stale or changed price uses the current-price wording', () => {
@@ -305,8 +319,12 @@ test('reply decision asks the price in shadow mode and does not call the model f
   });
   assert.equal(guard.blocked, false);
   assert.match(REPLY_DECISION_PROMPT, /asks only whether that vehicle is still available/);
-  assert.match(REPLY_DECISION_PROMPT, /stock #A1234/);
+  assert.match(REPLY_DECISION_PROMPT, /Hey Jordan, is stock #17646 still available\?/);
+  assert.match(REPLY_DECISION_PROMPT, /Hi, is stock #17646 still available\?/);
+  assert.match(REPLY_DECISION_PROMPT, /VIN ending/);
   assert.match(REPLY_DECISION_PROMPT, /last 8 of the VIN/);
+  assert.match(REPLY_DECISION_PROMPT, /Do not include year, make, model, trim/);
+  assert.match(REPLY_DECISION_PROMPT, /sign with the shopper's first name/);
   assert.match(REPLY_DECISION_PROMPT, /Is it still listed at \$X\?/);
   assert.match(REPLY_DECISION_PROMPT, /We see \$X listed\. Is that still current\?/);
   assert.match(REPLY_DECISION_PROMPT, /do not send the price question/);

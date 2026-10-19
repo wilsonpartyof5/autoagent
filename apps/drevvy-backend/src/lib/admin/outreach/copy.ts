@@ -1,5 +1,5 @@
 import { AGENT_OPENER_TEMPLATE, CALL_OPENER } from '../../agent-voice';
-import { availabilityQuestion } from './opener';
+import { availabilityQuestion, listingIdent, spokenAvailabilityQuestion } from './opener';
 import { DREVVY_NUMBER, type CallOutcome, type TouchpointId, type Variant } from './types';
 
 const OPENER = AGENT_OPENER_TEMPLATE;
@@ -12,12 +12,22 @@ export type CopyContext = {
   price: string;
   number: string;
   vin?: string;
+  /** Salesperson first name, when we know who will read the message. */
+  dealerFirst?: string | null;
 };
 
 export function fill(template: string, ctx: CopyContext): string {
-  const ask = availabilityQuestion({ vehicle: ctx.vehicle, stock: ctx.stock, vin: ctx.vin });
+  const ask = availabilityQuestion({
+    dealerFirstName: ctx.dealerFirst,
+    stock: ctx.stock,
+    vin: ctx.vin,
+  });
+  const spoken = spokenAvailabilityQuestion({ stock: ctx.stock, vin: ctx.vin });
+  const ident = listingIdent({ stock: ctx.stock, vin: ctx.vin });
   return template
     .replace(/\{ask\}/g, ask)
+    .replace(/\{spoken\}/g, spoken)
+    .replace(/\{ident\}/g, ident)
     .replace(/\{first\}/g, ctx.first)
     .replace(/\{vehicle_short\}/g, ctx.vehicleShort)
     .replace(/\{vehicle\}/g, ctx.vehicle)
@@ -29,16 +39,16 @@ export function fill(template: string, ctx: CopyContext): string {
 const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; body: string }>>> = {
   'D0-E1': {
     A: {
-      subject: 'Still available? {vehicle}, stock #{stock}',
-      body: `${OPENER} {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available? {ident}',
+      body: `{ask}\n\n{first}`,
     },
     B: {
-      subject: 'Is the {vehicle_short} (#{stock}) still available?',
-      body: `${OPENER} Quick question. {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Is {ident} still available?',
+      body: `{ask}\n\n{first}`,
     },
     C: {
-      subject: 'Still available: {vehicle}, stock #{stock}',
-      body: `${OPENER}\n\n{ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available: {ident}',
+      body: `{ask}\n\n{first}`,
     },
   },
   'D1-E2': {
@@ -87,14 +97,14 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
 
 const SMS: Partial<Record<TouchpointId, Record<Variant, string>>> = {
   'D0-T1': {
-    A: `${OPENER} {ask} Reply STOP to opt out`,
-    B: `${OPENER} Checking on one car. {ask} Reply STOP to opt out`,
-    C: `${OPENER} {ask} Reply STOP to opt out`,
+    A: `{ask} Reply STOP to opt out`,
+    B: `{ask} Reply STOP to opt out`,
+    C: `{ask} Reply STOP to opt out`,
   },
   'D0-TS': {
-    A: `${OPENER} {ask} Reply STOP to opt out`,
-    B: `${OPENER} Your team said to text this number. {ask} Reply STOP to opt out`,
-    C: `${OPENER} {ask} Reply STOP to opt out`,
+    A: `{ask} Reply STOP to opt out`,
+    B: `{ask} Your team said to text this number. Reply STOP to opt out`,
+    C: `{ask} Reply STOP to opt out`,
   },
   'D1-T2': {
     A: `${OPENER} Still interested in the {vehicle_short} (#{stock}). Could you text the out-the-door price, itemized?`,
@@ -127,7 +137,7 @@ export function smsCopy(touchpoint: TouchpointId, variant: Variant, ctx: CopyCon
 /** Calls open with a short hello for the buyer. They do not say "I'm an AI" or "automated assistant". */
 export function callOpener(touchpoint: 'D0-C1' | 'D0-C2' | 'D2-C3', variant: Variant, ctx: CopyContext): string {
   if (touchpoint === 'D0-C1') {
-    return fill(`${CALL_OPENER} {ask}`, ctx);
+    return fill(`${CALL_OPENER} {spoken}`, ctx);
   }
   if (touchpoint === 'D0-C2') {
     if (variant === 'C') {
@@ -143,7 +153,7 @@ export function callOpener(touchpoint: 'D0-C1' | 'D0-C2' | 'D2-C3', variant: Var
 
 export function voicemailScript(ctx: CopyContext): string {
   return fill(
-    `${OPENER} {ask} Please text {number} if it is. Again, {number}. Thanks!`,
+    `${OPENER} {spoken} Please text {number} if it is. Again, {number}. Thanks!`,
     ctx,
   );
 }

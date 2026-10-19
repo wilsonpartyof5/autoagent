@@ -1,3 +1,5 @@
+import { availabilityLine } from '../widgets/script';
+
 export const DEFAULT_LEAD_LAST_NAME = 'via Drevvy';
 
 export type OutreachIdentity = {
@@ -18,6 +20,11 @@ export type OutreachFill = {
 };
 
 export type LeadContactMode = 'full' | 'name_and_phone';
+
+export type ListingCue = {
+  vin?: string | null;
+  dealerFirstName?: string | null;
+};
 
 export type OutreachRunConfig = {
   dryRun: boolean;
@@ -71,13 +78,22 @@ export function normalizeZip(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-export function leadMessage(input: { stockNumber: string | null; phone: string; email?: string | null }): string {
-  const stock = input.stockNumber?.trim();
-  const stockPart = stock ? ` Stock #${stock}.` : '';
+export function leadMessage(input: {
+  stockNumber: string | null;
+  vin?: string | null;
+  dealerFirstName?: string | null;
+  phone: string;
+  email?: string | null;
+}): string {
+  const ask = availabilityLine({
+    stockNumber: input.stockNumber,
+    vin: input.vin,
+    dealerFirstName: input.dealerFirstName,
+  });
   const reach = input.email
     ? `Please text or email us at ${input.phone} / ${input.email}.`
     : `Please text us at ${input.phone}.`;
-  return `Is this unit still available?${stockPart} What's the price on it? ${reach}`;
+  return `${ask} ${reach}`;
 }
 
 export function outreachValue(
@@ -86,6 +102,7 @@ export function outreachValue(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): string | null {
   if (kind === 'first_name') return identity.firstName;
   if (kind === 'last_name') return mode === 'name_and_phone' ? null : identity.lastName;
@@ -97,6 +114,8 @@ export function outreachValue(
   if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
   return leadMessage({
     stockNumber,
+    vin: cue.vin,
+    dealerFirstName: cue.dealerFirstName,
     phone: identity.phone,
     email: mode === 'name_and_phone' ? null : identity.email,
   });
@@ -108,9 +127,10 @@ export function isApprovedFill(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): boolean {
   if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
-  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode);
+  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode, cue);
   return expected != null && fill.value === expected;
 }
 

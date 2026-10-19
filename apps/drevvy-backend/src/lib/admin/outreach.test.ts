@@ -21,57 +21,74 @@ test('cadence uses the spec touchpoint ids', () => {
   for (const id of TOUCHPOINT_IDS) assert.equal(seen.has(id), true, id);
 });
 
-test('the first dealer message asks only if that vehicle is still available', () => {
+test('the first dealer message asks only if that stock number is still available', () => {
   const ctx = {
     first: 'Maya',
+    dealerFirst: 'Jordan',
     vehicle: '2024 Toyota RAV4 Hybrid XLE',
     vehicleShort: 'RAV4 Hybrid',
-    stock: 'A1234',
+    stock: '17646',
     price: '$34,990',
     number: '843-555-0123',
     vin: '1HGBH41JXMN109186',
   };
-  const ask = 'Is the 2024 Toyota RAV4 Hybrid XLE, stock #A1234, still available?';
+  const ask = 'Hey Jordan, is stock #17646 still available?';
+  const spoken = 'Is stock #17646 still available?';
   for (const variant of ['A', 'B', 'C'] as const) {
     const email = emailCopy('D0-E1', variant, ctx);
     assert.ok(email);
-    assert.equal(email.body.includes(ask), true, email.body);
+    assert.equal(email.body, `${ask}\n\nMaya`, email.body);
+    assert.equal(email.subject.includes('2024'), false, email.subject);
+    assert.equal(email.subject.includes('RAV4'), false, email.subject);
     assert.equal(email.body.includes('1HGBH41JXMN109186'), false, email.body);
     assert.equal(email.body.includes('$'), false, email.body);
-    assert.equal(/out-the-door/i.test(email.body), false, email.body);
+    assert.equal(/out-the-door|toyota|hybrid|xle/i.test(email.body), false, email.body);
     const sms = smsCopy('D0-T1', variant, ctx);
     const salesperson = smsCopy('D0-TS', variant, ctx);
-    assert.equal(sms?.includes(ask), true, sms ?? '');
+    assert.equal(sms, `${ask} Reply STOP to opt out`, sms ?? '');
     assert.equal(salesperson?.includes(ask), true, salesperson ?? '');
+    assert.equal(sms?.includes('Maya'), false);
     assert.equal(sms?.includes('$'), false);
     assert.equal(/out-the-door/i.test(sms ?? ''), false);
     const call = callOpener('D0-C1', variant, ctx);
-    assert.equal(call.includes(ask), true, call);
+    assert.equal(call.includes(spoken), true, call);
+    assert.equal(call.includes('2024'), false, call);
     assert.equal(call.includes('$'), false, call);
     assert.equal(call.includes('this call is recorded'), true);
   }
   const vm = voicemailScript(ctx);
-  assert.equal(vm.includes(ask), true, vm);
+  assert.equal(vm.includes(spoken), true, vm);
+  assert.equal(vm.includes('2024'), false, vm);
   assert.equal(vm.includes('$'), false, vm);
 
-  const vinAsk = 'Is the 2024 Toyota RAV4 Hybrid XLE, VIN MN109186, still available?';
+  const unnamed = { ...ctx, dealerFirst: null, stock: 'A1234' };
+  assert.equal(smsCopy('D0-T1', 'A', unnamed), 'Hi, is stock #A1234 still available? Reply STOP to opt out');
+  assert.equal(emailCopy('D0-E1', 'A', unnamed)?.body, 'Hi, is stock #A1234 still available?\n\nMaya');
+
+  const vinAsk = 'Hi, is VIN ending MN109186 still available?';
   const noStock = { ...ctx, stock: '' };
   const vinEmail = emailCopy('D0-E1', 'A', noStock);
   const vinSms = smsCopy('D0-T1', 'A', noStock);
-  assert.equal(vinEmail?.body.includes(vinAsk), true, vinEmail?.body ?? '');
+  assert.equal(vinEmail?.body, `${vinAsk}\n\nMaya`, vinEmail?.body ?? '');
   assert.equal(vinEmail?.body.includes('1HGBH41JXMN109186'), false);
-  assert.equal(vinSms?.includes(vinAsk), true, vinSms ?? '');
+  assert.equal(vinEmail?.body.includes('Jordan'), false);
+  assert.equal(vinSms, `${vinAsk} Reply STOP to opt out`, vinSms ?? '');
 });
 
 test('openings are a short hello and do not lead with being an AI', () => {
   const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123' };
   const opener = 'Hi, this is Drevvy, working for Maya.';
+  const casual = 'Hi, is stock #A1234 still available?';
   const leadsWithAi = /i'm an ai|i am an ai|i'm drevvy's ai|i am drevvy's ai/i;
   for (const touchpoint of ['D0-E1', 'D1-E2', 'D4-E3', 'D5-E4'] as const) {
     for (const variant of ['A', 'B', 'C'] as const) {
       const email = emailCopy(touchpoint, variant, ctx);
       assert.ok(email, `${touchpoint} ${variant}`);
-      assert.equal(email.body.startsWith(opener), true, email.body);
+      if (touchpoint === 'D0-E1') {
+        assert.equal(email.body, `${casual}\n\nMaya`, email.body);
+      } else {
+        assert.equal(email.body.startsWith(opener), true, email.body);
+      }
       assert.equal(leadsWithAi.test(email.body), false, email.body);
       assert.equal(/negotiate/i.test(email.body), false, email.body);
       assert.equal(email.body.includes('@'), false, email.body);
@@ -81,7 +98,12 @@ test('openings are a short hello and do not lead with being an AI', () => {
     for (const variant of ['A', 'B', 'C'] as const) {
       const sms = smsCopy(touchpoint, variant, ctx);
       assert.ok(sms, `${touchpoint} ${variant}`);
-      assert.equal(sms.startsWith(opener), true, sms);
+      if (touchpoint === 'D0-T1' || touchpoint === 'D0-TS') {
+        assert.equal(sms.startsWith(casual), true, sms);
+        assert.equal(sms.includes('Maya'), false, sms);
+      } else {
+        assert.equal(sms.startsWith(opener), true, sms);
+      }
       assert.equal(leadsWithAi.test(sms), false, sms);
       assert.equal(/negotiate/i.test(sms), false, sms);
     }

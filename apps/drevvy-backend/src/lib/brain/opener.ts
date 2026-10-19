@@ -1,8 +1,12 @@
 /**
  * Two-question dealer opening.
  *
- * 1. After "Hi, this is Drevvy, working for {first}.", ask only if this
- *    vehicle is still available.
+ * 1. Ask only if this car is still available, by stock number. With a
+ *    salesperson's first name: "Hey Jordan, is stock #17646 still available?"
+ *    With no name: "Hi, is stock #17646 still available?" With no stock
+ *    number: "Hi, is VIN ending {last8} still available?" Email signs with
+ *    the shopper's first name. The question does not name year, make, model,
+ *    or trim, and it does not mention price.
  * 2. After the dealer confirms it, ask whether it is still listed at the
  *    price we already copied onto the deal.
  *
@@ -16,6 +20,7 @@ import { agentOpener } from '../agent-voice';
 import {
   availabilityQuestion,
   listedPriceQuestion,
+  spokenAvailabilityQuestion,
   vehicleTitle,
 } from '../admin/outreach/opener';
 import { detectSmsOptOut } from '../sms/opt-out';
@@ -39,6 +44,7 @@ export type OpeningVehicle = {
   trim?: string | null;
   stock?: string | null;
   vin?: string | null;
+  dealerFirstName?: string | null;
   listedPrice: number;
   listingId: string;
   daysOnMarket?: number | null;
@@ -83,14 +89,15 @@ export function openingVehicleLabel(vehicle: OpeningVehicle): string {
 
 export function openingAvailabilityLine(shopperFirst: string, vehicle: OpeningVehicle, channel: OpeningChannel): string {
   const question = availabilityQuestion({
-    vehicle: vehicleTitle(vehicle),
+    dealerFirstName: vehicle.dealerFirstName,
     stock: vehicle.stock,
     vin: vehicle.vin,
   });
-  const intro = channel === 'call'
-    ? `${agentOpener(shopperFirst)} Quick heads-up, this call is recorded.`
-    : agentOpener(shopperFirst);
-  return `${intro} ${question}`;
+  if (channel === 'call') {
+    return `${agentOpener(shopperFirst)} Quick heads-up, this call is recorded. ${spokenAvailabilityQuestion(vehicle)}`;
+  }
+  if (channel === 'email') return `${question}\n\n${shopperFirst.trim()}`;
+  return question;
 }
 
 export function openingPriceLine(vehicle: OpeningVehicle): string {
