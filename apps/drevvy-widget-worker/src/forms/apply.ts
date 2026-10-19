@@ -1,5 +1,5 @@
 import type { ChatPage } from '../chat/types';
-import { isApprovedFill, type LeadContactMode, type OutreachIdentity } from './outreach';
+import { isApprovedFill, type LeadContactMode, type ListingCue, type OutreachIdentity } from './outreach';
 import type { FormPlan } from './plan';
 
 export async function applyPlan(
@@ -9,9 +9,10 @@ export async function applyPlan(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): Promise<'filled' | 'fill_failed' | 'submit_failed'> {
   for (const fill of plan.fills) {
-    if (!isApprovedFill(fill, identity, stockNumber, channel, mode)) return 'fill_failed';
+    if (!isApprovedFill(fill, identity, stockNumber, channel, mode, cue)) return 'fill_failed';
     const filled = await page.fillOutreach(fill);
     if (!filled) return 'fill_failed';
   }

@@ -131,11 +131,13 @@ A blocked dealer site is not opened again, and a second scan does not insert ano
 
 The lead message, used when the form has a message, comment, or question field, is:
 
-`Is this unit still available? Stock #X. What's the price on it? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+`Hi, is stock #X still available? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+
+When the page names a salesperson, the greeting is `Hey {first name}` instead of `Hi`. When the page has no stock number, the question is `Hi, is VIN ending {last8} still available?` The question does not include year, make, model, or trim, and it does not ask the price. The price question is a later message.
 
 When `run` sends the lead form alongside a ready widget, the last sentence is `Please text us at {DREVVY_TEXT_NUMBER}.` and the form is filled with the first name and that number only.
 
-The stock sentence is omitted when the page has no stock number. There is no introduction. A form without a message field is still submitted with the identity fields it does have.
+With neither a stock number nor a VIN, the question is `Hi, is it still available?` A form without a message field is still submitted with the identity fields it does have.
 
 A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's first name and `DREVVY_TEXT_NUMBER`. A single name box on that gate gets the first name only. A lead form with one full-name box gets `{first} {LEAD_LAST_NAME}`.
 
@@ -153,8 +155,8 @@ A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's f
 
 Script:
 
-1. `Hi, this is Drevvy, working for {SHOPPER_FIRST_NAME}. Is this unit still available?` plus the stock number when we have one. The opening does not say "I'm an AI".
-2. If the dealer says it is available: `What is the listing price?`
+1. `Hi, is stock #X still available?` With a salesperson's first name: `Hey {name}, is stock #X still available?` With no stock number: `Hi, is VIN ending {last8} still available?` The opening does not name the year, make, model, or trim, and it does not say "I'm an AI". Chat does not add a signature.
+2. If the dealer says it is available and we already know the listed price: `Is it still listed at $X?` If we do not know that price yet, the separate question is `What is the listing price?`
 3. When a price is given: `Thanks. I'd like to continue over text and email, please reach us at {DREVVY_TEXT_NUMBER} or {DREVVY_EMAIL}.`
 4. If they ask whether it is a bot or AI: `I'm Drevvy's AI, working for {SHOPPER_FIRST_NAME}.` That is the only AI sentence. The worker never denies being an AI and never claims to be human.
 
