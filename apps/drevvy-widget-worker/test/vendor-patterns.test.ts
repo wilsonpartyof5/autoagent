@@ -19,6 +19,7 @@ const live = {
   dryRun: false,
   allowlist: ['https://www.example-motors.test'],
   drevvyTextNumber: '803-555-0148',
+  drevvyContactPhone: '803-555-0148',
   drevvyEmail: 'deals@drevvy.test',
   shopperFirst: 'Maya',
   leadLastName: 'via Drevvy',

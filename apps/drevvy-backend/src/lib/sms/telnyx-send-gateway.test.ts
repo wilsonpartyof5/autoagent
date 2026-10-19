@@ -13,6 +13,7 @@ test('the gateway appends the line from the setting and keeps a suppressed numbe
     fromNumber: '+18435550199',
     apiKey: 'test-key',
     now: () => now,
+    tenDlcApproved: true,
     post: async (request: { text: string; to: string }) => {
       posts.push(`${request.to} ${request.text}`);
       return { ok: true as const, id: `id-${posts.length}` };

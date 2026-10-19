@@ -7,9 +7,10 @@ import { hasCaptchaChallenge } from '../widgets/guards';
 import { isTimeoutError } from '../widgets/timeout';
 import { extractStockNumber, extractVin } from '../widgets/script';
 import { applyPlan } from './apply';
-import type { ParsedForm } from './detect';
+import { detectLeadForms, type ParsedForm } from './detect';
 import { locateLeadForm } from './open';
-import { blockWallSignature, outreachIdentity, type OutreachRunConfig } from './outreach';
+import { formRequiresPhone, isCheckAvailabilityForm } from './phone';
+import { blockWallSignature, outreachIdentity, type LeadContactMode, type OutreachRunConfig } from './outreach';
 import { describePlan, planForm, type FormPlan } from './plan';
 import { isNoFormStop, shouldMarkCallEmailOnly, NO_FORM_STOPS } from './stops';
 import { isHoneypotField, type VendorFormPattern } from './vendor-patterns';
@@ -161,16 +162,7 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  const form = located.form;
-  if (!form) {
-    status = 'unknown';
-    stopReason = 'form_not_found';
-    note('No vehicle lead form found after the page settled.');
-    log(`[lead] ${input.vehiclePageUrl} form_not_found`);
-    return finish();
-  }
-
-  if (hasCaptchaChallenge(form.html) || hasCaptchaChallenge(html)) {
+  if (hasCaptchaChallenge(html)) {
     status = 'captcha';
     stopReason = 'captcha';
     note('Stopped: captcha.');
@@ -179,7 +171,22 @@ export async function runLeadForm(input: {
   }
 
   const identity = outreachIdentity(input.config);
-  const mode = input.config.contactMode ?? 'full';
+  const forms = detectLeadForms(html);
+  const selected = selectLeadSubmission(
+    forms.length > 0 ? forms : located.form ? [located.form] : [],
+    input.config.contactMode ?? 'full',
+    identity.contactPhone,
+  );
+  const form = selected.form;
+  const mode = selected.mode;
+  if (!form) {
+    status = 'unknown';
+    stopReason = mode === 'check_availability' ? 'no_check_availability' : 'form_not_found';
+    note(mode === 'check_availability' ? 'No Check Availability form found.' : 'No vehicle lead form found after the page settled.');
+    log(`[lead] ${input.vehiclePageUrl} ${stopReason}`);
+    return finish();
+  }
+
   const pattern = located.pattern;
   const plannedForm: ParsedForm = {
     ...form,
@@ -254,9 +261,28 @@ function recordPlan(transcript: TranscriptEntry[], plan: FormPlan, now: () => Da
   }
 }
 
+export function selectLeadSubmission(
+  forms: ParsedForm[],
+  requested: LeadContactMode,
+  contactPhone: string | null,
+): { form: ParsedForm | null; mode: LeadContactMode } {
+  if (requested === 'check_availability') {
+    return { form: forms.find(isCheckAvailabilityForm) ?? null, mode: 'check_availability' };
+  }
+  const first = forms[0] ?? null;
+  if (first && formRequiresPhone(first) && !contactPhone) {
+    const check = forms.find(isCheckAvailabilityForm);
+    if (check && !formRequiresPhone(check)) return { form: check, mode: 'check_availability' };
+  }
+  return { form: first, mode: requested };
+}
+
 function stoppedStatus(stop: NonNullable<FormPlan['stop']>): { status: AttemptStatus; reason: string; note: string } {
   if (stop === 'captcha') return { status: 'captcha', reason: 'captcha', note: 'Stopped: captcha.' };
   if (stop === 'private_info') return { status: 'private_info', reason: 'private_info', note: 'Stopped: the form asks for private information.' };
   if (stop === 'missing_zip') return { status: 'unknown', reason: 'missing_zip', note: 'Stopped: ZIP is not configured.' };
+  if (stop === 'phone_required') {
+    return { status: 'unknown', reason: 'phone_required', note: 'Stopped: the form requires a phone and DREVVY_CONTACT_PHONE is not set.' };
+  }
   return { status: 'unknown', reason: 'unsupported_field', note: 'Stopped: the form has a field this worker cannot fill.' };
 }

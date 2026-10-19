@@ -14,7 +14,7 @@ export type FormPlan = {
   formId: string | null;
   buttonText: string | null;
   fills: OutreachFill[];
-  stop: 'captcha' | 'private_info' | 'missing_zip' | 'unsupported_field' | null;
+  stop: 'captcha' | 'private_info' | 'missing_zip' | 'unsupported_field' | 'phone_required' | null;
 };
 
 export function planForm(
@@ -48,8 +48,17 @@ export function planForm(
       }
       continue;
     }
+    if (mode === 'check_availability' && field.kind === 'phone') {
+      if (field.required) {
+        return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'phone_required' };
+      }
+      continue;
+    }
     const value = outreachValue(field.kind, identity, stockNumber, channel, mode, cue);
     if (!value) {
+      if (field.kind === 'phone' && field.required) {
+        return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'phone_required' };
+      }
       if (field.required || field.kind === 'zip') {
         return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'missing_zip' };
       }

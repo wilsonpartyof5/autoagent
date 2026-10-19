@@ -8,7 +8,7 @@ Standalone Node worker for day-0 dealer outreach:
 4. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
 5. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
-Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_TEXT_NUMBER`, `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. The shopper's own phone, email, last name, address, date of birth, SSN, and trade details are never typed and never stored. Widget chat opens with `Hi, this is Drevvy, working for {first}.` and does not lead with "I'm an AI". If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.` The worker never denies being an AI.
+Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. A required phone field is filled with `DREVVY_CONTACT_PHONE`, Drevvy's Telnyx number. If that variable is unset, the worker skips the phone widget and submits the listing's Check Availability form with no phone. The shopper's own phone is never typed. The shopper's email, last name, address, date of birth, SSN, and trade details are never typed and never stored. Outbound texts stay off until 10DLC is approved. Inbound calls and texts to `DREVVY_CONTACT_PHONE` are logged on the deal. Before any dealer contact, the worker checks the MarketCheck trim against the dealer's page and a VIN decode. A mismatch is flagged on the deal and told to the shopper. The stock-number opener stays the same. Widget chat does not lead with "I'm an AI". If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.` The worker never denies being an AI.
 
 MarketCheck contact data can be passed as a hint file. Hints are not written to the database. A phone, email, or name is stored only when it appears on the fetched dealer page. Do not point this worker at a MarketCheck listing URL.
 
@@ -38,7 +38,7 @@ pnpm --filter @drevvy/widget-worker health urls.txt
 
 | Widget status | Channels | Lead identity |
 | --- | --- | --- |
-| `dry_run` (launcher and composer, or a pre-chat gate) | `widget,lead_form` | First name and `DREVVY_TEXT_NUMBER` only. The message says `Please text us at {DREVVY_TEXT_NUMBER}.` A required last name, email, or ZIP stops that form with nothing filled. |
+| `dry_run` (launcher and composer, or a pre-chat gate) | `widget,lead_form` | First name, and `DREVVY_CONTACT_PHONE` when the form requires a phone. The message says `Please text us at {DREVVY_TEXT_NUMBER}.` A required last name, email, or ZIP stops that form with nothing filled. |
 | `no_widget`, `widget_offline`, `composer_not_found`, `page_timeout`, `error` | `lead_form` | The full lead identity below, including `LEAD_LAST_NAME`, `DREVVY_EMAIL`, and `DREVVY_ZIP`. |
 | `captcha`, `contact_form` | `lead_form` | Same full lead identity. The reason says `blocked-for-chat`. |
 | `blocked` | none | Nothing is sent. `fallback` is `email_text_call`. The page is not opened again. |
@@ -135,11 +135,11 @@ The lead message, used when the form has a message, comment, or question field, 
 
 When the page names a salesperson, the greeting is `Hey {first name}` instead of `Hi`. When the page has no stock number, the question is `Hi, is VIN ending {last8} still available?` The question does not include year, make, model, or trim, and it does not ask the price. The price question is a later message.
 
-When `run` sends the lead form alongside a ready widget, the last sentence is `Please text us at {DREVVY_TEXT_NUMBER}.` and the form is filled with the first name and that number only.
+When `run` sends the lead form alongside a ready widget, the last sentence is `Please text us at {DREVVY_TEXT_NUMBER}.` and the form is filled with the first name. A required phone field gets `DREVVY_CONTACT_PHONE`, not the text number and not the shopper's phone.
 
 With neither a stock number nor a VIN, the question is `Hi, is it still available?` A form without a message field is still submitted with the identity fields it does have.
 
-A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's first name and `DREVVY_TEXT_NUMBER`. A single name box on that gate gets the first name only. A lead form with one full-name box gets `{first} {LEAD_LAST_NAME}`.
+A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's first name and `DREVVY_CONTACT_PHONE`. A single name box on that gate gets the first name only. A lead form with one full-name box gets `{first} {LEAD_LAST_NAME}`. If the widget requires a phone and `DREVVY_CONTACT_PHONE` is unset, that widget is skipped and the listing's Check Availability form is submitted with no phone.
 
 `first_reply_channel` stays empty until a dealer text reply is read. A screenshot-only turn does not set it. The first text reply updates the earlier attempt rows for that vehicle page.
 
@@ -178,7 +178,8 @@ Each turn reads the latest dealer message as text. If that text is missing, the 
 | `WIDGET_SCREENSHOT_BASE_URL` | no | When set, `screenshot_url` is this base plus the file path. |
 | `WIDGET_CHAT_ALLOWLIST` | live chat | Comma-separated dealer site URLs or hostnames. |
 | `DREVVY_TEST_MODE` | no | Set to `true` to fill forms from the three variables below. Otherwise lead, chat, and run assign the conversation identity for `--deal` and `--dealer` before the first live send. A missing text number holds the send. |
-| `DREVVY_TEXT_NUMBER` | test mode | Fallback text number. Live runs use the conversation identity. |
+| `DREVVY_TEXT_NUMBER` | test mode | Fallback text number named in the message. Live runs use the conversation identity. |
+| `DREVVY_CONTACT_PHONE` | when a form requires a phone | Drevvy's Telnyx number. Never the shopper's phone. Unset skips that widget for Check Availability with no phone. |
 | `DREVVY_EMAIL` | test mode | Fallback email. Live runs use the conversation alias. |
 | `SHOPPER_FIRST_NAME` | test mode | Fallback first name. Live runs use the name stored on the conversation, which comes from the shopper profile. |
 | `LEAD_LAST_NAME` | no | Last-name box on a lead form. Default `via Drevvy`. |

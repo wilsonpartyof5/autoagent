@@ -1,11 +1,15 @@
 import { availabilityLine } from '../widgets/script';
+import { resolveFormPhone } from './phone';
 
 export const DEFAULT_LEAD_LAST_NAME = 'via Drevvy';
 
 export type OutreachIdentity = {
   firstName: string;
   lastName: string;
+  /** Text number named in the message. Not the shopper's phone. */
   phone: string;
+  /** Drevvy's Telnyx number for a required phone field. Null when unset. */
+  contactPhone: string | null;
   email: string;
   zip: string | null;
 };
@@ -19,7 +23,7 @@ export type OutreachFill = {
   value: string;
 };
 
-export type LeadContactMode = 'full' | 'name_and_phone';
+export type LeadContactMode = 'full' | 'name_and_phone' | 'check_availability';
 
 export type ListingCue = {
   vin?: string | null;
@@ -35,6 +39,10 @@ export type OutreachRunConfig = {
   leadLastName?: string;
   leadZip?: string | null;
   contactMode?: LeadContactMode;
+  /** Display form of DREVVY_CONTACT_PHONE. Never the shopper's phone. */
+  drevvyContactPhone?: string | null;
+  /** Shopper phone, if known, so a mis-set contact number is dropped. */
+  shopperPhone?: string | null;
 };
 
 export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
@@ -42,6 +50,7 @@ export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
     firstName: config.shopperFirst,
     lastName: config.leadLastName,
     phone: config.drevvyTextNumber,
+    contactPhone: resolveFormPhone(config.drevvyContactPhone, config.shopperPhone),
     email: config.drevvyEmail,
     zip: config.leadZip,
   });
@@ -51,6 +60,7 @@ export function buildIdentity(input: {
   firstName: string;
   lastName?: string | null;
   phone: string;
+  contactPhone?: string | null;
   email: string;
   zip?: string | null;
 }): OutreachIdentity {
@@ -58,6 +68,7 @@ export function buildIdentity(input: {
     firstName: input.firstName,
     lastName: assertLeadLastName(input.lastName?.trim() || DEFAULT_LEAD_LAST_NAME),
     phone: input.phone,
+    contactPhone: input.contactPhone ?? null,
     email: input.email,
     zip: normalizeZip(input.zip),
   };
@@ -86,6 +97,8 @@ export function leadMessage(input: {
   vehicle?: string | null;
   phone?: string;
   email?: string | null;
+  /** Check Availability has no phone field. The message never names a number. */
+  omitPhone?: boolean;
 }): string {
   return availabilityLine({
     stockNumber: input.stockNumber,
@@ -107,7 +120,7 @@ export function outreachValue(
   if (kind === 'full_name') {
     return channel === 'prechat' || mode === 'name_and_phone' ? identity.firstName : `${identity.firstName} ${identity.lastName}`;
   }
-  if (kind === 'phone') return identity.phone;
+  if (kind === 'phone') return mode === 'check_availability' ? null : identity.contactPhone;
   if (kind === 'email') return mode === 'name_and_phone' ? null : identity.email;
   if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
   return leadMessage({
@@ -115,6 +128,7 @@ export function outreachValue(
     stockNumber,
     vin: cue.vin,
     dealerFirstName: cue.dealerFirstName,
+    omitPhone: mode === 'check_availability',
   });
 }
 
