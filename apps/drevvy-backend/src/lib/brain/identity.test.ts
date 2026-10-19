@@ -473,6 +473,7 @@ test('the send gateway reads the identity and unmatched inbound is kept for revi
     return jsonResponse({ data: { id: 'sms-1' } });
   };
   const sms = await sendOutboundSms(memory.store, {
+    tenDlcApproved: true,
     from: '+19995550100',
     to: '+18035550999',
     text: 'Please text this number.',

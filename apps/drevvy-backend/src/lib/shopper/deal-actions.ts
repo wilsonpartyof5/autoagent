@@ -53,6 +53,7 @@ import {
   refundCredit,
   consumeCredit,
 } from './credits';
+import { readShopperTrimNotice } from '@/lib/dealer/trim-store';
 import { findSimilarListings, similarSearchQuery, type SimilarListing, type SimilarQuery, type SimilarSearch } from './similar';
 
 export type CreditSummary = {
@@ -71,6 +72,8 @@ export type DealDeps = {
   supabase?: SupabaseClient;
   /** Defaults to MarketCheck Price, allowed only for unlock and open-deal. */
   loadFairPrice?: (trigger: FairPriceTrigger, vehicle: FairPriceVehicle) => Promise<FairPriceQuote | null>;
+  /** Shopper-facing note when the verified trim disagrees with MarketCheck. */
+  trimNotice?: (dealId: string) => Promise<string | null>;
 };
 
 let createAdminClientFn: (() => SupabaseClient) | null = null;
@@ -93,6 +96,7 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
     live: process.env.MARKETCHECK_LIVE === '1',
     search: searchActiveCarsMcp,
     notify: (push) => deliverShopperPushLive(push).then(() => undefined),
+    trimNotice: (dealId) => readShopperTrimNotice(dealId),
   };
 }
 
@@ -162,8 +166,12 @@ export async function listShopperCars(
     listShopperDeals(deps.deals, userId),
     deps.lifecycle.listForShopper(userId),
   ]);
+  const notices = deps.trimNotice
+    ? await Promise.all(deals.map(async (deal) => [deal.id, await deps.trimNotice?.(deal.id)] as const))
+    : [];
+  const noticeFor = new Map(notices);
   return {
-    deals: deals.map((deal) => presentDeal(deal, findRecord(records, deal.id))),
+    deals: deals.map((deal) => presentDeal(deal, findRecord(records, deal.id), noticeFor.get(deal.id) ?? null)),
     credits: await creditSummaryFor(supabase, userId),
   };
 }
@@ -176,7 +184,8 @@ export async function getShopperCar(
 ): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const record = await deps.lifecycle.get(userId, deal.id);
-  return withFairPrice(presentDeal(deal, record), 'open_deal', options?.zip, deps);
+  const notice = deps.trimNotice ? await deps.trimNotice(deal.id) : null;
+  return withFairPrice(presentDeal(deal, record, notice), 'open_deal', options?.zip, deps);
 }
 
 export async function removeShopperCar(

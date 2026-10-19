@@ -21,6 +21,7 @@ export type WidgetChatConfig = {
   dryRun: boolean;
   allowlist: string[];
   drevvyTextNumber: string;
+  drevvyContactPhone?: string | null;
   drevvyEmail: string;
   shopperFirst: string;
   dealerFirstName?: string | null;
@@ -223,6 +224,9 @@ export async function runWidgetChat(input: {
     });
 
   const initialGate = await openGate(scope);
+  if (initialGate.filledPhone) {
+    transcript.push({ role: 'agent', text: `phone: ${initialGate.filledPhone}`, at: now().toISOString(), via: 'planned' });
+  }
   if (!initialGate.continueChat) {
     mark(initialGate.status ?? 'unknown', initialGate.stopReason ?? 'prechat', initialGate.note ?? undefined);
     return finish();
@@ -266,6 +270,9 @@ export async function runWidgetChat(input: {
         return false;
       }
       const openedGate = await openGate(opened);
+      if (openedGate.filledPhone) {
+        transcript.push({ role: 'agent', text: `phone: ${openedGate.filledPhone}`, at: now().toISOString(), via: 'planned' });
+      }
       if (!openedGate.continueChat) {
         mark(openedGate.status ?? 'unknown', openedGate.stopReason ?? 'prechat', openedGate.note ?? undefined);
         return false;

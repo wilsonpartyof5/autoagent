@@ -1,4 +1,5 @@
 import { preferConversationContact, type ConversationContact } from './forms/identity';
+import { resolveFormPhone } from './forms/phone';
 import { assertLeadLastName, DEFAULT_LEAD_LAST_NAME, normalizeZip } from './forms/outreach';
 import { normalizeEmail, normalizePhone } from './research/validate';
 
@@ -13,6 +14,8 @@ export type AppConfig = {
   dryRun: boolean;
   allowlist: string[];
   drevvyTextNumber: string | null;
+  /** Drevvy's Telnyx number for a required phone field. Null skips that widget. */
+  drevvyContactPhone: string | null;
   drevvyEmail: string | null;
   shopperFirst: string | null;
   leadLastName: string;
@@ -40,6 +43,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dryRun: env.DRY_RUN !== 'false',
     allowlist: parseAllowlist(env.WIDGET_CHAT_ALLOWLIST),
     drevvyTextNumber: textNumber,
+    drevvyContactPhone: resolveFormPhone(blankToNull(env.DREVVY_CONTACT_PHONE)),
     drevvyEmail: email ? normalizeEmail(email) : null,
     shopperFirst: blankToNull(env.SHOPPER_FIRST_NAME),
     leadLastName: blankToNull(env.LEAD_LAST_NAME) ?? DEFAULT_LEAD_LAST_NAME,
@@ -148,6 +152,7 @@ export function chatSettings(config: AppConfig, contact: ConversationContact | n
   dryRun: boolean;
   allowlist: string[];
   drevvyTextNumber: string;
+  drevvyContactPhone: string | null;
   drevvyEmail: string;
   shopperFirst: string;
   maxTurns: number;
@@ -168,6 +173,7 @@ export function chatSettings(config: AppConfig, contact: ConversationContact | n
     dryRun: config.dryRun,
     allowlist: config.allowlist,
     drevvyTextNumber: preferred.textNumber,
+    drevvyContactPhone: config.drevvyContactPhone,
     drevvyEmail: preferred.email,
     shopperFirst: assertShopperFirst(preferred.shopperFirst),
     maxTurns: config.maxTurns,

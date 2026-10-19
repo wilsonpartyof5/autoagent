@@ -4,6 +4,7 @@
  * every send to a suppressed number.
  */
 
+import { outboundSmsHoldReason } from '@/lib/dealer/contact-phone';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 import { normalizeSmsPhone, smsThreadKey } from './opt-out';
@@ -36,7 +37,8 @@ export type SendSmsBlocked =
   | 'empty_body'
   | 'not_configured'
   | 'suppression_unavailable'
-  | 'vendor_error';
+  | 'vendor_error'
+  | 'ten_dlc_pending';
 
 export type SendSmsResult =
   | { ok: true; id: string | null; body: string; optOutLineAppended: boolean; phone: string }
@@ -49,6 +51,8 @@ export type SendSmsDeps = {
   fromNumber?: string | null;
   messagingProfileId?: string | null;
   apiKey?: string | null;
+  /** Live texts stay off until TELNYX_10DLC_APPROVED=true. */
+  tenDlcApproved?: boolean;
 };
 
 export async function sendSms(input: SendSmsInput, deps: SendSmsDeps = {}): Promise<SendSmsResult> {
@@ -86,6 +90,9 @@ export async function sendSms(input: SendSmsInput, deps: SendSmsDeps = {}): Prom
   const fromNumber = deps.fromNumber === undefined ? process.env.TELNYX_FROM_NUMBER ?? null : deps.fromNumber;
   const apiKey = deps.apiKey === undefined ? process.env.TELNYX_API_KEY ?? null : deps.apiKey;
   if (!fromNumber || !apiKey) return { ok: false, blocked: 'not_configured' };
+  if (outboundSmsHoldReason({ tenDlcApproved: deps.tenDlcApproved })) {
+    return { ok: false, blocked: 'ten_dlc_pending' };
+  }
 
   const post = deps.post ?? defaultPoster(apiKey);
   const messagingProfileId = deps.messagingProfileId === undefined

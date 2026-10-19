@@ -87,6 +87,8 @@ export type PresentedDeal = ShopperDeal & {
   visit?: DealVisit;
   /** MarketCheck Price. Present only after Unlock with agent or opening this deal. */
   fairPrice?: { price: number; fromCache: boolean };
+  /** Set when MarketCheck's trim disagreed with the dealer page or a VIN decode. */
+  trimNotice?: string;
 };
 
 export type BuyPrompt = {
@@ -247,7 +249,11 @@ export function quotaDealFromShopperDeal(deal: ShopperDeal): QuotaDeal {
   };
 }
 
-export function presentDeal(deal: ShopperDeal, record: LifecycleRecord | null): PresentedDeal {
+export function presentDeal(
+  deal: ShopperDeal,
+  record: LifecycleRecord | null,
+  trimNotice?: string | null,
+): PresentedDeal {
   const endState = record?.endState ?? 'open';
   const presented: PresentedDeal = {
     ...deal,
@@ -256,6 +262,7 @@ export function presentDeal(deal: ShopperDeal, record: LifecycleRecord | null): 
   };
   const visit = record ? visitFence(record) : null;
   if (visit) presented.visit = visit;
+  if (trimNotice) presented.trimNotice = trimNotice;
   return presented;
 }
 

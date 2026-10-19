@@ -11,9 +11,10 @@ export type PrechatGateResult = {
   status: AttemptStatus | null;
   stopReason: string | null;
   note: string | null;
+  filledPhone: string | null;
 };
 
-const CONTINUE: PrechatGateResult = { continueChat: true, status: null, stopReason: null, note: null };
+const CONTINUE: PrechatGateResult = { continueChat: true, status: null, stopReason: null, note: null, filledPhone: null };
 
 export async function runPrechatGate(input: {
   vehiclePageUrl: string;
@@ -44,10 +45,11 @@ export async function runPrechatGate(input: {
   }));
   input.log(`[prechat] ${input.vehiclePageUrl} ${describePlan(plan)}`);
 
+  const filledPhone = plan.fills.find((fill) => fill.kind === 'phone')?.value ?? null;
   if (plan.stop) {
     const stopped = stoppedStatus(plan.stop);
     await insertPrechat(input, transcript, stopped.status, stopped.reason, null, stopped.note);
-    return { continueChat: false, status: stopped.status, stopReason: stopped.reason, note: stopped.note };
+    return { continueChat: false, status: stopped.status, stopReason: stopped.reason, note: stopped.note, filledPhone: null };
   }
 
   if (input.config.dryRun) {
@@ -64,11 +66,11 @@ export async function runPrechatGate(input: {
   if (applied !== 'filled') {
     const message = applied === 'fill_failed' ? 'Could not fill an approved pre-chat field.' : 'Could not submit the pre-chat form.';
     await insertPrechat(input, transcript, 'error', applied, message, message);
-    return { continueChat: false, status: 'error', stopReason: applied, note: message };
+    return { continueChat: false, status: 'error', stopReason: applied, note: message, filledPhone: null };
   }
 
   await insertPrechat(input, transcript, 'submitted', 'submitted', null, 'Pre-chat form submitted.');
-  return CONTINUE;
+  return { ...CONTINUE, filledPhone };
 }
 
 async function insertPrechat(
@@ -104,5 +106,8 @@ function stoppedStatus(stop: NonNullable<FormPlan['stop']>): { status: AttemptSt
   if (stop === 'captcha') return { status: 'captcha', reason: 'captcha', note: 'Stopped: captcha.' };
   if (stop === 'private_info') return { status: 'private_info', reason: 'private_info', note: 'Stopped: the form asks for private information.' };
   if (stop === 'missing_zip') return { status: 'unknown', reason: 'missing_zip', note: 'Stopped: ZIP is not configured.' };
+  if (stop === 'phone_required') {
+    return { status: 'unknown', reason: 'phone_required', note: 'Stopped: the widget requires a phone and DREVVY_CONTACT_PHONE is not set.' };
+  }
   return { status: 'unknown', reason: 'unsupported_field', note: 'Stopped: the form has a field this worker cannot fill.' };
 }

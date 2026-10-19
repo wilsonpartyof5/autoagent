@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { outboundSmsHoldReason } from '../dealer/contact-phone';
 import { insertBrainVendorEvent, type BrainVendorEvent } from './repository';
 import { selectSender, voiceNumberLeaks, type ConversationIdentity } from './identity';
 import type { IdentityRouter } from './identity-store';
@@ -92,6 +93,13 @@ type IngestDeps = {
   apiKey: string | null;
   fetchImpl?: typeof fetch;
   router?: IdentityRouter;
+  matchContactPhone?: (input: {
+    to: string | null;
+    from: string | null;
+    direction: 'inbound' | 'outbound' | null;
+    eventType: string;
+    channel: 'call' | 'sms' | 'email' | 'voicemail' | null;
+  }) => Promise<{ dealId: string; dealerId: string | null } | null>;
 };
 
 export function supabaseCommunicationsStore(supabase: SupabaseClient): CommunicationsStore {
@@ -220,6 +228,19 @@ export async function ingestTelnyxPayload(payload: unknown, deps: IngestDeps): P
       dealId = prior.dealId;
       dealerId = dealerId ?? prior.dealerId;
       touchpoint = touchpoint ?? prior.touchpoint;
+    }
+  }
+  if (!dealId && deps.matchContactPhone) {
+    const matched = await deps.matchContactPhone({
+      to: normalized.to,
+      from: normalized.from,
+      direction: normalized.direction,
+      eventType: normalized.eventType,
+      channel: normalized.channel,
+    });
+    if (matched) {
+      dealId = matched.dealId;
+      dealerId = dealerId ?? matched.dealerId;
     }
   }
 
@@ -455,10 +476,17 @@ export async function sendOutboundSms(
     fetchImpl?: typeof fetch;
     identity?: ConversationIdentity | null;
     testMode?: boolean;
+    /** Live sends stay blocked until this is true or TELNYX_10DLC_APPROVED is set. */
+    tenDlcApproved?: boolean;
     assignment?: LiveAssignment | null;
     router?: IdentityRouter;
   },
 ): Promise<{ messageId: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const heldSms = outboundSmsHoldReason({
+    testMode: input.testMode === true,
+    tenDlcApproved: input.tenDlcApproved,
+  });
+  if (heldSms) return { error: heldSms, held: true };
   const resolved = await resolveLiveIdentity({
     channel: 'sms',
     testMode: input.testMode === true,
