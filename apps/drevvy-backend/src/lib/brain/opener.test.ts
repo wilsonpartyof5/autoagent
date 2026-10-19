@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { availabilityQuestion } from '../admin/outreach/opener';
 import { SHADOW_MODE } from './config';
 import {
   advanceDealerOpening,
@@ -60,7 +61,7 @@ function started() {
 
 test('the first message asks only about this vehicle and keeps the short intro', () => {
   const turn = started();
-  const line = 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, stock #A1234, VIN 1HGBH41JXMN109186, still available?';
+  const line = 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?';
   assert.equal(turn.draft, line);
   assert.equal(openingAvailabilityLine('Maya', vehicle, 'email'), line);
   assert.equal(turn.draft?.includes('$'), false);
@@ -75,6 +76,31 @@ test('the first message asks only about this vehicle and keeps the short intro',
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'opener.ts'), 'utf8');
   assert.equal(source.includes('marketcheck/cache'), false);
   assert.equal(source.includes('loadMarketCheck'), false);
+  assert.equal(turn.draft?.includes('1HGBH41JXMN109186'), false);
+});
+
+test('the availability question names the stock number, or the last 8 of the VIN when there is no stock number', () => {
+  const withStock = availabilityQuestion({
+    vehicle: '2024 Toyota RAV4 XLE',
+    stock: '#A1234',
+    vin: '1HGBH41JXMN109186',
+  });
+  assert.equal(withStock, 'Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?');
+  assert.equal(withStock.includes('VIN'), false);
+  assert.equal(withStock.includes('1HGBH41JXMN109186'), false);
+
+  const stockLine = openingAvailabilityLine('Maya', vehicle, 'email');
+  assert.equal(stockLine, 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, stock #A1234, still available?');
+
+  const vinOnly = availabilityQuestion({
+    vehicle: '2024 Toyota RAV4 XLE',
+    stock: '  ',
+    vin: '1hgbh41jxmn109186',
+  });
+  assert.equal(vinOnly, 'Is the 2024 Toyota RAV4 XLE, VIN MN109186, still available?');
+
+  const vinLine = openingAvailabilityLine('Maya', { ...vehicle, stock: null }, 'sms');
+  assert.equal(vinLine, 'Hi, this is Drevvy, working for Maya. Is the 2024 Toyota RAV4 XLE, VIN MN109186, still available?');
 });
 
 test('a yes sends the listed price next, and a stale or changed price uses the current-price wording', () => {
@@ -279,6 +305,8 @@ test('reply decision asks the price in shadow mode and does not call the model f
   });
   assert.equal(guard.blocked, false);
   assert.match(REPLY_DECISION_PROMPT, /asks only whether that vehicle is still available/);
+  assert.match(REPLY_DECISION_PROMPT, /stock #A1234/);
+  assert.match(REPLY_DECISION_PROMPT, /last 8 of the VIN/);
   assert.match(REPLY_DECISION_PROMPT, /Is it still listed at \$X\?/);
   assert.match(REPLY_DECISION_PROMPT, /We see \$X listed\. Is that still current\?/);
   assert.match(REPLY_DECISION_PROMPT, /do not send the price question/);

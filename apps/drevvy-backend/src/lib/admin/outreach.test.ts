@@ -31,11 +31,12 @@ test('the first dealer message asks only if that vehicle is still available', ()
     number: '843-555-0123',
     vin: '1HGBH41JXMN109186',
   };
-  const ask = 'Is the 2024 Toyota RAV4 Hybrid XLE, stock #A1234, VIN 1HGBH41JXMN109186, still available?';
+  const ask = 'Is the 2024 Toyota RAV4 Hybrid XLE, stock #A1234, still available?';
   for (const variant of ['A', 'B', 'C'] as const) {
     const email = emailCopy('D0-E1', variant, ctx);
     assert.ok(email);
     assert.equal(email.body.includes(ask), true, email.body);
+    assert.equal(email.body.includes('1HGBH41JXMN109186'), false, email.body);
     assert.equal(email.body.includes('$'), false, email.body);
     assert.equal(/out-the-door/i.test(email.body), false, email.body);
     const sms = smsCopy('D0-T1', variant, ctx);
@@ -52,6 +53,14 @@ test('the first dealer message asks only if that vehicle is still available', ()
   const vm = voicemailScript(ctx);
   assert.equal(vm.includes(ask), true, vm);
   assert.equal(vm.includes('$'), false, vm);
+
+  const vinAsk = 'Is the 2024 Toyota RAV4 Hybrid XLE, VIN MN109186, still available?';
+  const noStock = { ...ctx, stock: '' };
+  const vinEmail = emailCopy('D0-E1', 'A', noStock);
+  const vinSms = smsCopy('D0-T1', 'A', noStock);
+  assert.equal(vinEmail?.body.includes(vinAsk), true, vinEmail?.body ?? '');
+  assert.equal(vinEmail?.body.includes('1HGBH41JXMN109186'), false);
+  assert.equal(vinSms?.includes(vinAsk), true, vinSms ?? '');
 });
 
 test('openings are a short hello and do not lead with being an AI', () => {
