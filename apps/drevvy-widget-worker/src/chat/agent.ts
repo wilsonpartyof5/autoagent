@@ -21,8 +21,14 @@ export type WidgetChatConfig = {
   dryRun: boolean;
   allowlist: string[];
   drevvyTextNumber: string;
+  drevvyContactPhone?: string | null;
   drevvyEmail: string;
   shopperFirst: string;
+  verifiedTrim?: string | null;
+  vehicleYear?: number | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  vehicleVin?: string | null;
   maxTurns: number;
   leadLastName?: string;
   leadZip?: string | null;
@@ -174,6 +180,11 @@ export async function runWidgetChat(input: {
     drevvyTextNumber: input.config.drevvyTextNumber,
     drevvyEmail: input.config.drevvyEmail,
     shopperFirst: input.config.shopperFirst,
+    verifiedTrim: input.config.verifiedTrim,
+    year: input.config.vehicleYear,
+    make: input.config.vehicleMake,
+    model: input.config.vehicleModel,
+    vin: input.config.vehicleVin,
   });
 
   if (inspection.captcha) {
@@ -216,6 +227,9 @@ export async function runWidgetChat(input: {
     });
 
   const initialGate = await openGate(scope);
+  if (initialGate.filledPhone) {
+    transcript.push({ role: 'agent', text: `phone: ${initialGate.filledPhone}`, at: now().toISOString(), via: 'planned' });
+  }
   if (!initialGate.continueChat) {
     mark(initialGate.status ?? 'unknown', initialGate.stopReason ?? 'prechat', initialGate.note ?? undefined);
     return finish();
@@ -259,6 +273,9 @@ export async function runWidgetChat(input: {
         return false;
       }
       const openedGate = await openGate(opened);
+      if (openedGate.filledPhone) {
+        transcript.push({ role: 'agent', text: `phone: ${openedGate.filledPhone}`, at: now().toISOString(), via: 'planned' });
+      }
       if (!openedGate.continueChat) {
         mark(openedGate.status ?? 'unknown', openedGate.stopReason ?? 'prechat', openedGate.note ?? undefined);
         return false;

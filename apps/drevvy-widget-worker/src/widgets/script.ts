@@ -1,3 +1,5 @@
+import { dealerAvailabilityOpener } from '../forms/trim';
+
 export const SCRIPT_IDS = ['availability', 'listing_price', 'continue_offline', 'bot_disclosure'] as const;
 
 export type ScriptId = (typeof SCRIPT_IDS)[number];
@@ -9,12 +11,21 @@ export function renderScript(input: {
   drevvyTextNumber: string;
   drevvyEmail: string;
   shopperFirst: string;
+  verifiedTrim?: string | null;
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
 }): RenderedScript {
-  const stock = input.stockNumber?.trim();
-  const opener = `Hi, this is Drevvy, working for ${input.shopperFirst}.`;
-  const availability = stock
-    ? `${opener} Is this unit still available? Stock #${stock}`
-    : `${opener} Is this unit still available?`;
+  const availability = dealerAvailabilityOpener({
+    shopperFirst: input.shopperFirst,
+    year: input.year,
+    make: input.make,
+    model: input.model,
+    trim: input.verifiedTrim,
+    stock: input.stockNumber,
+    vin: input.vin,
+  });
   return {
     availability,
     listing_price: 'What is the listing price?',

@@ -4,12 +4,16 @@ import type { DealerDirectoryRow, DealerDirectoryWrite, DirectoryStatus, Directo
 import { isTimeoutError } from '../widgets/timeout';
 import { prepareInspection, type WidgetInspection } from '../widgets/inspect';
 import { actionsFor, playbookForVendor, type WidgetPlaybook } from '../widgets/playbooks';
+import { widgetRequiresPhone } from '../forms/phone';
+import { extractVdpTrim } from '../forms/trim';
 import { siteUrlFromVehiclePage } from '../research/urls';
 import { WIDGET_VENDORS, type WidgetVendor } from '../widgets/vendors';
 
 export type ScanResult = AttemptResult & {
   playbook: WidgetPlaybook;
   reason: string;
+  phoneRequired: boolean;
+  vdpTrim: string | null;
 };
 
 const DEFAULT_SCAN_TIMEOUT_MS = 25_000;
@@ -115,6 +119,8 @@ async function scanBody(
       channel: 'widget',
       playbook: 'generic',
       reason: 'The site was already recorded as blocked.',
+      phoneRequired: false,
+      vdpTrim: null,
     };
   }
 
@@ -149,6 +155,7 @@ async function scanBody(
     }
 
     const outcome = classifyScan(inspection);
+    const html = await input.page.content();
     log(`[scan] ${input.vehiclePageUrl} ${outcome.status}: ${outcome.reason}`);
     return finishOnce({
       site,
@@ -162,6 +169,8 @@ async function scanBody(
       saveDirectory: true,
       directoryStatus: directoryStatusFor(outcome.status, inspection.vendor),
       overlays: inspection.overlaysDismissed,
+      phoneRequired: widgetRequiresPhone(html, inspection.vendor),
+      vdpTrim: extractVdpTrim(html),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Scan failed.';
@@ -231,6 +240,8 @@ async function finish(
     saveDirectory: boolean;
     directoryStatus?: DirectoryStatus;
     overlays?: string[];
+    phoneRequired?: boolean;
+    vdpTrim?: string | null;
   },
 ): Promise<ScanResult> {
   const playbook = playbookForVendor(knownVendor(details.vendor));
@@ -269,6 +280,8 @@ async function finish(
     channel: 'widget',
     playbook,
     reason: details.reason,
+    phoneRequired: details.phoneRequired === true,
+    vdpTrim: details.vdpTrim ?? null,
   };
   if (details.overlays && details.overlays.length > 0) {
     result.transcript.push({

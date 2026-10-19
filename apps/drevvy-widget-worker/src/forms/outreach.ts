@@ -1,11 +1,17 @@
+import { resolveFormPhone } from './phone';
+
 export const DEFAULT_LEAD_LAST_NAME = 'via Drevvy';
 
 export type OutreachIdentity = {
   firstName: string;
   lastName: string;
+  /** Text number named in the message. Not the shopper's phone. */
   phone: string;
+  /** Drevvy's Telnyx number for a required phone field. Null when unset. */
+  contactPhone: string | null;
   email: string;
   zip: string | null;
+  verifiedTrim: string | null;
 };
 
 export type OutreachFieldKind = 'first_name' | 'last_name' | 'full_name' | 'phone' | 'email' | 'zip' | 'message';
@@ -17,7 +23,7 @@ export type OutreachFill = {
   value: string;
 };
 
-export type LeadContactMode = 'full' | 'name_and_phone';
+export type LeadContactMode = 'full' | 'name_and_phone' | 'check_availability';
 
 export type OutreachRunConfig = {
   dryRun: boolean;
@@ -28,6 +34,11 @@ export type OutreachRunConfig = {
   leadLastName?: string;
   leadZip?: string | null;
   contactMode?: LeadContactMode;
+  /** Display form of DREVVY_CONTACT_PHONE. Never the shopper's phone. */
+  drevvyContactPhone?: string | null;
+  /** Shopper phone, if known, so a mis-set contact number is dropped. */
+  shopperPhone?: string | null;
+  verifiedTrim?: string | null;
 };
 
 export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
@@ -35,8 +46,10 @@ export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
     firstName: config.shopperFirst,
     lastName: config.leadLastName,
     phone: config.drevvyTextNumber,
+    contactPhone: resolveFormPhone(config.drevvyContactPhone, config.shopperPhone),
     email: config.drevvyEmail,
     zip: config.leadZip,
+    verifiedTrim: config.verifiedTrim,
   });
 }
 
@@ -44,15 +57,19 @@ export function buildIdentity(input: {
   firstName: string;
   lastName?: string | null;
   phone: string;
+  contactPhone?: string | null;
   email: string;
   zip?: string | null;
+  verifiedTrim?: string | null;
 }): OutreachIdentity {
   return {
     firstName: input.firstName,
     lastName: assertLeadLastName(input.lastName?.trim() || DEFAULT_LEAD_LAST_NAME),
     phone: input.phone,
+    contactPhone: input.contactPhone ?? null,
     email: input.email,
     zip: normalizeZip(input.zip),
+    verifiedTrim: input.verifiedTrim?.trim() || null,
   };
 }
 
@@ -71,13 +88,26 @@ export function normalizeZip(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-export function leadMessage(input: { stockNumber: string | null; phone: string; email?: string | null }): string {
+export function leadMessage(input: {
+  stockNumber: string | null;
+  phone: string;
+  email?: string | null;
+  trim?: string | null;
+  /** Check Availability has no phone field and must not name a number. */
+  omitPhone?: boolean;
+}): string {
   const stock = input.stockNumber?.trim();
   const stockPart = stock ? ` Stock #${stock}.` : '';
-  const reach = input.email
-    ? `Please text or email us at ${input.phone} / ${input.email}.`
-    : `Please text us at ${input.phone}.`;
-  return `Is this unit still available?${stockPart} What's the price on it? ${reach}`;
+  const unit = input.trim?.trim() ? `this ${input.trim.trim()}` : 'this unit';
+  const reach = input.omitPhone
+    ? input.email
+      ? `Please email us at ${input.email}.`
+      : ''
+    : input.email
+      ? `Please text or email us at ${input.phone} / ${input.email}.`
+      : `Please text us at ${input.phone}.`;
+  const question = `Is ${unit} still available?${stockPart} What's the price on it?`;
+  return reach ? `${question} ${reach}` : question;
 }
 
 export function outreachValue(
@@ -92,13 +122,15 @@ export function outreachValue(
   if (kind === 'full_name') {
     return channel === 'prechat' || mode === 'name_and_phone' ? identity.firstName : `${identity.firstName} ${identity.lastName}`;
   }
-  if (kind === 'phone') return identity.phone;
+  if (kind === 'phone') return mode === 'check_availability' ? null : identity.contactPhone;
   if (kind === 'email') return mode === 'name_and_phone' ? null : identity.email;
   if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
   return leadMessage({
     stockNumber,
     phone: identity.phone,
     email: mode === 'name_and_phone' ? null : identity.email,
+    trim: identity.verifiedTrim,
+    omitPhone: mode === 'check_availability',
   });
 }
 

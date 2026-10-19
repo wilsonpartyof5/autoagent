@@ -54,6 +54,7 @@ test('an inbound opt-out immediately suppresses the number for every later threa
     fromNumber: '+18435550199',
     apiKey: 'test-key',
     now: () => new Date('2026-10-17T15:00:00.000Z'),
+    tenDlcApproved: true,
     post: async (request: { text: string }) => {
       posts.push(request.text);
       return { ok: true as const, id: 'msg-1' };

@@ -1,4 +1,5 @@
 import { DAY0_FALLBACK, type ChannelSelection, type Day0Fallback } from '../chat/types';
+import type { LeadContactMode } from '../forms/outreach';
 
 export type Day0Channel = 'widget' | 'lead_form';
 
@@ -7,6 +8,7 @@ export type Day0Plan = {
   reason: string;
   fallback: Day0Fallback | null;
   widgetStatus: string;
+  contactMode?: LeadContactMode;
 };
 
 const READY_STATUS = 'dry_run';
@@ -43,6 +45,25 @@ export function applyCallEmailOnly(plan: Day0Plan, callEmailOnly: boolean): Day0
     ...plan,
     channels: plan.channels.filter((channel) => channel !== 'widget'),
     reason: 'Call and email only. The widget channel is skipped.',
+  };
+}
+
+/**
+ * A widget that requires a phone uses DREVVY_CONTACT_PHONE.
+ * With that number unset, skip the widget and use Check Availability with no phone.
+ */
+export function applyContactPhoneFallback(
+  plan: Day0Plan,
+  input: { phoneRequired: boolean; contactPhone: string | null },
+): Day0Plan {
+  if (!input.phoneRequired || input.contactPhone) return plan;
+  if (!plan.channels.includes('widget')) return plan;
+  return {
+    channels: ['lead_form'],
+    reason: 'The widget requires a phone and DREVVY_CONTACT_PHONE is not set. Check Availability, no phone.',
+    fallback: null,
+    widgetStatus: plan.widgetStatus,
+    contactMode: 'check_availability',
   };
 }
 

@@ -186,6 +186,7 @@ function deps(overrides: {
     dryRun: overrides.dryRun ?? true,
     allowlist: overrides.allowlist ?? [],
     drevvyTextNumber: '803-555-0148',
+    drevvyContactPhone: '803-555-0148',
     drevvyEmail: 'deals@drevvy.test',
     shopperFirst: 'Maya',
     leadLastName: 'via Drevvy',

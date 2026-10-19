@@ -14,6 +14,8 @@ import { createSupabaseAttemptStore } from './chat/supabase-store';
 import type { AttemptResult, AttemptStore, ChatPage, Day0Fallback, WidgetChatAttemptWrite } from './chat/types';
 import { assertChatConfig, assertOutreachConfig, assertResearchConfig, assertSeedConfig, assertSupabaseConfig, chatSettings, loadConfig, type AppConfig } from './config';
 import { ensureConversationContact, type EnsureContactResult } from './forms/assign-identity';
+import { saveContactDisclosure, saveTrimFlag } from './forms/deal-notes';
+import { trimFromVinDecodePayload, type TrimCheck } from './forms/trim';
 import { loadConversationContact, type ConversationContact } from './forms/identity';
 import { MemoryDirectoryStore } from './directory/memory-store';
 import { formatDirectoryReport, summarizeDirectory } from './directory/report';
@@ -99,6 +101,9 @@ export type CliDeps = {
   now?: () => Date;
   loadContact?: (dealId: string, dealerId: string) => Promise<ConversationContact | null>;
   ensureContact?: (dealId: string, dealerId: string) => Promise<EnsureContactResult>;
+  decodeVin?: (vin: string) => Promise<string | null>;
+  onTrimFlag?: (input: { dealId: string | null; check: TrimCheck }) => Promise<void>;
+  onContactPhone?: (input: { dealId: string; phone: string }) => Promise<void>;
   env?: Record<string, string | undefined>;
   saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
 };
@@ -171,13 +176,24 @@ export async function execute(argv: string[], deps: CliDeps): Promise<CliResult>
 
     if (command === 'run') {
       const runs = await runDay0({
-        targets,
+        targets: targets.map((target) => ({
+          ...target,
+          dealId: flags.dealId,
+          vin: flags.vin,
+          marketcheckTrim: flags.trim,
+          year: flags.year,
+          make: flags.make,
+          model: flags.model,
+        })),
         openPage: deps.openPage,
         ai: deps.ai,
         attempts: deps.attempts,
         directory: deps.directory,
         config: deps.config,
         contact,
+        decodeVin: deps.decodeVin,
+        onTrimFlag: deps.onTrimFlag,
+        onContactPhone: deps.onContactPhone,
         log,
         saveScreenshot: deps.saveScreenshot,
       });
@@ -328,6 +344,19 @@ export function buildDeps(config: AppConfig, overrides: Partial<CliDeps> = {}): 
     },
     loadContact,
     ensureContact,
+    decodeVin: config.marketcheckApiKey
+      ? (vin) => decodeVinTrim(vin, config)
+      : undefined,
+    onTrimFlag: supabase
+      ? async (flag) => {
+          await saveTrimFlag(supabase, flag);
+        }
+      : undefined,
+    onContactPhone: supabase
+      ? async (note) => {
+          await saveContactDisclosure(supabase, note);
+        }
+      : undefined,
     env: process.env,
     listDealers: (area, pace) => {
       if (!config.marketcheckApiKey) {
@@ -634,6 +663,11 @@ function parseFlags(argv: string[]): {
   concurrency: number | null;
   dealId: string | null;
   dealerId: string | null;
+  trim: string | null;
+  vin: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
   positionals: string[];
 } {
   let force = false;
@@ -642,6 +676,11 @@ function parseFlags(argv: string[]): {
   let concurrency: number | null = null;
   let dealId: string | null = null;
   let dealerId: string | null = null;
+  let trim: string | null = null;
+  let vin: string | null = null;
+  let year: number | null = null;
+  let make: string | null = null;
+  let model: string | null = null;
   const positionals: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -664,6 +703,24 @@ function parseFlags(argv: string[]): {
     } else if (arg === '--dealer') {
       dealerId = requiredValue(argv, index, '--dealer');
       index += 1;
+    } else if (arg === '--trim') {
+      trim = requiredValue(argv, index, '--trim');
+      index += 1;
+    } else if (arg === '--vin') {
+      vin = requiredValue(argv, index, '--vin');
+      index += 1;
+    } else if (arg === '--year') {
+      const raw = requiredValue(argv, index, '--year');
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1980 || parsed > 2100) throw new Error('--year must be a model year.');
+      year = parsed;
+      index += 1;
+    } else if (arg === '--make') {
+      make = requiredValue(argv, index, '--make');
+      index += 1;
+    } else if (arg === '--model') {
+      model = requiredValue(argv, index, '--model');
+      index += 1;
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown flag: ${arg}`);
     } else {
@@ -671,7 +728,19 @@ function parseFlags(argv: string[]): {
     }
   }
   if (positionals.length === 0) throw new Error('Provide a vehicle page URL or a file of URLs.');
-  return { force, hintsPath, stock, concurrency, dealId, dealerId, positionals };
+  return { force, hintsPath, stock, concurrency, dealId, dealerId, trim, vin, year, make, model, positionals };
+}
+
+async function decodeVinTrim(vin: string, config: AppConfig): Promise<string | null> {
+  if (!config.marketcheckApiKey) return null;
+  const url = `${config.marketcheckBaseUrl.replace(/\/+$/, '')}/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${encodeURIComponent(config.marketcheckApiKey)}`;
+  try {
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!response.ok) return null;
+    return trimFromVinDecodePayload(await response.json());
+  } catch {
+    return null;
+  }
 }
 
 function parseSeedFlags(argv: string[]): { force: boolean; radius: number | null; positionals: string[] } {

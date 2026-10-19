@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ingestTelnyxPayload, supabaseCommunicationsStore } from '@/lib/brain/communications';
+import { findDealForContactPhone } from '@/lib/dealer/contact-phone-store';
 import { supabaseIdentityRouter } from '@/lib/brain/identity-store';
 import { recordEmailOptout, endDealOnOptout, type EmailOptoutReason } from '@/lib/brain/email-optout';
 import { normalizeTelnyxPayload, parseClientState, verifyTelnyxSignature } from '@/lib/brain/telnyx';
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     store: supabaseCommunicationsStore(supabase),
     router: supabaseIdentityRouter(supabase),
     apiKey: process.env.TELNYX_API_KEY ?? null,
+    matchContactPhone: (input) => findDealForContactPhone(supabase, input),
   });
 
   return NextResponse.json(

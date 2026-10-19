@@ -5,11 +5,21 @@ import { chatSettings, type AppConfig } from '../config';
 import type { ConversationContact } from '../forms/identity';
 import type { DirectoryStore } from '../directory/types';
 import { runLeadForm } from '../forms/lead';
+import { checkVehicleTrim, type TrimCheck } from '../forms/trim';
 import { runScan, type ScanResult } from '../scan/run';
-import { applyCallEmailOnly, selectDay0Channels, selectionRecord, type Day0Plan } from './channels';
 import { siteUrlFromVehiclePage } from '../research/urls';
+import { applyCallEmailOnly, applyContactPhoneFallback, selectDay0Channels, selectionRecord, type Day0Plan } from './channels';
 
-export type Day0Target = { url: string; stockNumber: string | null };
+export type Day0Target = {
+  url: string;
+  stockNumber: string | null;
+  dealId?: string | null;
+  vin?: string | null;
+  marketcheckTrim?: string | null;
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+};
 
 export type Day0Run = {
   url: string;
@@ -17,6 +27,7 @@ export type Day0Run = {
   scan: ScanResult | null;
   lead: AttemptResult | null;
   chat: AttemptResult | null;
+  trim: TrimCheck | null;
 };
 
 type OpenedPage = { page: ChatPage; close: () => Promise<void> };
@@ -29,6 +40,9 @@ export async function runDay0(input: {
   directory: DirectoryStore;
   config: AppConfig;
   contact?: ConversationContact | null;
+  decodeVin?: (vin: string) => Promise<string | null>;
+  onTrimFlag?: (input: { dealId: string | null; check: TrimCheck }) => Promise<void>;
+  onContactPhone?: (input: { dealId: string; phone: string }) => Promise<void>;
   log?: (line: string) => void;
   saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
 }): Promise<Day0Run[]> {
@@ -42,7 +56,7 @@ export async function runDay0(input: {
       const message = error instanceof Error ? error.message : String(error);
       log(`[day0] ${target.url} ${message}`);
       const plan = selectDay0Channels('error');
-      runs.push({ url: target.url, plan, scan: null, lead: null, chat: null });
+      runs.push({ url: target.url, plan, scan: null, lead: null, chat: null, trim: null });
     }
   }
   return runs;
@@ -57,6 +71,9 @@ async function runOne(
     directory: DirectoryStore;
     config: AppConfig;
     saveScreenshot?: (bytes: Buffer, vehiclePageUrl: string) => Promise<string | null>;
+    decodeVin?: (vin: string) => Promise<string | null>;
+    onTrimFlag?: (flag: { dealId: string | null; check: TrimCheck }) => Promise<void>;
+    onContactPhone?: (note: { dealId: string; phone: string }) => Promise<void>;
   },
   settings: ReturnType<typeof chatSettings>,
   log: (line: string) => void,
@@ -78,8 +95,30 @@ async function runOne(
     log(`[day0] ${target.url} scan failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  const trim = await reviewTrim(target, scan, input.decodeVin);
+  if (trim.mismatch) {
+    log(`[trim] ${target.url} flagged. ${trim.shopperMessage ?? ''}`);
+    if (input.onTrimFlag) {
+      try {
+        await input.onTrimFlag({ dealId: target.dealId ?? null, check: trim });
+      } catch (error) {
+        log(`[trim] ${target.url} could not flag the deal: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+  const vehicle = {
+    verifiedTrim: trim.verifiedTrim,
+    vehicleYear: target.year ?? null,
+    vehicleMake: target.make ?? null,
+    vehicleModel: target.model ?? null,
+    vehicleVin: target.vin ?? null,
+  };
   let plan = selectDay0Channels(scan?.status ?? 'error');
   plan = applyCallEmailOnly(plan, await callEmailOnly(target.url, input.directory, log));
+  plan = applyContactPhoneFallback(plan, {
+    phoneRequired: scan?.phoneRequired === true,
+    contactPhone: settings.drevvyContactPhone,
+  });
   const selection = selectionRecord(plan);
   if (scan?.id) {
     try {
@@ -91,7 +130,7 @@ async function runOne(
   log(`[day0] ${target.url} ${plan.channels.join(',') || 'none'} ${plan.reason}`);
 
   if (plan.fallback || plan.channels.length === 0) {
-    return { url: target.url, plan, scan, lead: null, chat: null };
+    return { url: target.url, plan, scan, lead: null, chat: null, trim };
   }
 
   let chat: AttemptResult | null = null;
@@ -103,7 +142,7 @@ async function runOne(
           stockNumber: target.stockNumber,
           page,
           ai: input.ai,
-          config: settings,
+          config: { ...settings, ...vehicle },
           store: input.attempts,
           log,
           selection,
@@ -116,14 +155,14 @@ async function runOne(
 
   let lead: AttemptResult | null = null;
   if (plan.channels.includes('lead_form')) {
-    const contactMode = plan.channels.includes('widget') ? 'name_and_phone' : 'full';
+    const contactMode = plan.contactMode ?? (plan.channels.includes('widget') ? 'name_and_phone' : 'full');
     try {
       lead = await withPage(input.openPage, (page) =>
         runLeadForm({
           vehiclePageUrl: target.url,
           stockNumber: target.stockNumber,
           page,
-          config: { ...settings, contactMode },
+          config: { ...settings, ...vehicle, contactMode, verifiedTrim: trim.verifiedTrim },
           store: input.attempts,
           directory: input.directory,
           log,
@@ -138,7 +177,42 @@ async function runOne(
     }
   }
 
-  return { url: target.url, plan, scan, lead, chat };
+  const phone = settings.drevvyContactPhone;
+  const disclosed = Boolean(phone && target.dealId && [chat, lead].some((result) => disclosedPhone(result)));
+  if (disclosed && phone && target.dealId && input.onContactPhone) {
+    try {
+      await input.onContactPhone({ dealId: target.dealId, phone });
+    } catch (error) {
+      log(`[phone] ${target.url} could not record the contact number: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return { url: target.url, plan, scan, lead, chat, trim };
+}
+
+async function reviewTrim(
+  target: Day0Target,
+  scan: ScanResult | null,
+  decodeVin?: (vin: string) => Promise<string | null>,
+): Promise<TrimCheck> {
+  const vin = target.vin?.trim() || null;
+  let vinDecode: string | null = null;
+  if (vin && decodeVin) {
+    try {
+      vinDecode = await decodeVin(vin);
+    } catch {
+      vinDecode = null;
+    }
+  }
+  return checkVehicleTrim({
+    marketcheck: target.marketcheckTrim ?? null,
+    vdp: scan?.vdpTrim ?? null,
+    vinDecode,
+  });
+}
+
+function disclosedPhone(result: AttemptResult | null): boolean {
+  return result?.transcript.some((entry) => entry.text.startsWith('phone:')) === true;
 }
 
 async function callEmailOnly(vehiclePageUrl: string, directory: DirectoryStore, log: (line: string) => void): Promise<boolean> {

@@ -63,6 +63,7 @@ test('the first live email and text keep one alias and one number', async () => 
   assert.equal(alias.includes('deal-1'), false);
 
   const sms = await sendOutboundSms(store(), {
+    tenDlcApproved: true,
     from: '+19995550100',
     to: '+18035550999',
     text: 'Please text this number.',
@@ -272,6 +273,7 @@ function sendSms(
   shopperId?: string,
 ) {
   return sendOutboundSms(store(), {
+    tenDlcApproved: true,
     from: '+19995550100',
     to: '+18035550999',
     text: 'Is it still available?',
