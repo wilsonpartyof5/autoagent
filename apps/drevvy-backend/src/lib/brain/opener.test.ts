@@ -316,6 +316,7 @@ test('reply decision asks the price in shadow mode and does not call the model f
     currentOfferOtd: null,
     pushbackCount: 0,
     shopperFirst: 'Maya',
+    draftPricesTrusted: true,
   });
   assert.equal(guard.blocked, false);
   assert.match(REPLY_DECISION_PROMPT, /asks only whether that vehicle is still available/);

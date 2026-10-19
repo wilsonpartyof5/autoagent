@@ -1,7 +1,11 @@
 /**
  * Quote fields extracted by the model. The model does not total them.
  * computeOtd sums the sourced amounts and flags gaps or contradictions.
+ * groundQuote keeps an amount only when its snippet is actually in the
+ * dealer message and the number is in that snippet.
  */
+
+import { moneyMentions } from './routing';
 
 export const QUOTE_FIELDS = [
   'vehicle_price',
@@ -139,4 +143,60 @@ export function computeOtd(quote: ExtractedQuote): OtdComputation {
   }
 
   return { computedOtd, statedOtd, complete, flags, components };
+}
+
+export function sameMoney(left: number, right: number): boolean {
+  return Math.abs(roundMoney(left) - roundMoney(right)) < 0.001;
+}
+
+export function draftPricesAreGrounded(draft: string, dealerMessage: string): boolean {
+  const allowed = moneyMentions(dealerMessage);
+  return moneyMentions(draft).every((amount) => allowed.some((stated) => sameMoney(stated, amount)));
+}
+
+/**
+ * Drop amounts the model was not shown in this dealer message. A snippet has
+ * to occur in the message, and the amount has to be one of the numbers in
+ * that snippet. message_ref, when set, has to be this message.
+ */
+export function groundQuote(quote: ExtractedQuote, dealerMessage: string, messageRef: string): ExtractedQuote {
+  const grounded = emptyQuote();
+  for (const field of QUOTE_FIELDS) {
+    grounded[field] = groundAmount(quote[field], dealerMessage, messageRef);
+  }
+  return grounded;
+}
+
+function groundAmount(
+  value: SourcedAmount | null,
+  dealerMessage: string,
+  messageRef: string,
+): SourcedAmount | null {
+  if (!value || value.amount == null) return value;
+  const snippet = value.source_snippet?.trim() ?? '';
+  const citedRef = value.message_ref?.trim() ?? '';
+  if (!snippet || (citedRef && citedRef !== messageRef)) return null;
+  if (!snippetAppearsIn(dealerMessage, snippet)) return null;
+  if (!moneyMentions(snippet).some((stated) => sameMoney(stated, value.amount as number))) return null;
+  return value;
+}
+
+function snippetAppearsIn(message: string, snippet: string): boolean {
+  const hay = message.replace(/,/g, '');
+  const needle = snippet.replace(/,/g, '').trim();
+  if (!needle) return false;
+  const hayLower = hay.toLowerCase();
+  const needleLower = needle.toLowerCase();
+  let from = 0;
+  while (from < hayLower.length) {
+    const at = hayLower.indexOf(needleLower, from);
+    if (at < 0) return false;
+    const before = at === 0 ? '' : hay[at - 1];
+    const after = hay[at + needle.length] ?? '';
+    const startOk = !/\d/.test(needle[0]) || !/\d/.test(before);
+    const endOk = !/\d/.test(needle[needle.length - 1]) || !/\d/.test(after);
+    if (startOk && endOk) return true;
+    from = at + 1;
+  }
+  return false;
 }

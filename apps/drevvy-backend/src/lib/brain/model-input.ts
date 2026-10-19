@@ -57,6 +57,18 @@ export function redactShopperContact(text: string, contact: ShopperContact): str
   return out;
 }
 
+const UNTRUSTED_END = '<<<END UNTRUSTED>>>';
+
+/**
+ * Wrap dealer, shopper, and lesson text so it cannot close the fence and
+ * impersonate a later instruction. The model is told this block is data.
+ */
+export function fenceUntrusted(label: string, value: string): string {
+  const safeLabel = label.replace(/[^a-z0-9_]+/gi, '_').slice(0, 40) || 'data';
+  const safe = value.split('<<<').join('‹‹‹');
+  return `<<<UNTRUSTED ${safeLabel}>>>\n${safe}\n${UNTRUSTED_END}`;
+}
+
 export function buildModelUserContent(
   input: ModelUserInput,
   lessons: Array<{ lesson: string }>,
@@ -70,8 +82,6 @@ export function buildModelUserContent(
   const lines = [
     `message_ref: ${input.messageRef?.trim() || 'dealer_message'}`,
     `channel: ${input.channel}`,
-    `vehicle: ${redactShopperContact(input.dealContext.vehicle, contact)}`,
-    `shopper_first: ${redactShopperContact(input.dealContext.shopperFirst, contact)}`,
     `fair_otd: ${input.dealContext.fairOtd ?? 'unknown'}`,
     `current_offer_otd: ${input.dealContext.currentOfferOtd ?? 'unknown'}`,
     `pushback_rounds: ${input.dealContext.pushbackCount}`,
@@ -93,12 +103,15 @@ export function buildModelUserContent(
     );
   }
 
+  lines.push(fenceUntrusted('shopper_first', redactShopperContact(input.dealContext.shopperFirst, contact)));
+  lines.push(fenceUntrusted('vehicle', redactShopperContact(input.dealContext.vehicle, contact)));
+
   if (lessons.length > 0) {
     const lessonLines = lessons.map((lesson) => `- ${redactShopperContact(lesson.lesson, contact)}`);
-    lines.push(`approved_lessons:\n${lessonLines.join('\n')}`);
+    lines.push(fenceUntrusted('approved_lessons', lessonLines.join('\n')));
   }
 
-  lines.push(`dealer_message:\n${redactShopperContact(input.dealerMessage, contact)}`);
+  lines.push(fenceUntrusted('dealer_message', redactShopperContact(input.dealerMessage, contact)));
   return lines.join('\n');
 }
 

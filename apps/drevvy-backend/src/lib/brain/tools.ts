@@ -15,6 +15,7 @@ import {
   getApprovedLessons,
   insertBrainLesson,
 } from './repository';
+import { fenceUntrusted } from './model-input';
 import { fetchVendorStatus } from './vendor-status';
 
 export type BrainToolCall = {
@@ -175,7 +176,12 @@ export async function executeTool(
         dealId: asString(args.deal_id),
         eventId: asString(args.event_id),
       });
-      result = transcript ?? { error: 'No transcript found' };
+      result = transcript
+        ? {
+          transcript: fenceUntrusted('transcript', transcript.transcript ?? ''),
+          summary: fenceUntrusted('summary', transcript.summary ?? ''),
+        }
+        : { error: 'No transcript found' };
       break;
     }
 
@@ -209,7 +215,7 @@ export async function executeTool(
       const lessons = await getApprovedLessons(supabase, scope);
       result = lessons.map((l) => ({
         id: l.id,
-        lesson: l.lesson,
+        lesson: fenceUntrusted('lesson', l.lesson),
         scope: l.scope,
         confidence: l.confidence,
       }));
