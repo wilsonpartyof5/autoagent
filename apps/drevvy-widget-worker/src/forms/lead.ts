@@ -5,7 +5,7 @@ import type { DirectoryStore } from '../directory/types';
 import { siteUrlFromVehiclePage } from '../research/urls';
 import { hasCaptchaChallenge } from '../widgets/guards';
 import { isTimeoutError } from '../widgets/timeout';
-import { extractStockNumber } from '../widgets/script';
+import { extractStockNumber, extractVin } from '../widgets/script';
 import { applyPlan } from './apply';
 import { detectLeadForms, type ParsedForm } from './detect';
 import { locateLeadForm } from './open';
@@ -143,6 +143,7 @@ export async function runLeadForm(input: {
   const html = located.html;
   vendor = located.vendor;
   if (!stock) stock = extractStockNumber(html);
+  const cue = { vin: stock ? null : extractVin(html) };
 
   const wall = blockWallSignature(html, input.page.httpStatus());
   if (wall) {
@@ -192,7 +193,7 @@ export async function runLeadForm(input: {
     buttonText: submitLabel(form, pattern),
     fields: form.fields.filter((field) => !isHoneypotField(pattern, field)),
   };
-  const plan = planForm(plannedForm, identity, stock, 'lead_form', mode);
+  const plan = planForm(plannedForm, identity, stock, 'lead_form', mode, cue);
   recordPlan(transcript, plan, now);
   log(`[lead] ${input.vehiclePageUrl} ${describePlan(plan)}`);
 
@@ -218,7 +219,7 @@ export async function runLeadForm(input: {
     return finish();
   }
 
-  const applied = await applyPlan(input.page, plan, identity, stock, 'lead_form', mode);
+  const applied = await applyPlan(input.page, plan, identity, stock, 'lead_form', mode, cue);
   if (applied !== 'filled') {
     status = 'error';
     stopReason = applied;

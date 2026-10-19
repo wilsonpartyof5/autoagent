@@ -21,6 +21,11 @@ export type ModelUserInput = {
     pushbackCount: number;
     isItemized: boolean;
   };
+  opening?: {
+    phase: string;
+    listedPrice: number;
+    listingId: string;
+  } | null;
 };
 
 export type ShopperContact = {
@@ -73,6 +78,13 @@ export function buildModelUserContent(
     `price_is_itemized: ${input.dealContext.isItemized}`,
     `dealer_state: ${input.dealerState ?? 'unknown'}`,
   ];
+
+  if (input.opening) {
+    lines.push(`opening_phase: ${input.opening.phase}`);
+    lines.push(`listed_price_we_saw: ${input.opening.listedPrice}`);
+    lines.push(`marketcheck_listing_id: ${input.opening.listingId}`);
+    lines.push('That listed price is already on this deal. Do not look it up again. Do not say negotiate. Do not put the price in the first availability question.');
+  }
 
   if (route.lane === 'fast') {
     const label = route.simpleClass ?? 'short';

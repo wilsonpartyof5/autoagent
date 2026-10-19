@@ -8,7 +8,7 @@ Standalone Node worker for day-0 dealer outreach:
 4. **Lead form.** On the vehicle page, fill one dealer form such as "Ask a Question", "Check Availability", "Get Today's Price", or "Unlock Instant Price".
 5. **Widget chat.** Open the same page in Chromium, detect a known chat widget, fill a pre-chat gate when the widget has one, and follow a fixed script.
 
-Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. A required phone field is filled with `DREVVY_CONTACT_PHONE`, Drevvy's Telnyx number. If that variable is unset, the worker skips the phone widget and submits the listing's Check Availability form with no phone. The shopper's own phone is never typed. The shopper's email, last name, address, date of birth, SSN, and trade details are never typed and never stored. Outbound texts stay off until 10DLC is approved. Inbound calls and texts to `DREVVY_CONTACT_PHONE` are logged on the deal. Before any dealer contact, the worker checks the MarketCheck trim against the dealer's page and a VIN decode. A mismatch is flagged on the deal, the opener says the verified trim instead of "this unit", and the shopper is told. Widget chat opens with `Hi, this is Drevvy, working for {first}.` and does not lead with "I'm an AI". If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.` The worker never denies being an AI.
+Lead forms and pre-chat gates use the shopper's first name, the last name `via Drevvy` (or `LEAD_LAST_NAME`), `DREVVY_EMAIL`, and `DREVVY_ZIP` when the form has a ZIP field. A required phone field is filled with `DREVVY_CONTACT_PHONE`, Drevvy's Telnyx number. If that variable is unset, the worker skips the phone widget and submits the listing's Check Availability form with no phone. The shopper's own phone is never typed. The shopper's email, last name, address, date of birth, SSN, and trade details are never typed and never stored. Outbound texts stay off until 10DLC is approved. Inbound calls and texts to `DREVVY_CONTACT_PHONE` are logged on the deal. Before any dealer contact, the worker checks the MarketCheck trim against the dealer's page and a VIN decode. A mismatch is flagged on the deal and told to the shopper. The stock-number opener stays the same. Widget chat does not lead with "I'm an AI". If a dealer asks whether this is a bot, the chat reply is `I'm Drevvy's AI, working for {first}.` The worker never denies being an AI.
 
 MarketCheck contact data can be passed as a hint file. Hints are not written to the database. A phone, email, or name is stored only when it appears on the fetched dealer page. Do not point this worker at a MarketCheck listing URL.
 
@@ -131,11 +131,13 @@ A blocked dealer site is not opened again, and a second scan does not insert ano
 
 The lead message, used when the form has a message, comment, or question field, is:
 
-`Is this unit still available? Stock #X. What's the price on it? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+`Hi, is stock #X still available? Please text or email us at {DREVVY_TEXT_NUMBER} / {DREVVY_EMAIL}.`
+
+When the page names a salesperson, the greeting is `Hey {first name}` instead of `Hi`. When the page has no stock number, the question is `Hi, is VIN ending {last8} still available?` The question does not include year, make, model, or trim, and it does not ask the price. The price question is a later message.
 
 When `run` sends the lead form alongside a ready widget, the last sentence is `Please text us at {DREVVY_TEXT_NUMBER}.` and the form is filled with the first name. A required phone field gets `DREVVY_CONTACT_PHONE`, not the text number and not the shopper's phone.
 
-The stock sentence is omitted when the page has no stock number. There is no introduction. A form without a message field is still submitted with the identity fields it does have.
+With neither a stock number nor a VIN, the question is `Hi, is it still available?` A form without a message field is still submitted with the identity fields it does have.
 
 A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's first name and `DREVVY_CONTACT_PHONE`. A single name box on that gate gets the first name only. A lead form with one full-name box gets `{first} {LEAD_LAST_NAME}`. If the widget requires a phone and `DREVVY_CONTACT_PHONE` is unset, that widget is skipped and the listing's Check Availability form is submitted with no phone.
 
@@ -153,8 +155,8 @@ A widget pre-chat gate, such as Podium "Text us", is filled with the shopper's f
 
 Script:
 
-1. `Hi, this is Drevvy, working for {SHOPPER_FIRST_NAME}. Is this unit still available?` plus the stock number when we have one. The opening does not say "I'm an AI".
-2. If the dealer says it is available: `What is the listing price?`
+1. `Hi, is stock #X still available?` With a salesperson's first name: `Hey {name}, is stock #X still available?` With no stock number: `Hi, is VIN ending {last8} still available?` The opening does not name the year, make, model, or trim, and it does not say "I'm an AI". Chat does not add a signature.
+2. If the dealer says it is available and we already know the listed price: `Is it still listed at $X?` If we do not know that price yet, the separate question is `What is the listing price?`
 3. When a price is given: `Thanks. I'd like to continue over text and email, please reach us at {DREVVY_TEXT_NUMBER} or {DREVVY_EMAIL}.`
 4. If they ask whether it is a bot or AI: `I'm Drevvy's AI, working for {SHOPPER_FIRST_NAME}.` That is the only AI sentence. The worker never denies being an AI and never claims to be human.
 

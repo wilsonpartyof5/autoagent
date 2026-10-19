@@ -4,11 +4,12 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { dealerAskedForShopperContact, dealerAskedIfBot, sharesDisallowedContact } from '../src/widgets/guards';
-import { isExactScriptMessage, renderScript } from '../src/widgets/script';
+import { availabilityLine, isExactScriptMessage, renderScript } from '../src/widgets/script';
 import { resolveNextMessage } from '../src/chat/resolve';
 
 const script = renderScript({
   stockNumber: 'H24118',
+  listedPrice: 24995,
   drevvyTextNumber: '803-555-0148',
   drevvyEmail: 'deals@drevvy.test',
   shopperFirst: 'Maya',
@@ -16,9 +17,19 @@ const script = renderScript({
 
 describe('chat script', () => {
   it('uses the fixed lines', () => {
-    assert.equal(script.availability, 'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118');
+    assert.equal(script.availability, 'Hi, is stock #H24118 still available?');
     assert.equal(/i'm an ai|i'm drevvy's ai/i.test(script.availability), false);
-    assert.equal(script.listing_price, 'What is the listing price?');
+    assert.equal(/2024|toyota|honda|civic/i.test(script.availability), false);
+    assert.equal(script.availability.includes('Maya'), false);
+    assert.equal(script.listing_price, 'Is it still listed at $24,995?');
+    assert.equal(
+      availabilityLine({ stockNumber: '17646', dealerFirstName: 'Jordan', vin: '1HGBH41JXMN109186' }),
+      'Hey Jordan, is stock #17646 still available?',
+    );
+    assert.equal(
+      availabilityLine({ stockNumber: null, vin: '1hgbh41jxmn109186', dealerFirstName: 'Jordan' }),
+      'Hi, is VIN ending MN109186 still available?',
+    );
     assert.equal(
       script.continue_offline,
       "Thanks. I'd like to continue over text and email, please reach us at 803-555-0148 or deals@drevvy.test.",

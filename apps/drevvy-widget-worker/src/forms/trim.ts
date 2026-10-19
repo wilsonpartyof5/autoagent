@@ -1,7 +1,7 @@
 /**
  * MarketCheck trim versus the dealer's own vehicle page and a VIN decode.
- * The two-question opener should name this verified trim (year, make, model,
- * trim, then stock or the last 8 of the VIN).
+ * A mismatch is flagged on the deal and told to the shopper.
+ * The stock-number opener is left unchanged.
  */
 
 export type TrimEvidence = {
@@ -47,34 +47,7 @@ export function shopperTrimMessage(input: {
   if (input.vinDecodeTrim) sources.push(`the VIN decodes as ${input.vinDecodeTrim}`);
   if (sources.length === 0) return null;
   const found = sources.length === 2 ? `${sources[0]} and ${sources[1]}` : sources[0];
-  return `MarketCheck listed the trim as ${input.marketcheckTrim}. ${sentence(found)}, so Drevvy will use ${input.verifiedTrim} when it contacts the dealer.`;
-}
-
-/**
- * First dealer line, in the current widget shape.
- * A verified trim replaces "this unit" so MarketCheck's trim is never the one we say.
- * Year, make, and model stay off this line so it can merge with the stock-number opener.
- */
-export function dealerAvailabilityOpener(input: {
-  shopperFirst: string;
-  year?: number | null;
-  make?: string | null;
-  model?: string | null;
-  trim?: string | null;
-  stock?: string | null;
-  vin?: string | null;
-}): string {
-  void input.year;
-  void input.make;
-  void input.model;
-  void input.vin;
-  const opener = `Hi, this is Drevvy, working for ${input.shopperFirst.trim()}.`;
-  const trim = cleanTrim(input.trim);
-  const unit = trim ? `this ${trim}` : 'this unit';
-  const stock = (input.stock ?? '').trim().replace(/^#/, '');
-  return stock
-    ? `${opener} Is ${unit} still available? Stock #${stock}`
-    : `${opener} Is ${unit} still available?`;
+  return `MarketCheck listed the trim as ${input.marketcheckTrim}. ${sentence(found)}.`;
 }
 
 export function extractVdpTrim(html: string): string | null {

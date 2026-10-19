@@ -12,38 +12,21 @@ import {
   outboundSmsHoldReason,
   tenDlcApproved,
 } from './contact-phone';
-import {
-  checkVehicleTrim,
-  dealerAvailabilityOpener,
-  extractVdpTrim,
-  trimForOpener,
-} from './trim-check';
+import { checkVehicleTrim, extractVdpTrim } from './trim-check';
 
-test('a trim mismatch is flagged, told to the shopper, and used in the opener', () => {
+test('a trim mismatch is flagged and told to the shopper without changing the opener', () => {
   const html = '<dl><dt>Trim</dt><dd>XLE Premium</dd></dl>';
   assert.equal(extractVdpTrim(html), 'XLE Premium');
   const matched = checkVehicleTrim({ marketcheck: 'XLE Premium', vdp: 'xle premium', vinDecode: 'XLE Premium' });
   assert.equal(matched.mismatch, false);
   assert.equal(matched.verifiedTrim, 'XLE Premium');
-  assert.equal(trimForOpener('XLE Premium', matched), 'XLE Premium');
+  assert.equal(matched.shopperMessage, null);
 
   const flagged = checkVehicleTrim({ marketcheck: 'XLE', vdp: 'XLE Premium', vinDecode: 'XLE Premium' });
   assert.equal(flagged.mismatch, true);
   assert.equal(flagged.verifiedTrim, 'XLE Premium');
   assert.match(flagged.shopperMessage ?? '', /MarketCheck listed the trim as XLE/);
-  assert.match(flagged.shopperMessage ?? '', /use XLE Premium/);
-  assert.equal(
-    dealerAvailabilityOpener({
-      shopperFirst: 'Maya',
-      year: 2024,
-      make: 'Toyota',
-      model: 'RAV4',
-      trim: trimForOpener('XLE', flagged),
-      stock: 'A1234',
-      vin: '2T3P1RFV8RW123456',
-    }),
-    'Hi, this is Drevvy, working for Maya. Is this XLE Premium still available? Stock #A1234',
-  );
+  assert.match(flagged.shopperMessage ?? '', /dealer's page lists XLE Premium/);
 
   const deal = presentDeal({
     id: 'deal-1',

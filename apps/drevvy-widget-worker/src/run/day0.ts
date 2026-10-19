@@ -106,13 +106,6 @@ async function runOne(
       }
     }
   }
-  const vehicle = {
-    verifiedTrim: trim.verifiedTrim,
-    vehicleYear: target.year ?? null,
-    vehicleMake: target.make ?? null,
-    vehicleModel: target.model ?? null,
-    vehicleVin: target.vin ?? null,
-  };
   let plan = selectDay0Channels(scan?.status ?? 'error');
   plan = applyCallEmailOnly(plan, await callEmailOnly(target.url, input.directory, log));
   plan = applyContactPhoneFallback(plan, {
@@ -142,7 +135,7 @@ async function runOne(
           stockNumber: target.stockNumber,
           page,
           ai: input.ai,
-          config: { ...settings, ...vehicle },
+          config: { ...settings, vin: target.vin ?? null },
           store: input.attempts,
           log,
           selection,
@@ -162,7 +155,7 @@ async function runOne(
           vehiclePageUrl: target.url,
           stockNumber: target.stockNumber,
           page,
-          config: { ...settings, ...vehicle, contactMode, verifiedTrim: trim.verifiedTrim },
+          config: { ...settings, contactMode },
           store: input.attempts,
           directory: input.directory,
           log,

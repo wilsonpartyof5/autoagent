@@ -1,10 +1,7 @@
 /**
  * Verify MarketCheck's trim before any dealer contact.
- * The verified trim is what the opener names. A mismatch is flagged on the
- * deal and told to the shopper.
- *
- * The availability opener matches the two-question dealer opening: year, make,
- * model, verified trim, then the stock number or the last 8 of the VIN.
+ * A mismatch is flagged on the deal and told to the shopper.
+ * The stock-number opener is left unchanged.
  */
 
 export type TrimEvidence = {
@@ -52,39 +49,7 @@ export function shopperTrimMessage(input: {
   if (input.vinDecodeTrim) sources.push(`the VIN decodes as ${input.vinDecodeTrim}`);
   if (sources.length === 0) return null;
   const found = sources.length === 2 ? `${sources[0]} and ${sources[1]}` : sources[0];
-  return `MarketCheck listed the trim as ${input.marketcheckTrim}. ${sentence(found)}, so Drevvy will use ${input.verifiedTrim} when it contacts the dealer.`;
-}
-
-/** Trim the opener should name. MarketCheck's trim is replaced when it disagrees. */
-export function trimForOpener(marketcheckTrim: string | null | undefined, check: TrimCheck | null): string | null {
-  return check?.verifiedTrim ?? cleanTrim(marketcheckTrim);
-}
-
-/**
- * First dealer line. The verified trim replaces "this unit".
- * Year, make, and model stay off this line so it stays compatible with the
- * stock-number opener in the dealer-copy PR.
- */
-export function dealerAvailabilityOpener(input: {
-  shopperFirst: string;
-  year?: number | null;
-  make?: string | null;
-  model?: string | null;
-  trim?: string | null;
-  stock?: string | null;
-  vin?: string | null;
-}): string {
-  void input.year;
-  void input.make;
-  void input.model;
-  void input.vin;
-  const opener = `Hi, this is Drevvy, working for ${input.shopperFirst.trim()}.`;
-  const trim = cleanTrim(input.trim);
-  const unit = trim ? `this ${trim}` : 'this unit';
-  const stock = (input.stock ?? '').trim().replace(/^#/, '');
-  return stock
-    ? `${opener} Is ${unit} still available? Stock #${stock}`
-    : `${opener} Is ${unit} still available?`;
+  return `MarketCheck listed the trim as ${input.marketcheckTrim}. ${sentence(found)}.`;
 }
 
 export function extractVdpTrim(html: string): string | null {

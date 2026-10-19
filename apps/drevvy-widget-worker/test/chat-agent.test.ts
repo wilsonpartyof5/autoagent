@@ -17,6 +17,7 @@ const liveConfig: WidgetChatConfig = {
   drevvyContactPhone: '803-555-0148',
   drevvyEmail: 'deals@drevvy.test',
   shopperFirst: 'Maya',
+  listedPrice: 24995,
   maxTurns: 6,
 };
 
@@ -80,7 +81,7 @@ describe('widget chat agent', () => {
     assert.equal(ai.calls.length, 0);
     assert.equal(result.widgetVendor, 'gubagoo');
     assert.equal(result.stockNumber, 'H24118');
-    assert.equal(store.attempts[0]?.transcript.some((entry) => entry.text.includes('Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118') && entry.via === 'planned'), true);
+    assert.equal(store.attempts[0]?.transcript.some((entry) => entry.text.includes('Hi, is stock #H24118 still available?') && entry.via === 'planned'), true);
     assert.match(store.attempts[0]?.transcript.map((entry) => entry.text).join('\n') ?? '', /nothing was sent/);
   });
 
@@ -98,8 +99,8 @@ describe('widget chat agent', () => {
     });
 
     assert.deepEqual(page.sent, [
-      'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118',
-      'What is the listing price?',
+      'Hi, is stock #H24118 still available?',
+      'Is it still listed at $24,995?',
       "Thanks. I'd like to continue over text and email, please reach us at 803-555-0148 or deals@drevvy.test.",
     ]);
     assert.equal(result.status, 'price_given');
@@ -140,7 +141,7 @@ describe('widget chat agent', () => {
       store: new MemoryAttemptStore(),
     });
     assert.equal(result.status, 'asked_contact');
-    assert.deepEqual(page.sent, ['Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118']);
+    assert.deepEqual(page.sent, ['Hi, is stock #H24118 still available?']);
     assert.equal(page.sent.join('\n').includes('212-555-0198'), false);
     assert.equal(page.sent.join('\n').includes('803-555-0148'), false);
   });
@@ -205,7 +206,7 @@ describe('widget chat agent', () => {
       ],
     );
     assert.equal(form.submits.length, 1);
-    assert.equal(form.sent[0], 'Hi, this is Drevvy, working for Maya. Is this unit still available?');
+    assert.equal(form.sent[0], 'Hi, is it still available?');
     assert.equal(JSON.stringify(form.outreach).includes('212-555-0198'), false);
     assert.equal(store.attempts[0]?.channel, 'prechat');
     assert.equal(store.attempts[0]?.status, 'submitted');
@@ -232,8 +233,8 @@ describe('widget chat agent', () => {
       ],
     );
     assert.equal(page.submits.length, 1);
-    assert.equal(page.sent[0], 'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118');
-    assert.equal(page.sent[1], 'What is the listing price?');
+    assert.equal(page.sent[0], 'Hi, is stock #H24118 still available?');
+    assert.equal(page.sent[1], 'Is it still listed at $24,995?');
     assert.equal(result.status, 'price_given');
   });
 
@@ -291,7 +292,7 @@ describe('widget chat agent', () => {
       store: new MemoryAttemptStore(),
     });
     assert.equal(result.status, 'price_given');
-    assert.equal(page.sent[0], 'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118');
+    assert.equal(page.sent[0], 'Hi, is stock #H24118 still available?');
   });
 
   it('refuses a composer that is an email field', async () => {
@@ -338,7 +339,7 @@ describe('widget chat agent', () => {
     assert.equal(result.status, 'sold');
     assert.equal(result.transcript.some((entry) => entry.via === 'screenshot'), true);
     assert.equal(result.channel, 'widget');
-    assert.deepEqual(page.sent, ['Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118']);
+    assert.deepEqual(page.sent, ['Hi, is stock #H24118 still available?']);
   });
 
   it('stops at the turn cap', async () => {
@@ -354,8 +355,8 @@ describe('widget chat agent', () => {
     });
     assert.equal(result.status, 'turn_limit');
     assert.deepEqual(page.sent, [
-      'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118',
-      'What is the listing price?',
+      'Hi, is stock #H24118 still available?',
+      'Is it still listed at $24,995?',
     ]);
   });
 

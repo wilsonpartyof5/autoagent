@@ -1,11 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
 import { ShopperDealError } from './deals';
-import type {
-  BuyPromptSource,
-  DealEndState,
-  LifecycleRecord,
-  OutreachChannel,
+import {
+  parseDealOpening,
+  type BuyPromptSource,
+  type DealEndState,
+  type LifecycleRecord,
+  type OutreachChannel,
 } from './lifecycle';
 
 export interface LifecycleRepository {
@@ -41,6 +42,7 @@ const COLUMNS = [
   'bought',
   'final_price',
   'outcome_answered_at',
+  'opening',
 ].join(', ');
 
 type LifecycleTableRow = {
@@ -67,6 +69,7 @@ type LifecycleTableRow = {
   bought: boolean | null;
   final_price: number | null;
   outcome_answered_at: string | null;
+  opening: unknown;
 };
 
 export function createMemoryLifecycleRepository(seed: LifecycleRecord[] = []): LifecycleRepository {
@@ -194,6 +197,7 @@ function toRow(record: LifecycleRecord): LifecycleTableRow & { updated_at: strin
     bought: record.bought,
     final_price: record.finalPrice,
     outcome_answered_at: record.outcomeAnsweredAt,
+    opening: record.opening,
     updated_at: new Date().toISOString(),
   };
 }
@@ -223,6 +227,7 @@ function fromRow(row: LifecycleTableRow): LifecycleRecord {
     bought: row.bought,
     finalPrice: row.final_price,
     outcomeAnsweredAt: row.outcome_answered_at,
+    opening: parseDealOpening(row.opening),
   };
 }
 

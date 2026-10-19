@@ -1,8 +1,9 @@
 /**
  * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
- * that never expire and never reset monthly. Every 'return the slot' path
- * (dealer_declined, ended_no_response, sold) refunds +1 car credit to the
- * shopper's balance, idempotently (exactly once per deal).
+ * that never expire and never reset monthly. A credit returns only when the
+ * shopper removes the deal within 30 minutes of adding it and before any
+ * outreach, or when the dealer declines or opts out. Buying the car does not
+ * return a credit, and neither does ending with no dealer response.
  */
 
 export const NO_RESPONSE_MS = 5 * 24 * 60 * 60 * 1000;
@@ -18,6 +19,6 @@ export type QuotaDeal = {
   endedAt: string | null;
 };
 
-export function shouldRefundCredit(endState: QuotaEndState): boolean {
-  return endState === 'sold' || endState === 'ended_no_response' || endState === 'dealer_declined';
+export function shouldRefundCredit(endState: QuotaEndState): endState is 'dealer_declined' {
+  return endState === 'dealer_declined';
 }

@@ -1,3 +1,4 @@
+import { availabilityLine } from '../widgets/script';
 import { resolveFormPhone } from './phone';
 
 export const DEFAULT_LEAD_LAST_NAME = 'via Drevvy';
@@ -11,7 +12,6 @@ export type OutreachIdentity = {
   contactPhone: string | null;
   email: string;
   zip: string | null;
-  verifiedTrim: string | null;
 };
 
 export type OutreachFieldKind = 'first_name' | 'last_name' | 'full_name' | 'phone' | 'email' | 'zip' | 'message';
@@ -24,6 +24,11 @@ export type OutreachFill = {
 };
 
 export type LeadContactMode = 'full' | 'name_and_phone' | 'check_availability';
+
+export type ListingCue = {
+  vin?: string | null;
+  dealerFirstName?: string | null;
+};
 
 export type OutreachRunConfig = {
   dryRun: boolean;
@@ -38,7 +43,6 @@ export type OutreachRunConfig = {
   drevvyContactPhone?: string | null;
   /** Shopper phone, if known, so a mis-set contact number is dropped. */
   shopperPhone?: string | null;
-  verifiedTrim?: string | null;
 };
 
 export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
@@ -49,7 +53,6 @@ export function outreachIdentity(config: OutreachRunConfig): OutreachIdentity {
     contactPhone: resolveFormPhone(config.drevvyContactPhone, config.shopperPhone),
     email: config.drevvyEmail,
     zip: config.leadZip,
-    verifiedTrim: config.verifiedTrim,
   });
 }
 
@@ -60,7 +63,6 @@ export function buildIdentity(input: {
   contactPhone?: string | null;
   email: string;
   zip?: string | null;
-  verifiedTrim?: string | null;
 }): OutreachIdentity {
   return {
     firstName: input.firstName,
@@ -69,7 +71,6 @@ export function buildIdentity(input: {
     contactPhone: input.contactPhone ?? null,
     email: input.email,
     zip: normalizeZip(input.zip),
-    verifiedTrim: input.verifiedTrim?.trim() || null,
   };
 }
 
@@ -90,15 +91,18 @@ export function normalizeZip(value: string | null | undefined): string | null {
 
 export function leadMessage(input: {
   stockNumber: string | null;
+  vin?: string | null;
+  dealerFirstName?: string | null;
   phone: string;
   email?: string | null;
-  trim?: string | null;
   /** Check Availability has no phone field and must not name a number. */
   omitPhone?: boolean;
 }): string {
-  const stock = input.stockNumber?.trim();
-  const stockPart = stock ? ` Stock #${stock}.` : '';
-  const unit = input.trim?.trim() ? `this ${input.trim.trim()}` : 'this unit';
+  const ask = availabilityLine({
+    stockNumber: input.stockNumber,
+    vin: input.vin,
+    dealerFirstName: input.dealerFirstName,
+  });
   const reach = input.omitPhone
     ? input.email
       ? `Please email us at ${input.email}.`
@@ -106,8 +110,7 @@ export function leadMessage(input: {
     : input.email
       ? `Please text or email us at ${input.phone} / ${input.email}.`
       : `Please text us at ${input.phone}.`;
-  const question = `Is ${unit} still available?${stockPart} What's the price on it?`;
-  return reach ? `${question} ${reach}` : question;
+  return reach ? `${ask} ${reach}` : ask;
 }
 
 export function outreachValue(
@@ -116,6 +119,7 @@ export function outreachValue(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): string | null {
   if (kind === 'first_name') return identity.firstName;
   if (kind === 'last_name') return mode === 'name_and_phone' ? null : identity.lastName;
@@ -127,9 +131,10 @@ export function outreachValue(
   if (kind === 'zip') return mode === 'name_and_phone' ? null : identity.zip;
   return leadMessage({
     stockNumber,
+    vin: cue.vin,
+    dealerFirstName: cue.dealerFirstName,
     phone: identity.phone,
     email: mode === 'name_and_phone' ? null : identity.email,
-    trim: identity.verifiedTrim,
     omitPhone: mode === 'check_availability',
   });
 }
@@ -140,9 +145,10 @@ export function isApprovedFill(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): boolean {
   if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
-  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode);
+  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode, cue);
   return expected != null && fill.value === expected;
 }
 

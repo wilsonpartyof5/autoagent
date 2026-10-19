@@ -46,7 +46,7 @@ import {
   type PresentedDeal,
 } from './lifecycle';
 import { getLifecycleRepository, type LifecycleRepository } from './lifecycle-store';
-import { shouldRefundCredit, type QuotaEndState } from './quota';
+import { shouldRefundCredit } from './quota';
 import {
   checkCanAddCar,
   getShopperCredits,
@@ -294,7 +294,7 @@ export async function answerOutcome(
     await deps.deals.close(userId, deal.id);
 
     if (shouldRefundCredit(answered.endState) && previousState === 'open') {
-      await refundCredit(supabase, userId, deal.id, answered.endState as 'sold' | 'ended_no_response' | 'dealer_declined');
+      await refundCredit(supabase, userId, deal.id, answered.endState);
     }
   }
 
@@ -332,7 +332,7 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
     await deps.deals.close(next.consumerUserId, next.dealId);
 
     if (shouldRefundCredit(next.endState) && previousState === 'open') {
-      await refundCredit(supabase, next.consumerUserId, next.dealId, next.endState as 'sold' | 'ended_no_response' | 'dealer_declined');
+      await refundCredit(supabase, next.consumerUserId, next.dealId, next.endState);
     }
   }
   if (soldNow) {
@@ -382,7 +382,7 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
           supabase,
           next.consumerUserId,
           next.dealId,
-          next.endState as 'sold' | 'ended_no_response' | 'dealer_declined',
+          next.endState,
         );
         if (refundResult.refunded) {
           creditsRefunded += 1;

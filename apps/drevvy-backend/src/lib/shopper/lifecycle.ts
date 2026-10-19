@@ -18,6 +18,35 @@ export type DealEndState = QuotaEndState;
 export type OutreachChannel = 'email' | 'text' | 'call';
 export type BuyPromptSource = 'geofence_exit' | 'pickup_fallback';
 
+export type DealOpeningPhase = 'awaiting_availability' | 'awaiting_price' | 'complete';
+
+/** One line of the opening conversation, stored on the deal itself. */
+export type DealOpeningHistoryItem = {
+  at: string;
+  direction: 'outbound' | 'inbound';
+  body: string;
+  /** Listed price written into this outbound message. Null on every other line. */
+  listedPrice: number | null;
+};
+
+/**
+ * Opening facts on Drevvy's deal. The listed price is the number we put in
+ * our own message, with the MarketCheck listing id beside it. This is deal
+ * history, not a MarketCheck data cache.
+ */
+export type DealOpening = {
+  marketcheckListingId: string;
+  listedPrice: number;
+  listedPriceCopiedAt: string;
+  listedPriceIncludedAt: string | null;
+  phase: DealOpeningPhase;
+  availability: 'available' | 'unavailable' | null;
+  availabilityAt: string | null;
+  statedPrice: number | null;
+  statedPriceAt: string | null;
+  history: DealOpeningHistoryItem[];
+};
+
 export type LifecycleRecord = {
   dealId: string;
   consumerUserId: string;
@@ -42,6 +71,7 @@ export type LifecycleRecord = {
   bought: boolean | null;
   finalPrice: number | null;
   outcomeAnsweredAt: string | null;
+  opening: DealOpening | null;
 };
 
 export type DealVisit = {
@@ -158,6 +188,42 @@ export function blankLifecycle(deal: ShopperDeal, consumerUserId: string): Lifec
     bought: null,
     finalPrice: null,
     outcomeAnsweredAt: null,
+    opening: null,
+  };
+}
+
+export function parseDealOpening(value: unknown): DealOpening | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const listingId = typeof row.marketcheckListingId === 'string' ? row.marketcheckListingId.trim() : '';
+  const listedPrice = typeof row.listedPrice === 'number' && Number.isFinite(row.listedPrice) ? row.listedPrice : null;
+  const copiedAt = typeof row.listedPriceCopiedAt === 'string' ? row.listedPriceCopiedAt : '';
+  const phase = row.phase === 'awaiting_availability' || row.phase === 'awaiting_price' || row.phase === 'complete'
+    ? row.phase
+    : null;
+  if (!listingId || listedPrice == null || !copiedAt || !phase) return null;
+  const availability = row.availability === 'available' || row.availability === 'unavailable' ? row.availability : null;
+  const history = Array.isArray(row.history)
+    ? row.history.flatMap((item): DealOpeningHistoryItem[] => {
+      if (!item || typeof item !== 'object') return [];
+      const entry = item as Record<string, unknown>;
+      if (typeof entry.at !== 'string' || typeof entry.body !== 'string') return [];
+      if (entry.direction !== 'outbound' && entry.direction !== 'inbound') return [];
+      const price = typeof entry.listedPrice === 'number' && Number.isFinite(entry.listedPrice) ? entry.listedPrice : null;
+      return [{ at: entry.at, direction: entry.direction, body: entry.body, listedPrice: price }];
+    })
+    : [];
+  return {
+    marketcheckListingId: listingId,
+    listedPrice,
+    listedPriceCopiedAt: copiedAt,
+    listedPriceIncludedAt: typeof row.listedPriceIncludedAt === 'string' ? row.listedPriceIncludedAt : null,
+    phase,
+    availability,
+    availabilityAt: typeof row.availabilityAt === 'string' ? row.availabilityAt : null,
+    statedPrice: typeof row.statedPrice === 'number' && Number.isFinite(row.statedPrice) ? row.statedPrice : null,
+    statedPriceAt: typeof row.statedPriceAt === 'string' ? row.statedPriceAt : null,
+    history,
   };
 }
 
