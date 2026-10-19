@@ -37,6 +37,15 @@ export function selectDay0Channels(widgetStatus: string): Day0Plan {
   };
 }
 
+export function applyCallEmailOnly(plan: Day0Plan, callEmailOnly: boolean): Day0Plan {
+  if (!callEmailOnly || !plan.channels.includes('widget')) return plan;
+  return {
+    ...plan,
+    channels: plan.channels.filter((channel) => channel !== 'widget'),
+    reason: 'Call and email only. The widget channel is skipped.',
+  };
+}
+
 export function selectionRecord(plan: Day0Plan): ChannelSelection {
   return {
     selected_channels: plan.channels.length === 0 ? null : plan.channels.join(','),

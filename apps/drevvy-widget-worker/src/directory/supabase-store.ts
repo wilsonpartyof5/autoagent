@@ -29,6 +29,29 @@ export function createSupabaseDirectoryStore(client: SupabaseClient): DirectoryS
       }
       return rows;
     },
+    async markCallEmailOnly(siteUrl) {
+      const { data, error } = await client
+        .from('dealer_directory')
+        .update({ call_email_only: true })
+        .eq('site_url', siteUrl)
+        .select('id');
+      if (error) throw new Error(`dealer_directory call/email update failed: ${error.message}`);
+      if (Array.isArray(data) && data.length > 0) return;
+      const { error: insertError } = await client.from('dealer_directory').insert({
+        site_url: siteUrl,
+        call_email_only: true,
+        status: 'needs_review',
+        phones: [],
+        emails: [],
+        source_urls: [],
+      });
+      if (!insertError) return;
+      if (!/duplicate|unique/i.test(insertError.message)) {
+        throw new Error(`dealer_directory call/email insert failed: ${insertError.message}`);
+      }
+      const retry = await client.from('dealer_directory').update({ call_email_only: true }).eq('site_url', siteUrl);
+      if (retry.error) throw new Error(`dealer_directory call/email update failed: ${retry.error.message}`);
+    },
     async upsert(row) {
       const { data, error } = await client
         .from('dealer_directory')
@@ -59,6 +82,7 @@ function mapDirectoryRow(data: unknown): DealerDirectoryRow {
     confidence: nullableNumber(row.confidence),
     last_checked_at: nullableString(row.last_checked_at),
     status: status as DirectoryStatus,
+    call_email_only: row.call_email_only === true,
     created_at: requiredString(row.created_at, 'created_at'),
     updated_at: requiredString(row.updated_at, 'updated_at'),
   };

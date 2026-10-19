@@ -26,6 +26,8 @@ export type DealerDirectoryRow = DealerDirectoryWrite & {
   id: string;
   created_at: string;
   updated_at: string;
+  /** Widget channel is skipped. Call and email remain. */
+  call_email_only: boolean;
 };
 
 export const DIRECTORY_WRITE_KEYS = [
@@ -45,4 +47,5 @@ export interface DirectoryStore {
   findBySiteUrl(siteUrl: string): Promise<DealerDirectoryRow | null>;
   list(): Promise<DealerDirectoryRow[]>;
   upsert(row: DealerDirectoryWrite): Promise<DealerDirectoryRow>;
+  markCallEmailOnly(siteUrl: string): Promise<void>;
 }
