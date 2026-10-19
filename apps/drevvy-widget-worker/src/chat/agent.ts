@@ -23,12 +23,13 @@ export type WidgetChatConfig = {
   drevvyTextNumber: string;
   drevvyEmail: string;
   shopperFirst: string;
+  dealerFirstName?: string | null;
+  vin?: string | null;
+  listedPrice?: number | null;
   maxTurns: number;
   leadLastName?: string;
   leadZip?: string | null;
   vehicle?: string | null;
-  vin?: string | null;
-  listedPrice?: number | null;
   daysOnMarket?: number | null;
   priceChangedRecently?: boolean;
 };
@@ -177,11 +178,11 @@ export async function runWidgetChat(input: {
   }
   vendor = inspection.vendor;
   if (!stock) stock = extractStockNumber(html);
-  const vin = input.vin?.trim() || input.config.vin?.trim() || extractVin(html);
+  const vin = stock ? null : input.vin?.trim() || input.config.vin?.trim() || extractVin(html);
   const script = renderScript({
     stockNumber: stock,
     vin,
-    vehicle: input.vehicle ?? input.config.vehicle,
+    dealerFirstName: input.config.dealerFirstName,
     listedPrice: input.listedPrice ?? input.config.listedPrice,
     daysOnMarket: input.config.daysOnMarket,
     priceChangedRecently: input.config.priceChangedRecently,

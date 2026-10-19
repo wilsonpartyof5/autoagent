@@ -127,10 +127,18 @@ describe('lead forms', () => {
     const html = readFixture('ask-a-question.html').replace('Stock #H24118', 'call for details');
     const page = new FakeChatPage(html);
     await runLeadForm({ vehiclePageUrl: pageUrl, page, config: live, store: new MemoryAttemptStore() });
+    assert.equal(filled(page).message, 'Hi, is it still available?');
+  });
+
+  it('asks about the VIN ending when the page has a VIN and no stock number', async () => {
+    const html = readFixture('ask-a-question.html').replace('Stock #H24118', 'VIN 1HGBH41JXMN109186');
+    const page = new FakeChatPage(html);
+    await runLeadForm({ vehiclePageUrl: pageUrl, page, config: live, store: new MemoryAttemptStore() });
     assert.equal(
       filled(page).message,
-      'Hi, this is Drevvy, working for Maya. Is this vehicle still available?',
+      'Hi, is VIN ending MN109186 still available?',
     );
+    assert.equal(filled(page).message.includes('1HGBH41JXMN109186'), false);
   });
 
   it('does not submit a dry run or a dealer outside the allowlist', async () => {

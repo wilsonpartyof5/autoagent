@@ -74,8 +74,11 @@ export default function DealersPage() {
                 </li>
               </ol>
               <p className="text-muted-foreground mt-4">
-                We open with a short hello: &quot;Hi, this is Drevvy, working for [first name].&quot; We do not lead
-                with &quot;I&apos;m an AI.&quot; We share the shopper&apos;s first name and general location for tax
+                The first message asks only if the vehicle is still available, and it names the stock number:
+                &quot;Hey [salesperson], is stock #12345 still available?&quot; With no salesperson name:
+                &quot;Hi, is stock #12345 still available?&quot; If there is no stock number, we use the last 8 of the VIN:
+                &quot;Hi, is VIN ending ABCD1234 still available?&quot; We do not include the year, make, model, trim, or the full VIN,
+                and we do not lead with &quot;I&apos;m an AI.&quot; We share the shopper&apos;s first name and general location for tax
                 estimation purposes.
               </p>
             </section>

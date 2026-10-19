@@ -1,4 +1,5 @@
 import { AGENT_OPENER_TEMPLATE, CALL_OPENER } from '../../agent-voice';
+import { availabilityQuestion, listingIdent, spokenAvailabilityQuestion } from './opener';
 import { DREVVY_NUMBER, type CallOutcome, type TouchpointId, type Variant } from './types';
 
 const OPENER = AGENT_OPENER_TEMPLATE;
@@ -11,24 +12,25 @@ export type CopyContext = {
   price: string;
   number: string;
   vin?: string;
+  /** Salesperson first name, when we know who will read the message. */
+  dealerFirst?: string | null;
   /** True only when a text was actually sent before this message. */
   textSent?: boolean;
 };
 
-/** Day-0 email names the stock number and the VIN, and asks only if it is still available. */
-export function day0AvailabilityAsk(ctx: Pick<CopyContext, 'vehicle' | 'stock' | 'vin'>): string {
-  const stock = ctx.stock.trim().replace(/^#/, '');
-  const vin = ctx.vin?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') ?? '';
-  const bits = [stock ? `stock #${stock}` : '', vin ? `VIN ${vin}` : ''].filter(Boolean);
-  const vehicle = ctx.vehicle.trim();
-  if (bits.length === 0) return `Is the ${vehicle} still available?`;
-  return `Is the ${vehicle}, ${bits.join(', ')}, still available?`;
-}
-
 export function fill(template: string, ctx: CopyContext): string {
+  const ask = availabilityQuestion({
+    dealerFirstName: ctx.dealerFirst,
+    stock: ctx.stock,
+    vin: ctx.vin,
+  });
+  const spoken = spokenAvailabilityQuestion({ stock: ctx.stock, vin: ctx.vin });
+  const ident = listingIdent({ stock: ctx.stock, vin: ctx.vin });
   const channels = ctx.textSent ? 'email, text, and phone' : 'email and phone';
   return template
-    .replace(/\{ask\}/g, day0AvailabilityAsk(ctx))
+    .replace(/\{ask\}/g, ask)
+    .replace(/\{spoken\}/g, spoken)
+    .replace(/\{ident\}/g, ident)
     .replace(/\{channels\}/g, channels)
     .replace(/\{first\}/g, ctx.first)
     .replace(/\{vehicle_short\}/g, ctx.vehicleShort)
@@ -41,16 +43,16 @@ export function fill(template: string, ctx: CopyContext): string {
 const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; body: string }>>> = {
   'D0-E1': {
     A: {
-      subject: 'Still available? {vehicle}, stock #{stock}',
-      body: `${OPENER} {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available? {ident}',
+      body: `{ask}\n\n{first}`,
     },
     B: {
-      subject: 'Is the {vehicle_short} (#{stock}) still available?',
-      body: `${OPENER} Quick question. {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Is {ident} still available?',
+      body: `{ask}\n\n{first}`,
     },
     C: {
-      subject: 'Still available: {vehicle}, stock #{stock}',
-      body: `${OPENER}\n\n{ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available: {ident}',
+      body: `{ask}\n\n{first}`,
     },
   },
   'D1-E2': {
@@ -99,13 +101,19 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
 
 /**
  * Texts are replies, sent only after a salesperson texts us.
- * There is no cold Day-0 text to the dealer's main line.
+ * D0-T1 is the wording for that first reply. It is not on the sample cadence,
+ * and nothing sends it to a dealer's main line.
  */
-const SMS: Partial<Record<TouchpointId, Record<Variant, string>>> = {
+const SMS: Partial<Record<TouchpointId | 'D0-T1', Record<Variant, string>>> = {
+  'D0-T1': {
+    A: `{ask} Reply STOP to opt out`,
+    B: `{ask} Reply STOP to opt out`,
+    C: `{ask} Reply STOP to opt out`,
+  },
   'D0-TS': {
-    A: `${OPENER} Your store gave us this number for the {vehicle_short} (#{stock}). Out-the-door price, itemized? Reply STOP to opt out`,
-    B: `${OPENER} Your team said to text about the {vehicle_short} #{stock}. What's the out-the-door price? Reply STOP to opt out`,
-    C: `${OPENER} We'd love a clear out-the-door price on the {vehicle_short} (#{stock}). Reply STOP to opt out`,
+    A: `{ask} Reply STOP to opt out`,
+    B: `{ask} Your team said to text this number. Reply STOP to opt out`,
+    C: `{ask} Reply STOP to opt out`,
   },
   'D1-T2': {
     A: `${OPENER} Still interested in the {vehicle_short} (#{stock}). Could you text the out-the-door price, itemized?`,
@@ -130,7 +138,7 @@ export function emailCopy(touchpoint: TouchpointId, variant: Variant, ctx: CopyC
   return { subject: fill(row.subject, ctx), body: fill(row.body, ctx) };
 }
 
-export function smsCopy(touchpoint: TouchpointId, variant: Variant, ctx: CopyContext): string | null {
+export function smsCopy(touchpoint: TouchpointId | 'D0-T1', variant: Variant, ctx: CopyContext): string | null {
   const row = SMS[touchpoint]?.[variant];
   return row ? fill(row, ctx) : null;
 }
@@ -138,13 +146,7 @@ export function smsCopy(touchpoint: TouchpointId, variant: Variant, ctx: CopyCon
 /** Calls open with a short hello for the buyer. They do not say "I'm an AI" or "automated assistant". */
 export function callOpener(touchpoint: 'D0-C1' | 'D0-C2' | 'D2-C3', variant: Variant, ctx: CopyContext): string {
   if (touchpoint === 'D0-C1') {
-    if (variant === 'B') {
-      return fill(`${CALL_OPENER} Who should we text about your {vehicle}, stock {stock}?`, ctx);
-    }
-    if (variant === 'C') {
-      return fill(`${CALL_OPENER} We'd like to text a salesperson about your {vehicle}, stock {stock}. What's the best number?`, ctx);
-    }
-    return fill(`${CALL_OPENER} What's the best number to text a salesperson about your {vehicle}, stock {stock}?`, ctx);
+    return fill(`${CALL_OPENER} {spoken}`, ctx);
   }
   if (touchpoint === 'D0-C2') {
     if (variant === 'C') {
@@ -160,7 +162,7 @@ export function callOpener(touchpoint: 'D0-C1' | 'D0-C2' | 'D2-C3', variant: Var
 
 export function voicemailScript(ctx: CopyContext): string {
   return fill(
-    `${CALL_OPENER} They're interested in your {vehicle}, stock {stock}. Please text the out-the-door price to {number}. Again, {number}. Thanks!`,
+    `${CALL_OPENER} {spoken} Please text {number} if it is. Again, {number}. Thanks!`,
     ctx,
   );
 }

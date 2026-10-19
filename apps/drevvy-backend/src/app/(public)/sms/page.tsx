@@ -100,10 +100,9 @@ export default function SMSPage() {
 
               <div className="space-y-4">
                 <div className="bg-card p-4 rounded-lg border border-border">
-                  <p className="text-sm text-muted-foreground mb-2">Initial outreach follow-up:</p>
+                  <p className="text-sm text-muted-foreground mb-2">After a salesperson texts us:</p>
                   <p className="font-mono text-sm">
-                    Hi, this is Drevvy, working for [First Name]. Following up on the 2023 Honda Accord
-                    (Stock #12345). Could you share an itemized out-the-door price? Reply STOP to opt out.
+                    Hi, is stock #12345 still available? Reply STOP to opt out.
                   </p>
                 </div>
 

@@ -1,4 +1,4 @@
-import { availabilityQuestion } from '../widgets/questions';
+import { availabilityLine } from '../widgets/script';
 
 export const DEFAULT_LEAD_LAST_NAME = 'via Drevvy';
 
@@ -20,6 +20,11 @@ export type OutreachFill = {
 };
 
 export type LeadContactMode = 'full' | 'name_and_phone';
+
+export type ListingCue = {
+  vin?: string | null;
+  dealerFirstName?: string | null;
+};
 
 export type OutreachRunConfig = {
   dryRun: boolean;
@@ -74,20 +79,19 @@ export function normalizeZip(value: string | null | undefined): string | null {
 }
 
 export function leadMessage(input: {
-  shopperFirst: string;
+  shopperFirst?: string;
   stockNumber: string | null;
   vin?: string | null;
+  dealerFirstName?: string | null;
   vehicle?: string | null;
   phone?: string;
   email?: string | null;
 }): string {
-  const opener = `Hi, this is Drevvy, working for ${input.shopperFirst.trim()}.`;
-  const ask = availabilityQuestion({
-    vehicle: input.vehicle,
-    stock: input.stockNumber,
+  return availabilityLine({
+    stockNumber: input.stockNumber,
     vin: input.vin,
+    dealerFirstName: input.dealerFirstName,
   });
-  return `${opener} ${ask}`;
 }
 
 export function outreachValue(
@@ -96,8 +100,7 @@ export function outreachValue(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
-  vehicle?: string | null,
-  vin?: string | null,
+  cue: ListingCue = {},
 ): string | null {
   if (kind === 'first_name') return identity.firstName;
   if (kind === 'last_name') return mode === 'name_and_phone' ? null : identity.lastName;
@@ -110,10 +113,8 @@ export function outreachValue(
   return leadMessage({
     shopperFirst: identity.firstName,
     stockNumber,
-    vin,
-    vehicle,
-    phone: identity.phone,
-    email: mode === 'name_and_phone' ? null : identity.email,
+    vin: cue.vin,
+    dealerFirstName: cue.dealerFirstName,
   });
 }
 
@@ -123,11 +124,10 @@ export function isApprovedFill(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
-  vehicle?: string | null,
-  vin?: string | null,
+  cue: ListingCue = {},
 ): boolean {
   if (isPrivateFieldHint(`${fill.name ?? ''} ${fill.id ?? ''}`)) return false;
-  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode, vehicle, vin);
+  const expected = outreachValue(fill.kind, identity, stockNumber, channel, mode, cue);
   return expected != null && fill.value === expected;
 }
 

@@ -3,6 +3,7 @@
  * Same words as the dealer opening: availability first, with the stock number,
  * or the last 8 of the VIN when there is no stock number. The listed-price
  * question is a later chat message, after the dealer says the car is available.
+ * The first line does not name the year, make, model, trim, or the full VIN.
  */
 
 export const LISTING_PRICE_STALE_DAYS = 60;
@@ -18,18 +19,24 @@ export function vinLastEight(vin?: string | null): string {
   return cleaned.slice(-8);
 }
 
+function salespersonFirstName(name?: string | null): string {
+  const first = name?.trim().split(/\s+/)[0] ?? '';
+  if (!/^[A-Za-z][A-Za-z'.-]{0,39}$/.test(first)) return '';
+  return first;
+}
+
 export function availabilityQuestion(input: {
-  vehicle?: string | null;
+  dealerFirstName?: string | null;
   stock?: string | null;
   vin?: string | null;
 }): string {
-  const named = input.vehicle?.trim() ?? '';
-  const subject = named ? `the ${named}` : 'this vehicle';
   const stock = dealerStockNumber(input.stock);
-  const tail = vinLastEight(input.vin);
-  const identifier = stock ? `stock #${stock}` : tail ? `VIN ${tail}` : '';
-  if (!identifier) return `Is ${subject} still available?`;
-  return `Is ${subject}, ${identifier}, still available?`;
+  const tail = stock ? '' : vinLastEight(input.vin);
+  const identifier = stock ? `stock #${stock}` : tail ? `VIN ending ${tail}` : '';
+  const name = identifier.startsWith('VIN') ? '' : salespersonFirstName(input.dealerFirstName);
+  const ask = identifier ? `is ${identifier} still available?` : 'is it still available?';
+  if (name) return `Hey ${name}, ${ask}`;
+  return `Hi, ${ask}`;
 }
 
 export function formatListedPrice(amount: number): string {

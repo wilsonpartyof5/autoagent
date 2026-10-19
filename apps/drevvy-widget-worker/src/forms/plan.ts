@@ -4,6 +4,7 @@ import {
   isApprovedFill,
   outreachValue,
   type LeadContactMode,
+  type ListingCue,
   type OutreachFill,
   type OutreachIdentity,
 } from './outreach';
@@ -22,6 +23,7 @@ export function planForm(
   stockNumber: string | null,
   channel: 'lead_form' | 'prechat',
   mode: LeadContactMode = 'full',
+  cue: ListingCue = {},
 ): FormPlan {
   if (formHasCaptcha(form)) {
     return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'captcha' };
@@ -46,7 +48,7 @@ export function planForm(
       }
       continue;
     }
-    const value = outreachValue(field.kind, identity, stockNumber, channel, mode);
+    const value = outreachValue(field.kind, identity, stockNumber, channel, mode, cue);
     if (!value) {
       if (field.required || field.kind === 'zip') {
         return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'missing_zip' };
@@ -54,7 +56,7 @@ export function planForm(
       continue;
     }
     const fill: OutreachFill = { kind: field.kind, name: field.name, id: field.id, value };
-    if (!isApprovedFill(fill, identity, stockNumber, channel, mode)) {
+    if (!isApprovedFill(fill, identity, stockNumber, channel, mode, cue)) {
       return { title: form.title, formId: form.id, buttonText: form.buttonText, fills: [], stop: 'private_info' };
     }
     fills.push(fill);
