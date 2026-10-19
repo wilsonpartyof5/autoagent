@@ -35,10 +35,10 @@ describe('email optout - credit refund eligibility', () => {
     const { shouldRefundCredit } = await import('@/lib/shopper/quota');
 
     assert.equal(shouldRefundCredit('open'), false, 'open deal should not refund');
-    assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer_declined should refund (slot returned)');
-    assert.equal(shouldRefundCredit('sold'), true, 'sold should refund');
-    assert.equal(shouldRefundCredit('ended_no_response'), true, 'ended_no_response should refund');
-    assert.equal(shouldRefundCredit('removed'), false, 'removed should not refund');
+    assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer_declined should refund');
+    assert.equal(shouldRefundCredit('sold'), false, 'buying the car should not refund');
+    assert.equal(shouldRefundCredit('ended_no_response'), false, 'no response should not refund');
+    assert.equal(shouldRefundCredit('removed'), false, 'removed should not refund from end state alone');
   });
 });
 

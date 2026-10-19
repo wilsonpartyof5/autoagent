@@ -8,15 +8,12 @@ test('NO_RESPONSE_MS is 5 days in milliseconds', () => {
   assert.equal(NO_RESPONSE_MS, fiveDaysMs);
 });
 
-test('shouldRefundCredit returns true for slot-returning states', () => {
-  assert.equal(shouldRefundCredit('sold'), true, 'sold should refund');
-  assert.equal(shouldRefundCredit('ended_no_response'), true, 'ended_no_response should refund');
-  assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer_declined should refund');
-});
-
-test('shouldRefundCredit returns false for non-refunding states', () => {
+test('shouldRefundCredit returns a credit only for a dealer decline', () => {
+  assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer decline should refund');
+  assert.equal(shouldRefundCredit('sold'), false, 'buying the car should not refund');
+  assert.equal(shouldRefundCredit('ended_no_response'), false, 'no response should not refund');
   assert.equal(shouldRefundCredit('open'), false, 'open should not refund');
-  assert.equal(shouldRefundCredit('removed'), false, 'removed should not refund');
+  assert.equal(shouldRefundCredit('removed'), false, 'removed is refunded only inside the early window');
 });
 
 test('all QuotaEndState values are handled', () => {

@@ -348,6 +348,68 @@ test('removing a deal after 30 minutes does not return the car', async () => {
   assert.equal(result.credits.balance, 0);
 });
 
+test('buying a car does not return the car credit', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z', 1);
+  const created = await addCar(box, 'mc-car-bought');
+  assert.equal(created.credits.balance, 0);
+
+  const saved = await answerOutcome(
+    'shopper-1',
+    created.deal.id,
+    readOutcomeBody({ bought: true, finalPrice: 48750 }),
+    box.deps,
+  );
+  assert.equal(saved.outcome.bought, true);
+  assert.equal(saved.deal.endState, 'sold');
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 0);
+});
+
+test('a sold ending does not return the car credit', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z', 1);
+  const created = await addCar(box, 'mc-car-sold-elsewhere');
+  assert.equal(created.credits.balance, 0);
+  await applyAgentEvent({
+    type: 'end',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-03T16:10:00.000Z',
+  }, box.deps);
+  assert.equal((await box.lifecycle.get('shopper-1', created.deal.id))?.endState, 'sold');
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 0);
+});
+
+test('a dealer decline returns the car credit and no response does not', async () => {
+  const declined = harness('2026-10-01T16:10:00.000Z', 1);
+  const created = await addCar(declined, 'mc-car-declined');
+  await applyAgentEvent({
+    type: 'end',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'dealer_declined',
+    sentAt: '2026-10-02T16:10:00.000Z',
+  }, declined.deps);
+  assert.equal((await declined.lifecycle.get('shopper-1', created.deal.id))?.endState, 'dealer_declined');
+  assert.equal((await listShopperCars('shopper-1', declined.deps)).credits.balance, 1);
+
+  const quiet = harness('2026-10-01T16:00:00.000Z', 1);
+  const deal = await addCar(quiet, 'mc-car-no-response');
+  const started = '2026-10-01T16:00:00.000Z';
+  await applyAgentEvent({
+    type: 'outreach',
+    dealId: deal.deal.id,
+    consumerUserId: 'shopper-1',
+    channel: 'email',
+    sentAt: started,
+  }, quiet.deps);
+  quiet.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
+  const scheduled = await runLifecycleSchedule(quiet.deps);
+  assert.equal(scheduled.endedNoResponse, 1);
+  assert.equal(scheduled.creditsRefunded, 0);
+  assert.equal((await quiet.lifecycle.get('shopper-1', deal.deal.id))?.endState, 'ended_no_response');
+  assert.equal((await listShopperCars('shopper-1', quiet.deps)).credits.balance, 0);
+});
+
 test('removing a deal after outreach does not return the car', async () => {
   const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-outreach');
@@ -554,7 +616,7 @@ test('the day after pickup sends the same prompt when nobody left the geofence',
   assert.equal(prompted?.buyPromptSentAt, '2026-10-13T15:00:00.000Z');
 });
 
-test('no reply for five days returns the slot and a reply keeps the deal open', async () => {
+test('no reply for five days ends the deal and a reply keeps it open', async () => {
   const box = harness();
   const quiet = await addCar(box, 'mc-quiet-01');
   const answered = await addCar(box, 'mc-reply-01');
