@@ -5,7 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildOutreachReport, wilson, withoutTestTraffic } from './outreach/analytics';
-import { callOpener, emailCopy, smsCopy, voicemailScript } from './outreach/copy';
+import { callOpener, day0AvailabilityAsk, emailCopy, smsCopy, voicemailScript } from './outreach/copy';
 import { clearOutreachInsightCache, getOutreachInsight } from './outreach/insights';
 import { getOutreachDeals } from './outreach/mock-source';
 import { defaultOutreachRange } from './outreach/repository';
@@ -13,16 +13,20 @@ import { TOUCHPOINT_IDS, type TouchpointId } from './outreach/types';
 
 const BANNED = /automated assistant/i;
 
-test('cadence uses the spec touchpoint ids', () => {
+test('cadence uses the spec touchpoint ids and sends no cold day-0 text', () => {
   assert.deepEqual([...TOUCHPOINT_IDS], [
-    'D0-E1', 'D0-C1', 'D0-T1', 'D0-TS', 'D0-C2', 'D1-E2', 'D1-T2', 'D2-C3', 'D2-T3', 'D4-E3', 'D4-T4', 'D5-E4', 'VM-1',
+    'D0-E1', 'D0-C1', 'D0-TS', 'D0-C2', 'D1-E2', 'D1-T2', 'D2-C3', 'D2-T3', 'D4-E3', 'D4-T4', 'D5-E4', 'VM-1',
   ]);
   const seen = new Set(getOutreachDeals().flatMap((deal) => deal.events.map((event) => event.touchpoint)));
-  for (const id of TOUCHPOINT_IDS) assert.equal(seen.has(id), true, id);
+  for (const id of ['D0-E1', 'D0-C1', 'D0-C2', 'D1-E2', 'D2-C3', 'D4-E3', 'D5-E4', 'VM-1'] as const) {
+    assert.equal(seen.has(id), true, id);
+  }
+  assert.equal(seen.has('D0-T1' as TouchpointId), false);
+  assert.equal(getOutreachDeals().some((deal) => deal.events.some((event) => event.channel === 'sms' && event.direction === 'outbound')), false);
 });
 
 test('openings are a short hello and do not lead with being an AI', () => {
-  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123' };
+  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123', vin: '2T3P1RFV8RW000123' };
   const opener = 'Hi, this is Drevvy, working for Maya.';
   const leadsWithAi = /i'm an ai|i am an ai|i'm drevvy's ai|i am drevvy's ai/i;
   for (const touchpoint of ['D0-E1', 'D1-E2', 'D4-E3', 'D5-E4'] as const) {
@@ -35,7 +39,7 @@ test('openings are a short hello and do not lead with being an AI', () => {
       assert.equal(email.body.includes('@'), false, email.body);
     }
   }
-  for (const touchpoint of ['D0-T1', 'D0-TS', 'D1-T2', 'D2-T3', 'D4-T4'] as const) {
+  for (const touchpoint of ['D0-TS', 'D1-T2', 'D2-T3', 'D4-T4'] as const) {
     for (const variant of ['A', 'B', 'C'] as const) {
       const sms = smsCopy(touchpoint, variant, ctx);
       assert.ok(sms, `${touchpoint} ${variant}`);
@@ -48,18 +52,20 @@ test('openings are a short hello and do not lead with being an AI', () => {
     for (const variant of ['A', 'B', 'C'] as const) {
       const line = callOpener(touchpoint, variant, ctx);
       assert.equal(line.startsWith(opener), true, line);
+      assert.equal(line.includes('this call is recorded'), true, line);
       assert.equal(leadsWithAi.test(line), false, line);
       assert.equal(/negotiate/i.test(line), false, line);
     }
   }
   const vm = voicemailScript(ctx);
   assert.equal(vm.startsWith(opener), true, vm);
+  assert.equal(vm.includes('this call is recorded'), true, vm);
   assert.equal(leadsWithAi.test(vm), false);
   assert.equal(/negotiate/i.test(vm), false);
 });
 
 test('call scripts introduce Drevvy and never say automated assistant', () => {
-  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123' };
+  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123', vin: '2T3P1RFV8RW000123' };
   for (const touchpoint of ['D0-C1', 'D0-C2', 'D2-C3'] as const) {
     for (const variant of ['A', 'B', 'C'] as const) {
       const line = callOpener(touchpoint, variant, ctx);
@@ -94,8 +100,30 @@ test('a reply stops later outbound touches and D0-TS follows a captured number',
     const priorCapture = deal.events.some((event) => event.touchpoint === 'D0-C1' && event.callOutcome === 'number_captured' && event.sentAt <= text.sentAt);
     assert.equal(priorCapture, true, deal.id);
   }
-  const firstTexts = deals.flatMap((deal) => deal.events.filter((event) => event.direction === 'outbound' && (event.touchpoint === 'D0-T1' || event.touchpoint === 'D0-TS') && event.status === 'delivered'));
-  assert.equal(firstTexts.every((event) => event.body.includes('Reply STOP to opt out')), true);
+  assert.equal(deals.some((deal) => deal.events.some((event) => event.touchpoint === 'D0-TS')), false);
+});
+
+test('day-0 email asks if it is available and names the stock number and VIN', () => {
+  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123', vin: '2T3P1RFV8RW000123' };
+  const ask = day0AvailabilityAsk(ctx);
+  assert.equal(ask, 'Is the 2024 Toyota RAV4 Hybrid XLE, stock #A1234, VIN 2T3P1RFV8RW000123, still available?');
+  for (const variant of ['A', 'B', 'C'] as const) {
+    const email = emailCopy('D0-E1', variant, ctx);
+    assert.ok(email);
+    assert.equal(email.body.includes(ask), true, email.body);
+    assert.equal(email.body.includes('A1234'), true);
+    assert.equal(email.body.includes('2T3P1RFV8RW000123'), true);
+    assert.equal(/\$34,990|out-the-door/i.test(email.body), false, email.body);
+  }
+});
+
+test('day-5 email A mentions a text only after one was sent', () => {
+  const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123', vin: '2T3P1RFV8RW000123' };
+  const quiet = emailCopy('D5-E4', 'A', ctx);
+  const texted = emailCopy('D5-E4', 'A', { ...ctx, textSent: true });
+  assert.equal(quiet?.body.includes('email and phone'), true);
+  assert.equal(/\btext\b/i.test(quiet?.body ?? ''), false);
+  assert.equal(texted?.body.includes('email, text, and phone'), true);
 });
 
 test('outreach report rates stay in range and surface a guardrail', () => {

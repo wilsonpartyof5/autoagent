@@ -594,6 +594,48 @@ test('no reply for five days returns the slot and a reply keeps the deal open', 
   assert.equal(replyRecord?.endState, 'open');
 });
 
+test('five days without a reply tells the shopper the car is back', async () => {
+  const started = '2026-10-01T16:00:00.000Z';
+  const box = harness(started);
+  const pushes: ShopperPush[] = [];
+  box.deps.notify = async (push) => {
+    pushes.push(push);
+  };
+  const quiet = await addCar(box, 'mc-quiet-02');
+  await applyAgentEvent({
+    type: 'outreach',
+    dealId: quiet.deal.id,
+    consumerUserId: 'shopper-1',
+    channel: 'email',
+    sentAt: started,
+  }, box.deps);
+  box.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
+  const first = await runLifecycleSchedule(box.deps);
+  const second = await runLifecycleSchedule(box.deps);
+  assert.equal(first.endedNoResponse, 1);
+  assert.equal(second.endedNoResponse, 0);
+  assert.deepEqual(pushes.map((push) => push.event), ['no_response']);
+  assert.match(pushes[0]?.title ?? '', /Your Tahoe is back/);
+  assert.match(pushes[0]?.body ?? '', /Your dealer didn't respond, so your Tahoe is back/);
+  assert.equal(/negotiat/i.test(`${pushes[0]?.title} ${pushes[0]?.body}`), false);
+
+  const ended = harness(started);
+  const explicit: ShopperPush[] = [];
+  ended.deps.notify = async (push) => {
+    explicit.push(push);
+  };
+  const other = await addCar(ended, 'mc-quiet-03');
+  await applyAgentEvent({
+    type: 'end',
+    dealId: other.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'ended_no_response',
+    sentAt: started,
+  }, ended.deps);
+  assert.equal(explicit[0]?.event, 'no_response');
+  assert.match(explicit[0]?.body ?? '', /Your dealer didn't respond/);
+});
+
 test('the shopper answer stores bought and final price for the admin console', async () => {
   const box = harness();
   const created = await addCar(box, 'mc-listing-1');

@@ -12,11 +12,17 @@ import {
   getShopperDeal,
   listShopperDeals,
   readCreateDealInput,
+  shopperDealStatusLabel,
   toShopperDeal,
   type ShopperDealRepository,
   type ShopperDealRow,
 } from './deals';
 import { rejectSharedInventoryCredential } from './session';
+
+test('the stored negotiating status displays as finding your best price', () => {
+  assert.equal(shopperDealStatusLabel('negotiating'), 'Finding your best price');
+  assert.equal(/negotiat/i.test(shopperDealStatusLabel('negotiating')), false);
+});
 
 const DEALER_NAME = 'Rick Hendrick Chevrolet';
 const PHONE = '803-555-0199';

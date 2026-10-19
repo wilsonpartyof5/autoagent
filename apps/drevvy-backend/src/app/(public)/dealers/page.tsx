@@ -152,8 +152,8 @@ export default function DealersPage() {
                   away in the finance office.
                 </li>
                 <li>
-                  <strong>Reduced back-and-forth:</strong> Providing a clear quote means less time spent on
-                  price negotiation.
+                  <strong>Reduced back-and-forth:</strong> Providing a clear quote means less
+                  back-and-forth on price.
                 </li>
                 <li>
                   <strong>Your pricing:</strong> We share what you tell us. You control the numbers.

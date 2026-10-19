@@ -15,6 +15,7 @@ const pageUrl = 'https://www.example-motors.test/inventory/civic';
 const shopperPhone = '212-555-0198';
 const shopperEmail = 'shopper@example.com';
 const message = leadMessage({
+  shopperFirst: 'Maya',
   stockNumber: 'H24118',
   phone: '803-555-0148',
   email: 'deals@drevvy.test',
@@ -128,7 +129,7 @@ describe('lead forms', () => {
     await runLeadForm({ vehiclePageUrl: pageUrl, page, config: live, store: new MemoryAttemptStore() });
     assert.equal(
       filled(page).message,
-      "Is this unit still available? What's the price on it? Please text or email us at 803-555-0148 / deals@drevvy.test.",
+      'Hi, this is Drevvy, working for Maya. Is this vehicle still available?',
     );
   });
 
@@ -384,7 +385,7 @@ describe('lead forms', () => {
           return JSON.stringify({ status: 'unknown', price: null, next_message: 'none' });
         },
       },
-      config: { ...live, maxTurns: 6 },
+      config: { ...live, maxTurns: 6, listedPrice: 24995 },
       store,
     });
     assert.equal(chat.status, 'price_given');

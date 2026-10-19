@@ -160,7 +160,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Breakdown({ otd }: { otd: { listedPrice: number; negotiatedPrice: number | null; docFee: number; tax: number; title: number; registration: number; otd: number | null } }) {
   const rows = [
     ['Listed price', usd(otd.listedPrice)],
-    ['Negotiated price', usd(otd.negotiatedPrice)],
+    ['Final price', usd(otd.negotiatedPrice)],
     ['Doc fee', usd(otd.docFee)],
     ['Est. tax', otd.negotiatedPrice == null ? '—' : usd(otd.tax)],
     ['Title', usd(otd.title)],

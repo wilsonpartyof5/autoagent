@@ -5,10 +5,13 @@ import { describe, it } from 'node:test';
 
 import { dealerAskedForShopperContact, dealerAskedIfBot, sharesDisallowedContact } from '../src/widgets/guards';
 import { isExactScriptMessage, renderScript } from '../src/widgets/script';
+import { availabilityQuestion, listedPriceQuestion } from '../src/widgets/questions';
 import { resolveNextMessage } from '../src/chat/resolve';
 
 const script = renderScript({
   stockNumber: 'H24118',
+  vehicle: '2024 Honda Civic EX',
+  listedPrice: 24995,
   drevvyTextNumber: '803-555-0148',
   drevvyEmail: 'deals@drevvy.test',
   shopperFirst: 'Maya',
@@ -16,9 +19,10 @@ const script = renderScript({
 
 describe('chat script', () => {
   it('uses the fixed lines', () => {
-    assert.equal(script.availability, 'Hi, this is Drevvy, working for Maya. Is this unit still available? Stock #H24118');
+    assert.equal(script.availability, 'Hi, this is Drevvy, working for Maya. Is the 2024 Honda Civic EX, stock #H24118, still available?');
     assert.equal(/i'm an ai|i'm drevvy's ai/i.test(script.availability), false);
-    assert.equal(script.listing_price, 'What is the listing price?');
+    assert.equal(/\$|price/i.test(script.availability), false);
+    assert.equal(script.listing_price, 'Is it still listed at $24,995?');
     assert.equal(
       script.continue_offline,
       "Thanks. I'd like to continue over text and email, please reach us at 803-555-0148 or deals@drevvy.test.",
@@ -26,6 +30,25 @@ describe('chat script', () => {
     assert.equal(script.bot_disclosure, "I'm Drevvy's AI, working for Maya.");
     assert.equal(isExactScriptMessage(script.availability, script), true);
     assert.equal(isExactScriptMessage('Hi, this is Maya.', script), false);
+  });
+
+  it('uses the last 8 of the VIN when the stock number is missing', () => {
+    assert.equal(
+      availabilityQuestion({ vehicle: '2024 Honda Civic EX', vin: '1HGCV1F16NA000123' }),
+      'Is the 2024 Honda Civic EX, VIN NA000123, still available?',
+    );
+    const vinOnly = renderScript({
+      stockNumber: null,
+      vin: '1HGCV1F16NA000123',
+      listedPrice: 24995,
+      daysOnMarket: 70,
+      drevvyTextNumber: '803-555-0148',
+      drevvyEmail: 'deals@drevvy.test',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(vinOnly.availability, 'Hi, this is Drevvy, working for Maya. Is this vehicle, VIN NA000123, still available?');
+    assert.equal(vinOnly.listing_price, 'We see $24,995 listed. Is that still current?');
+    assert.equal(listedPriceQuestion({ listedPrice: 24995, priceChangedRecently: true }), 'We see $24,995 listed. Is that still current?');
   });
 
   it('asks the price after an available reply even if the model picks the handoff', () => {

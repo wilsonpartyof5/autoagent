@@ -1,6 +1,6 @@
-export const PUSH_EVENTS = ['price_drop', 'offer_ready', 'car_sold', 'official_offer', 'did_you_buy'] as const;
+import { PUSH_EVENTS, shopperPushCopy, type PushCopy, type PushEventName } from './copy';
 
-export type PushEventName = (typeof PUSH_EVENTS)[number];
+export { PUSH_EVENTS, shopperPushCopy, type PushCopy, type PushEventName };
 
 export type ShopperPush = {
   event: PushEventName;
@@ -11,36 +11,8 @@ export type ShopperPush = {
   body?: string;
 };
 
-export type PushCopy = {
-  title: string;
-  body: string;
-};
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LISTING_ID = /^[A-Za-z0-9_-]{4,64}$/;
-
-const COPY: Record<PushEventName, PushCopy> = {
-  price_drop: {
-    title: 'Price dropped',
-    body: 'The listed price changed. Open the car for transparency on the new number.',
-  },
-  offer_ready: {
-    title: 'Offer ready',
-    body: 'A new offer is ready. Open it for transparency on the price.',
-  },
-  car_sold: {
-    title: 'No longer listed',
-    body: 'This car is no longer listed, likely sold. You got that car back, so add another and keep the same transparency on the next one.',
-  },
-  official_offer: {
-    title: 'Official offer',
-    body: 'Your official offer is in. Open it for transparency on the price.',
-  },
-  did_you_buy: {
-    title: 'Did you buy it?',
-    body: 'The day after pickup is here. Tell Drevvy whether you bought this car, and the final price if you did. That is the transparency Drevvy keeps.',
-  },
-};
 
 export class PushError extends Error {
   constructor(
@@ -54,7 +26,7 @@ export class PushError extends Error {
 }
 
 export function pushCopy(event: PushEventName): PushCopy {
-  return COPY[event];
+  return shopperPushCopy({ event, car: 'car', hidePrices: true });
 }
 
 export function isPushEvent(value: unknown): value is PushEventName {
@@ -108,7 +80,7 @@ function optionalRefs(record: Record<string, unknown>): { listingId?: string; de
 
 function eventName(value: unknown): PushEventName {
   if (!isPushEvent(value)) {
-    throw new PushError('Event must be price_drop, offer_ready, car_sold, official_offer, or did_you_buy.', 400, 'invalid_event');
+    throw new PushError('Event must be price_drop, offer_ready, car_sold, official_offer, did_you_buy, or no_response.', 400, 'invalid_event');
   }
   return value;
 }

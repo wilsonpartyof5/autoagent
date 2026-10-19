@@ -21,6 +21,7 @@ import { buildModelUserContent } from './model-input';
 import { logModelAnswer, requestDealProposal } from './model-request';
 import type { DealProposal } from './proposal';
 import { computeOtd, emptyQuote, type ExtractedQuote, type OtdComputation } from './quote';
+import { SCOUR_PROMPT_RULES } from './scour';
 import { insertBrainRun, updateBrainRun, getApprovedLessons } from './repository';
 import { routeDealerMessage } from './routing';
 import {
@@ -49,6 +50,11 @@ export type ReplyDecisionInput = {
     hasTextedBefore: boolean;
     isItemized: boolean;
     mandate?: ShopperMandate | null;
+    registrationState?: string | null;
+    registrationZip?: string | null;
+    vin?: string | null;
+    priceAgreed?: boolean;
+    writtenQuoteRequested?: boolean;
   };
 };
 
@@ -83,6 +89,7 @@ RULES (enforced by code, not suggestions):
 - Maximum 2 pushback rounds per deal.
 - If the dealer asks the buyer to come in, call, or share contact info, the reply is "Price first, then we're happy to set that up."
 - If the dealer opts out, propose wait and leave the draft null.
+${SCOUR_PROMPT_RULES}
 
 Propose exactly one action:
 - ask_for_itemization: a price is missing its breakdown
@@ -130,6 +137,12 @@ export async function runReplyDecision(
       isItemized: input.dealContext.isItemized,
       dealerMessage: input.dealerMessage,
       shopperFirst: input.dealContext.shopperFirst,
+      channel: input.channel,
+      registrationState: input.dealContext.registrationState,
+      registrationZip: input.dealContext.registrationZip,
+      vin: input.dealContext.vin,
+      priceAgreed: input.dealContext.priceAgreed,
+      writtenQuoteRequested: input.dealContext.writtenQuoteRequested,
     });
 
     const proposed = await loadProposal(supabase, openai, input, playbookDecision, runId);
@@ -216,12 +229,15 @@ async function loadProposal(
   usedFallback: boolean;
   usage: { inputTokens: number; outputTokens: number; cachedTokens: number };
 }> {
-  if (playbook.action === 'honest_ai_disclosure') {
+  const ruledDraft = playbook.action === 'honest_ai_disclosure'
+    ? getAiDisclosure(input.dealContext.shopperFirst)
+    : ('draft' in playbook ? playbook.draft : null);
+  if (ruledDraft) {
     logModelAnswer({ model: 'rules', role: 'rules', usedFallback: false, lane: 'rules', runId });
     return {
       proposal: {
         proposed_action: 'send_reply',
-        draft: getAiDisclosure(input.dealContext.shopperFirst),
+        draft: ruledDraft,
         reasoning: playbook.reason,
         quote: emptyQuote(),
       },

@@ -91,6 +91,10 @@ export function validateProposal(input: {
     action = 'ask_for_itemization';
     draft = safeDraft(draft, ITEMIZATION_DRAFT);
     reasons.push(input.playbook.reason);
+  } else if ('draft' in input.playbook && input.playbook.draft) {
+    action = 'send_reply';
+    draft = applyFirstName(input.playbook.draft, input.shopperFirst);
+    reasons.push(input.playbook.reason);
   } else {
     const adjusted = actionForQuote(action, input.otd);
     if (adjusted !== action) {

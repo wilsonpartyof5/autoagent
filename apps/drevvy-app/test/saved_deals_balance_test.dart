@@ -213,12 +213,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Accept this offer?'), findsOneWidget);
-      await tester.tap(find.text('Not yet'));
+      expect(find.text('Accept \$23,100 out the door?'), findsOneWidget);
+      expect(
+        find.text('Drevvy will tell Dealer A and request the official written offer.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Drevvy never accepts for you'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
       await tester.pump();
       expect(accepted, isFalse);
 
-      await tester.tap(find.text('Accept'));
+      await tester.tap(find.text('Confirm'));
       await tester.pump();
       expect(accepted, isTrue);
       await _maybeCapture(tester, 'deal-accept-confirm');

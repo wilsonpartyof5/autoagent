@@ -1,3 +1,4 @@
+import { shopperPushCopy } from './copy';
 import type { ShopperPush } from './events';
 
 /**
@@ -60,6 +61,10 @@ export type PushTrigger =
   | (PushBase & {
     kind: 'did_you_buy';
     source: 'geofence_exit' | 'pickup_fallback';
+  })
+  | (PushBase & {
+    kind: 'no_response';
+    dealerAlias?: string | null;
   });
 
 export type PlannedShopperPush = ShopperPush & {
@@ -135,64 +140,46 @@ function copyFor(
     const previous = dollars(trigger.previousPrice);
     const next = dollars(trigger.price);
     if (previous == null || next == null || next >= previous) return null;
-    const alias = dealerAlias(trigger.dealerAlias);
-    const car = `your ${label}`;
-    if (prefs.hidePrices) {
-      return {
-        title: alias ? `${alias} dropped the price on ${car}` : `The price dropped on ${car}`,
-        body: 'Tap to see the new price.',
-      };
-    }
-    const drop = previous - next;
-    return {
-      title: alias ? `${alias} dropped ${usd(drop)} on ${car}` : `The price dropped ${usd(drop)} on ${car}`,
-      body: `Vehicle price now ${usd(next)}. Tap to review.`,
-    };
+    return shopperPushCopy({
+      event: 'price_drop',
+      car: label,
+      hidePrices: prefs.hidePrices,
+      drop: previous - next,
+      price: next,
+      dealerAlias: dealerAlias(trigger.dealerAlias),
+    });
   }
 
   if (trigger.kind === 'offer_ready') {
     if (!prefs.offers) return null;
     const otd = trigger.otd == null ? null : dollars(trigger.otd);
-    if (prefs.hidePrices || otd == null) {
-      return {
-        title: 'Offer ready',
-        body: `A new offer is ready on your ${label}. Tap to review.`,
-      };
-    }
-    return {
-      title: 'Offer ready',
-      body: `A new offer is ready on your ${label}. ${usd(otd)} out the door.`,
-    };
+    return shopperPushCopy({
+      event: 'offer_ready',
+      car: label,
+      hidePrices: prefs.hidePrices || otd == null,
+      otd,
+    });
   }
 
   if (trigger.kind === 'car_sold') {
-    return {
-      title: `Your ${label} is no longer listed`,
-      body: "It's likely sold. You got your car back, so add another and keep going.",
-    };
+    return shopperPushCopy({ event: 'car_sold', car: label });
   }
 
   if (trigger.kind === 'official_offer') {
     const name = trigger.offerForwarded ? revealableDealerName(trigger.identity?.dealerName) : null;
-    if (name) {
-      return {
-        title: 'Official offer',
-        body: `Official offer from ${name} is in your inbox.`,
-      };
-    }
-    return {
-      title: 'Official offer',
-      body: 'Your official offer is in. Open it for the price.',
-    };
+    return shopperPushCopy({ event: 'official_offer', car: label, dealerName: name });
+  }
+
+  if (trigger.kind === 'no_response') {
+    return shopperPushCopy({
+      event: 'no_response',
+      car: label,
+      dealerAlias: dealerAlias(trigger.dealerAlias),
+    });
   }
 
   if (trigger.source !== 'pickup_fallback') return null;
-  return {
-    title: 'Did you buy it?',
-    body: label === 'car'
-      ? 'Tell Drevvy whether you bought this car.'
-      : `Did you buy the ${label}? Tell Drevvy how it went.`,
-  };
+  return shopperPushCopy({ event: 'did_you_buy', car: label });
 }
 
 function vehicleLabel(model: string | null | undefined, withheld: string[]): string {
@@ -249,10 +236,6 @@ function dollars(value: number): number | null {
   const rounded = Math.round(value);
   if (rounded < 0 || rounded > 10_000_000) return null;
   return rounded;
-}
-
-function usd(amount: number): string {
-  return `$${amount.toLocaleString('en-US')}`;
 }
 
 function collapse(value: string): string {

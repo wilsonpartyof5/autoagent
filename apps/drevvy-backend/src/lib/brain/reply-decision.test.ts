@@ -28,6 +28,11 @@ test('reply prompt opens short and saves the AI sentence for a direct question',
   assert.match(REPLY_DECISION_PROMPT, /Never use the word "negotiate"/);
   assert.match(REPLY_DECISION_PROMPT, /Never share shopper contact info/);
   assert.match(REPLY_DECISION_PROMPT, /Do not compute an out-the-door total/);
+  assert.match(REPLY_DECISION_PROMPT, /isn't collecting quotes to forward/);
+  assert.match(REPLY_DECISION_PROMPT, /written quote tied to the VIN/);
+  assert.match(REPLY_DECISION_PROMPT, /dealer-stated/);
+  assert.match(REPLY_DECISION_PROMPT, /Never accept, agree, or sign for the shopper/);
+  assert.match(REPLY_DECISION_PROMPT, /Text only after a dealer salesperson texts us first/);
   assert.equal(/Always identify yourself honestly/.test(REPLY_DECISION_PROMPT), false);
   assert.doesNotMatch(ITEMIZATION_AND_FEE_COPY, /\bnegotiat/i);
 });
@@ -250,6 +255,22 @@ test('unknown fair OTD still extracts the quote, then escalates', async () => {
   assert.equal(result.quote.vehicle_price?.amount, 28000);
   assert.equal(result.otd.computedOtd, 28000);
   assert.equal(result.sideEffect, null);
+});
+
+test('a deposit demand uses the playbook draft and does not call the model', async () => {
+  const db = mockSupabase();
+  const { client, calls } = mockOpenAI(async () => responseWith(proposalText('send_reply', 'I accept the offer.')));
+  const result = await runReplyDecision(db.client, client, input(
+    'Send a deposit before I give you numbers.',
+    { registrationState: 'SC', registrationZip: '29401', vin: '1HGCV1F16NA000123' },
+  ));
+  assert.equal(calls.length, 0);
+  assert.equal(result.model, 'rules');
+  assert.equal(result.decision, 'respond');
+  assert.match(result.draft ?? '', /Maya isn't collecting quotes to forward/);
+  assert.match(result.draft ?? '', /SC, ZIP 29401/);
+  assert.equal(result.sideEffect, null);
+  assert.equal(result.shadowMode, true);
 });
 
 test('the saved cost uses the model that answered', async () => {

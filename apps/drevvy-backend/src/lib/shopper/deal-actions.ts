@@ -326,16 +326,26 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
       await refundCredit(supabase, next.consumerUserId, next.dealId, next.endState as 'sold' | 'ended_no_response' | 'dealer_declined');
     }
   }
-  if (soldNow) {
+  const quietNow = event.type === 'end' && event.endState === 'ended_no_response' && previousState === 'open';
+  if (soldNow || quietNow) {
     const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
-    await emitPlanned(deps, {
-      kind: 'car_sold',
-      userId: next.consumerUserId,
-      dealId: next.dealId,
-      listingId: next.listingId,
-      vehicle: { model },
-      identity: { dealerName: null },
-    });
+    await emitPlanned(deps, soldNow
+      ? {
+        kind: 'car_sold',
+        userId: next.consumerUserId,
+        dealId: next.dealId,
+        listingId: next.listingId,
+        vehicle: { model },
+        identity: { dealerName: null },
+      }
+      : {
+        kind: 'no_response',
+        userId: next.consumerUserId,
+        dealId: next.dealId,
+        listingId: next.listingId,
+        vehicle: { model },
+        identity: { dealerName: null },
+      });
   }
   return next;
 }
@@ -378,6 +388,18 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
         if (refundResult.refunded) {
           creditsRefunded += 1;
         }
+      }
+
+      if (previous.endState === 'open' && next.endState === 'ended_no_response') {
+        const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
+        await emitPlanned(deps, {
+          kind: 'no_response',
+          userId: next.consumerUserId,
+          dealId: next.dealId,
+          listingId: next.listingId,
+          vehicle: { model },
+          identity: { dealerName: null },
+        });
       }
     }
   }

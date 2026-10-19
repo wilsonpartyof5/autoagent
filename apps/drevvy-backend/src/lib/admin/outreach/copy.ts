@@ -1,4 +1,4 @@
-import { AGENT_OPENER_TEMPLATE } from '../../agent-voice';
+import { AGENT_OPENER_TEMPLATE, CALL_OPENER } from '../../agent-voice';
 import { DREVVY_NUMBER, type CallOutcome, type TouchpointId, type Variant } from './types';
 
 const OPENER = AGENT_OPENER_TEMPLATE;
@@ -10,10 +10,26 @@ export type CopyContext = {
   stock: string;
   price: string;
   number: string;
+  vin?: string;
+  /** True only when a text was actually sent before this message. */
+  textSent?: boolean;
 };
 
+/** Day-0 email names the stock number and the VIN, and asks only if it is still available. */
+export function day0AvailabilityAsk(ctx: Pick<CopyContext, 'vehicle' | 'stock' | 'vin'>): string {
+  const stock = ctx.stock.trim().replace(/^#/, '');
+  const vin = ctx.vin?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') ?? '';
+  const bits = [stock ? `stock #${stock}` : '', vin ? `VIN ${vin}` : ''].filter(Boolean);
+  const vehicle = ctx.vehicle.trim();
+  if (bits.length === 0) return `Is the ${vehicle} still available?`;
+  return `Is the ${vehicle}, ${bits.join(', ')}, still available?`;
+}
+
 export function fill(template: string, ctx: CopyContext): string {
+  const channels = ctx.textSent ? 'email, text, and phone' : 'email and phone';
   return template
+    .replace(/\{ask\}/g, day0AvailabilityAsk(ctx))
+    .replace(/\{channels\}/g, channels)
     .replace(/\{first\}/g, ctx.first)
     .replace(/\{vehicle_short\}/g, ctx.vehicleShort)
     .replace(/\{vehicle\}/g, ctx.vehicle)
@@ -25,16 +41,16 @@ export function fill(template: string, ctx: CopyContext): string {
 const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; body: string }>>> = {
   'D0-E1': {
     A: {
-      subject: 'Real buyer: {vehicle}, stock #{stock}',
-      body: `${OPENER} They're interested in your {vehicle} (stock #{stock}) listed at {price}.\n\nCould you send your out-the-door price with taxes and fees itemized? Text is easiest: {number}. Replying to this email works too.\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available? {vehicle}, stock #{stock}',
+      body: `${OPENER} {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
     },
     B: {
-      subject: 'Out-the-door price on your {price} {vehicle_short}? (#{stock})',
-      body: `${OPENER} Quick question on the {vehicle} (stock #{stock}, listed at {price}).\n\nWhat's the out-the-door price with taxes and fees itemized? Text {number}, or reply here.\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Is the {vehicle_short} (#{stock}) still available?',
+      body: `${OPENER} Quick question. {ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
     },
     C: {
-      subject: 'Real buyer: {vehicle}, stock #{stock}',
-      body: `${OPENER}\n\nWhat's your out-the-door price on the {vehicle} (#{stock}, listed at {price}), with taxes and fees itemized? Text {number} or reply here.\n\nThanks!\nDrevvy, on behalf of {first}`,
+      subject: 'Still available: {vehicle}, stock #{stock}',
+      body: `${OPENER}\n\n{ask}\n\nThanks!\nDrevvy, on behalf of {first}`,
     },
   },
   'D1-E2': {
@@ -68,7 +84,7 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
   'D5-E4': {
     A: {
       subject: 'Re: {vehicle}, stock #{stock}',
-      body: `${OPENER} We've reached out by email, text, and phone about the {vehicle} (#{stock}) and don't have an out-the-door price, so we're closing this request today. If you'd still like to earn their business, reply with an itemized out-the-door price and we'll pass it to {first}.\n\nDrevvy, on behalf of {first}`,
+      body: `${OPENER} We've reached out by {channels} about the {vehicle} (#{stock}) and don't have an out-the-door price, so we're closing this request today. If you'd still like to earn their business, reply with an itemized out-the-door price and we'll pass it to {first}.\n\nDrevvy, on behalf of {first}`,
     },
     B: {
       subject: 'Re: {vehicle}, stock #{stock}',
@@ -81,12 +97,11 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
   },
 };
 
+/**
+ * Texts are replies, sent only after a salesperson texts us.
+ * There is no cold Day-0 text to the dealer's main line.
+ */
 const SMS: Partial<Record<TouchpointId, Record<Variant, string>>> = {
-  'D0-T1': {
-    A: `${OPENER} Just emailed and called about the {vehicle_short} (#{stock}). Out-the-door price, itemized? Reply STOP to opt out`,
-    B: `${OPENER} Out-the-door price on the {vehicle_short} #{stock}, taxes and fees itemized? Reply STOP to opt out`,
-    C: `${OPENER} {first} is choosing on clear pricing for the {vehicle_short} (#{stock}). Your out-the-door price? Reply STOP to opt out`,
-  },
   'D0-TS': {
     A: `${OPENER} Your store gave us this number for the {vehicle_short} (#{stock}). Out-the-door price, itemized? Reply STOP to opt out`,
     B: `${OPENER} Your team said to text about the {vehicle_short} #{stock}. What's the out-the-door price? Reply STOP to opt out`,
@@ -124,28 +139,28 @@ export function smsCopy(touchpoint: TouchpointId, variant: Variant, ctx: CopyCon
 export function callOpener(touchpoint: 'D0-C1' | 'D0-C2' | 'D2-C3', variant: Variant, ctx: CopyContext): string {
   if (touchpoint === 'D0-C1') {
     if (variant === 'B') {
-      return fill(`${OPENER} Who should we text about your {vehicle}, stock {stock}?`, ctx);
+      return fill(`${CALL_OPENER} Who should we text about your {vehicle}, stock {stock}?`, ctx);
     }
     if (variant === 'C') {
-      return fill(`${OPENER} We'd like to text a salesperson about your {vehicle}, stock {stock}. What's the best number?`, ctx);
+      return fill(`${CALL_OPENER} We'd like to text a salesperson about your {vehicle}, stock {stock}. What's the best number?`, ctx);
     }
-    return fill(`${OPENER} What's the best number to text a salesperson about your {vehicle}, stock {stock}?`, ctx);
+    return fill(`${CALL_OPENER} What's the best number to text a salesperson about your {vehicle}, stock {stock}?`, ctx);
   }
   if (touchpoint === 'D0-C2') {
     if (variant === 'C') {
-      return fill(`${OPENER} Calling again about your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
+      return fill(`${CALL_OPENER} Calling again about your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
     }
-    return fill(`${OPENER} We emailed and called earlier about your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
+    return fill(`${CALL_OPENER} We emailed and called earlier about your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
   }
   if (variant === 'C') {
-    return fill(`${OPENER} Still on your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
+    return fill(`${CALL_OPENER} Still on your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
   }
-  return fill(`${OPENER} They're still interested in your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
+  return fill(`${CALL_OPENER} They're still interested in your {vehicle}, stock {stock}. What's the best number to text a salesperson?`, ctx);
 }
 
 export function voicemailScript(ctx: CopyContext): string {
   return fill(
-    `${OPENER} They're interested in your {vehicle}, stock {stock}. Please text the out-the-door price to {number}. Again, {number}. Thanks!`,
+    `${CALL_OPENER} They're interested in your {vehicle}, stock {stock}. Please text the out-the-door price to {number}. Again, {number}. Thanks!`,
     ctx,
   );
 }
