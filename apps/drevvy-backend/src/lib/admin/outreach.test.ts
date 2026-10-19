@@ -21,6 +21,39 @@ test('cadence uses the spec touchpoint ids', () => {
   for (const id of TOUCHPOINT_IDS) assert.equal(seen.has(id), true, id);
 });
 
+test('the first dealer message asks only if that vehicle is still available', () => {
+  const ctx = {
+    first: 'Maya',
+    vehicle: '2024 Toyota RAV4 Hybrid XLE',
+    vehicleShort: 'RAV4 Hybrid',
+    stock: 'A1234',
+    price: '$34,990',
+    number: '843-555-0123',
+    vin: '1HGBH41JXMN109186',
+  };
+  const ask = 'Is the 2024 Toyota RAV4 Hybrid XLE, stock #A1234, VIN 1HGBH41JXMN109186, still available?';
+  for (const variant of ['A', 'B', 'C'] as const) {
+    const email = emailCopy('D0-E1', variant, ctx);
+    assert.ok(email);
+    assert.equal(email.body.includes(ask), true, email.body);
+    assert.equal(email.body.includes('$'), false, email.body);
+    assert.equal(/out-the-door/i.test(email.body), false, email.body);
+    const sms = smsCopy('D0-T1', variant, ctx);
+    const salesperson = smsCopy('D0-TS', variant, ctx);
+    assert.equal(sms?.includes(ask), true, sms ?? '');
+    assert.equal(salesperson?.includes(ask), true, salesperson ?? '');
+    assert.equal(sms?.includes('$'), false);
+    assert.equal(/out-the-door/i.test(sms ?? ''), false);
+    const call = callOpener('D0-C1', variant, ctx);
+    assert.equal(call.includes(ask), true, call);
+    assert.equal(call.includes('$'), false, call);
+    assert.equal(call.includes('this call is recorded'), true);
+  }
+  const vm = voicemailScript(ctx);
+  assert.equal(vm.includes(ask), true, vm);
+  assert.equal(vm.includes('$'), false, vm);
+});
+
 test('openings are a short hello and do not lead with being an AI', () => {
   const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123' };
   const opener = 'Hi, this is Drevvy, working for Maya.';

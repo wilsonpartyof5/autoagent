@@ -82,6 +82,19 @@ export {
 export { runReplyDecision, type ReplyDecisionInput, type ReplyDecisionResult } from './reply-decision';
 
 export {
+  advanceDealerOpening,
+  commitListedPriceMessage,
+  openingAvailabilityLine,
+  openingEnablesFindSimilar,
+  openingPriceLine,
+  parseOpeningReply,
+  persistOpeningTurn,
+  startDealerOpening,
+  type OpeningTurn,
+  type OpeningVehicle,
+} from './opener';
+
+export {
   recordEmailOptout,
   isEmailOptedOut,
   getEmailOptout,

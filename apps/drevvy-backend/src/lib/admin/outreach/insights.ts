@@ -105,7 +105,7 @@ function sampleInsight(range: OutreachRange, realDeals: OutreachDeal[] | null = 
       {
         touchpoint: 'D0-C1',
         hypothesis: 'Leading with the buyer\'s first name and the number ask in the first sentence raises number capture.',
-        sketch: 'Hi, this is Drevvy, working for {first}. What\'s the best number to text a salesperson about stock {stock}?',
+        sketch: 'Hi, this is Drevvy, working for {first}. Is the {vehicle}, stock {stock}, still available?',
       },
     ],
   };
