@@ -1,6 +1,8 @@
 /**
  * Brain LLM tools for function calling.
- * All tools are read-only except write_lesson and propose_action.
+ * Definitions are strict JSON schemas for the Responses API. Chat Completions
+ * tools are derived from the same specs for callers that still need that shape.
+ * All tools are read-only except write_lesson.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -21,97 +23,119 @@ export type BrainToolCall = {
   result: unknown;
 };
 
-export const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'get_failed_events',
-      description: 'Get recent failed webhook events from brain_vendor_events',
-      parameters: {
-        type: 'object',
-        properties: {
-          vendor: { type: 'string', enum: ['telnyx', 'elevenlabs'], description: 'Filter by vendor' },
-          since: { type: 'string', description: 'ISO timestamp to filter events after' },
-          channel: { type: 'string', enum: ['call', 'sms', 'email', 'voicemail'], description: 'Filter by channel' },
-          limit: { type: 'number', description: 'Max events to return (default 100)' },
-        },
+type ToolSpec = {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+const nullableString = { type: ['string', 'null'] };
+const nullableNumber = { type: ['number', 'null'] };
+
+function strictObject(
+  properties: Record<string, unknown>,
+  required: string[],
+): Record<string, unknown> {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties,
+    required,
+  };
+}
+
+const scopeSchema = {
+  anyOf: [
+    { type: 'null' },
+    strictObject(
+      {
+        brand: nullableString,
+        region: nullableString,
+        dealer_type: nullableString,
+        touchpoint: nullableString,
       },
-    },
+      ['brand', 'region', 'dealer_type', 'touchpoint'],
+    ),
+  ],
+};
+
+const TOOL_SPECS: ToolSpec[] = [
+  {
+    name: 'get_failed_events',
+    description: 'Get recent failed webhook events from brain_vendor_events',
+    parameters: strictObject(
+      {
+        vendor: { type: ['string', 'null'], enum: ['telnyx', 'elevenlabs', null] },
+        since: nullableString,
+        channel: { type: ['string', 'null'], enum: ['call', 'sms', 'email', 'voicemail', null] },
+        limit: nullableNumber,
+      },
+      ['vendor', 'since', 'channel', 'limit'],
+    ),
   },
   {
-    type: 'function',
-    function: {
-      name: 'read_transcript',
-      description: 'Read a call transcript by deal_id or event_id',
-      parameters: {
-        type: 'object',
-        properties: {
-          deal_id: { type: 'string', description: 'Deal ID to look up transcript for' },
-          event_id: { type: 'string', description: 'Specific event ID to look up' },
-        },
+    name: 'read_transcript',
+    description: 'Read a call transcript by deal_id or event_id',
+    parameters: strictObject(
+      {
+        deal_id: nullableString,
+        event_id: nullableString,
       },
-    },
+      ['deal_id', 'event_id'],
+    ),
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_vendor_status',
-      description: 'Get current vendor status including open incidents',
-      parameters: {
-        type: 'object',
-        properties: {
-          vendor: { type: 'string', enum: ['telnyx', 'elevenlabs'], description: 'Specific vendor or omit for all' },
-        },
+    name: 'get_vendor_status',
+    description: 'Get current vendor status including open incidents',
+    parameters: strictObject(
+      {
+        vendor: { type: ['string', 'null'], enum: ['telnyx', 'elevenlabs', null] },
       },
-    },
+      ['vendor'],
+    ),
   },
   {
-    type: 'function',
-    function: {
-      name: 'read_lessons',
-      description: 'Read approved lessons from the brain, optionally filtered by scope',
-      parameters: {
-        type: 'object',
-        properties: {
-          scope: {
-            type: 'object',
-            properties: {
-              brand: { type: 'string' },
-              region: { type: 'string' },
-              dealer_type: { type: 'string' },
-              touchpoint: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
+    name: 'read_lessons',
+    description: 'Read approved lessons from the brain, optionally filtered by scope',
+    parameters: strictObject({ scope: scopeSchema }, ['scope']),
   },
   {
-    type: 'function',
-    function: {
-      name: 'write_lesson',
-      description: 'Propose a new lesson learned from analysis (status=proposed, requires human approval)',
-      parameters: {
-        type: 'object',
-        properties: {
-          lesson: { type: 'string', description: 'The lesson text' },
-          scope: {
-            type: 'object',
-            properties: {
-              brand: { type: 'string' },
-              region: { type: 'string' },
-              dealer_type: { type: 'string' },
-              touchpoint: { type: 'string' },
-            },
-          },
-          evidence: { type: 'object', description: 'Metric snapshot backing the lesson' },
-          confidence: { type: 'number', description: 'Confidence score 0-1' },
+    name: 'write_lesson',
+    description: 'Propose a new lesson learned from analysis (status=proposed, requires human approval)',
+    parameters: strictObject(
+      {
+        lesson: { type: 'string' },
+        scope: scopeSchema,
+        evidence: {
+          anyOf: [
+            { type: 'null' },
+            strictObject({ summary: { type: 'string' } }, ['summary']),
+          ],
         },
-        required: ['lesson'],
+        confidence: nullableNumber,
       },
-    },
+      ['lesson', 'scope', 'evidence', 'confidence'],
+    ),
   },
 ];
+
+export const RESPONSE_TOOLS: OpenAI.Responses.FunctionTool[] = TOOL_SPECS.map((spec) => ({
+  type: 'function',
+  name: spec.name,
+  description: spec.description,
+  parameters: spec.parameters,
+  strict: true,
+}));
+
+export const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = TOOL_SPECS.map((spec) => ({
+  type: 'function',
+  function: {
+    name: spec.name,
+    description: spec.description,
+    parameters: spec.parameters,
+    strict: true,
+  },
+}));
 
 export async function executeTool(
   supabase: SupabaseClient,
@@ -120,16 +144,18 @@ export async function executeTool(
 ): Promise<BrainToolCall> {
   const name = toolCall.function.name;
   const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+  const asString = (value: unknown) => (typeof value === 'string' && value.trim() ? value : undefined);
+  const asNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
 
   let result: unknown;
 
   switch (name) {
     case 'get_failed_events': {
       const events = await getRecentFailedEvents(supabase, {
-        vendor: args.vendor as string | undefined,
-        since: args.since as string | undefined,
-        channel: args.channel as string | undefined,
-        limit: args.limit as number | undefined,
+        vendor: asString(args.vendor),
+        since: asString(args.since),
+        channel: asString(args.channel),
+        limit: asNumber(args.limit),
       });
       result = events.map((e) => ({
         id: e.id,
@@ -146,15 +172,15 @@ export async function executeTool(
 
     case 'read_transcript': {
       const transcript = await getEventTranscript(supabase, {
-        dealId: args.deal_id as string | undefined,
-        eventId: args.event_id as string | undefined,
+        dealId: asString(args.deal_id),
+        eventId: asString(args.event_id),
       });
       result = transcript ?? { error: 'No transcript found' };
       break;
     }
 
     case 'get_vendor_status': {
-      const vendor = args.vendor as 'telnyx' | 'elevenlabs' | undefined;
+      const vendor = asString(args.vendor) as 'telnyx' | 'elevenlabs' | undefined;
       if (vendor) {
         const [status, incidents] = await Promise.all([
           fetchVendorStatus(vendor),
@@ -177,7 +203,9 @@ export async function executeTool(
     }
 
     case 'read_lessons': {
-      const scope = args.scope as { brand?: string; region?: string; dealer_type?: string; touchpoint?: string } | undefined;
+      const scope = args.scope && typeof args.scope === 'object'
+        ? args.scope as { brand?: string; region?: string; dealer_type?: string; touchpoint?: string }
+        : undefined;
       const lessons = await getApprovedLessons(supabase, scope);
       result = lessons.map((l) => ({
         id: l.id,
@@ -190,10 +218,10 @@ export async function executeTool(
 
     case 'write_lesson': {
       const insertResult = await insertBrainLesson(supabase, {
-        lesson: args.lesson as string,
-        scope: (args.scope as Record<string, unknown>) ?? {},
-        evidence: (args.evidence as Record<string, unknown>) ?? null,
-        confidence: args.confidence as number | null ?? null,
+        lesson: typeof args.lesson === 'string' ? args.lesson : '',
+        scope: args.scope && typeof args.scope === 'object' ? args.scope as Record<string, unknown> : {},
+        evidence: args.evidence && typeof args.evidence === 'object' ? args.evidence as Record<string, unknown> : null,
+        confidence: asNumber(args.confidence) ?? null,
         status: 'proposed',
         source_run_id: sourceRunId ?? null,
         approved_by: null,
