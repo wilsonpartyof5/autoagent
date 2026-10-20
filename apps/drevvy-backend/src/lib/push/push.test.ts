@@ -18,13 +18,19 @@ import { readFcmConfig, sendPush, type SendPushDeps } from './send';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const USER = '22222222-2222-4222-8222-222222222222';
 
-test('push copy says transparency and never negotiate', () => {
+test('push copy shares one wording and never says negotiate', () => {
   for (const event of PUSH_EVENTS) {
     const copy = pushCopy(event);
-    assert.equal(copy.body.toLowerCase().includes('transparency'), true, event);
+    assert.equal(copy.title.length > 0 && copy.body.length > 0, true, event);
     assert.equal(/negotiat/i.test(`${copy.title} ${copy.body}`), false, event);
+    assert.equal(copy.body.toLowerCase().includes('transparency'), false, event);
   }
   assert.equal(pushCopy('did_you_buy').title, 'Did you buy it?');
+  assert.equal(pushCopy('did_you_buy').body, 'Tell Drevvy whether you bought this car.');
+  assert.equal(pushCopy('price_drop').body, 'Tap to see the new price.');
+  assert.equal(pushCopy('offer_ready').body, 'A new offer is ready on your car. Tap to review.');
+  assert.equal(pushCopy('no_response').title, 'Your car is back');
+  assert.match(pushCopy('no_response').body, /Your dealer didn't respond, so your car is back/);
 });
 
 test('demo and cron events reject a custom message', () => {
@@ -108,7 +114,8 @@ test('delivery fans out to the shopper\'s devices and skips an empty list', asyn
     { tokens: async () => [], send: async () => ({ delivered: false, reason: 'unconfigured' }) },
   );
   assert.equal(empty.reason, 'no_devices');
-  assert.equal(empty.body.toLowerCase().includes('transparency'), true);
+  assert.match(empty.body, /add another and keep going/);
+  assert.equal(/negotiat/i.test(`${empty.title} ${empty.body}`), false);
 
   const sent: string[] = [];
   const report = await deliverShopperPush(

@@ -10,7 +10,7 @@ export type DealStage = (typeof DEAL_STAGES)[number];
 
 export const DEAL_STAGE_LABEL: Record<DealStage, string> = {
   reaching_out: 'Reaching out',
-  negotiating: 'Negotiating',
+  negotiating: 'Finding your best price',
   offer_received: 'Offer received',
   best_price_ready: 'Best price ready',
   paused: 'Paused',

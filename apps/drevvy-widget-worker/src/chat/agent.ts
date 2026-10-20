@@ -27,11 +27,14 @@ export type WidgetChatConfig = {
   drevvyEmail: string;
   shopperFirst: string;
   dealerFirstName?: string | null;
-  listedPrice?: number | null;
   vin?: string | null;
+  listedPrice?: number | null;
   maxTurns: number;
   leadLastName?: string;
   leadZip?: string | null;
+  vehicle?: string | null;
+  daysOnMarket?: number | null;
+  priceChangedRecently?: boolean;
 };
 
 export type ChatAttemptResult = AttemptResult;
@@ -58,6 +61,9 @@ Rules:
 export async function runWidgetChat(input: {
   vehiclePageUrl: string;
   stockNumber?: string | null;
+  vin?: string | null;
+  vehicle?: string | null;
+  listedPrice?: number | null;
   page: ChatPage;
   ai: ChatClient;
   config: WidgetChatConfig;
@@ -176,12 +182,14 @@ export async function runWidgetChat(input: {
   }
   vendor = inspection.vendor;
   if (!stock) stock = extractStockNumber(html);
-  const vin = stock ? null : input.config.vin?.trim() || extractVin(html);
+  const vin = stock ? null : input.vin?.trim() || input.config.vin?.trim() || extractVin(html);
   const script = renderScript({
     stockNumber: stock,
     vin,
     dealerFirstName: input.config.dealerFirstName,
-    listedPrice: input.config.listedPrice,
+    listedPrice: input.listedPrice ?? input.config.listedPrice,
+    daysOnMarket: input.config.daysOnMarket,
+    priceChangedRecently: input.config.priceChangedRecently,
     drevvyTextNumber: input.config.drevvyTextNumber,
     drevvyEmail: input.config.drevvyEmail,
     shopperFirst: input.config.shopperFirst,
@@ -261,7 +269,7 @@ export async function runWidgetChat(input: {
       return false;
     }
     const text = script[id];
-    if (!isExactScriptMessage(text, script) || sharesDisallowedContact(text, input.config)) {
+    if (!text || !isExactScriptMessage(text, script) || sharesDisallowedContact(text, input.config)) {
       mark('error', 'blocked_unscripted', 'Stopped: refused to send an unscripted message.');
       return false;
     }
@@ -362,6 +370,10 @@ export async function runWidgetChat(input: {
     }
 
     const next = resolveNextMessage({ classification, dealerText: dealerText ?? '', sent });
+    if (next === 'listing_price' && !script.listing_price) {
+      mark(stopStatus(classification.status, dealerText ?? '', sent), 'price_not_known');
+      break;
+    }
     if (!next) {
       mark(stopStatus(classification.status, dealerText ?? '', sent), classification.status);
       break;

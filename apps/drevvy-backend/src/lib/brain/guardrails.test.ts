@@ -39,7 +39,7 @@ describe('runGuardrails', () => {
       assert.ok(result.violations.includes('no_cold_texts'));
     });
 
-    it('allows SMS when dealer has opted in', () => {
+    it('blocks SMS when the dealer opted in but has not texted first', () => {
       const input: GuardrailInput = {
         ...baseInput,
         channel: 'sms',
@@ -47,7 +47,9 @@ describe('runGuardrails', () => {
         hasTextedBefore: false,
       };
       const result = runGuardrails(input);
-      assert.equal(result.checks.noColdTexts, true);
+      assert.equal(result.blocked, true);
+      assert.equal(result.checks.noColdTexts, false);
+      assert.ok(result.violations.includes('no_cold_texts'));
     });
 
     it('allows SMS when dealer has texted before', () => {
@@ -394,6 +396,110 @@ describe('applyPlaybookRules', () => {
     assert.ok(result.reason.includes('contact'));
   });
 
+  it('answers a deposit demand before numbers and shares registration for tax', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'I need a deposit before I can send numbers.',
+      shopperFirst: 'Maya',
+      registrationState: 'sc',
+      registrationZip: '29401',
+    });
+    assert.equal(result.action, 'deposit_before_numbers');
+    if (result.action !== 'deposit_before_numbers') return;
+    assert.match(result.draft, /Maya isn't collecting quotes to forward/);
+    assert.match(result.draft, /ready to move forward if the itemized out-the-door price works/);
+    assert.match(result.draft, /SC, ZIP 29401/);
+    assert.equal(/negotiat/i.test(result.draft), false);
+  });
+
+  it('keeps the honest AI sentence ahead of a deposit demand', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'Are you a bot? Also send a deposit first.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'honest_ai_disclosure');
+  });
+
+  it('asks for a VIN-tied written quote once the price is agreed', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: 31800,
+      isItemized: true,
+      dealerMessage: 'The price is agreed.',
+      shopperFirst: 'Maya',
+      vin: '1hgcv1f16na000123',
+    });
+    assert.equal(result.action, 'request_written_quote');
+    if (result.action !== 'request_written_quote') return;
+    assert.match(result.draft, /written quote tied to VIN 1HGCV1F16NA000123/);
+  });
+
+  it('labels a warranty answer as dealer-stated', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'It is still under warranty until June.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'confirm_dealer_stated');
+    if (result.action !== 'confirm_dealer_stated') return;
+    assert.match(result.draft, /pass it to Maya as dealer-stated/);
+    assert.match(result.shopperNote ?? '', /^Dealer-stated: /);
+  });
+
+  it('asks for cash and outside-financing prices before a dealer-financing discount', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'That discount is only if you finance with us at 4.9%.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(result.action, 'cash_otd_first');
+    if (result.action !== 'cash_otd_first') return;
+    assert.match(result.draft, /cash and outside-financing out-the-door prices first/);
+    assert.match(result.reason, /APR 4\.9%/);
+  });
+
+  it('thanks a clean itemized breakdown without overriding a come-in request', () => {
+    const thanks = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: 32500,
+      isItemized: true,
+      dealerMessage: 'Vehicle $28,000, doc $499, tax $1,800, title $75.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(thanks.action, 'thank_itemized');
+    const comeIn = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: 'Come in and I will show doc $499 and tax $1,800.',
+      shopperFirst: 'Maya',
+    });
+    assert.equal(comeIn.action, 'price_first_response');
+  });
+
+  it('offers email or text when a caller refuses an AI', () => {
+    const result = applyPlaybookRules({
+      fairOtd: 32000,
+      currentOfferOtd: null,
+      isItemized: false,
+      dealerMessage: "I won't talk to a bot.",
+      shopperFirst: 'Maya',
+      channel: 'call',
+    });
+    assert.equal(result.action, 'ai_refusal_fallback');
+    if (result.action !== 'ai_refusal_fallback') return;
+    assert.equal(result.draft, 'Understood. We can continue by email or text instead.');
+  });
+
   it('continues when no special rule triggered', () => {
     const result = applyPlaybookRules({
       fairOtd: 32000,
@@ -580,6 +686,17 @@ describe('no negotiate word rule', () => {
     const result = runGuardrails(input);
     assert.equal(result.blocked, true);
     assert.ok(result.violations.includes('negotiate_word_used'));
+  });
+
+  it('blocks a draft that accepts for the shopper', () => {
+    const result = runGuardrails({
+      ...baseInput,
+      action: 'accept',
+      draft: 'I accept the offer for Maya.',
+    });
+    assert.equal(result.blocked, true);
+    assert.equal(result.checks.noAcceptForShopper, false);
+    assert.ok(result.violations.includes('accepted_for_shopper'));
   });
 
   it('blocks drafts containing "negotiating"', () => {

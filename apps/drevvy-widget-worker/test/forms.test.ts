@@ -15,6 +15,7 @@ const pageUrl = 'https://www.example-motors.test/inventory/civic';
 const shopperPhone = '212-555-0198';
 const shopperEmail = 'shopper@example.com';
 const message = leadMessage({
+  shopperFirst: 'Maya',
   stockNumber: 'H24118',
   phone: '803-555-0148',
   email: 'deals@drevvy.test',
@@ -127,10 +128,7 @@ describe('lead forms', () => {
     const html = readFixture('ask-a-question.html').replace('Stock #H24118', 'call for details');
     const page = new FakeChatPage(html);
     await runLeadForm({ vehiclePageUrl: pageUrl, page, config: live, store: new MemoryAttemptStore() });
-    assert.equal(
-      filled(page).message,
-      'Hi, is it still available? Please text or email us at 803-555-0148 / deals@drevvy.test.',
-    );
+    assert.equal(filled(page).message, 'Hi, is it still available?');
   });
 
   it('asks about the VIN ending when the page has a VIN and no stock number', async () => {
@@ -139,7 +137,7 @@ describe('lead forms', () => {
     await runLeadForm({ vehiclePageUrl: pageUrl, page, config: live, store: new MemoryAttemptStore() });
     assert.equal(
       filled(page).message,
-      'Hi, is VIN ending MN109186 still available? Please text or email us at 803-555-0148 / deals@drevvy.test.',
+      'Hi, is VIN ending MN109186 still available?',
     );
     assert.equal(filled(page).message.includes('1HGBH41JXMN109186'), false);
   });
@@ -397,7 +395,7 @@ describe('lead forms', () => {
           return JSON.stringify({ status: 'unknown', price: null, next_message: 'none' });
         },
       },
-      config: { ...live, maxTurns: 6 },
+      config: { ...live, maxTurns: 6, listedPrice: 24995 },
       store,
     });
     assert.equal(chat.status, 'price_given');

@@ -5,6 +5,17 @@ import { ShopperAuthError, shopperAuthErrorResponse } from './session';
 export const SHOPPER_DEAL_STATUSES = ['interested', 'negotiating', 'accepted', 'closed'] as const;
 export type ShopperDealStatus = (typeof SHOPPER_DEAL_STATUSES)[number];
 
+export const SHOPPER_DEAL_STATUS_LABEL: Record<ShopperDealStatus, string> = {
+  interested: 'Interested',
+  negotiating: 'Finding your best price',
+  accepted: 'Accepted',
+  closed: 'Closed',
+};
+
+export function shopperDealStatusLabel(status: ShopperDealStatus): string {
+  return SHOPPER_DEAL_STATUS_LABEL[status];
+}
+
 export type VehicleSnapshot = {
   year: number;
   make: string;

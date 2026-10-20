@@ -7,8 +7,7 @@ import '../../../core/widgets/analytics_view.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/models/models.dart';
 
-/// Screen 31 (v1.6): Accept this offer? confirmation sheet
-/// Shown on every current offer regardless of status
+/// Confirm step before Drevvy tells the dealer. Nothing is sent until Confirm.
 class AcceptConfirmSheet extends StatelessWidget {
   const AcceptConfirmSheet({
     super.key,
@@ -32,6 +31,7 @@ class AcceptConfirmSheet extends StatelessWidget {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final offer = deal.latestOffer!;
     final listing = deal.listing;
+    final dealer = 'Dealer ${deal.letter}';
 
     return AnalyticsView(
       screen: 'accept_confirm',
@@ -62,7 +62,15 @@ class AcceptConfirmSheet extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Accept this offer?', style: text.headline),
+                Text(
+                  'Accept ${_formatPrice(offer.otd)} out the door?',
+                  style: text.headline,
+                ),
+                const SizedBox(height: DrevvySpace.s3),
+                Text(
+                  'Drevvy will tell $dealer and request the official written offer.',
+                  style: text.body,
+                ),
                 const SizedBox(height: DrevvySpace.s4),
 
                 // Summary card
@@ -104,15 +112,20 @@ class AcceptConfirmSheet extends StatelessWidget {
                 const SizedBox(height: DrevvySpace.s6),
 
                 DrevvyButton(
-                  label: 'Accept',
+                  label: 'Confirm',
                   icon: LucideIcons.check,
                   onPressed: onAccept,
                   variant: DrevvyButtonVariant.accept,
                 ),
                 const SizedBox(height: DrevvySpace.s3),
                 DrevvyGhostButton(
-                  label: 'Not yet',
+                  label: 'Cancel',
                   onPressed: onNotYet,
+                ),
+                const SizedBox(height: DrevvySpace.s4),
+                Text(
+                  'Nothing goes to $dealer until you confirm. Accepting isn\'t a contract, and Drevvy never accepts for you.',
+                  style: text.micro.copyWith(color: colors.muted),
                 ),
               ],
             ),

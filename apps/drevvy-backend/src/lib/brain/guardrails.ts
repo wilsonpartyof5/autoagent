@@ -3,7 +3,7 @@
  * These are hard blocks, not prompt suggestions.
  *
  * Rules:
- * 1. No cold texts: SMS only if dealer texted first or opted in
+ * 1. No cold texts: SMS only after a dealer salesperson texts us first
  * 2. California calls NOT paused (spec clarification: CA calls are allowed)
  * 3. Never contest taxes, title, or registration AMOUNTS (doc/destination fees are discussable)
  * 4. Max 2 pushback rounds per deal per dealer
@@ -29,6 +29,7 @@ import {
 } from '../agent-voice';
 import { PUSHBACK_THRESHOLD } from './config';
 import { draftPricesAreGrounded } from './quote';
+import { acceptsForShopper, scourReply, type ScourContext, type ScourReply } from './scour';
 
 export { CALL_OPENER, agentOpener, dealerAskedIfAi };
 
@@ -63,6 +64,7 @@ export type GuardrailResult = {
     noLeadingAi: boolean;
     fairOtdKnownForCounter: boolean;
     groundedPrices: boolean;
+    noAcceptForShopper: boolean;
   };
 };
 
@@ -147,6 +149,11 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
     violations.push('ungrounded_price');
   }
 
+  const noAcceptForShopper = !acceptsForShopper(draft);
+  if (!noAcceptForShopper) {
+    violations.push('accepted_for_shopper');
+  }
+
   return {
     blocked: violations.length > 0,
     violations,
@@ -162,13 +169,14 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
       noLeadingAi,
       fairOtdKnownForCounter,
       groundedPrices,
+      noAcceptForShopper,
     },
   };
 }
 
 function checkNoColdTexts(input: GuardrailInput): boolean {
   if (input.channel !== 'sms') return true;
-  return input.hasOptedInToText || input.hasTextedBefore;
+  return input.hasTextedBefore;
 }
 
 function checkNoTaxContest(draft: string, action: string | null): boolean {
@@ -271,7 +279,8 @@ export type PlaybookDecision =
   | { action: 'price_first_response'; reason: string }
   | { action: 'honest_ai_disclosure'; reason: string }
   | { action: 'escalate_to_human'; reason: string }
-  | { action: 'continue'; reason: string };
+  | { action: 'continue'; reason: string }
+  | (ScourReply & { action: ScourReply['action'] });
 
 export function applyPlaybookRules(input: {
   fairOtd: number | null;
@@ -279,10 +288,28 @@ export function applyPlaybookRules(input: {
   isItemized: boolean;
   dealerMessage: string;
   shopperFirst: string;
+  channel?: ScourContext['channel'];
+  registrationState?: string | null;
+  registrationZip?: string | null;
+  vin?: string | null;
+  priceAgreed?: boolean;
+  writtenQuoteRequested?: boolean;
 }): PlaybookDecision {
   if (dealerAskedIfAi(input.dealerMessage)) {
     return { action: 'honest_ai_disclosure', reason: 'Dealer asked whether this is a bot or AI' };
   }
+
+  const learned = scourReply({
+    shopperFirst: input.shopperFirst,
+    channel: input.channel ?? 'email',
+    dealerMessage: input.dealerMessage,
+    registrationState: input.registrationState,
+    registrationZip: input.registrationZip,
+    vin: input.vin,
+    priceAgreed: input.priceAgreed,
+    writtenQuoteRequested: input.writtenQuoteRequested,
+  });
+  if (learned && learned.action !== 'thank_itemized') return learned;
 
   if (input.fairOtd === null) {
     return { action: 'escalate_to_human', reason: 'Fair OTD is unknown; cannot evaluate offer' };
@@ -329,6 +356,8 @@ export function applyPlaybookRules(input: {
       return { action: 'price_first_response', reason: 'Dealer requested buyer contact info' };
     }
   }
+
+  if (learned?.action === 'thank_itemized') return learned;
 
   return { action: 'continue', reason: 'No special playbook rule triggered' };
 }

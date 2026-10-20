@@ -105,8 +105,8 @@ function sampleInsight(range: OutreachRange, realDeals: OutreachDeal[] | null = 
       },
       {
         touchpoint: 'D0-C1',
-        hypothesis: 'Leading with the buyer\'s first name and the number ask in the first sentence raises number capture.',
-        sketch: 'Hi, this is Drevvy, working for {first}. Is stock #{stock} still available?',
+        hypothesis: 'The first call asks only whether the stock number is still available, after the recording notice.',
+        sketch: 'Hi, this is Drevvy, working for {first}. Quick heads-up, this call is recorded. Is stock #{stock} still available?',
       },
     ],
   };
