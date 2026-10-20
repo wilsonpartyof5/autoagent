@@ -63,6 +63,24 @@ export function groundName(name: string | null, html: string): string | null {
   return trimmed;
 }
 
+export function priceAppearsIn(price: string, text: string): boolean {
+  const normalized = normalizePrice(price);
+  if (!normalized) return false;
+  const digits = normalized.replace(/\D/g, '');
+  if (!digits) return false;
+  const hay = text.replace(/,/g, '');
+  let from = 0;
+  while (from < hay.length) {
+    const at = hay.indexOf(digits, from);
+    if (at < 0) return false;
+    const before = at === 0 ? '' : hay[at - 1];
+    const after = hay[at + digits.length] ?? '';
+    if (!/\d/.test(before) && !/\d/.test(after)) return true;
+    from = at + 1;
+  }
+  return false;
+}
+
 export function normalizePrice(value: string | null | undefined): string | null {
   if (!value) return null;
   const match = value.match(/\$?\s?\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\$\s?\d{2,6}(?:\.\d{2})?/);

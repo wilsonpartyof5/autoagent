@@ -28,6 +28,7 @@ import {
   leadsWithAiIdentity,
 } from '../agent-voice';
 import { PUSHBACK_THRESHOLD } from './config';
+import { draftPricesAreGrounded } from './quote';
 import { acceptsForShopper, scourReply, type ScourContext, type ScourReply } from './scour';
 
 export { CALL_OPENER, agentOpener, dealerAskedIfAi };
@@ -44,6 +45,8 @@ export type GuardrailInput = {
   currentOfferOtd: number | null;
   pushbackCount: number;
   shopperFirst: string;
+  /** Code-written drafts, such as the listed-price question, may state a price we already stored. */
+  draftPricesTrusted?: boolean;
 };
 
 export type GuardrailResult = {
@@ -60,6 +63,7 @@ export type GuardrailResult = {
     noAiDenial: boolean;
     noLeadingAi: boolean;
     fairOtdKnownForCounter: boolean;
+    groundedPrices: boolean;
     noAcceptForShopper: boolean;
   };
 };
@@ -140,6 +144,11 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
     violations.push('fair_otd_unknown_for_counter');
   }
 
+  const groundedPrices = input.draftPricesTrusted === true || draftPricesAreGrounded(draft, input.dealerMessage ?? '');
+  if (!groundedPrices) {
+    violations.push('ungrounded_price');
+  }
+
   const noAcceptForShopper = !acceptsForShopper(draft);
   if (!noAcceptForShopper) {
     violations.push('accepted_for_shopper');
@@ -159,6 +168,7 @@ export function runGuardrails(input: GuardrailInput): GuardrailResult {
       noAiDenial,
       noLeadingAi,
       fairOtdKnownForCounter,
+      groundedPrices,
       noAcceptForShopper,
     },
   };

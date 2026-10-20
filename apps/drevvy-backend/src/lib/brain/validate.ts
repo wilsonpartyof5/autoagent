@@ -64,6 +64,7 @@ export function validateProposal(input: {
 }): ValidatedReply {
   let action = input.proposal.proposed_action;
   let draft = applyFirstName(input.proposal.draft, input.shopperFirst);
+  let draftPricesTrusted = false;
   const reasons = [input.proposal.reasoning];
   const optedOut = detectSmsOptOut(input.dealerMessage).optedOut;
 
@@ -74,6 +75,7 @@ export function validateProposal(input: {
   } else if (input.playbook.action === 'honest_ai_disclosure') {
     action = 'send_reply';
     draft = getAiDisclosure(input.shopperFirst);
+    draftPricesTrusted = true;
     reasons.push(input.playbook.reason);
   } else if (input.playbook.action === 'escalate_to_human') {
     action = 'escalate';
@@ -86,20 +88,25 @@ export function validateProposal(input: {
   } else if (input.playbook.action === 'price_first_response') {
     action = 'send_reply';
     draft = getPriceFirstResponse();
+    draftPricesTrusted = true;
     reasons.push(input.playbook.reason);
   } else if (input.playbook.action === 'request_itemization' && !input.otd.complete) {
     action = 'ask_for_itemization';
-    draft = safeDraft(draft, ITEMIZATION_DRAFT);
+    const nextDraft = safeDraft(draft, ITEMIZATION_DRAFT);
+    draftPricesTrusted = nextDraft === ITEMIZATION_DRAFT;
+    draft = nextDraft;
     reasons.push(input.playbook.reason);
   } else if ('draft' in input.playbook && input.playbook.draft) {
     action = 'send_reply';
     draft = applyFirstName(input.playbook.draft, input.shopperFirst);
+    draftPricesTrusted = true;
     reasons.push(input.playbook.reason);
   } else {
     const adjusted = actionForQuote(action, input.otd);
     if (adjusted !== action) {
       draft = adjusted === 'request_fee_clarification' ? FEE_CLARIFICATION_DRAFT : ITEMIZATION_DRAFT;
       action = adjusted;
+      draftPricesTrusted = true;
       reasons.push('Code adjusted the action after checking the quote.');
     }
   }
@@ -125,6 +132,7 @@ export function validateProposal(input: {
     currentOfferOtd: input.currentOfferOtd,
     pushbackCount: input.pushbackCount,
     shopperFirst: input.shopperFirst,
+    draftPricesTrusted,
   });
 
   const blocked = guardrailResult.blocked;

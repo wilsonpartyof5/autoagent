@@ -80,6 +80,7 @@ const EMPTY_GUARD: GuardrailResult = {
     noAiDenial: true,
     noLeadingAi: true,
     fairOtdKnownForCounter: true,
+    groundedPrices: true,
     noAcceptForShopper: true,
   },
 };
@@ -417,6 +418,7 @@ function guard(
     currentOfferOtd: null,
     pushbackCount: 0,
     shopperFirst: input.shopperFirst,
+    draftPricesTrusted: true,
   });
 }
 

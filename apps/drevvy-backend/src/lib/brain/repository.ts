@@ -182,6 +182,30 @@ export async function insertBrainLesson(
   return { id: data.id };
 }
 
+const MAX_LESSON_SCOPE_LENGTH = 200;
+
+/** Quote a PostgREST filter value so reserved characters stay inside one literal. */
+export function quotePostgrestValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+export function lessonScopeOrFilter(field: 'brand' | 'region', value: string): string | null {
+  const trimmed = value.replace(/[\r\n]/g, ' ').trim();
+  if (!trimmed || trimmed.length > MAX_LESSON_SCOPE_LENGTH) return null;
+  return `scope->${field}.is.null,scope->${field}.eq.${quotePostgrestValue(trimmed)}`;
+}
+
+/**
+ * Brand and region filters for approved lessons. A value that is empty or too
+ * long does not widen the query: only lessons with a null scope field match.
+ */
+export function lessonScopeFilters(scope?: { brand?: string; region?: string }): string[] {
+  const filters: string[] = [];
+  if (scope?.brand) filters.push(lessonScopeOrFilter('brand', scope.brand) ?? 'scope->brand.is.null');
+  if (scope?.region) filters.push(lessonScopeOrFilter('region', scope.region) ?? 'scope->region.is.null');
+  return filters;
+}
+
 export async function getApprovedLessons(
   supabase: SupabaseClient,
   scope?: { brand?: string; region?: string; dealer_type?: string; touchpoint?: string },
@@ -192,11 +216,8 @@ export async function getApprovedLessons(
     .eq('status', 'approved')
     .order('created_at', { ascending: false });
 
-  if (scope?.brand) {
-    query = query.or(`scope->brand.is.null,scope->brand.eq.${scope.brand}`);
-  }
-  if (scope?.region) {
-    query = query.or(`scope->region.is.null,scope->region.eq.${scope.region}`);
+  for (const filter of lessonScopeFilters(scope)) {
+    query = query.or(filter);
   }
 
   const { data } = await query;
