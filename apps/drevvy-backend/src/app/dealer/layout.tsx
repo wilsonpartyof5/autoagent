@@ -1,0 +1,14 @@
+import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
+
+export const metadata: Metadata = {
+  title: {
+    default: 'Drevvy Desk',
+    template: '%s · Drevvy Desk',
+  },
+  robots: { index: false, follow: false },
+};
+
+export default function DealerLayout({ children }: { children: ReactNode }) {
+  return children;
+}
