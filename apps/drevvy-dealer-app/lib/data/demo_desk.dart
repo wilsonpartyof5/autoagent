@@ -14,7 +14,9 @@ enum ConversationStage {
 
 enum InboxFilter { needsReply, allOpen, closed }
 
-enum MessageAuthor { shopper, salesperson }
+enum MessageAuthor { drevvy, shopper, salesperson }
+
+enum MessageKind { chat, opener, numbers }
 
 enum SlaTone { waiting, overdue, replied, ended }
 
@@ -40,18 +42,20 @@ class ThreadMessage {
     required this.author,
     required this.body,
     required this.sentAt,
+    this.kind = MessageKind.chat,
   });
 
   final String id;
   final MessageAuthor author;
   final String body;
   final DateTime sentAt;
+  final MessageKind kind;
 }
 
 class Conversation {
   Conversation({
     required this.id,
-    required this.shopperFirstName,
+    required this.shopperRef,
     required this.stage,
     required this.vehicle,
     required this.stockNumber,
@@ -65,7 +69,7 @@ class Conversation {
   });
 
   final String id;
-  final String? shopperFirstName;
+  final String shopperRef;
   ConversationStage stage;
   final VehicleSummary vehicle;
   final String stockNumber;
@@ -136,15 +140,46 @@ const stageEnds = [
   ConversationStage.noReply,
 ];
 
+const closeFeeCents = 30000;
+const closeFeeCopy = r'$300 per closed deal';
+const markSoldConfirm =
+    'Mark this car sold? A participating dealer is charged \$300 when a deal closes. Day-to-day use of the desk stays free. This copy is a placeholder. This demo does not charge a card.';
+
+class CloseCharge {
+  const CloseCharge({
+    required this.id,
+    required this.conversationId,
+    required this.shopperRef,
+    required this.vehicleTitle,
+    required this.amountCents,
+    required this.closedAt,
+  });
+
+  final String id;
+  final String conversationId;
+  final String shopperRef;
+  final String vehicleTitle;
+  final int amountCents;
+  final DateTime closedAt;
+}
+
 bool isOpenStage(ConversationStage stage) {
   return stage == ConversationStage.newRequest ||
       stage == ConversationStage.inConversation ||
       stage == ConversationStage.numbersShared;
 }
 
-String shopperDisplayName(String? firstName) {
-  final trimmed = firstName?.trim() ?? '';
-  return trimmed.isEmpty ? 'Anonymous shopper' : trimmed;
+String bestPriceOpener({
+  required String stockNumber,
+  required String vehicleTitle,
+  required int advertisedPriceCents,
+}) {
+  return [
+    'Get Best Price',
+    'An anonymous shopper tapped Get Best Price on stock #$stockNumber, a $vehicleTitle.',
+    'Advertised price ${formatMoney(advertisedPriceCents)}.',
+    'Reply in this chat. Drevvy relays messages both ways. No text, email, or call.',
+  ].join('\n');
 }
 
 String formatMoney(int cents) {
@@ -174,7 +209,8 @@ String formatDuration(int minutes) {
 bool conversationNeedsReply(Conversation conversation) {
   if (!isOpenStage(conversation.stage)) return false;
   if (conversation.messages.isEmpty) return false;
-  return conversation.messages.last.author == MessageAuthor.shopper;
+  final author = conversation.messages.last.author;
+  return author == MessageAuthor.shopper || author == MessageAuthor.drevvy;
 }
 
 bool pricesDiffer(int advertised, int? stated) {
@@ -254,7 +290,7 @@ List<Conversation> buildSeed(DateTime now) {
   return [
     Conversation(
       id: 'conv_rav4',
-      shopperFirstName: 'Alex',
+      shopperRef: '#A7F2',
       stage: ConversationStage.newRequest,
       vehicle: const VehicleSummary(
         year: 2024,
@@ -272,15 +308,20 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'rav4-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #R44118 still available?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'R44118',
+            vehicleTitle: '2024 Toyota RAV4 XLE Premium',
+            advertisedPriceCents: 3324000,
+          ),
           sentAt: _at(now, -40),
         ),
       ],
     ),
     Conversation(
       id: 'conv_f150',
-      shopperFirstName: null,
+      shopperRef: '#B3C1',
       stage: ConversationStage.inConversation,
       vehicle: const VehicleSummary(year: 2023, make: 'Ford', model: 'F-150', trim: 'XLT'),
       stockNumber: 'F31802',
@@ -293,8 +334,13 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'f150-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #F31802 still on the lot?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'F31802',
+            vehicleTitle: '2023 Ford F-150 XLT',
+            advertisedPriceCents: 4150000,
+          ),
           sentAt: _at(now, -180),
         ),
         ThreadMessage(
@@ -314,7 +360,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_tucson',
-      shopperFirstName: 'Jordan',
+      shopperRef: '#C9D4',
       stage: ConversationStage.numbersShared,
       vehicle: const VehicleSummary(
         year: 2025,
@@ -332,8 +378,13 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'tucson-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #T55290 available?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'T55290',
+            vehicleTitle: '2025 Hyundai Tucson Limited',
+            advertisedPriceCents: tucsonAdvertised,
+          ),
           sentAt: tucsonOpened,
         ),
         ThreadMessage(
@@ -345,6 +396,7 @@ List<Conversation> buildSeed(DateTime now) {
         ThreadMessage(
           id: 'tucson-3',
           author: MessageAuthor.salesperson,
+          kind: MessageKind.numbers,
           body: numbersShareBody(
             advertisedPriceCents: tucsonAdvertised,
             statedPriceCents: tucsonStated,
@@ -357,7 +409,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_sportage',
-      shopperFirstName: 'Riley',
+      shopperRef: '#D2E8',
       stage: ConversationStage.carSold,
       vehicle: const VehicleSummary(year: 2024, make: 'Kia', model: 'Sportage', trim: 'SX'),
       stockNumber: 'K44901',
@@ -370,8 +422,13 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'sportage-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #K44901 still available?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'K44901',
+            vehicleTitle: '2024 Kia Sportage SX',
+            advertisedPriceCents: 3129000,
+          ),
           sentAt: _at(now, -2 * 24 * 60),
         ),
         ThreadMessage(
@@ -384,7 +441,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_outback',
-      shopperFirstName: null,
+      shopperRef: '#E4A1',
       stage: ConversationStage.closed,
       vehicle: const VehicleSummary(
         year: 2022,
@@ -402,8 +459,13 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'outback-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #S22014 available?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'S22014',
+            vehicleTitle: '2022 Subaru Outback Limited',
+            advertisedPriceCents: 2844000,
+          ),
           sentAt: _at(now, -3 * 24 * 60),
         ),
         ThreadMessage(
@@ -428,7 +490,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_tahoe',
-      shopperFirstName: null,
+      shopperRef: '#F6B0',
       stage: ConversationStage.noReply,
       vehicle: const VehicleSummary(
         year: 2021,
@@ -446,8 +508,13 @@ List<Conversation> buildSeed(DateTime now) {
       messages: [
         ThreadMessage(
           id: 'tahoe-1',
-          author: MessageAuthor.shopper,
-          body: 'Is stock #C19077 still available?',
+          author: MessageAuthor.drevvy,
+          kind: MessageKind.opener,
+          body: bestPriceOpener(
+            stockNumber: 'C19077',
+            vehicleTitle: '2021 Chevrolet Tahoe LT',
+            advertisedPriceCents: 4680000,
+          ),
           sentAt: _at(now, -5 * 24 * 60),
         ),
       ],
@@ -508,10 +575,27 @@ const analyticsSamples = [
 class DealerDesk extends ChangeNotifier {
   DealerDesk({DateTime? now}) : now = now ?? DateTime.now().toUtc() {
     _items = buildSeed(this.now);
+    _charges = [
+      CloseCharge(
+        id: 'chg_sportage',
+        conversationId: 'conv_sportage',
+        shopperRef: '#D2E8',
+        vehicleTitle: '2024 Kia Sportage SX',
+        amountCents: closeFeeCents,
+        closedAt: _at(this.now, -2 * 24 * 60),
+      ),
+    ];
+  }
+
+  List<CloseCharge> get closeCharges {
+    final copy = [..._charges];
+    copy.sort((a, b) => b.closedAt.compareTo(a.closedAt));
+    return copy;
   }
 
   final DateTime now;
   late final List<Conversation> _items;
+  late final List<CloseCharge> _charges;
   bool signedIn = false;
   int _sequence = 1;
 
@@ -601,6 +685,7 @@ class DealerDesk extends ChangeNotifier {
       ThreadMessage(
         id: 'local-${_sequence++}',
         author: MessageAuthor.salesperson,
+        kind: MessageKind.numbers,
         body: numbersShareBody(
           advertisedPriceCents: conversation.advertisedPriceCents,
           statedPriceCents: statedPriceCents,
@@ -615,6 +700,25 @@ class DealerDesk extends ChangeNotifier {
         conversation.stage == ConversationStage.inConversation) {
       conversation.stage = ConversationStage.numbersShared;
     }
+    notifyListeners();
+    return null;
+  }
+
+  String? markSold(String id) {
+    final conversation = this.conversation(id);
+    if (conversation == null) return 'not_found';
+    if (!isOpenStage(conversation.stage)) return 'conversation_closed';
+    conversation.stage = ConversationStage.carSold;
+    _charges.add(
+      CloseCharge(
+        id: 'chg-${_sequence++}',
+        conversationId: conversation.id,
+        shopperRef: conversation.shopperRef,
+        vehicleTitle: conversation.vehicle.title,
+        amountCents: closeFeeCents,
+        closedAt: DateTime.now().toUtc(),
+      ),
+    );
     notifyListeners();
     return null;
   }

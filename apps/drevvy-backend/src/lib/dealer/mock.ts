@@ -1,18 +1,22 @@
 /**
  * In-memory dealer desk. Process-local mock for /api/dealer/v1 and /dealer.
- * Shopper phone, email, and address are intentionally absent.
+ * The shopper is fully anonymous: no name and no city.
+ * The first message is the Get Best Price template. Later messages are freeform
+ * chat inside Drevvy. This desk does not send Telnyx text, email, or calls.
  * A salesperson reply moves New request to In conversation.
  * Share numbers records an informational chat message, not a binding offer.
  * Closed, Car sold, and No reply stay closed.
  */
 
 import {
+  bestPriceOpener,
+  CLOSE_FEE_CENTS,
+  CLOSE_FEE_COPY,
   isOpenStage,
   needsReply,
   numbersShareBody,
   pricesDiffer,
   replyTemplates,
-  shopperDisplayName,
   slaChip,
   snippetFrom,
   STAGE_LABEL,
@@ -23,6 +27,8 @@ import {
 import type {
   AnalyticsRange,
   AnalyticsSummary,
+  BillingSnapshot,
+  CloseCharge,
   Conversation,
   ConversationDetail,
   DealerDemoError,
@@ -33,6 +39,7 @@ const MESSAGE_LIMIT = 2000;
 const NOTE_LIMIT = 280;
 
 let conversations: Conversation[] | null = null;
+let closeCharges: CloseCharge[] | null = null;
 let sequence = 1;
 
 function at(now: Date, minutes: number): string {
@@ -48,7 +55,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_rav4',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: 'Alex',
+      shopperRef: '#A7F2',
       stage: 'new_request',
       vehicle: {
         year: 2024,
@@ -66,8 +73,13 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'rav4-1',
-          author: 'shopper',
-          body: 'Is stock #R44118 still available?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'R44118',
+            vehicleTitle: '2024 Toyota RAV4 XLE Premium',
+            advertisedPriceCents: 3_324_000,
+          }),
           sentAt: at(now, -40),
         },
       ],
@@ -75,7 +87,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_f150',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: null,
+      shopperRef: '#B3C1',
       stage: 'in_conversation',
       vehicle: { year: 2023, make: 'Ford', model: 'F-150', trim: 'XLT' },
       stockNumber: 'F31802',
@@ -88,19 +100,26 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'f150-1',
-          author: 'shopper',
-          body: 'Is stock #F31802 still on the lot?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'F31802',
+            vehicleTitle: '2023 Ford F-150 XLT',
+            advertisedPriceCents: 4_150_000,
+          }),
           sentAt: at(now, -180),
         },
         {
           id: 'f150-2',
           author: 'salesperson',
+          kind: 'chat',
           body: 'Yes, that truck is here.',
           sentAt: at(now, -150),
         },
         {
           id: 'f150-3',
           author: 'shopper',
+          kind: 'chat',
           body: 'Can you share the advertised price and a written out-the-door total in this chat?',
           sentAt: at(now, -20),
         },
@@ -109,7 +128,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_tucson',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: 'Jordan',
+      shopperRef: '#C9D4',
       stage: 'numbers_shared',
       vehicle: {
         year: 2025,
@@ -127,19 +146,26 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'tucson-1',
-          author: 'shopper',
-          body: 'Is stock #T55290 available?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'T55290',
+            vehicleTitle: '2025 Hyundai Tucson Limited',
+            advertisedPriceCents: tucsonAdvertised,
+          }),
           sentAt: tucsonOpened,
         },
         {
           id: 'tucson-2',
           author: 'salesperson',
+          kind: 'chat',
           body: 'Yes. I can share numbers here.',
           sentAt: at(now, -26 * 60 + 35),
         },
         {
           id: 'tucson-3',
           author: 'salesperson',
+          kind: 'numbers',
           body: numbersShareBody({
             advertisedPriceCents: tucsonAdvertised,
             statedPriceCents: tucsonStated,
@@ -153,7 +179,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_sportage',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: 'Riley',
+      shopperRef: '#D2E8',
       stage: 'car_sold',
       vehicle: { year: 2024, make: 'Kia', model: 'Sportage', trim: 'SX' },
       stockNumber: 'K44901',
@@ -166,13 +192,19 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'sportage-1',
-          author: 'shopper',
-          body: 'Is stock #K44901 still available?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'K44901',
+            vehicleTitle: '2024 Kia Sportage SX',
+            advertisedPriceCents: 3_129_000,
+          }),
           sentAt: at(now, -2 * 24 * 60),
         },
         {
           id: 'sportage-2',
           author: 'salesperson',
+          kind: 'chat',
           body: 'That Sportage has sold.',
           sentAt: at(now, -2 * 24 * 60 + 18),
         },
@@ -181,7 +213,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_outback',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: null,
+      shopperRef: '#E4A1',
       stage: 'closed',
       vehicle: {
         year: 2022,
@@ -199,25 +231,33 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'outback-1',
-          author: 'shopper',
-          body: 'Is stock #S22014 available?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'S22014',
+            vehicleTitle: '2022 Subaru Outback Limited',
+            advertisedPriceCents: 2_844_000,
+          }),
           sentAt: at(now, -3 * 24 * 60),
         },
         {
           id: 'outback-2',
           author: 'salesperson',
+          kind: 'chat',
           body: 'Yes, it is here.',
           sentAt: at(now, -3 * 24 * 60 + 12),
         },
         {
           id: 'outback-3',
           author: 'shopper',
+          kind: 'chat',
           body: 'Thanks, that is what I needed for now.',
           sentAt: at(now, -3 * 24 * 60 + 40),
         },
         {
           id: 'outback-4',
           author: 'salesperson',
+          kind: 'chat',
           body: 'Glad we could talk here. I will leave this conversation closed.',
           sentAt: at(now, -3 * 24 * 60 + 48),
         },
@@ -226,7 +266,7 @@ export function buildSeed(now: Date): Conversation[] {
     {
       id: 'conv_tahoe',
       buyerLabel: 'Buyer via Drevvy',
-      shopperFirstName: null,
+      shopperRef: '#F6B0',
       stage: 'no_reply',
       vehicle: { year: 2021, make: 'Chevrolet', model: 'Tahoe', trim: 'LT' },
       stockNumber: 'C19077',
@@ -239,8 +279,13 @@ export function buildSeed(now: Date): Conversation[] {
       messages: [
         {
           id: 'tahoe-1',
-          author: 'shopper',
-          body: 'Is stock #C19077 still available?',
+          author: 'drevvy',
+          kind: 'opener',
+          body: bestPriceOpener({
+            stockNumber: 'C19077',
+            vehicleTitle: '2021 Chevrolet Tahoe LT',
+            advertisedPriceCents: 4_680_000,
+          }),
           sentAt: at(now, -5 * 24 * 60),
         },
       ],
@@ -253,9 +298,47 @@ function store(now = new Date()): Conversation[] {
   return conversations;
 }
 
+function seedCharges(now: Date): CloseCharge[] {
+  return [
+    {
+      id: 'chg_sportage',
+      conversationId: 'conv_sportage',
+      shopperRef: '#D2E8',
+      vehicleTitle: '2024 Kia Sportage SX',
+      amountCents: CLOSE_FEE_CENTS,
+      status: 'placeholder',
+      closedAt: at(now, -2 * 24 * 60),
+    },
+  ];
+}
+
 export function resetDealerDemo(now = new Date()): void {
   conversations = buildSeed(now);
+  closeCharges = seedCharges(now);
   sequence = 1;
+}
+
+function charges(now = new Date()): CloseCharge[] {
+  if (!closeCharges) closeCharges = seedCharges(now);
+  return closeCharges;
+}
+
+export function listCloseCharges(now = new Date()): CloseCharge[] {
+  return charges(now)
+    .map(charge => ({ ...charge }))
+    .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1));
+}
+
+export function billingSnapshot(now = new Date()): BillingSnapshot {
+  return {
+    source: 'mock',
+    role: 'manager',
+    dayToDay: 'free',
+    closeFeeCents: CLOSE_FEE_CENTS,
+    closeFeeLabel: CLOSE_FEE_COPY,
+    paymentMethod: { brand: 'Visa', last4: '4242', placeholder: true },
+    charges: listCloseCharges(now),
+  };
 }
 
 function find(id: string): Conversation | undefined {
@@ -266,8 +349,7 @@ export function toInboxItem(conversation: Conversation, now: Date): InboxItem {
   return {
     id: conversation.id,
     buyerLabel: conversation.buyerLabel,
-    shopperFirstName: conversation.shopperFirstName,
-    shopperDisplayName: shopperDisplayName(conversation.shopperFirstName),
+    shopperRef: conversation.shopperRef,
     stage: conversation.stage,
     stageLabel: STAGE_LABEL[conversation.stage],
     vehicleTitle: vehicleTitle(conversation.vehicle),
@@ -295,7 +377,6 @@ export function presentConversation(
   return {
     ...conversation,
     messages: conversation.messages.map(message => ({ ...message })),
-    shopperDisplayName: shopperDisplayName(conversation.shopperFirstName),
     vehicleTitle: vehicleTitle(conversation.vehicle),
     stageLabel: STAGE_LABEL[conversation.stage],
     priceDiffers: pricesDiffer(
@@ -348,6 +429,7 @@ export function postMessage(
   conversation.messages.push({
     id: `local-${sequence++}`,
     author: 'salesperson',
+    kind: 'chat',
     body: text,
     sentAt: now.toISOString(),
   });
@@ -382,6 +464,7 @@ export function shareNumbers(
   conversation.messages.push({
     id: `local-${sequence++}`,
     author: 'salesperson',
+    kind: 'numbers',
     body: numbersShareBody({
       advertisedPriceCents: conversation.advertisedPriceCents,
       statedPriceCents: input.statedPriceCents,
@@ -397,6 +480,26 @@ export function shareNumbers(
   ) {
     conversation.stage = 'numbers_shared';
   }
+  return { ok: true, data: presentConversation(id, now)! };
+}
+
+export function markSold(
+  id: string,
+  now = new Date()
+): DealerResult<ConversationDetail> {
+  const conversation = find(id);
+  if (!conversation) return fail('not_found');
+  if (!isOpenStage(conversation.stage)) return fail('conversation_closed');
+  conversation.stage = 'car_sold';
+  charges(now).push({
+    id: `chg-${sequence++}`,
+    conversationId: conversation.id,
+    shopperRef: conversation.shopperRef,
+    vehicleTitle: vehicleTitle(conversation.vehicle),
+    amountCents: CLOSE_FEE_CENTS,
+    status: 'placeholder',
+    closedAt: now.toISOString(),
+  });
   return { ok: true, data: presentConversation(id, now)! };
 }
 
@@ -527,6 +630,24 @@ export function shareNumbersHttp(
     return { status: errorStatus(result.error), body: { error: result.error } };
   }
   return { status: 200, body: { source: 'mock', conversation: result.data } };
+}
+
+export function markSoldHttp(
+  id: string,
+  now = new Date()
+): { status: number; body: unknown } {
+  const result = markSold(id, now);
+  if (!result.ok) {
+    return { status: errorStatus(result.error), body: { error: result.error } };
+  }
+  return {
+    status: 200,
+    body: { source: 'mock', conversation: result.data, billing: billingSnapshot(now) },
+  };
+}
+
+export function billingHttp(now = new Date()): { status: number; body: unknown } {
+  return { status: 200, body: billingSnapshot(now) };
 }
 
 export function analyticsHttp(url: string): { status: number; body: unknown } {

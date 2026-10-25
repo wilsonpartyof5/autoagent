@@ -6,17 +6,17 @@ This is not the old SwiftUI dealer app, and it is not the deleted “dealers pay
 
 ## What you can open
 
-Bottom tabs: **Inbox**, **Analytics**, **Settings**. A conversation opens full screen.
+Bottom tabs: **Inbox**, **Analytics**, **Settings**. The bar is dark. A conversation opens full screen, with reply templates and the composer pinned under the thread. Outgoing bubbles and the numbers-card rule use the Halo gradient. The list does not stay beside the thread.
 
 - **Sign in.** Work email, then any 6-digit code. Nothing is emailed or checked.
-- **Inbox.** Filters: Needs reply, All open, Closed. Each row is a buyer via Drevvy, a year/make/model/trim, a stock number, a stage, the advertised price, a snippet, and a timer.
-- **Conversation.** In-app chat. Reply templates fill the composer. **Share numbers** posts an informational message. It is not a binding offer.
+- **Inbox.** Filters: Needs reply, All open, Closed. Each row is Buyer via Drevvy, a short reference such as #A7F2, a year/make/model/trim, a stock number, a stage, the advertised price, a snippet, and a timer.
+- **Conversation.** The thread opens with a templated Get Best Price message, then freeform chat. Reply templates fill the composer. **Share numbers** posts an informational card. It is not a binding offer. Chat stays inside Drevvy. There is no text, email, or call.
 - **Analytics.** Reply rate, median first-reply time, conversations started, conversations closed, numbers shared. Ranges: 7, 30, and 90 days. The figures are samples.
 - **Settings.** Profile, notifications, one demo rooftop with a doc-fee default, a team list, and sign out. Nothing is saved.
 
 Stages: New request, In conversation, Numbers shared, Closed, Car sold, No reply.
 
-The shopper is shown as **Buyer via Drevvy**. A first name appears only when the demo includes one. Otherwise the label is **Anonymous shopper**. Phone, email, and address are not on these screens.
+The shopper is labeled **Buyer via Drevvy** plus a short reference. Name, city, phone, email, and address are not on these screens. One-click reply chips are a later shopper-app helper, not this desk.
 
 ## Mock vs real
 
@@ -24,11 +24,13 @@ The conversations live in `lib/data/demo_desk.dart`. They mirror the web demo in
 
 The timer is a display value from the demo clock. It is not an SLA policy.
 
-## Shopper pricing
+## Pricing
 
-Noted here only. No billing code, and no dealer paywall.
+Noted here only. Stripe is not connected. There is no shopper paywall in this app.
 
-Shopper plan: **$27/month for 10 conversations per month**. Car packs are retired. There is no annual plan.
+The desk is free day to day. A participating dealer is charged **$300 per closed deal**. Settings includes a Billing stub for a manager: a placeholder card, that fee, and mock recent charges. Mark as sold asks for confirmation and names the $300 fee. That copy is a placeholder.
+
+Shopper plan, separate from this desk: **$27/month for 10 conversations per month**. Car packs are retired. There is no annual plan.
 
 ## Run
 

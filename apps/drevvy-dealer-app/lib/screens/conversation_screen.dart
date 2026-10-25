@@ -22,6 +22,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final _otd = TextEditingController();
   final _note = TextEditingController();
   var _showNumbers = false;
+  var _confirmSold = false;
   String? _error;
 
   @override
@@ -80,21 +81,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  Conversation.buyerLabel,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.1,
-                    color: DealerColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 2),
                 Row(
                   children: [
+                    Text(
+                      Conversation.buyerLabel,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                        color: DealerColors.muted,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        shopperDisplayName(conversation.shopperFirstName),
+                        conversation.shopperRef,
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -113,6 +114,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 PriceBlock(item: item),
                 const SizedBox(height: 8),
                 StageStepper(stage: conversation.stage),
+                const SizedBox(height: 8),
+                const Text(
+                  'Templated Get Best Price opener, then freeform chat. Share numbers is informational. No text, email, or call.',
+                  style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+                ),
               ],
             ),
           ),
@@ -123,6 +129,50 @@ class _ConversationScreenState extends State<ConversationScreen> {
               itemCount: conversation.messages.length,
               itemBuilder: (context, index) {
                 final message = conversation.messages[index];
+                if (message.kind == MessageKind.numbers) {
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: DealerColors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: DealerColors.line),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 4,
+                          decoration: const BoxDecoration(gradient: DealerColors.brandGradient),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Share numbers · Informational card',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: DealerColors.muted,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(message.body, style: const TextStyle(height: 1.35)),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Informational for this anonymous shopper. Not a binding offer.',
+                                style: TextStyle(fontSize: 11, color: DealerColors.muted, height: 1.35),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
                 final mine = message.author == MessageAuthor.salesperson;
                 return Align(
                   alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -131,7 +181,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     constraints: const BoxConstraints(maxWidth: 320),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: mine ? DealerColors.ink : DealerColors.card,
+                      gradient: mine ? DealerColors.brandGradient : null,
+                      color: mine ? null : DealerColors.card,
                       borderRadius: BorderRadius.circular(16),
                       border: mine ? null : Border.all(color: DealerColors.line),
                     ),
@@ -139,7 +190,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          mine ? 'You' : shopperDisplayName(conversation.shopperFirstName),
+                          mine
+                              ? 'You'
+                              : message.author == MessageAuthor.drevvy
+                                  ? 'Drevvy · Templated opener'
+                                  : conversation.shopperRef,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -167,6 +222,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_confirmSold && open) _soldConfirm(desk, conversation),
                 if (_showNumbers && open) _numbersCard(desk, conversation),
                 Wrap(
                   spacing: 8,
@@ -179,7 +235,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       ),
                     ActionChip(
                       label: const Text('Share numbers'),
-                      onPressed: open ? () => setState(() => _showNumbers = !_showNumbers) : null,
+                      onPressed: open
+                          ? () => setState(() {
+                                _confirmSold = false;
+                                _showNumbers = !_showNumbers;
+                              })
+                          : null,
+                    ),
+                    ActionChip(
+                      label: const Text('Mark as sold'),
+                      onPressed: open
+                          ? () => setState(() {
+                                _showNumbers = false;
+                                _confirmSold = !_confirmSold;
+                              })
+                          : null,
                     ),
                   ],
                 ),
@@ -237,7 +307,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     );
   }
 
-  Widget _numbersCard(DealerDesk desk, Conversation conversation) {
+  Widget _soldConfirm(DealerDesk desk, Conversation conversation) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -249,59 +319,127 @@ class _ConversationScreenState extends State<ConversationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Share numbers', style: TextStyle(fontWeight: FontWeight.w800)),
+          const Text('Mark as sold', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           const Text(
-            '$shareNumbersDisclaimer Where a written total becomes the record is still an open question.',
+            markSoldConfirm,
             style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Advertised ${formatMoney(conversation.advertisedPriceCents)}',
-            style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryButton(
+                  label: 'Mark sold',
+                  onPressed: () {
+                    final error = desk.markSold(conversation.id);
+                    setState(() {
+                      _error = _errorCopy(error);
+                      if (error == null) _confirmSold = false;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () => setState(() => _confirmSold = false),
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          const Text('Price you state', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          TextField(controller: _stated, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: '35400')),
-          const SizedBox(height: 8),
-          const Text('Written out-the-door total (optional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          TextField(controller: _otd, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: '38950')),
-          const SizedBox(height: 8),
-          const Text('Note (optional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          TextField(controller: _note, minLines: 1, maxLines: 3),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: () {
-              final stated = dollarsToCents(_stated.text);
-              if (stated == null) {
-                setState(() => _error = 'Enter a price in dollars, at least \$1.');
-                return;
-              }
-              int? written;
-              if (_otd.text.trim().isNotEmpty) {
-                written = dollarsToCents(_otd.text);
-                if (written == null) {
-                  setState(() => _error = 'Enter a price in dollars, at least \$1.');
-                  return;
-                }
-              }
-              final error = desk.shareNumbers(
-                id: conversation.id,
-                statedPriceCents: stated,
-                writtenOtdCents: written,
-                note: _note.text,
-              );
-              setState(() {
-                _error = _errorCopy(error);
-                if (error == null) {
-                  _stated.clear();
-                  _otd.clear();
-                  _note.clear();
-                  _showNumbers = false;
-                }
-              });
-            },
-            child: const Text('Share in chat'),
+        ],
+      ),
+    );
+  }
+
+  Widget _numbersCard(DealerDesk desk, Conversation conversation) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: DealerColors.canvas,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DealerColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 4,
+            decoration: const BoxDecoration(gradient: DealerColors.brandGradient),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Share numbers', style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                const Text(
+                  '$shareNumbersDisclaimer Where a written total becomes the record is still an open question.',
+                  style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Advertised ${formatMoney(conversation.advertisedPriceCents)}',
+                  style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                const Text('Price you state', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                TextField(
+                  controller: _stated,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: '35400'),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Written out-the-door total (optional)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                TextField(
+                  controller: _otd,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: '38950'),
+                ),
+                const SizedBox(height: 8),
+                const Text('Note (optional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                TextField(controller: _note, minLines: 1, maxLines: 3),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () {
+                    final stated = dollarsToCents(_stated.text);
+                    if (stated == null) {
+                      setState(() => _error = 'Enter a price in dollars, at least \$1.');
+                      return;
+                    }
+                    int? written;
+                    if (_otd.text.trim().isNotEmpty) {
+                      written = dollarsToCents(_otd.text);
+                      if (written == null) {
+                        setState(() => _error = 'Enter a price in dollars, at least \$1.');
+                        return;
+                      }
+                    }
+                    final error = desk.shareNumbers(
+                      id: conversation.id,
+                      statedPriceCents: stated,
+                      writtenOtdCents: written,
+                      note: _note.text,
+                    );
+                    setState(() {
+                      _error = _errorCopy(error);
+                      if (error == null) {
+                        _stated.clear();
+                        _otd.clear();
+                        _note.clear();
+                        _showNumbers = false;
+                      }
+                    });
+                  },
+                  child: const Text('Share in chat'),
+                ),
+              ],
+            ),
           ),
         ],
       ),

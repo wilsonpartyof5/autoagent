@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 import {
+  markConversationSold,
   postConversationMessage,
   shareConversationNumbers,
 } from '@/app/dealer/actions';
@@ -12,6 +13,7 @@ import {
   formatMoney,
   formatStamp,
   isOpenStage,
+  MARK_SOLD_CONFIRM,
   SHARE_NUMBERS_DISCLAIMER,
 } from '@/lib/dealer/format';
 import type {
@@ -20,6 +22,8 @@ import type {
   InboxItem,
 } from '@/lib/dealer/types';
 import { PriceLine, SlaText, StageChip, StageStepper } from './stage-chip';
+
+const HALO = 'bg-[linear-gradient(135deg,#5145DB_0%,#3563E0_100%)]';
 
 const ERROR_COPY: Record<DealerDemoError, string> = {
   not_found: 'That conversation is not in the demo.',
@@ -41,6 +45,7 @@ export function ConversationPane({
   const [otd, setOtd] = useState('');
   const [note, setNote] = useState('');
   const [showNumbers, setShowNumbers] = useState(false);
+  const [confirmSold, setConfirmSold] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const open = isOpenStage(conversation.stage);
@@ -88,6 +93,19 @@ export function ConversationPane({
     onUpdated(result.conversation, result.items);
   }
 
+  async function confirmMarkSold() {
+    setPending(true);
+    const result = await markConversationSold(conversation.id);
+    setPending(false);
+    if (!result.ok) {
+      setError(ERROR_COPY[result.error]);
+      return;
+    }
+    setConfirmSold(false);
+    setError(null);
+    onUpdated(result.conversation, result.items);
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
       <header className="border-b border-border bg-card px-4 py-3">
@@ -95,15 +113,15 @@ export function ConversationPane({
           <div>
             <Link
               href="/dealer/inbox"
-              className="text-xs font-semibold text-[#3C30C4] lg:hidden"
+              className="text-xs font-semibold text-[#3C30C4] md:hidden"
             >
               Inbox
             </Link>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {conversation.buyerLabel}
-            </p>
             <h1 className="text-lg font-extrabold">
-              {conversation.shopperDisplayName}
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {conversation.buyerLabel}
+              </span>{' '}
+              {conversation.shopperRef}
             </h1>
             <p className="text-sm text-muted-foreground">Conversation</p>
           </div>
@@ -133,11 +151,43 @@ export function ConversationPane({
         <div className="mt-2">
           <StageStepper stage={conversation.stage} />
         </div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Templated Get Best Price opener, then freeform chat. Drevvy relays
+          both ways. One-click chips are shopper helpers on a later shopper
+          screen. This desk does not text, email, or call.
+        </p>
       </header>
 
       <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {conversation.messages.map(message => {
+          if (message.kind === 'numbers') {
+            return (
+              <li key={message.id} className="flex justify-start">
+                <div className="w-full max-w-[85%] overflow-hidden rounded-xl border border-border bg-card text-sm leading-5">
+                  <div className={`h-1 ${HALO}`} />
+                  <div className="px-3 py-3">
+                  <p className="text-[11px] font-semibold text-muted-foreground">
+                    Share numbers · Informational card
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {SHARE_NUMBERS_DISCLAIMER}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {formatStamp(message.sentAt)}
+                  </p>
+                  </div>
+                </div>
+              </li>
+            );
+          }
           const mine = message.author === 'salesperson';
+          const opener = message.kind === 'opener';
+          const label = mine
+            ? 'You'
+            : opener
+              ? 'Drevvy'
+              : conversation.shopperRef;
           return (
             <li
               key={message.id}
@@ -146,14 +196,17 @@ export function ConversationPane({
               <div
                 className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-5 ${
                   mine
-                    ? 'bg-[#171A2C] text-white'
-                    : 'border border-border bg-card text-foreground'
+                    ? `${HALO} text-white`
+                    : opener
+                      ? 'border border-[#ECEAFF] bg-[#F7F8FC] text-foreground'
+                      : 'border border-border bg-card text-foreground'
                 }`}
               >
                 <p
                   className={`text-[11px] font-semibold ${mine ? 'text-white/70' : 'text-muted-foreground'}`}
                 >
-                  {mine ? 'You' : conversation.shopperDisplayName}
+                  {label}
+                  {opener ? ' · Templated opener' : ''}
                 </p>
                 <p className="whitespace-pre-wrap">{message.body}</p>
                 <p
@@ -167,9 +220,39 @@ export function ConversationPane({
         })}
       </ol>
 
-      <div className="border-t border-border bg-card px-4 py-3">
-        {showNumbers && open ? (
+      <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Reply in this chat
+        </p>
+        {confirmSold && open ? (
           <div className="mb-3 rounded-xl border border-border bg-background p-3">
+            <p className="text-sm font-extrabold">Mark as sold</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {MARK_SOLD_CONFIRM}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={confirmMarkSold}
+                disabled={pending}
+                className={`rounded-xl px-3 py-2 text-sm font-extrabold text-white disabled:opacity-40 ${HALO}`}
+              >
+                Mark sold
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmSold(false)}
+                className="rounded-xl border border-border px-3 py-2 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {showNumbers && open ? (
+          <div className="mb-3 overflow-hidden rounded-xl border border-border bg-background">
+            <div className={`h-1 ${HALO}`} />
+            <div className="p-3">
             <p className="text-sm font-extrabold">Share numbers</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               {SHARE_NUMBERS_DISCLAIMER} Where a written total becomes the
@@ -227,6 +310,7 @@ export function ConversationPane({
             >
               Share in chat
             </button>
+            </div>
           </div>
         ) : null}
 
@@ -248,6 +332,17 @@ export function ConversationPane({
             className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40"
           >
             Share numbers
+          </button>
+          <button
+            type="button"
+            disabled={!open}
+            onClick={() => {
+              setShowNumbers(false);
+              setConfirmSold(value => !value);
+            }}
+            className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40"
+          >
+            Mark as sold
           </button>
         </div>
         {!open ? (
@@ -277,7 +372,7 @@ export function ConversationPane({
             type="button"
             onClick={sendMessage}
             disabled={pending || draft.trim().length === 0}
-            className="rounded-xl bg-gradient-to-br from-[#5B4FE9] to-[#3A6FF0] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(70,80,220,0.28)] disabled:opacity-40"
+            className={`rounded-xl px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(81,69,219,0.28)] disabled:opacity-40 ${HALO}`}
           >
             Send
           </button>

@@ -4,14 +4,17 @@ import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { dollarsToCents } from './format';
+import { dollarsToCents, CLOSE_FEE_CENTS } from './format';
 import {
   allInboxItems,
   analyticsHttp,
   analyticsSummary,
+  billingHttp,
+  billingSnapshot,
   conversationHttp,
   inboxHttp,
   listInbox,
+  markSold,
   postMessage,
   postMessageHttp,
   presentConversation,
@@ -55,9 +58,15 @@ describe('dealer desk mock', { concurrency: false }, () => {
       needs.map(item => item.id),
       ['conv_rav4', 'conv_f150']
     );
-    assert.equal(needs[0]?.shopperDisplayName, 'Alex');
+    assert.equal(needs[0]?.buyerLabel, 'Buyer via Drevvy');
+    assert.equal(needs[0]?.shopperRef, '#A7F2');
     assert.equal(needs[0]?.sla.label, '20m left');
-    assert.equal(needs[1]?.shopperDisplayName, 'Anonymous shopper');
+    assert.equal(needs[1]?.shopperRef, '#B3C1');
+    const opener = presentConversation('conv_rav4', NOW);
+    assert.equal(opener?.messages[0]?.author, 'drevvy');
+    assert.match(opener?.messages[0]?.body ?? '', /^Get Best Price/);
+    assert.match(opener?.messages[0]?.body ?? '', /stock #R44118/);
+    assert.equal(JSON.stringify(allInboxItems(NOW)).includes('Alex'), false);
     assert.equal(needs[1]?.sla.label, '12m over');
     assert.equal(
       needs.every(item => item.needsReply),
@@ -101,6 +110,7 @@ describe('dealer desk mock', { concurrency: false }, () => {
     assert.equal(posted.data.needsReply, false);
     assert.equal(posted.data.firstReplyAt, NOW.toISOString());
     assert.equal(posted.data.messages.at(-1)?.author, 'salesperson');
+    assert.equal(posted.data.messages.at(-1)?.kind, 'chat');
     assert.equal(
       listInbox('needs_reply', NOW).some(item => item.id === 'conv_rav4'),
       false
@@ -119,6 +129,7 @@ describe('dealer desk mock', { concurrency: false }, () => {
     if (!shared.ok) return;
     assert.equal(shared.data.stage, 'numbers_shared');
     assert.equal(shared.data.priceDiffers, true);
+    assert.equal(shared.data.messages.at(-1)?.kind, 'numbers');
     assert.match(
       shared.data.messages.at(-1)?.body ?? '',
       /not a binding offer/
@@ -141,6 +152,35 @@ describe('dealer desk mock', { concurrency: false }, () => {
     });
     assert.equal(dollarsToCents('$35,400.50'), 3_540_050);
     assert.equal(dollarsToCents('0'), null);
+  });
+
+  test('marking a car sold records a placeholder close fee', () => {
+    resetDealerDemo(NOW);
+    const before = billingSnapshot(NOW);
+    assert.equal(before.source, 'mock');
+    assert.equal(before.role, 'manager');
+    assert.equal(before.dayToDay, 'free');
+    assert.equal(before.closeFeeCents, CLOSE_FEE_CENTS);
+    assert.equal(before.closeFeeLabel, '$300 per closed deal');
+    assert.equal(before.paymentMethod.placeholder, true);
+    assert.equal(before.charges[0]?.conversationId, 'conv_sportage');
+    assert.equal(before.charges[0]?.amountCents, 30_000);
+
+    const sold = markSold('conv_f150', NOW);
+    assert.equal(sold.ok, true);
+    if (!sold.ok) return;
+    assert.equal(sold.data.stage, 'car_sold');
+    const after = billingSnapshot(NOW);
+    assert.equal(after.charges[0]?.conversationId, 'conv_f150');
+    assert.equal(after.charges[0]?.shopperRef, '#B3C1');
+    assert.equal(after.charges[0]?.amountCents, 30_000);
+    assert.equal(after.charges[0]?.status, 'placeholder');
+    assert.deepEqual(markSold('conv_f150', NOW), {
+      ok: false,
+      error: 'conversation_closed',
+    });
+    walk(after, 'billing');
+    assert.equal(JSON.stringify(after).includes('stripe'), false);
   });
 
   test('analytics samples grow with the range and stay mock', () => {
@@ -217,6 +257,8 @@ describe('dealer desk mock', { concurrency: false }, () => {
       '../../app/api/dealer/v1/leads/[leadId]/route.ts',
       '../../app/api/dealer/v1/leads/[leadId]/messages/route.ts',
       '../../app/api/dealer/v1/leads/[leadId]/numbers/route.ts',
+      '../../app/api/dealer/v1/leads/[leadId]/sold/route.ts',
+      '../../app/api/dealer/v1/billing/route.ts',
     ];
     for (const file of routeFiles) {
       const source = readFileSync(join(HERE, file), 'utf8');

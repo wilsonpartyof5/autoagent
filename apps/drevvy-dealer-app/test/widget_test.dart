@@ -24,16 +24,16 @@ void main() {
     await tester.tap(find.byKey(const Key('continue-demo')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Alex'), findsOneWidget);
-    expect(find.text('Anonymous shopper'), findsOneWidget);
+    expect(find.text('#A7F2'), findsOneWidget);
+    expect(find.text('#B3C1'), findsOneWidget);
     expect(find.textContaining('phone'), findsNothing);
     expect(find.textContaining('@'), findsNothing);
 
-    await tester.tap(find.text('Alex'));
+    await tester.tap(find.text('#A7F2'));
     await tester.pumpAndSettle();
 
     expect(find.text('Conversation'), findsOneWidget);
-    expect(find.text('Is stock #R44118 still available?'), findsOneWidget);
+    expect(find.textContaining('Get Best Price'), findsWidgets);
     await tester.enterText(find.byKey(const Key('chat-composer')), 'Yes, stock #R44118 is still here.');
     await tester.pump();
     await tester.tap(find.byKey(const Key('send-message')));

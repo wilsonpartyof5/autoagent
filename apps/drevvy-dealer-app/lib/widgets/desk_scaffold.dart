@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../theme/dealer_theme.dart';
+
 class DeskScaffold extends StatelessWidget {
   const DeskScaffold({super.key, required this.navigationShell});
 
@@ -11,6 +13,8 @@ class DeskScaffold extends StatelessWidget {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
+        backgroundColor: DealerColors.ink,
+        indicatorColor: const Color(0x24FFFFFF),
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) {
           navigationShell.goBranch(index, initialLocation: index == navigationShell.currentIndex);

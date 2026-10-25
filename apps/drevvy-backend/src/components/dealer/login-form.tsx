@@ -87,7 +87,7 @@ export function LoginForm() {
           ) : null}
           <button
             type="submit"
-            className="mt-4 w-full rounded-xl bg-gradient-to-br from-[#5B4FE9] to-[#3A6FF0] px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(70,80,220,0.28)]"
+            className="mt-4 w-full rounded-xl bg-[linear-gradient(135deg,#5145DB_0%,#3563E0_100%)] px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(81,69,219,0.28)]"
           >
             {sent ? 'Continue to inbox' : 'Email me a link'}
           </button>

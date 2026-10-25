@@ -39,7 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Demo only. These fields stay on this page. Nothing is saved, and there is no dealer paywall.',
+          'Demo only. These fields stay on this page. Nothing is saved. Day-to-day use is free. There is no shopper paywall on this desk.',
           style: TextStyle(color: DealerColors.muted, height: 1.4),
         ),
         const SizedBox(height: 16),
@@ -87,6 +87,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+        ),
+        _card(
+          title: 'Billing',
+          caption: 'Manager and Admin. This demo is signed in as a manager. Stripe is not connected.',
+          child: _BillingCard(charges: DeskScope.of(context).closeCharges),
         ),
         _card(
           title: 'Team',
@@ -142,6 +147,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child,
         ],
       ),
+    );
+  }
+}
+
+class _BillingCard extends StatefulWidget {
+  const _BillingCard({required this.charges});
+
+  final List<CloseCharge> charges;
+
+  @override
+  State<_BillingCard> createState() => _BillingCardState();
+}
+
+class _BillingCardState extends State<_BillingCard> {
+  String? _note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(closeFeeCopy, style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        const Text(
+          'Charged when a participating dealer marks a deal sold. The desk stays free until then.',
+          style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: DealerColors.canvas,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DealerColors.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Payment method', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+              const SizedBox(height: 4),
+              const Text('Visa ···· 4242'),
+              const SizedBox(height: 4),
+              const Text(
+                'Placeholder card. No payment is stored or sent.',
+                style: TextStyle(color: DealerColors.muted, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => setState(() => _note = 'No card was saved. Stripe is not connected.'),
+                child: const Text('Replace card'),
+              ),
+              if (_note != null) ...[
+                const SizedBox(height: 8),
+                Text(_note!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text('Recent charges', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+        for (final charge in widget.charges)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${charge.shopperRef} · ${charge.vehicleTitle}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+                Text(formatMoney(charge.amountCents)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

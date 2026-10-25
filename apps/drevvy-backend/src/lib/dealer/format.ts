@@ -44,6 +44,13 @@ export const RANGE_LABEL: Record<AnalyticsRange, string> = {
 export const SHARE_NUMBERS_DISCLAIMER =
   'Informational for this anonymous shopper. Not a binding offer.';
 
+export const CLOSE_FEE_CENTS = 30_000;
+
+export const CLOSE_FEE_COPY = '$300 per closed deal';
+
+export const MARK_SOLD_CONFIRM =
+  'Mark this car sold? A participating dealer is charged $300 when a deal closes. Day-to-day use of the desk stays free. This copy is a placeholder. This demo does not charge a card.';
+
 const MAX_CENTS = 200_000_000;
 
 export function isOpenStage(stage: ConversationStage): boolean {
@@ -66,9 +73,17 @@ export function isConversationStage(value: string): value is ConversationStage {
   return value in STAGE_LABEL;
 }
 
-export function shopperDisplayName(firstName: string | null): string {
-  const trimmed = firstName?.trim() ?? '';
-  return trimmed.length > 0 ? trimmed : 'Anonymous shopper';
+export function bestPriceOpener(input: {
+  stockNumber: string;
+  vehicleTitle: string;
+  advertisedPriceCents: number;
+}): string {
+  return [
+    'Get Best Price',
+    `An anonymous shopper tapped Get Best Price on stock #${input.stockNumber}, a ${input.vehicleTitle}.`,
+    `Advertised price ${formatMoney(input.advertisedPriceCents)}.`,
+    'Reply in this chat. Drevvy relays messages both ways. No text, email, or call.',
+  ].join('\n');
 }
 
 export function vehicleTitle(vehicle: Conversation['vehicle']): string {
@@ -140,7 +155,7 @@ export function formatDuration(minutes: number): string {
 export function needsReply(conversation: Conversation): boolean {
   if (!isOpenStage(conversation.stage)) return false;
   const last = conversation.messages[conversation.messages.length - 1];
-  return last?.author === 'shopper';
+  return last?.author === 'shopper' || last?.author === 'drevvy';
 }
 
 export function snippetFrom(conversation: Conversation): string {

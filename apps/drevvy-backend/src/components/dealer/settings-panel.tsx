@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
-import { DEMO_ROOFTOP } from '@/lib/dealer/types';
+import { CLOSE_FEE_COPY, formatMoney, formatStamp } from '@/lib/dealer/format';
+import { DEMO_ROOFTOP, type BillingSnapshot } from '@/lib/dealer/types';
 
 const TEAM = [
   { name: 'Dana Ruiz', role: 'Manager' },
   { name: 'Sam Patel', role: 'Salesperson' },
 ];
 
-export function SettingsPanel() {
+export function SettingsPanel({ billing }: { billing: BillingSnapshot }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [rooftop, setRooftop] = useState<string>(DEMO_ROOFTOP.name);
@@ -19,13 +20,14 @@ export function SettingsPanel() {
   );
   const [newConversation, setNewConversation] = useState(true);
   const [waiting, setWaiting] = useState(true);
+  const [cardNote, setCardNote] = useState<string | null>(null);
 
   return (
     <div className="h-full overflow-y-auto px-5 py-6">
       <h1 className="text-lg font-extrabold">Settings</h1>
       <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-        Demo only. These fields stay on this page. Nothing is saved, and there
-        is no dealer paywall.
+        Demo only. These fields stay on this page. Nothing is saved. Day-to-day
+        use is free. There is no shopper paywall on this desk.
       </p>
 
       <section className="mt-6 max-w-xl rounded-2xl border border-border bg-card p-4">
@@ -109,6 +111,58 @@ export function SettingsPanel() {
           onChange={event => setDocFee(event.target.value)}
           className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
         />
+      </section>
+
+      <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">
+        <h2 className="text-sm font-extrabold">Billing</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Manager and Admin. This demo is signed in as a manager. Stripe is not
+          connected.
+        </p>
+        <p className="mt-3 text-sm font-extrabold">{CLOSE_FEE_COPY}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Charged when a participating dealer marks a deal sold. The desk stays
+          free until then.
+        </p>
+        <div className="mt-3 rounded-xl border border-dashed border-border bg-background p-3">
+          <p className="text-xs font-semibold">Payment method</p>
+          <p className="mt-1 text-sm">
+            {billing.paymentMethod.brand} ···· {billing.paymentMethod.last4}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Placeholder card. No payment is stored or sent.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              setCardNote('No card was saved. Stripe is not connected.')
+            }
+            className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold"
+          >
+            Replace card
+          </button>
+          {cardNote ? (
+            <p className="mt-2 text-xs font-semibold" role="status">
+              {cardNote}
+            </p>
+          ) : null}
+        </div>
+        <h3 className="mt-4 text-xs font-extrabold">Recent charges</h3>
+        <ul className="mt-2 divide-y divide-border">
+          {billing.charges.map(charge => (
+            <li key={charge.id} className="py-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold">
+                  {charge.shopperRef} · {charge.vehicleTitle}
+                </span>
+                <span>{formatMoney(charge.amountCents)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {formatStamp(charge.closedAt)} · placeholder
+              </p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">

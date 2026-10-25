@@ -19,11 +19,14 @@ export const ANALYTICS_RANGES = ['7d', '30d', '90d'] as const;
 
 export type AnalyticsRange = (typeof ANALYTICS_RANGES)[number];
 
-export type MessageAuthor = 'shopper' | 'salesperson';
+export type MessageAuthor = 'drevvy' | 'shopper' | 'salesperson';
+
+export type MessageKind = 'chat' | 'opener' | 'numbers';
 
 export interface ThreadMessage {
   id: string;
   author: MessageAuthor;
+  kind: MessageKind;
   body: string;
   sentAt: string;
 }
@@ -38,8 +41,8 @@ export interface VehicleSummary {
 export interface Conversation {
   id: string;
   buyerLabel: 'Buyer via Drevvy';
-  /** Optional given name. Never a phone, email, or street address. */
-  shopperFirstName: string | null;
+  /** Opaque desk reference. Not a name, city, or contact. */
+  shopperRef: string;
   stage: ConversationStage;
   vehicle: VehicleSummary;
   stockNumber: string;
@@ -69,8 +72,7 @@ export interface ReplyTemplate {
 export interface InboxItem {
   id: string;
   buyerLabel: 'Buyer via Drevvy';
-  shopperFirstName: string | null;
-  shopperDisplayName: string;
+  shopperRef: string;
   stage: ConversationStage;
   stageLabel: string;
   vehicleTitle: string;
@@ -86,7 +88,6 @@ export interface InboxItem {
 }
 
 export interface ConversationDetail extends Conversation {
-  shopperDisplayName: string;
   vehicleTitle: string;
   stageLabel: string;
   priceDiffers: boolean;
@@ -105,6 +106,31 @@ export interface AnalyticsSummary {
   conversationsStarted: number;
   conversationsClosed: number;
   numbersShared: number;
+}
+
+export interface CloseCharge {
+  id: string;
+  conversationId: string;
+  shopperRef: string;
+  vehicleTitle: string;
+  amountCents: number;
+  /** Placeholder row. Not a Stripe charge. */
+  status: 'placeholder';
+  closedAt: string;
+}
+
+export interface BillingSnapshot {
+  source: 'mock';
+  role: 'manager';
+  dayToDay: 'free';
+  closeFeeCents: number;
+  closeFeeLabel: string;
+  paymentMethod: {
+    brand: 'Visa';
+    last4: '4242';
+    placeholder: true;
+  };
+  charges: CloseCharge[];
 }
 
 export type DealerDemoError =

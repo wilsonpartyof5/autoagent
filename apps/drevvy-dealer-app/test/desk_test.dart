@@ -8,10 +8,10 @@ void main() {
     final desk = DealerDesk(now: now);
     final needs = desk.inbox(InboxFilter.needsReply);
     expect(needs.map((item) => item.conversation.id), ['conv_rav4', 'conv_f150']);
-    expect(shopperDisplayName(needs.first.conversation.shopperFirstName), 'Alex');
+    expect(needs.first.conversation.shopperRef, '#A7F2');
     expect(needs.first.sla.label, '20m left');
     expect(needs[1].sla.label, '12m over');
-    expect(needs[1].conversation.shopperFirstName, isNull);
+    expect(needs[1].conversation.shopperRef, '#B3C1');
 
     final tucson = desk.inbox(InboxFilter.allOpen).firstWhere((item) => item.conversation.id == 'conv_tucson');
     expect(tucson.priceDiffers, isTrue);
@@ -31,6 +31,17 @@ void main() {
     final encoded = needs.map((item) => item.snippet).join(' ');
     expect(encoded.contains('@'), isFalse);
     expect(encoded.toLowerCase().contains('negotiat'), isFalse);
+  });
+
+  test('marking a car sold records a placeholder close fee', () {
+    final desk = DealerDesk(now: now);
+    expect(desk.closeCharges.first.conversationId, 'conv_sportage');
+    expect(desk.closeCharges.first.amountCents, closeFeeCents);
+    expect(desk.markSold('conv_f150'), isNull);
+    expect(desk.conversation('conv_f150')!.stage, ConversationStage.carSold);
+    expect(desk.closeCharges.first.shopperRef, '#B3C1');
+    expect(desk.closeCharges.first.amountCents, 30000);
+    expect(desk.markSold('conv_f150'), 'conversation_closed');
   });
 
   test('a reply starts the conversation and share numbers stays informational', () {

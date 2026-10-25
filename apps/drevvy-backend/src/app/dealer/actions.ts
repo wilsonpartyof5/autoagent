@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { allInboxItems, postMessage, shareNumbers } from '@/lib/dealer/mock';
+import {
+  allInboxItems,
+  markSold,
+  postMessage,
+  shareNumbers,
+} from '@/lib/dealer/mock';
 import type {
   ConversationDetail,
   DealerDemoError,
@@ -20,7 +25,16 @@ function publish(
   revalidatePath('/dealer/inbox');
   revalidatePath(`/dealer/leads/${leadId}`);
   revalidatePath('/dealer/analytics');
+  revalidatePath('/dealer/settings');
   return { ok: true, conversation, items: allInboxItems() };
+}
+
+export async function markConversationSold(
+  leadId: string
+): Promise<DeskMutation> {
+  const result = markSold(leadId);
+  if (!result.ok) return result;
+  return publish(leadId, result.data);
 }
 
 export async function postConversationMessage(

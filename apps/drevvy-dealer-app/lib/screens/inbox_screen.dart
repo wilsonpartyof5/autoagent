@@ -33,7 +33,7 @@ class _InboxScreenState extends State<InboxScreen> {
                 Text('Inbox', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
                 Text(
-                  'Buyer via Drevvy. First name only when the shopper shared one.',
+                  'Buyer via Drevvy, plus a short reference. No name or city.',
                   style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
                 ),
               ],
@@ -78,23 +78,22 @@ class _InboxScreenState extends State<InboxScreen> {
                           children: [
                             Row(
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    Conversation.buyerLabel,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: DealerColors.muted,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                Text(
+                                  Conversation.buyerLabel,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: DealerColors.muted,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  conversation.shopperRef,
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                ),
+                                const Spacer(),
                                 SlaText(sla: item.sla),
                               ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              shopperDisplayName(conversation.shopperFirstName),
-                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                             ),
                             Text(conversation.vehicle.title),
                             Text(

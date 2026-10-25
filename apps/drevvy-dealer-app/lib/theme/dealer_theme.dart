@@ -10,6 +10,8 @@ abstract final class DealerColors {
   static const line = Color(0xFFE4E8F1);
   static const violet = Color(0xFF5B4FE9);
   static const blue = Color(0xFF3A6FF0);
+  static const haloStart = Color(0xFF5145DB);
+  static const haloEnd = Color(0xFF3563E0);
   static const onBrand = Color(0xFFFFFFFF);
   static const honey = Color(0xFF8A5300);
   static const honeyTint = Color(0xFFFFF0D6);
@@ -29,7 +31,7 @@ abstract final class DealerColors {
   static const brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [violet, blue],
+    colors: [haloStart, haloEnd],
   );
 }
 
@@ -59,12 +61,23 @@ ThemeData dealerTheme() {
       scrolledUnderElevation: 0,
       centerTitle: false,
     ),
-    navigationBarTheme: const NavigationBarThemeData(
-      backgroundColor: DealerColors.card,
-      indicatorColor: Color(0xFFECEAFF),
-      labelTextStyle: WidgetStatePropertyAll(
-        TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-      ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: DealerColors.ink,
+      indicatorColor: const Color(0x24FFFFFF),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        return IconThemeData(
+          color: selected ? Colors.white : const Color(0xFFA6ACC2),
+        );
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        return TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: selected ? Colors.white : const Color(0xFFA6ACC2),
+        );
+      }),
     ),
     inputDecorationTheme: const InputDecorationTheme(
       filled: true,

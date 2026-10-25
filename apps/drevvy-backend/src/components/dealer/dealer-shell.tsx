@@ -25,17 +25,18 @@ const links = [
 
 export function DealerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const onLead = pathname.startsWith('/dealer/leads');
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col bg-[#171A2C] text-white md:flex">
         <div className="px-4 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A6ACC2]">
             Drevvy
           </p>
           <p className="text-lg font-extrabold">Desk</p>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Anonymous shoppers in Drevvy chat. Demo data.
+          <p className="mt-2 text-xs leading-5 text-[#A6ACC2]">
+            Chat only. Buyer via Drevvy plus a short reference. Demo data.
           </p>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -48,8 +49,8 @@ export function DealerShell({ children }: { children: ReactNode }) {
                 aria-current={active ? 'page' : undefined}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold ${
                   active
-                    ? 'bg-[#171A2C] text-white'
-                    : 'text-foreground hover:bg-accent'
+                    ? 'bg-white/15 text-white'
+                    : 'text-[#A6ACC2] hover:bg-white/10 hover:text-white'
                 }`}
               >
                 {link.label}
@@ -57,12 +58,14 @@ export function DealerShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <p className="px-4 py-4 text-xs leading-5 text-muted-foreground">
+        <p className="px-4 py-4 text-xs leading-5 text-[#A6ACC2]">
           Demo Rooftop · no account yet
         </p>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <nav className="flex gap-2 border-b border-border bg-card px-3 py-2 md:hidden">
+        <nav
+          className={`${onLead ? 'hidden' : 'flex'} gap-2 border-b border-border bg-card px-3 py-2 md:hidden`}
+        >
           {links.map(link => {
             const active = link.match(pathname);
             return (

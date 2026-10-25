@@ -30,7 +30,7 @@ Search calls MarketCheck's hosted MCP from `apps/drevvy-backend/src/lib/marketch
 
 ## Dealer desk
 
-`/dealer` is a mock conversation desk for salespeople. Shoppers stay anonymous. The chat is in the app, not SMS. Details and the mock API are in `apps/drevvy-backend/DEALER.md`. The mobile shell is `apps/drevvy-dealer-app`. Shopper plan, noted only: $27/month for 10 conversations per month. Car packs are retired. There is no annual plan. This is not the deleted dealer portal. `/admin` is unchanged.
+`/dealer` is a mock conversation desk for salespeople. Each shopper is labeled Buyer via Drevvy plus a short reference such as #A7F2. The thread starts with a Get Best Price opener, then stays in Drevvy chat. Details and the mock API are in `apps/drevvy-backend/DEALER.md`. The mobile shell is `apps/drevvy-dealer-app`. The dealer desk is free day to day. A participating dealer is charged $300 when a deal is marked sold. That billing screen is a mock, with no Stripe charge. Shopper plan, noted only: $27/month for 10 conversations per month. Car packs are retired. There is no annual plan. This is not the deleted dealer portal. `/admin` is unchanged.
 
 ## Local setup
 
