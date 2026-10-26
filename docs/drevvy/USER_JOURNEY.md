@@ -1,6 +1,6 @@
 # Drevvy shopper journey
 
-Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and buys a one-time key pack (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, or 25 keys $74.99) so an agent can chase an out-the-door price. Market intel + save uses 1 key; opening dealer chat uses a second key. If the dealer does not reply in 7 days, the chat key comes back. Packs never expire. The agent talks to dealers by SMS, email, and ElevenLabs voice. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
+Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and buys a one-time key pack (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, or 25 keys $74.99) so an agent can chase an out-the-door price. Market intel + save uses 1 key (not assumed refundable); opening dealer chat uses a second key. Outreach cadence is Day 0–7. If the dealer does not reply in 7 days, or the car sells, the chat key comes back. Canceling before outreach does not return the chat key. Packs never expire. The agent talks to dealers by SMS, email, and ElevenLabs voice. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
 
 Sign in with Apple is postponed until App Store submission. The demo does not depend on it. A shopper can move through Ask, Shop, and the Deals tab on this story without an Apple account.
 
@@ -138,8 +138,9 @@ Cadence:
 2. Day 1: a voice call if nobody has replied.
 3. Day 3: a price-check SMS.
 4. Day 5: a follow-up email if the quote is still incomplete.
-5. Escalate to a manager call only after the written steps have had a chance to land.
-6. Stop when the shopper pauses the car, the car is won, or the best price is ready and the agent is told to hold.
+5. Day 7: cadence/refund clock ends. No dealer reply refunds the dealer-conversation key 1:1 (stubbed). Existing playbook touches still stop at D5.
+6. Escalate to a manager call only after the written steps have had a chance to land.
+7. Stop when the shopper pauses the car, the car is won, or the best price is ready and the agent is told to hold.
 
 Shopper sees contacted count, replied count, SMS/email/voice counts, an AI summary of the texts, an AI summary of the emails, and a timeline that says “a dealership replied.”
 

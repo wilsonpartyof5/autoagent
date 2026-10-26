@@ -46,7 +46,12 @@ import {
   type PresentedDeal,
 } from './lifecycle';
 import { getLifecycleRepository, type LifecycleRepository } from './lifecycle-store';
-import { stubDealerConversationNoReplyRefund } from './key-spend';
+import {
+  stubDealerConversationEarlyRemovalNoRefund,
+  stubDealerConversationNoReplyRefund,
+  stubDealerConversationSoldRefund,
+  type KeySpendStub,
+} from './key-spend';
 import { shouldRefundCredit } from './quota';
 import {
   checkCanAddCar,
@@ -209,6 +214,9 @@ export async function removeShopperCar(
   const beforeOutreach = current.outreachSentAt == null;
 
   if (within30Minutes && beforeOutreach) {
+    // Legacy single-credit refund. Product: do not refund the dealer-conversation
+    // key here (not spent). Do not assume the market key is refundable.
+    noteStubbedKeySpend(stubDealerConversationEarlyRemovalNoRefund(deal.id));
     const result = await refundCredit(supabase, userId, deal.id, 'removed');
     refunded = result.refunded;
   }
@@ -337,7 +345,8 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
     }
   }
   const quietNow = event.type === 'end' && event.endState === 'ended_no_response' && previousState === 'open';
-  if (quietNow) noteStubbedDealerChatRefund(next.dealId);
+  if (quietNow) noteStubbedKeySpend(stubDealerConversationNoReplyRefund(next.dealId));
+  if (soldNow) noteStubbedKeySpend(stubDealerConversationSoldRefund(next.dealId));
   if (soldNow || quietNow) {
     const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
     await emitPlanned(deps, soldNow
@@ -401,8 +410,12 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
         }
       }
 
+      if (previous.endState === 'open' && next.endState === 'sold') {
+        noteStubbedKeySpend(stubDealerConversationSoldRefund(next.dealId));
+      }
+
       if (previous.endState === 'open' && next.endState === 'ended_no_response') {
-        noteStubbedDealerChatRefund(next.dealId);
+        noteStubbedKeySpend(stubDealerConversationNoReplyRefund(next.dealId));
         const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
         await emitPlanned(deps, {
           kind: 'no_response',
@@ -518,14 +531,13 @@ async function chargeDeal(
   );
 }
 
-function noteStubbedDealerChatRefund(dealId: string): void {
-  const stub = stubDealerConversationNoReplyRefund(dealId);
+function noteStubbedKeySpend(stub: KeySpendStub): void {
   console.log(JSON.stringify({
     event: 'key_spend_stub',
     kind: stub.kind,
     wired: stub.wired,
     amount: stub.amount,
-    dealId,
+    refundReason: stub.refundReason ?? null,
     reason: stub.reason,
   }));
 }

@@ -105,8 +105,10 @@ export default function TermsPage() {
               <p className="text-muted-foreground mb-4">
                 Asking and shopping are free. Keys come from a pack you buy. Market intelligence and
                 save use one key. Opening a dealer conversation uses a second key from the same
-                balance. If a dealer does not reply within 7 days, the conversation key is returned.
-                Packs are one-time purchases and never expire:
+                balance. Outreach runs Day 0–7. If a dealer does not reply within 7 days, or the
+                vehicle sells, the conversation key is returned. Canceling within 30 minutes before
+                outreach does not return the conversation key. Packs are one-time purchases and
+                never expire:
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
                 {LEGAL.KEY_PACKS.map((pack) => (
@@ -118,8 +120,9 @@ export default function TermsPage() {
               </ul>
               <p className="text-muted-foreground mb-4">
                 There is no subscription and no automatic renewal. Keys you buy stay on your account until
-                you use them. The market + save key is not returned for silence; only the dealer-conversation
-                key is returned after 7 days with no reply.
+                you use them.                 The market + save key is a separate spend; do not assume it is refundable. Only
+                the dealer-conversation key is returned after 7 days with no reply or when the
+                vehicle sells.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Payment Processing</h3>

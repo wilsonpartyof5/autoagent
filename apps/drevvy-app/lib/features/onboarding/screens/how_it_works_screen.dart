@@ -28,7 +28,7 @@ class HowItWorksScreen extends ConsumerWidget {
     (
       icon: LucideIcons.sparkles,
       title: 'Unlock my price',
-      body: 'Tap Unlock my price for market intel and save (1 key). Opening dealer chat uses a second key. If the dealer does not reply in 7 days, the chat key comes back.',
+      body: 'Tap Unlock my price for market intel and save (1 key). Opening dealer chat uses a second key. If the dealer does not reply in 7 days, or the car sells, the chat key comes back.',
     ),
     (
       icon: LucideIcons.check,

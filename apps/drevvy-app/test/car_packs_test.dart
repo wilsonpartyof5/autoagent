@@ -136,6 +136,7 @@ void main() {
       expect(balance.useText, 'Market + save 1 key · Chat 1 key');
       expect(KeySpend.marketIntelligenceAndSave, 1);
       expect(KeySpend.dealerConversation, 1);
+      expect(KeySpend.dealerConversationCadenceLastDay, 7);
       expect(KeySpend.dealerConversationNoReplyRefundDays, 7);
     });
     });

@@ -4,14 +4,16 @@
  * that never expire and never reset monthly.
  *
  * Product (2026-10-26): two spends from the same balance — 1 key for market
- * intelligence + save, and a separate key to open dealer conversation. If the
- * dealer does not reply within 7 days, refund the conversation key 1:1.
+ * intelligence + save (do not assume refundable), and a separate key to open
+ * dealer conversation. Chat-key refunds (stubbed): no reply by Day 7; sold.
+ * 30-minute cancel before outreach does not refund the chat key.
  * See key-spend.ts. consumeCredit still charges one undifferentiated credit
- * per deal; the second spend and 7-day chat refund are stubbed there.
+ * per deal.
  *
- * Existing refunds (unchanged): early removal before outreach, dealer decline.
- * Buying the car does not return a credit. Refunds are idempotent (exactly
- * once per deal) via the idempotency_key.
+ * Existing refunds (unchanged, legacy single credit): early removal before
+ * outreach, dealer decline. Do not treat those as product rules for the
+ * market key. Refunds are idempotent (exactly once per deal) via the
+ * idempotency_key.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';

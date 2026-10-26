@@ -3,19 +3,21 @@ import 'package:equatable/equatable.dart';
 import 'money_format.dart';
 
 /// Product (2026-10-26): two spends from the same key balance.
-/// 1 key for market intelligence + save; a separate key to open dealer chat.
-/// If the dealer does not reply in 7 days, refund the chat key 1:1.
-///
-/// The demo ledger still spends 1 credit at unlock. Dual-spend and the 7-day
-/// chat refund are not wired — see [KeySpend].
+/// 1 key for market intelligence + save (do not assume refundable).
+/// A separate key opens dealer chat. Chat-key refunds (stubbed): no reply
+/// by Day 7 (cadence Day 0–7); sold. 30-minute cancel does not return the
+/// chat key. The demo ledger still spends 1 credit at unlock.
 class KeySpend {
   static const marketIntelligenceAndSave = 1;
   static const dealerConversation = 1;
-  static const dealerConversationNoReplyRefundDays = 7;
+  static const dealerConversationCadenceFirstDay = 0;
+  static const dealerConversationCadenceLastDay = 7;
+  static const dealerConversationNoReplyRefundDays = dealerConversationCadenceLastDay;
 
   static const unlockCopy =
       'Market intel + save uses 1 key. Opening dealer chat uses a second key. '
-      'If the dealer does not reply in 7 days, the chat key comes back.';
+      'If the dealer does not reply in 7 days, or the car sells, the chat key '
+      'comes back. Canceling before outreach does not return the chat key.';
 }
 
 /// One-time key pack purchase options.

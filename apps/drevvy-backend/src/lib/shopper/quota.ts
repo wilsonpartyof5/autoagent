@@ -4,13 +4,15 @@
  * that never expire and never reset monthly.
  *
  * Product (2026-10-26): two spends from the same balance — market intelligence
- * + save, then a separate key to open dealer conversation. After 7 days with
- * no dealer reply, refund the conversation key 1:1 (see key-spend.ts stubs).
+ * + save (do not assume refundable), then a separate key to open dealer
+ * conversation. Chat-key refunds (stubbed in key-spend.ts): no reply by Day 7
+ * (cadence Day 0–7, same clock); sold. No chat-key refund on 30-minute cancel
+ * before outreach.
  *
  * shouldRefundCredit still returns a credit only for dealer_declined. Do not
- * treat ended_no_response as a refund until dual-spend can target the chat
- * key only. NO_RESPONSE_MS remains the existing 5-day deal-end timer; the
- * product refund window is 7 days and is not wired yet.
+ * flip sold / ended_no_response / removed — that would refund the
+ * undifferentiated credit. NO_RESPONSE_MS remains the existing 5-day deal-end
+ * timer; the product cadence/refund clock is 7 days and is not wired yet.
  */
 
 import {

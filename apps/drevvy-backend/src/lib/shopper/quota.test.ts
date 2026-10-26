@@ -8,6 +8,7 @@ import {
   shouldRefundCredit,
   type QuotaEndState,
 } from './quota';
+import { stubDealerConversationSoldRefund } from './key-spend';
 
 test('NO_RESPONSE_MS is 5 days in milliseconds', () => {
   const fiveDaysMs = 5 * 24 * 60 * 60 * 1000;
@@ -22,12 +23,16 @@ test('shouldRefundCredit returns a credit only for a dealer decline', () => {
   assert.equal(shouldRefundCredit('removed'), false, 'removed is refunded only inside the early window');
 });
 
-test('7-day dealer-chat refund is stubbed and does not refund ended_no_response', () => {
+test('7-day dealer-chat refund is stubbed and does not refund ended_no_response or sold', () => {
   assert.equal(DEALER_CHAT_NO_REPLY_REFUND_MS, 7 * 24 * 60 * 60 * 1000);
   const stub = stubRefundDealerConversationKeyOnNoReply('deal-quiet');
   assert.equal(stub.wired, false);
   assert.equal(stub.amount, 1);
   assert.equal(shouldRefundCredit('ended_no_response'), false);
+  assert.equal(shouldRefundCredit('sold'), false);
+  const sold = stubDealerConversationSoldRefund('deal-sold');
+  assert.equal(sold.wired, false);
+  assert.equal(sold.refundReason, 'sold');
 });
 
 test('all QuotaEndState values are handled', () => {
