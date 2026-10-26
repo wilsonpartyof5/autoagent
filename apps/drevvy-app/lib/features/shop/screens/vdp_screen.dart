@@ -559,7 +559,7 @@ class _HowDrevvyWorks extends StatelessWidget {
           Text('How Drevvy works for you', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
           _Step(number: '1', text: 'You tap "Unlock my price"'),
-          _Step(number: '2', text: 'Pick a car pack (1, 3, 5, or 10 cars)'),
+          _Step(number: '2', text: 'Pick a key pack. Market + save uses 1 key; dealer chat uses a second key.'),
           _Step(
             number: '3',
             text: 'Drevvy asks the dealer for an itemized out-the-door price',
@@ -703,7 +703,7 @@ class _StickyCta extends StatelessWidget {
           Text(
             hasCredits
                 ? 'Drevvy contacts Dealer A during business hours'
-                : 'From ${CarPackType.bestValue.perCarFormatted}/car · Car packs never expire',
+                : 'From ${CarPackType.bestValue.perKeyFormatted}/key · Key packs never expire',
             style: text.callout.copyWith(color: colors.muted),
           ),
         ],

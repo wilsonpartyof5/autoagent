@@ -99,24 +99,27 @@ export default function TermsPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-semibold mb-4">Car Packs and Billing</h2>
+              <h2 className="text-2xl font-semibold mb-4">Key Packs and Billing</h2>
 
-              <h3 className="text-xl font-medium mt-6 mb-3">One-time car packs</h3>
+              <h3 className="text-xl font-medium mt-6 mb-3">One-time key packs</h3>
               <p className="text-muted-foreground mb-4">
-                Asking and shopping are free. Unlocking a dealer price uses one car from a pack you buy.
+                Asking and shopping are free. Keys come from a pack you buy. Market intelligence and
+                save use one key. Opening a dealer conversation uses a second key from the same
+                balance. If a dealer does not reply within 7 days, the conversation key is returned.
                 Packs are one-time purchases and never expire:
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
-                {LEGAL.CAR_PACKS.map((pack) => (
-                  <li key={pack.cars}>
-                    {pack.cars === 1 ? '1 car' : `${pack.cars} cars`} for {pack.price} ({pack.perCar} per car)
+                {LEGAL.KEY_PACKS.map((pack) => (
+                  <li key={pack.keys}>
+                    {pack.keys === 1 ? '1 key' : `${pack.keys} keys`} for {pack.price} ({pack.perKey} per key)
+                    {pack.name === 'Recommended' ? ' — Recommended' : ''}
                   </li>
                 ))}
               </ul>
               <p className="text-muted-foreground mb-4">
-                There is no subscription and no automatic renewal. Cars you buy stay on your account until
-                you use them. Each unlock includes a written out-the-door price request. If a dealer never
-                replies, that car is returned to your balance.
+                There is no subscription and no automatic renewal. Keys you buy stay on your account until
+                you use them. The market + save key is not returned for silence; only the dealer-conversation
+                key is returned after 7 days with no reply.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Payment Processing</h3>

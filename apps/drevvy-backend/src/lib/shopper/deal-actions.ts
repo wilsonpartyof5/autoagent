@@ -46,6 +46,7 @@ import {
   type PresentedDeal,
 } from './lifecycle';
 import { getLifecycleRepository, type LifecycleRepository } from './lifecycle-store';
+import { stubDealerConversationNoReplyRefund } from './key-spend';
 import { shouldRefundCredit } from './quota';
 import {
   checkCanAddCar,
@@ -125,7 +126,7 @@ export async function addShopperCar(
   const creditCheck = await checkCanAddCar(supabase, userId);
   if (!creditCheck.canAdd) {
     throw new ShopperDealError(
-      'You need car credits to add a new car. Purchase a car pack to continue.',
+      'You need keys to unlock a vehicle. Purchase a key pack to continue.',
       402,
       'no_credits',
     );
@@ -336,6 +337,7 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
     }
   }
   const quietNow = event.type === 'end' && event.endState === 'ended_no_response' && previousState === 'open';
+  if (quietNow) noteStubbedDealerChatRefund(next.dealId);
   if (soldNow || quietNow) {
     const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
     await emitPlanned(deps, soldNow
@@ -400,6 +402,7 @@ export async function runLifecycleSchedule(deps: Pick<DealDeps, 'deals' | 'lifec
       }
 
       if (previous.endState === 'open' && next.endState === 'ended_no_response') {
+        noteStubbedDealerChatRefund(next.dealId);
         const model = await vehicleModel(deps, next.consumerUserId, next.dealId);
         await emitPlanned(deps, {
           kind: 'no_response',
@@ -494,6 +497,8 @@ async function chargeDeal(
   discardIfUncharged: boolean,
   deps: DealDeps,
 ): Promise<void> {
+  // Product: market + save is one key; dealer conversation is a second key
+  // (key-spend.ts). consume_credit_atomic still charges one credit per deal.
   const useResult = await consumeCredit(supabase, userId, dealId);
   if (useResult.success) return;
   if (discardIfUncharged && useResult.error === 'no_credits') {
@@ -504,13 +509,25 @@ async function chargeDeal(
     }
   }
   if (useResult.error === 'credit_failed') {
-    throw new ShopperDealError('Drevvy could not use a car credit for this deal.', 500, 'credit_failed');
+    throw new ShopperDealError('Drevvy could not use a key for this deal.', 500, 'credit_failed');
   }
   throw new ShopperDealError(
-    'You need car credits to add a new car. Purchase a car pack to continue.',
+    'You need keys to unlock a vehicle. Purchase a key pack to continue.',
     402,
     'no_credits',
   );
+}
+
+function noteStubbedDealerChatRefund(dealId: string): void {
+  const stub = stubDealerConversationNoReplyRefund(dealId);
+  console.log(JSON.stringify({
+    event: 'key_spend_stub',
+    kind: stub.kind,
+    wired: stub.wired,
+    amount: stub.amount,
+    dealId,
+    reason: stub.reason,
+  }));
 }
 
 async function creditSummaryFor(supabase: SupabaseClient, userId: string): Promise<CreditSummary> {

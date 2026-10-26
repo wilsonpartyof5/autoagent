@@ -1,12 +1,12 @@
-/// RevenueCat offering identifier for the one-time car packs.
-const packsOfferingId = 'packs';
+/// RevenueCat offering identifier for the one-time key packs.
+const keysOfferingId = 'keys';
 
-/// Prefers the `packs` offering, then the current offering, then everything else.
+/// Prefers the `keys` offering, then the current offering, then everything else.
 List<T> selectPackPackages<T>({
   required Map<String, List<T>> byOfferingId,
   List<T>? currentPackages,
 }) {
-  final packs = byOfferingId[packsOfferingId];
+  final packs = byOfferingId[keysOfferingId];
   if (packs != null && packs.isNotEmpty) return packs;
   if (currentPackages != null && currentPackages.isNotEmpty) {
     return currentPackages;

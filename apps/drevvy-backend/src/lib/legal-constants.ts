@@ -38,13 +38,14 @@ export const LEGAL = {
   SMS_PROGRAM_NAME: 'Drevvy Vehicle Inquiry Alerts',
 
   /**
-   * One-time car packs. Credits never expire.
-   * Store product ids: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10.
+   * One-time key packs. Credits never expire.
+   * Store product ids: drevvy_keys_1, drevvy_keys_5, drevvy_keys_10, drevvy_keys_25.
+   * RevenueCat offering `keys`, packages `keys_1`, `keys_5`, `keys_10`, `keys_25`.
    */
-  CAR_PACKS: [
-    { cars: 1, price: '$35', perCar: '$35.00', name: 'Single' },
-    { cars: 3, price: '$55', perCar: '$18.33', name: 'Starter' },
-    { cars: 5, price: '$75', perCar: '$15.00', name: 'Plus' },
-    { cars: 10, price: '$95', perCar: '$9.50', name: 'Best Value' },
+  KEY_PACKS: [
+    { keys: 1, price: '$4.99', perKey: '$4.99', name: 'Single' },
+    { keys: 5, price: '$19.99', perKey: '$4.00', name: 'Starter' },
+    { keys: 10, price: '$34.99', perKey: '$3.50', name: 'Recommended' },
+    { keys: 25, price: '$74.99', perKey: '$3.00', name: 'Plus' },
   ],
 } as const;

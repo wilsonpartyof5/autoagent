@@ -18,7 +18,7 @@ class HowItWorksScreen extends ConsumerWidget {
     (
       icon: LucideIcons.search,
       title: 'Ask or shop, free',
-      body: 'Asking and shopping stay unlimited. Browse market data with no car pack required.',
+      body: 'Asking and shopping stay unlimited. Browse market data with no key pack required.',
     ),
     (
       icon: LucideIcons.receipt,
@@ -28,7 +28,7 @@ class HowItWorksScreen extends ConsumerWidget {
     (
       icon: LucideIcons.sparkles,
       title: 'Unlock my price',
-      body: 'When you want a written out-the-door quote, tap Unlock my price. That uses one car.',
+      body: 'Tap Unlock my price for market intel and save (1 key). Opening dealer chat uses a second key. If the dealer does not reply in 7 days, the chat key comes back.',
     ),
     (
       icon: LucideIcons.check,

@@ -229,7 +229,7 @@ void main() {
       await _maybeCapture(tester, 'deal-accept-confirm');
     });
 
-    testWidgets('account balance shows cars left and the out-of-cars state', (
+    testWidgets('account balance shows keys left and the out-of-keys state', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -256,10 +256,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('cars left · packs never expire'), findsOneWidget);
-      expect(find.text('Buy cars'), findsOneWidget);
-      expect(find.text('Out of cars'), findsOneWidget);
-      expect(find.text('Add cars'), findsOneWidget);
+      expect(find.text('keys left · packs never expire'), findsOneWidget);
+      expect(find.text('Buy keys'), findsOneWidget);
+      expect(find.text('Out of keys'), findsOneWidget);
+      expect(find.text('Add keys'), findsOneWidget);
       expect(find.textContaining('Max out-the-door'), findsNothing);
       await _maybeCapture(tester, 'car-balance');
     });

@@ -4,25 +4,25 @@ import test from 'node:test';
 import { CAR_PACKS } from './credits';
 import { shouldRefundCredit, type QuotaEndState } from './quota';
 
-test('car packs have correct pricing', () => {
+test('key packs have correct pricing', () => {
   const packs = CAR_PACKS;
   assert.equal(packs.length, 4);
 
   const pack1 = packs.find((p) => p.size === 1);
   assert.ok(pack1);
-  assert.equal(pack1.priceUsd, 35);
-
-  const pack3 = packs.find((p) => p.size === 3);
-  assert.ok(pack3);
-  assert.equal(pack3.priceUsd, 55);
+  assert.equal(pack1.priceUsd, 4.99);
 
   const pack5 = packs.find((p) => p.size === 5);
   assert.ok(pack5);
-  assert.equal(pack5.priceUsd, 75);
+  assert.equal(pack5.priceUsd, 19.99);
 
   const pack10 = packs.find((p) => p.size === 10);
   assert.ok(pack10);
-  assert.equal(pack10.priceUsd, 95);
+  assert.equal(pack10.priceUsd, 34.99);
+
+  const pack25 = packs.find((p) => p.size === 25);
+  assert.ok(pack25);
+  assert.equal(pack25.priceUsd, 74.99);
 });
 
 test('shouldRefundCredit returns a credit only for a dealer decline', () => {

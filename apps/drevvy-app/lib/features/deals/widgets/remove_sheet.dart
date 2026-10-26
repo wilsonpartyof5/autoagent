@@ -21,7 +21,7 @@ class RemoveSheet extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onKeep;
 
-  String _carsLeftLabel(int count) => count == 1 ? '1 car left' : '$count cars left';
+  String _carsLeftLabel(int count) => count == 1 ? '1 key left' : '$count keys left';
 
   @override
   Widget build(BuildContext context) {
@@ -127,8 +127,8 @@ class RemoveSheet extends StatelessWidget {
                           children: [
                             Text(
                               canUndo
-                                  ? 'This car will be given back'
-                                  : 'This car still counts',
+                                  ? 'This key will be given back'
+                                  : 'This key still counts',
                               style: text.bodyStrong.copyWith(
                                 color: canUndo ? colors.mint : colors.ink,
                               ),
@@ -136,7 +136,7 @@ class RemoveSheet extends StatelessWidget {
                             Text(
                               canUndo
                                   ? 'You\'ll have ${_carsLeftLabel(user.carsRemaining + 1)}.'
-                                  : 'Drevvy has already contacted the dealer. This uses 1 of your cars.',
+                                  : 'Drevvy has already contacted the dealer. This uses 1 of your keys.',
                               style: text.callout.copyWith(
                                 color: canUndo ? colors.mint : colors.muted,
                               ),

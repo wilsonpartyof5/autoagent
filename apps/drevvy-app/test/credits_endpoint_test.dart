@@ -52,7 +52,7 @@ void main() {
     );
 
     final balance = await endpoint.grantPurchase(
-      productId: 'drevvy_pack_10',
+      productId: 'drevvy_keys_10',
       transactionId: 'txn_10',
     );
     expect(balance?.balance, 10);
@@ -62,7 +62,7 @@ void main() {
     expect(requests.single.headers['Authorization'], 'Bearer shopper-jwt');
     expect(requests.single.url.path, '/api/consumer/credits');
     expect(jsonDecode(requests.single.body), {
-      'productId': 'drevvy_pack_10',
+      'productId': 'drevvy_keys_10',
       'transactionId': 'txn_10',
     });
 
@@ -96,7 +96,7 @@ void main() {
     );
 
     final balance = await endpoint.grantPurchase(
-      productId: 'drevvy_pack_5',
+      productId: 'drevvy_keys_5',
       transactionId: 'txn_5',
     );
     expect(balance?.balance, 4);
@@ -140,7 +140,7 @@ void main() {
 
     expect(
       await endpoint.grantPurchase(
-        productId: 'drevvy_pack_10',
+        productId: 'drevvy_keys_10',
         transactionId: 'txn_10',
       ),
       isNull,
@@ -159,7 +159,7 @@ void main() {
     );
     expect(
       await endpoint.grantPurchase(
-        productId: 'drevvy_pack_5',
+        productId: 'drevvy_keys_5',
         transactionId: 'txn_5',
       ),
       isNull,

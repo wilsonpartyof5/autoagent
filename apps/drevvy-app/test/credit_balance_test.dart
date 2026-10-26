@@ -64,7 +64,7 @@ void main() {
       
       // Should have carsRemaining from credit balance, not old usage
       expect(stats.carsRemaining, isNonNegative);
-      expect(stats.carsRemainingFormatted, contains('car'));
+      expect(stats.carsRemainingFormatted, contains('key'));
     });
   });
 }

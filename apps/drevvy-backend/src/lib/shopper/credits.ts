@@ -1,21 +1,30 @@
 /**
- * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
- * that never expire and never reset monthly. A credit returns only when:
- * - the shopper removes the deal within 30 minutes of adding it, before outreach
- * - the dealer declines or opts out
+ * Key credits system. Shoppers buy one-time key packs
+ * (1/$4.99, 5/$19.99, 10/$34.99 recommended, 25/$74.99)
+ * that never expire and never reset monthly.
  *
+ * Product (2026-10-26): two spends from the same balance — 1 key for market
+ * intelligence + save, and a separate key to open dealer conversation. If the
+ * dealer does not reply within 7 days, refund the conversation key 1:1.
+ * See key-spend.ts. consumeCredit still charges one undifferentiated credit
+ * per deal; the second spend and 7-day chat refund are stubbed there.
+ *
+ * Existing refunds (unchanged): early removal before outreach, dealer decline.
  * Buying the car does not return a credit. Refunds are idempotent (exactly
  * once per deal) via the idempotency_key.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export const CAR_PACKS = [
-  { size: 1, priceUsd: 35 },
-  { size: 3, priceUsd: 55 },
-  { size: 5, priceUsd: 75 },
-  { size: 10, priceUsd: 95 },
+export const KEY_PACKS = [
+  { size: 1, priceUsd: 4.99 },
+  { size: 5, priceUsd: 19.99 },
+  { size: 10, priceUsd: 34.99 },
+  { size: 25, priceUsd: 74.99 },
 ] as const;
+
+/** @deprecated Use KEY_PACKS. */
+export const CAR_PACKS = KEY_PACKS;
 
 export type CreditEventType = 'purchase' | 'use' | 'refund';
 

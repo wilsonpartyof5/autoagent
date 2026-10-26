@@ -4,9 +4,9 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/car_pack.dart';
 
-/// Car balance in the account sheet opened from the top-corner icon.
+/// Key balance in the account sheet opened from the top-corner icon.
 ///
-/// A balance of zero is the out-of-cars state. Packs never expire.
+/// A balance of zero is the out-of-keys state. Packs never expire.
 class CarBalanceCard extends StatelessWidget {
   const CarBalanceCard({super.key, required this.balance, required this.onBuy});
 
@@ -36,7 +36,7 @@ class CarBalanceCard extends StatelessWidget {
                   style: text.figureM.copyWith(color: Colors.white),
                 ),
                 Text(
-                  outOfCars ? 'Out of cars' : 'cars left · packs never expire',
+                  outOfCars ? 'Out of keys' : 'keys left · packs never expire',
                   style: text.callout.copyWith(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontWeight: outOfCars ? FontWeight.w800 : FontWeight.w500,
@@ -45,7 +45,7 @@ class CarBalanceCard extends StatelessWidget {
                 if (outOfCars) ...[
                   const SizedBox(height: DrevvySpace.s1),
                   Text(
-                    'Packs never expire. Add a pack to unlock another car.',
+                    'Packs never expire. Add a pack to unlock another price.',
                     style: text.callout.copyWith(
                       color: Colors.white.withValues(alpha: 0.8),
                     ),
@@ -64,7 +64,7 @@ class CarBalanceCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(DrevvyRadius.pill),
               ),
               child: Text(
-                outOfCars ? 'Add cars' : 'Buy cars',
+                outOfCars ? 'Add keys' : 'Buy keys',
                 style: text.label.copyWith(
                   color: colors.violet,
                   fontWeight: FontWeight.w700,

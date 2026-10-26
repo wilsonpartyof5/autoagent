@@ -2,49 +2,76 @@ import 'package:equatable/equatable.dart';
 
 import 'money_format.dart';
 
-/// One-time car pack purchase options (v1.7).
-/// Packs never expire. Store products `drevvy_pack_1/3/5/10`,
-/// RevenueCat packages `pack_1/3/5/10`, virtual currency `CARS`.
+/// Product (2026-10-26): two spends from the same key balance.
+/// 1 key for market intelligence + save; a separate key to open dealer chat.
+/// If the dealer does not reply in 7 days, refund the chat key 1:1.
+///
+/// The demo ledger still spends 1 credit at unlock. Dual-spend and the 7-day
+/// chat refund are not wired — see [KeySpend].
+class KeySpend {
+  static const marketIntelligenceAndSave = 1;
+  static const dealerConversation = 1;
+  static const dealerConversationNoReplyRefundDays = 7;
+
+  static const unlockCopy =
+      'Market intel + save uses 1 key. Opening dealer chat uses a second key. '
+      'If the dealer does not reply in 7 days, the chat key comes back.';
+}
+
+/// One-time key pack purchase options.
+/// Packs never expire. Store products `drevvy_keys_1/5/10/25`,
+/// RevenueCat offering `keys`, packages `keys_1/5/10/25`.
 enum CarPackType {
   single(
-    cars: 1,
-    priceUsd: 35,
-    productId: 'drevvy_pack_1',
-    packageId: 'pack_1',
+    keys: 1,
+    priceUsd: 4.99,
+    productId: 'drevvy_keys_1',
+    packageId: 'keys_1',
   ),
   starter(
-    cars: 3,
-    priceUsd: 55,
-    productId: 'drevvy_pack_3',
-    packageId: 'pack_3',
+    keys: 5,
+    priceUsd: 19.99,
+    productId: 'drevvy_keys_5',
+    packageId: 'keys_5',
   ),
-  plus(cars: 5, priceUsd: 75, productId: 'drevvy_pack_5', packageId: 'pack_5'),
   bestValue(
-    cars: 10,
-    priceUsd: 95,
-    productId: 'drevvy_pack_10',
-    packageId: 'pack_10',
+    keys: 10,
+    priceUsd: 34.99,
+    productId: 'drevvy_keys_10',
+    packageId: 'keys_10',
+  ),
+  plus(
+    keys: 25,
+    priceUsd: 74.99,
+    productId: 'drevvy_keys_25',
+    packageId: 'keys_25',
   );
 
   const CarPackType({
-    required this.cars,
+    required this.keys,
     required this.priceUsd,
     required this.productId,
     required this.packageId,
   });
 
-  final int cars;
-  final int priceUsd;
+  final int keys;
+  final double priceUsd;
   final String productId;
 
-  /// RevenueCat package identifier on the `packs` offering.
+  /// RevenueCat package identifier on the `keys` offering.
   final String packageId;
 
-  /// Cars granted to the `CARS` virtual currency for this pack.
-  int get carsGranted => cars;
+  /// Pack size. Formerly named for car credits; now keys.
+  int get cars => keys;
 
-  /// PostHog pack-mix dimension. Includes the 1-car pack: `1,3,5,10`.
-  static String get packMix => values.map((pack) => '${pack.cars}').join(',');
+  /// Keys granted for this pack.
+  int get keysGranted => keys;
+
+  /// Alias used by existing analytics and ledger code.
+  int get carsGranted => keys;
+
+  /// PostHog pack-mix dimension: `1,5,10,25`.
+  static String get packMix => values.map((pack) => '${pack.keys}').join(',');
 
   /// Store product id or RevenueCat package id.
   static CarPackType? fromProductId(String productId) {
@@ -56,43 +83,52 @@ enum CarPackType {
     return null;
   }
 
-  /// Per-car cost in cents.
-  double get perCarCost => priceUsd / cars;
+  /// Per-key cost in dollars.
+  double get perKeyCost => priceUsd / keys;
 
-  /// Per-car cost formatted as dollars, e.g. "$9.50".
-  String get perCarFormatted => formatUsd(perCarCost, cents: true);
+  /// Alias for [perKeyCost].
+  double get perCarCost => perKeyCost;
 
-  /// Pack price formatted as dollars, e.g. "$95".
+  /// Per-key cost formatted as dollars, e.g. "$3.50".
+  String get perKeyFormatted => formatUsd(perKeyCost, cents: true);
+
+  /// Alias for [perKeyFormatted].
+  String get perCarFormatted => perKeyFormatted;
+
+  /// Pack price formatted as dollars, e.g. "$34.99".
   String get priceFormatted => formatUsd(priceUsd);
 
   /// Display name for the pack.
   String get displayName => switch (this) {
     CarPackType.single => 'Single',
     CarPackType.starter => 'Starter',
+    CarPackType.bestValue => 'Recommended',
     CarPackType.plus => 'Plus',
-    CarPackType.bestValue => 'Best Value',
   };
 
-  /// "1 car" or "3 cars".
-  String get carsLabel => cars == 1 ? '1 car' : '$cars cars';
+  /// "1 key" or "5 keys".
+  String get keysLabel => keys == 1 ? '1 key' : '$keys keys';
 
-  /// Percent saved per car versus the 1-car price, rounded by [savingsText].
-  /// The 1-car pack is the baseline, so it has no savings chip.
+  /// Alias for [keysLabel].
+  String get carsLabel => keysLabel;
+
+  /// Percent saved per key versus the 1-key price, rounded by [savingsText].
+  /// The 1-key pack is the baseline, so it has no savings chip.
   double? get savingsPercentVsSingle {
-    final baseline = CarPackType.single.perCarCost;
-    if (perCarCost >= baseline) return null;
-    return ((baseline - perCarCost) / baseline) * 100;
+    final baseline = CarPackType.single.perKeyCost;
+    if (perKeyCost >= baseline) return null;
+    return ((baseline - perKeyCost) / baseline) * 100;
   }
 
-  /// Chip copy: "Save 47.6%/car". Null on the 1-car pack.
+  /// Chip copy: "Save 19.9%/key". Null on the 1-key pack.
   String? get savingsText {
     final pct = savingsPercentVsSingle;
     if (pct == null) return null;
-    return 'Save ${pct.toStringAsFixed(1)}%/car';
+    return 'Save ${pct.toStringAsFixed(1)}%/key';
   }
 
-  /// CTA button text: "Get 1 car for $35" or "Get 10 cars for $95".
-  String get ctaText => 'Get $carsLabel for $priceFormatted';
+  /// CTA button text: "Get 1 key for $4.99" or "Get 10 keys for $34.99".
+  String get ctaText => 'Get $keysLabel for $priceFormatted';
 }
 
 /// Reason for a credit balance change in the ledger.
@@ -119,7 +155,7 @@ enum CreditReason {
   adjustment,
 }
 
-/// A single entry in the car credit ledger.
+/// A single entry in the key credit ledger.
 class CreditLedgerEntry extends Equatable {
   const CreditLedgerEntry({
     required this.id,
@@ -162,7 +198,7 @@ class CreditLedgerEntry extends Equatable {
   ];
 }
 
-/// User's current car credit balance (computed from ledger).
+/// User's current key credit balance (computed from ledger).
 class CarCreditBalance extends Equatable {
   const CarCreditBalance({
     required this.balance,
@@ -183,17 +219,17 @@ class CarCreditBalance extends Equatable {
   /// Total credits refunded (lifetime).
   final int totalRefunded;
 
-  /// Whether the user can unlock a new car.
+  /// Whether the user can unlock a new vehicle.
   bool get canUnlock => balance > 0;
 
-  /// Whether the user is out of cars (show OutOfCars sheet).
+  /// Whether the user is out of keys (show OutOfCars sheet).
   bool get isEmpty => balance == 0;
 
-  /// Display text: "X cars left" or "0 CARS LEFT".
-  String get displayText => balance == 1 ? '1 car left' : '$balance cars left';
+  /// Display text: "X keys left" or "0 keys left".
+  String get displayText => balance == 1 ? '1 key left' : '$balance keys left';
 
-  /// Display text for confirmation: "Uses 1 car".
-  String get useText => 'Uses 1 car';
+  /// Display text for confirmation. Two spends from this balance.
+  String get useText => 'Market + save 1 key · Chat 1 key';
 
   const CarCreditBalance.empty()
     : balance = 0,

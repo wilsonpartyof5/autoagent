@@ -126,7 +126,7 @@ final text = context.drevvyText;
 
 - **Backend API**: Replace `DemoRepository` calls with `https://api.drevvy.com`
 - **Supabase Auth**: Replace demo user with real authentication
-- **RevenueCat/Superwall**: Offering `packs` (1 car $35, 3 cars $55, 5 cars $75, 10 cars $95, $9.50/car best value, one-time, never expire). Store product ids: `drevvy_pack_1`, `drevvy_pack_3`, `drevvy_pack_5`, `drevvy_pack_10`. Package ids: `pack_1`, `pack_3`, `pack_5`, `pack_10`. Virtual currency `cars` (code `CARS`) grants 1, 3, 5, or 10. The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free; the paywall opens from Unlock my price when the balance is 0.
+- **RevenueCat/Superwall**: Offering `keys` (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99, one-time, never expire). Store product ids: `drevvy_keys_1`, `drevvy_keys_5`, `drevvy_keys_10`, `drevvy_keys_25`. Package ids: `keys_1`, `keys_5`, `keys_10`, `keys_25`. RevenueCat catalog is already updated. App Store / Play products are not created yet. The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free; the paywall opens from Unlock my price when the balance is 0.
 - **Push Notifications**: Pre-prompt UI exists, FCM not wired
 - **Geofencing**: Location permission UI exists, geofence logic not wired
 

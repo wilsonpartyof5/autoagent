@@ -8,7 +8,7 @@ import 'purchase_config.dart';
 import 'purchase_service.dart';
 import 'store_gateway.dart';
 
-/// `purchases_flutter` adapter for the four consumable car packs.
+/// `purchases_flutter` adapter for the four consumable key packs.
 class PurchasesFlutterStore implements StoreGateway {
   PurchasesFlutterStore(this.config);
 

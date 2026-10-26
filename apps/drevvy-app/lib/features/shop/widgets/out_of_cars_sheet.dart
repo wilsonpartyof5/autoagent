@@ -8,9 +8,7 @@ import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import 'pack_option_card.dart';
 
-/// Screen X: Out of cars sheet shown when balance is 0 and user tries to unlock.
-/// v1.7: Replaces monthly_limit_reached / drevvy_extra_10.
-///
+/// Screen X: Out of keys sheet shown when balance is 0 and user tries to unlock.
 /// Superwall placement: cars_balance_empty
 class OutOfCarsSheet extends StatefulWidget {
   const OutOfCarsSheet({
@@ -144,7 +142,7 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                     borderRadius: BorderRadius.circular(DrevvyRadius.pill),
                   ),
                   child: Text(
-                    '0 CARS LEFT',
+                    '0 KEYS LEFT',
                     style: text.label.copyWith(
                       color: colors.honey,
                       fontWeight: FontWeight.w800,
@@ -152,10 +150,10 @@ class _OutOfCarsSheetState extends State<OutOfCarsSheet> {
                   ),
                 ),
                 const SizedBox(height: DrevvySpace.s2),
-                Text("You've used all your cars.", style: text.title),
+                Text("You've used all your keys.", style: text.title),
                 const SizedBox(height: DrevvySpace.s1),
                 Text(
-                  'Your active deals keep going. Add a pack to unlock this car.',
+                  'Your active deals keep going. Add keys to unlock this price.',
                   style: text.callout.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: DrevvySpace.s3),

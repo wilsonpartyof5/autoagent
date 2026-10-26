@@ -11,8 +11,8 @@ import '../../core/theme/drevvy_tokens.dart';
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
 ///
-/// v1.7: Uses one-time car packs instead of monthly subscription.
-/// Car credits are spent on "Unlock my price" and refunded for:
+/// Uses one-time key packs instead of monthly subscription.
+/// Key credits are spent on "Unlock my price" and refunded for:
 /// - No response from dealer
 /// - Car no longer listed (sold)
 /// - Dealer decline
@@ -21,7 +21,7 @@ import '../../core/theme/drevvy_tokens.dart';
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
-/// - RevenueCat/Superwall for billing (products: drevvy_pack_1/3/5/10)
+/// - RevenueCat/Superwall for billing (products: drevvy_keys_1/5/10/25)
 class DemoRepository {
   DemoRepository({
     PurchaseConfig? config,
@@ -113,7 +113,7 @@ class DemoRepository {
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
 
-  /// Server-driven avg_savings config shown beside car packs.
+  /// Server-driven avg_savings config shown beside key packs.
   final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
     label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
@@ -139,7 +139,7 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
 
-  /// Purchase a car pack. Grants server credits when that endpoint exists.
+  /// Purchase a key pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'pack_id': packType.productId,
@@ -176,8 +176,8 @@ class DemoRepository {
     return result;
   }
 
-  /// Spend 1 credit for "Unlock my price".
-  /// Returns true if successful, false if no credits.
+  /// Spend the market-intelligence + save key for "Unlock my price".
+  /// Dealer-conversation is a separate key (see [KeySpend]); not charged here.
   bool spendCredit(String dealId) {
     if (!_creditBalance.canUnlock) return false;
 
@@ -685,7 +685,7 @@ class DemoRepository {
         'listing_id': listing.id,
         'reason': 'no_credits',
       });
-      throw StateError('No cars left');
+      throw StateError('No keys left');
     }
 
     final newDeal = Deal(
@@ -1771,14 +1771,14 @@ class DealStats {
   final int underListedTotal;
   final int offersToReview;
 
-  /// v1.7: Cars remaining from credit balance (no longer monthly usage).
+  /// Keys remaining from credit balance (no longer monthly usage).
   final int carsRemaining;
 
-  /// v1.7: Display text for cars remaining.
+  /// Display text for keys remaining.
   String get carsRemainingFormatted =>
-      carsRemaining == 1 ? '1 car left' : '$carsRemaining cars left';
+      carsRemaining == 1 ? '1 key left' : '$carsRemaining keys left';
 
-  /// v1.7: Whether user can unlock more cars.
+  /// Whether user can unlock more vehicles.
   bool get canUnlock => carsRemaining > 0;
 }
 

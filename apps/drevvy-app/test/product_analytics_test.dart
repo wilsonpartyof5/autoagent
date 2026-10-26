@@ -238,7 +238,7 @@ void main() {
     expect(event.properties?.containsKey('email'), isFalse);
   });
 
-  test('paywall events include the 1-car pack in the mix', () async {
+  test('paywall events include the 1-key pack in the mix', () async {
     final client = RecordingAnalyticsClient();
     final analytics = await _started(client);
     await analytics.flushed;
@@ -259,7 +259,7 @@ void main() {
       (event) => event.name == 'pack_viewed',
     );
     expect(viewed.properties?['pack_count'], 4);
-    expect(viewed.properties?['pack_mix'], '1,3,5,10');
+    expect(viewed.properties?['pack_mix'], '1,5,10,25');
     final selected = client.events.firstWhere(
       (event) => event.name == 'pack_selected',
     );

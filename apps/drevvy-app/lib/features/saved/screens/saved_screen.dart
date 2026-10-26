@@ -194,7 +194,7 @@ class _SavedScreenState extends State<SavedScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          "${listing.build.model} moved to Deals. Drevvy's on it. ${newBalance.balance} cars left.",
+          "${listing.build.model} moved to Deals. Drevvy's on it. ${newBalance.balance} keys left.",
         ),
         action: SnackBarAction(
           label: 'View',

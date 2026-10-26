@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { NO_RESPONSE_MS, shouldRefundCredit, type QuotaEndState } from './quota';
+import {
+  DEALER_CHAT_NO_REPLY_REFUND_MS,
+  NO_RESPONSE_MS,
+  stubRefundDealerConversationKeyOnNoReply,
+  shouldRefundCredit,
+  type QuotaEndState,
+} from './quota';
 
 test('NO_RESPONSE_MS is 5 days in milliseconds', () => {
   const fiveDaysMs = 5 * 24 * 60 * 60 * 1000;
@@ -14,6 +20,14 @@ test('shouldRefundCredit returns a credit only for a dealer decline', () => {
   assert.equal(shouldRefundCredit('ended_no_response'), false, 'no response should not refund');
   assert.equal(shouldRefundCredit('open'), false, 'open should not refund');
   assert.equal(shouldRefundCredit('removed'), false, 'removed is refunded only inside the early window');
+});
+
+test('7-day dealer-chat refund is stubbed and does not refund ended_no_response', () => {
+  assert.equal(DEALER_CHAT_NO_REPLY_REFUND_MS, 7 * 24 * 60 * 60 * 1000);
+  const stub = stubRefundDealerConversationKeyOnNoReply('deal-quiet');
+  assert.equal(stub.wired, false);
+  assert.equal(stub.amount, 1);
+  assert.equal(shouldRefundCredit('ended_no_response'), false);
 });
 
 test('all QuotaEndState values are handled', () => {

@@ -8,8 +8,8 @@ import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 18: Add to Drevvy bottom sheet.
-/// v1.7: Uses car credits instead of monthly usage.
-/// Shows "X cars left" and "Uses 1 car" instead of "X of Y used · resets Oct 20".
+/// Uses key credits instead of monthly usage.
+/// Shows keys left and the two-spend line (market + save, then dealer chat).
 class AddToDrevvySheet extends StatefulWidget {
   const AddToDrevvySheet({
     super.key,

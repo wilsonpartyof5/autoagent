@@ -5,7 +5,7 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/repositories/demo_repository.dart';
 
 /// Stat hero with savings total and credit balance.
-/// v1.7: Updated to show "X cars left" instead of usage ring + "resets" text.
+/// Shows "X keys left" instead of usage ring + "resets" text.
 class StatHero extends StatelessWidget {
   const StatHero({
     super.key,
@@ -48,7 +48,7 @@ class StatHero extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    stats.carsRemaining == 1 ? 'car' : 'cars',
+                    stats.carsRemaining == 1 ? 'key' : 'keys',
                     style: text.micro.copyWith(color: DrevvyColors.onBrandMuted),
                   ),
                 ],
@@ -96,7 +96,7 @@ class StatHero extends StatelessWidget {
                       ),
                     if (stats.offersToReview > 0)
                       const SizedBox(width: DrevvySpace.s2),
-                    // v1.7: Show "X cars left" instead of "Resets"
+                    // Show "X keys left" instead of "Resets"
                     _Pill(
                       label: stats.carsRemainingFormatted,
                       color: colors.muted,
