@@ -1,7 +1,8 @@
 /**
- * Car-pack purchases. The client may send a credit count; the server ignores it
- * and maps productId to the pack. Credits are granted only after RevenueCat
+ * Key-pack purchases. The client may send a key count; the server ignores it
+ * and maps productId to the pack. Keys are granted only after RevenueCat
  * confirms the transaction, or from an authenticated RevenueCat webhook.
+ * Retired car packs (drevvy_pack_1/3/5/10 and pack_1/3/5/10) grant nothing.
  */
 
 import { tokensEqual } from '@/lib/auth/tokens';
@@ -14,18 +15,18 @@ import {
 } from './credits';
 
 export const CREDIT_PRODUCTS = {
-  drevvy_pack_1: { size: 1, priceUsd: 35 },
-  drevvy_pack_3: { size: 3, priceUsd: 55 },
-  drevvy_pack_5: { size: 5, priceUsd: 75 },
-  drevvy_pack_10: { size: 10, priceUsd: 95 },
+  drevvy_keys_1: { size: 1, priceUsd: 4.99 },
+  drevvy_keys_5: { size: 5, priceUsd: 19.99 },
+  drevvy_keys_10: { size: 10, priceUsd: 34.99 },
+  drevvy_keys_25: { size: 25, priceUsd: 74.99 },
 } as const;
 
-/** RevenueCat package identifier → store product. Grants are 1/3/5/10 CARS. */
+/** RevenueCat package identifier → store product. Grants are 1/5/10/25 keys. */
 export const CREDIT_PACKAGES = {
-  pack_1: 'drevvy_pack_1',
-  pack_3: 'drevvy_pack_3',
-  pack_5: 'drevvy_pack_5',
-  pack_10: 'drevvy_pack_10',
+  keys_1: 'drevvy_keys_1',
+  keys_5: 'drevvy_keys_5',
+  keys_10: 'drevvy_keys_10',
+  keys_25: 'drevvy_keys_25',
 } as const satisfies Record<string, CreditProductId>;
 
 export type CreditProductId = keyof typeof CREDIT_PRODUCTS;

@@ -17,7 +17,8 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  *   "zip": "29730"
  * }
  *
- * Creating a deal is Unlock with agent. That is one of the two moments
+ * Creating a deal opens the dealer conversation and spends one dealer-conversation
+ * key. Market details and save are a separate key. That is one of the two moments
  * MarketCheck Price may load. `zip` is used for that call and is not stored.
  * Listing the shopper's deals does not load fair price.
  *

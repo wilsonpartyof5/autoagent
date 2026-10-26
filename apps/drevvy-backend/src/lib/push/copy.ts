@@ -53,7 +53,7 @@ export function shopperPushCopy(input: {
   if (input.event === 'car_sold') {
     return {
       title: `Your ${car} is no longer listed`,
-      body: "It's likely sold. You got your car back, so add another and keep going.",
+      body: "It's likely sold. Your dealer-conversation key is back, so add another and keep going.",
     };
   }
   if (input.event === 'official_offer') {
@@ -73,8 +73,8 @@ export function shopperPushCopy(input: {
     const alias = input.dealerAlias?.trim();
     const who = alias || 'Your dealer';
     return {
-      title: `Your ${car} is back`,
-      body: `${who} didn't respond, so your ${car} is back. Want to add another car?`,
+      title: 'Your key is back',
+      body: `${who} didn't respond, so your dealer-conversation key is back.`,
     };
   }
   return {

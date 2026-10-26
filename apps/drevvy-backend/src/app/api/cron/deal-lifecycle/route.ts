@@ -9,8 +9,8 @@ import { readCronAuth } from '@/lib/shopper/lifecycle';
  *
  * Schedule once a day. Sends "Did you buy it?" the day after the expected
  * pickup when no geofence exit was recorded or location was not granted,
- * and marks open deals ended_no_response five days after the first outreach
- * with no reply. Requires Authorization: Bearer $DREVVY_CRON_SECRET.
+ * and marks open deals ended_no_response seven days after the first outreach
+ * with no reply, returning the dealer-conversation key. Requires Authorization: Bearer $DREVVY_CRON_SECRET.
  * Responds 404 when that secret is unset. The day-after-pickup prompt sends
  * did_you_buy through FCM. That send is a no-op when Firebase credentials
  * are unset. The geofence prompt stays on the phone.

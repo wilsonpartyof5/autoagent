@@ -7,7 +7,7 @@ import { readCronAuth } from '@/lib/shopper/lifecycle';
 /**
  * POST /api/cron/deal-events
  *
- * Agent events that affect the car slot: outreach (email, text, or call),
+ * Agent events that affect the dealer-conversation key: outreach (email, text, or call),
  * a dealer reply, an end state of sold / ended_no_response / dealer_declined,
  * a listing price drop, or an offer that is ready.
  * Price-drop pushes stay on unless the body sets priceDrops to false.

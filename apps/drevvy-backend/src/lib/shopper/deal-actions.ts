@@ -100,8 +100,6 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
   };
 }
 
-export const REMOVAL_REFUND_MS = 30 * 60 * 1000;
-
 export async function addShopperCar(
   userId: string,
   input: { listingId: unknown; vehicle: unknown; zip?: unknown },
@@ -125,7 +123,7 @@ export async function addShopperCar(
   const creditCheck = await checkCanAddCar(supabase, userId);
   if (!creditCheck.canAdd) {
     throw new ShopperDealError(
-      'You need car credits to add a new car. Purchase a car pack to continue.',
+      'You need a key to open a dealer conversation. Buy a key pack to continue.',
       402,
       'no_credits',
     );
@@ -201,22 +199,11 @@ export async function removeShopperCar(
   await deps.lifecycle.save(removed);
   await deps.deals.close(userId, deal.id);
 
-  let refunded = false;
-  const addedMs = Date.parse(current.addedAt);
-  const nowMs = Date.parse(at);
-  const within30Minutes = Number.isFinite(addedMs) && Number.isFinite(nowMs) && nowMs - addedMs <= REMOVAL_REFUND_MS;
-  const beforeOutreach = current.outreachSentAt == null;
-
-  if (within30Minutes && beforeOutreach) {
-    const result = await refundCredit(supabase, userId, deal.id, 'removed');
-    refunded = result.refunded;
-  }
-
   return {
     id: deal.id,
     removedAt: removed.removedAt ?? at,
     credits: await creditSummaryFor(supabase, userId),
-    refunded,
+    refunded: false,
   };
 }
 
@@ -504,10 +491,10 @@ async function chargeDeal(
     }
   }
   if (useResult.error === 'credit_failed') {
-    throw new ShopperDealError('Drevvy could not use a car credit for this deal.', 500, 'credit_failed');
+    throw new ShopperDealError('Drevvy could not use a key for this dealer conversation.', 500, 'credit_failed');
   }
   throw new ShopperDealError(
-    'You need car credits to add a new car. Purchase a car pack to continue.',
+    'You need a key to open a dealer conversation. Buy a key pack to continue.',
     402,
     'no_credits',
   );

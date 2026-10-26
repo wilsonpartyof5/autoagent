@@ -1,36 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CAR_PACKS } from './credits';
+import {
+  dealerConversationIdempotencyKey,
+  dealerConversationRefundKey,
+  KEY_PACKS,
+  marketSaveIdempotencyKey,
+  usdToCents,
+} from './credits';
 import { shouldRefundCredit, type QuotaEndState } from './quota';
 
-test('car packs have correct pricing', () => {
-  const packs = CAR_PACKS;
-  assert.equal(packs.length, 4);
-
-  const pack1 = packs.find((p) => p.size === 1);
-  assert.ok(pack1);
-  assert.equal(pack1.priceUsd, 35);
-
-  const pack3 = packs.find((p) => p.size === 3);
-  assert.ok(pack3);
-  assert.equal(pack3.priceUsd, 55);
-
-  const pack5 = packs.find((p) => p.size === 5);
-  assert.ok(pack5);
-  assert.equal(pack5.priceUsd, 75);
-
-  const pack10 = packs.find((p) => p.size === 10);
-  assert.ok(pack10);
-  assert.equal(pack10.priceUsd, 95);
+test('key packs are 1, 5, 10, and 25 at the published prices', () => {
+  const packs = KEY_PACKS;
+  assert.deepEqual(packs.map((pack) => [pack.size, pack.priceUsd, pack.recommended]), [
+    [1, 4.99, false],
+    [5, 19.99, false],
+    [10, 34.99, true],
+    [25, 74.99, false],
+  ]);
+  assert.deepEqual(packs.map((pack) => usdToCents(pack.priceUsd)), [499, 1999, 3499, 7499]);
+  assert.equal(marketSaveIdempotencyKey('mc-listing-1'), 'use:market_save:mc-listing-1');
+  assert.equal(dealerConversationIdempotencyKey('deal-1'), 'use:dealer_conversation:deal-1');
+  assert.equal(dealerConversationRefundKey('deal-1'), 'refund:deal-1');
 });
 
-test('shouldRefundCredit returns a credit only for a dealer decline', () => {
-  assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer decline should refund');
-  assert.equal(shouldRefundCredit('sold'), false, 'buying the car should not refund');
-  assert.equal(shouldRefundCredit('ended_no_response'), false, 'no response should not refund');
+test('shouldRefundCredit returns only the dealer-conversation key', () => {
+  assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer decline should refund the dealer key');
+  assert.equal(shouldRefundCredit('sold'), true, 'a sold car should refund the dealer key');
+  assert.equal(shouldRefundCredit('ended_no_response'), true, 'day 7 with no reply should refund the dealer key');
   assert.equal(shouldRefundCredit('open'), false, 'open should not refund');
-  assert.equal(shouldRefundCredit('removed'), false, 'removed is refunded only inside the early window');
+  assert.equal(shouldRefundCredit('removed'), false, 'removing a deal should not refund, including the 30 minute window');
 });
 
 test('all QuotaEndState values are handled by shouldRefundCredit', () => {

@@ -24,34 +24,41 @@ import { consumeCredit, purchaseCredits, purchaseIdempotencyKey, reversePurchase
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-test('product ids map to packs and unknown ids do not', () => {
-  assert.deepEqual(packForProductId('drevvy_pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 35 });
-  assert.deepEqual(packForProductId('pack_1'), { productId: 'drevvy_pack_1', size: 1, priceUsd: 35 });
-  assert.deepEqual(packForProductId('pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 55 });
-  assert.deepEqual(packForProductId('pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 95 });
-  assert.deepEqual(packForProductId('drevvy_pack_3'), { productId: 'drevvy_pack_3', size: 3, priceUsd: 55 });
-  assert.deepEqual(packForProductId('drevvy_pack_5'), { productId: 'drevvy_pack_5', size: 5, priceUsd: 75 });
-  assert.deepEqual(packForProductId('drevvy_pack_10'), { productId: 'drevvy_pack_10', size: 10, priceUsd: 95 });
+test('product ids map to key packs and retired car packs do not', () => {
+  assert.deepEqual(packForProductId('drevvy_keys_1'), { productId: 'drevvy_keys_1', size: 1, priceUsd: 4.99 });
+  assert.deepEqual(packForProductId('keys_1'), { productId: 'drevvy_keys_1', size: 1, priceUsd: 4.99 });
+  assert.deepEqual(packForProductId('keys_5'), { productId: 'drevvy_keys_5', size: 5, priceUsd: 19.99 });
+  assert.deepEqual(packForProductId('keys_10'), { productId: 'drevvy_keys_10', size: 10, priceUsd: 34.99 });
+  assert.deepEqual(packForProductId('drevvy_keys_5'), { productId: 'drevvy_keys_5', size: 5, priceUsd: 19.99 });
+  assert.deepEqual(packForProductId('drevvy_keys_10'), { productId: 'drevvy_keys_10', size: 10, priceUsd: 34.99 });
+  assert.deepEqual(packForProductId('drevvy_keys_25'), { productId: 'drevvy_keys_25', size: 25, priceUsd: 74.99 });
+  assert.deepEqual(packForProductId('keys_25'), { productId: 'drevvy_keys_25', size: 25, priceUsd: 74.99 });
+  assert.equal(packForProductId('drevvy_pack_1'), null);
+  assert.equal(packForProductId('pack_1'), null);
+  assert.equal(packForProductId('pack_3'), null);
+  assert.equal(packForProductId('drevvy_pack_3'), null);
+  assert.equal(packForProductId('drevvy_pack_5'), null);
+  assert.equal(packForProductId('drevvy_pack_10'), null);
   assert.equal(packForProductId('drevvy_pack_99'), null);
   assert.equal(packForProductId('credits:100'), null);
 });
 
-test('the 1-car pack grants one credit at $35 and a refund reverses it', async () => {
+test('the 1-key pack grants one key at $4.99 and a store refund reverses it', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
   const verified = findVerifiedPurchase({
     non_subscriptions: {
-      drevvy_pack_1: [{ id: 'rc_1', store_transaction_id: 'store_1' }],
+      drevvy_keys_1: [{ id: 'rc_1', store_transaction_id: 'store_1' }],
     },
-  }, 'store_1', 'drevvy_pack_1');
+  }, 'store_1', 'drevvy_keys_1');
   assert.equal(verified?.size, 1);
-  assert.equal(verified?.priceUsd, 35);
+  assert.equal(verified?.priceUsd, 4.99);
   assert.equal(verified?.transactionId, 'store_1');
 
   const granted = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_1',
+    product_id: 'drevvy_keys_1',
     transaction_id: 'store_1',
   });
   assert.equal(granted.applied, 'granted');
@@ -61,7 +68,7 @@ test('the 1-car pack grants one credit at $35 and a refund reverses it', async (
   const again = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_1',
+    product_id: 'drevvy_keys_1',
     transaction_id: 'store_1',
   });
   assert.equal(again.applied, 'granted');
@@ -70,7 +77,7 @@ test('the 1-car pack grants one credit at $35 and a refund reverses it', async (
   const refunded = await applyRevenueCatEvent(supabase, {
     type: 'REFUND',
     app_user_id: userId,
-    product_id: 'drevvy_pack_1',
+    product_id: 'drevvy_keys_1',
     transaction_id: 'store_1',
   });
   assert.equal(refunded.applied, 'reversed');
@@ -78,37 +85,38 @@ test('the 1-car pack grants one credit at $35 and a refund reverses it', async (
   assert.equal(refunded.credits?.lifetimeRefunded, 1);
 });
 
-test('verification uses the RevenueCat product, not a client credit count', () => {
+test('verification uses the RevenueCat product, not a client key count', () => {
   const subscriber = {
     non_subscriptions: {
-      drevvy_pack_3: [{ id: 'txn_3', store_transaction_id: 'store_3' }],
+      drevvy_keys_5: [{ id: 'txn_5', store_transaction_id: 'store_5' }],
     },
   };
-  const verified = findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_3');
-  assert.equal(verified?.size, 3);
-  assert.equal(verified?.priceUsd, 55);
-  assert.equal(findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_10'), null);
-  assert.equal(findVerifiedPurchase(subscriber, 'missing', 'drevvy_pack_3'), null);
+  const verified = findVerifiedPurchase(subscriber, 'store_5', 'drevvy_keys_5');
+  assert.equal(verified?.size, 5);
+  assert.equal(verified?.priceUsd, 19.99);
+  assert.equal(findVerifiedPurchase(subscriber, 'store_5', 'drevvy_keys_10'), null);
+  assert.equal(findVerifiedPurchase(subscriber, 'missing', 'drevvy_keys_5'), null);
+  assert.equal(findVerifiedPurchase(subscriber, 'store_5', 'drevvy_pack_3'), null);
 });
 
 test('a client alias and the webhook share the store transaction id', () => {
   const subscriber = {
     non_subscriptions: {
-      drevvy_pack_3: [{ id: 'rc_3', store_transaction_id: 'store_3' }],
+      drevvy_keys_5: [{ id: 'rc_5', store_transaction_id: 'store_5' }],
     },
   };
-  const byAlias = findVerifiedPurchase(subscriber, 'rc_3', 'drevvy_pack_3');
-  const byStore = findVerifiedPurchase(subscriber, 'store_3', 'drevvy_pack_3');
-  assert.equal(byAlias?.transactionId, 'store_3');
-  assert.equal(byStore?.transactionId, 'store_3');
-  assert.equal(byAlias?.size, 3);
-  assert.equal(byAlias?.priceUsd, 55);
+  const byAlias = findVerifiedPurchase(subscriber, 'rc_5', 'drevvy_keys_5');
+  const byStore = findVerifiedPurchase(subscriber, 'store_5', 'drevvy_keys_5');
+  assert.equal(byAlias?.transactionId, 'store_5');
+  assert.equal(byStore?.transactionId, 'store_5');
+  assert.equal(byAlias?.size, 5);
+  assert.equal(byAlias?.priceUsd, 19.99);
 });
 
 test('restore finds the pack from the transaction when the client sends no product', () => {
   const subscriber = {
     non_subscriptions: {
-      drevvy_pack_10: [{ transaction_id: 'txn_10' }],
+      drevvy_keys_10: [{ transaction_id: 'txn_10' }],
       other_product: [{ id: 'txn_other' }],
     },
   };
@@ -186,7 +194,7 @@ test('webhook grants NON_RENEWING_PURCHASE and refunds with the same transaction
   const granted = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_5',
   });
   assert.equal(granted.applied, 'granted');
@@ -200,7 +208,7 @@ test('webhook grants NON_RENEWING_PURCHASE and refunds with the same transaction
   const duplicate = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_5',
   });
   assert.equal(duplicate.credits?.balance, 5);
@@ -208,7 +216,7 @@ test('webhook grants NON_RENEWING_PURCHASE and refunds with the same transaction
   const refunded = await applyRevenueCatEvent(supabase, {
     type: 'REFUND',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_5',
   });
   assert.equal(refunded.applied, 'reversed');
@@ -217,7 +225,7 @@ test('webhook grants NON_RENEWING_PURCHASE and refunds with the same transaction
   const cancellation = await applyRevenueCatEvent(supabase, {
     type: 'CANCELLATION',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_5',
   });
   assert.equal(cancellation.credits?.balance, 0);
@@ -229,7 +237,7 @@ test('webhook ignores anonymous users and unknown products', async () => {
   const anonymous = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: '$RCAnonymousID:abc',
-    product_id: 'drevvy_pack_3',
+    product_id: 'drevvy_keys_1',
     transaction_id: 'txn_3',
   });
   assert.equal(anonymous.applied, 'ignored');
@@ -247,16 +255,16 @@ test('balance credits exactly once per purchase transaction id', async () => {
   const userId = '11111111-1111-4111-8111-111111111111';
   const subscriber = {
     non_subscriptions: {
-      drevvy_pack_10: [{ id: 'rc_10', store_transaction_id: 'store_10' }],
+      drevvy_keys_10: [{ id: 'rc_10', store_transaction_id: 'store_10' }],
     },
   };
-  const verified = findVerifiedPurchase(subscriber, 'rc_10', 'drevvy_pack_10');
+  const verified = findVerifiedPurchase(subscriber, 'rc_10', 'drevvy_keys_10');
   assert.ok(verified);
   const clientGrant = await grantVerifiedPurchase(supabase, userId, verified);
   const webhookGrant = await applyRevenueCatEvent(supabase, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_10',
+    product_id: 'drevvy_keys_10',
     transaction_id: 'store_10',
   });
   const restoreAlias = await grantVerifiedPurchase(supabase, userId, verified);
@@ -269,47 +277,47 @@ test('balance credits exactly once per purchase transaction id', async () => {
   assert.equal(restoreAlias.credits.lifetimePurchased, 10);
 });
 
-test('refunds deduct each pack once and do not go below zero', async () => {
+test('refunds deduct each key pack once and do not go below zero', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
-  await purchaseCredits(supabase, userId, 3, 55, 'txn_3');
+  await purchaseCredits(supabase, userId, 5, 19.99, 'txn_5pack');
   await consumeCredit(supabase, userId, '22222222-2222-4222-8222-222222222222');
   await consumeCredit(supabase, userId, '33333333-3333-4333-8333-333333333333');
   const refund = await applyRevenueCatEvent(supabase, {
     type: 'REFUND',
     app_user_id: userId,
-    product_id: 'drevvy_pack_3',
-    transaction_id: 'txn_3',
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'txn_5pack',
   });
   assert.equal(refund.applied, 'reversed');
   assert.equal(refund.credits?.balance, 0);
-  assert.equal(refund.credits?.lifetimeRefunded, 3);
+  assert.equal(refund.credits?.lifetimeRefunded, 5);
 
   const again = await applyRevenueCatEvent(supabase, {
     type: 'CANCELLATION',
     app_user_id: userId,
-    product_id: 'drevvy_pack_3',
-    transaction_id: 'txn_3',
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'txn_5pack',
   });
   assert.equal(again.credits?.balance, 0);
-  assert.equal(again.credits?.lifetimeRefunded, 3);
+  assert.equal(again.credits?.lifetimeRefunded, 5);
 
-  await purchaseCredits(supabase, userId, 5, 75, 'txn_5');
-  const pack5 = await reversePurchaseCredits(supabase, userId, 5, 'txn_5');
-  assert.equal(pack5.reversed, true);
-  assert.equal(pack5.credits.balance, 0);
-  assert.equal(pack5.credits.lifetimeRefunded, 8);
-  await purchaseCredits(supabase, userId, 10, 95, 'txn_10');
+  await purchaseCredits(supabase, userId, 10, 34.99, 'txn_10');
   const pack10 = await reversePurchaseCredits(supabase, userId, 10, 'txn_10');
   assert.equal(pack10.reversed, true);
   assert.equal(pack10.credits.balance, 0);
-  const pack10Again = await reversePurchaseCredits(supabase, userId, 10, 'txn_10');
-  assert.equal(pack10Again.alreadyReversed, true);
-  assert.equal(pack10Again.credits.balance, 0);
-  assert.equal(pack10Again.credits.lifetimeRefunded, 18);
+  assert.equal(pack10.credits.lifetimeRefunded, 15);
+  await purchaseCredits(supabase, userId, 25, 74.99, 'txn_25');
+  const pack25 = await reversePurchaseCredits(supabase, userId, 25, 'txn_25');
+  assert.equal(pack25.reversed, true);
+  assert.equal(pack25.credits.balance, 0);
+  const pack25Again = await reversePurchaseCredits(supabase, userId, 25, 'txn_25');
+  assert.equal(pack25Again.alreadyReversed, true);
+  assert.equal(pack25Again.credits.balance, 0);
+  assert.equal(pack25Again.credits.lifetimeRefunded, 40);
 });
 
-test('GET /api/consumer/credits returns the car balance for the signed-in shopper', async () => {
+test('GET /api/consumer/credits returns the key balance for the signed-in shopper', async () => {
   const supabase = memoryCredits();
   const userId = '11111111-1111-4111-8111-111111111111';
   await purchaseCredits(supabase, userId, 5, 75, 'txn_balance');
@@ -339,7 +347,7 @@ test('the RevenueCat webhook credits once, deducts a refund, and retries a faile
   const event = {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_hook',
   };
   const first = await handleRevenueCatWebhook(jsonRequest(event), { secret: 'secret', supabase });
@@ -351,7 +359,7 @@ test('the RevenueCat webhook credits once, deducts a refund, and retries a faile
   const refund = await handleRevenueCatWebhook(jsonRequest({
     type: 'REFUND',
     app_user_id: userId,
-    product_id: 'drevvy_pack_5',
+    product_id: 'drevvy_keys_5',
     transaction_id: 'txn_hook',
   }), { secret: 'secret', supabase });
   assert.equal(refund.status, 200);
@@ -492,7 +500,7 @@ function memoryCredits(): SupabaseClient {
       }
 
       if (fnName === 'consume_credit_atomic') {
-        const key = `use:${params.p_deal_id ?? ''}`;
+        const key = `use:dealer_conversation:${params.p_deal_id ?? ''}`;
         if (keys.has(key)) {
           return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
         }

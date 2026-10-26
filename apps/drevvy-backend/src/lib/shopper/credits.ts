@@ -1,21 +1,42 @@
 /**
- * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
- * that never expire and never reset monthly. A credit returns only when:
- * - the shopper removes the deal within 30 minutes of adding it, before outreach
- * - the dealer declines or opts out
- *
- * Buying the car does not return a credit. Refunds are idempotent (exactly
- * once per deal) via the idempotency_key.
+ * Key balance. Shoppers buy one-time key packs (1/$4.99, 5/$19.99, 10/$34.99, 25/$74.99)
+ * that never expire and never reset. Two spends:
+ * - market_save: one key to unlock market details and save a listing. Never refunded.
+ * - dealer_conversation: a second key to open dealer outreach. Refunded once, via refund:<deal id>,
+ *   when the car is sold, the dealer declines or opts out, or Day 7 ends with no reply.
+ * Removing a deal before outreach does not return a key.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export const CAR_PACKS = [
-  { size: 1, priceUsd: 35 },
-  { size: 3, priceUsd: 55 },
-  { size: 5, priceUsd: 75 },
-  { size: 10, priceUsd: 95 },
+import { isShopperListingId } from './deals';
+
+export const KEY_PACKS = [
+  { size: 1, priceUsd: 4.99, productId: 'drevvy_keys_1', packageId: 'keys_1', recommended: false },
+  { size: 5, priceUsd: 19.99, productId: 'drevvy_keys_5', packageId: 'keys_5', recommended: false },
+  { size: 10, priceUsd: 34.99, productId: 'drevvy_keys_10', packageId: 'keys_10', recommended: true },
+  { size: 25, priceUsd: 74.99, productId: 'drevvy_keys_25', packageId: 'keys_25', recommended: false },
 ] as const;
+
+export type KeySpendKind = 'market_save' | 'dealer_conversation';
+
+export type DealerKeyRefundReason = 'sold' | 'ended_no_response' | 'dealer_declined';
+
+export function usdToCents(priceUsd: number): number {
+  return Math.round(priceUsd * 100);
+}
+
+export function marketSaveIdempotencyKey(listingId: string): string {
+  return `use:market_save:${listingId}`;
+}
+
+export function dealerConversationIdempotencyKey(dealId: string): string {
+  return `use:dealer_conversation:${dealId}`;
+}
+
+export function dealerConversationRefundKey(dealId: string): string {
+  return `refund:${dealId}`;
+}
 
 export type CreditEventType = 'purchase' | 'use' | 'refund';
 
@@ -89,11 +110,34 @@ export async function checkCanAddCar(
   return { canAdd: true, balance: credits.balance };
 }
 
+type KeySpendResult = {
+  success: boolean;
+  newBalance: number;
+  alreadyConsumed: boolean;
+  error?: 'no_credits' | 'credit_failed';
+};
+
+function readSpendRow(data: unknown): KeySpendResult {
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    consumed?: boolean;
+    already_consumed?: boolean;
+    balance?: number;
+  } | null | undefined;
+  const consumed = row?.consumed === true;
+  const alreadyConsumed = row?.already_consumed === true;
+  const newBalance = row?.balance ?? 0;
+  if (!consumed && !alreadyConsumed) {
+    return { success: false, newBalance, alreadyConsumed: false, error: 'no_credits' };
+  }
+  return { success: true, newBalance, alreadyConsumed };
+}
+
+/** Spend the dealer-conversation key. Idempotent per deal. Does not spend the market+save key. */
 export async function consumeCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
-): Promise<{ success: boolean; newBalance: number; alreadyConsumed: boolean; error?: 'no_credits' | 'credit_failed' }> {
+): Promise<KeySpendResult> {
   const { data, error } = await supabase.rpc('consume_credit_atomic', {
     p_user_id: userId,
     p_deal_id: dealId,
@@ -104,23 +148,39 @@ export async function consumeCredit(
     return { success: false, newBalance: 0, alreadyConsumed: false, error: 'credit_failed' };
   }
 
-  const row = Array.isArray(data) ? data[0] : data;
-  const consumed = row?.consumed === true;
-  const alreadyConsumed = row?.already_consumed === true;
-  const newBalance = row?.balance ?? 0;
-  if (!consumed && !alreadyConsumed) {
-    return { success: false, newBalance, alreadyConsumed: false, error: 'no_credits' };
+  return readSpendRow(data);
+}
+
+/** Spend the market+save key. Idempotent per listing. This key is never refunded. */
+export async function spendMarketSaveKey(
+  supabase: SupabaseClient,
+  userId: string,
+  listingId: string,
+): Promise<KeySpendResult> {
+  if (!isShopperListingId(listingId)) {
+    return { success: false, newBalance: 0, alreadyConsumed: false, error: 'credit_failed' };
   }
-  return { success: true, newBalance, alreadyConsumed };
+
+  const { data, error } = await supabase.rpc('consume_market_save_atomic', {
+    p_user_id: userId,
+    p_listing_id: listingId,
+  });
+
+  if (error) {
+    console.error('[credits] Error calling consume_market_save_atomic:', error.message);
+    return { success: false, newBalance: 0, alreadyConsumed: false, error: 'credit_failed' };
+  }
+
+  return readSpendRow(data);
 }
 
 export async function refundCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
-  reason: 'dealer_declined' | 'removed',
+  reason: DealerKeyRefundReason,
 ): Promise<{ refunded: boolean; newBalance: number; alreadyRefunded: boolean }> {
-  const idempotencyKey = `refund:${dealId}`;
+  const idempotencyKey = dealerConversationRefundKey(dealId);
 
   const { data, error } = await supabase.rpc('refund_credit_atomic', {
     p_user_id: userId,
@@ -196,7 +256,7 @@ export async function purchaseCredits(
   const { data, error } = await supabase.rpc('purchase_credits_atomic', {
     p_user_id: userId,
     p_pack_size: packSize,
-    p_pack_price_usd: packPriceUsd,
+    p_pack_price_usd: usdToCents(packPriceUsd),
     p_idempotency_key: purchaseIdempotencyKey(transactionId),
     p_reversal_key: purchaseReversalKey(transactionId),
   });
@@ -249,7 +309,7 @@ export async function getCreditEvents(
 ): Promise<CreditEvent[]> {
   const { data, error } = await supabase
     .from('shopper_credit_events')
-    .select('id, user_id, event_type, amount, deal_id, pack_size, pack_price_usd, idempotency_key, created_at')
+    .select('id, user_id, event_type, amount, deal_id, pack_size, pack_price_usd, pack_price_cents, idempotency_key, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -266,7 +326,7 @@ export async function getCreditEvents(
     amount: row.amount,
     dealId: row.deal_id,
     packSize: row.pack_size,
-    packPriceUsd: row.pack_price_usd,
+    packPriceUsd: row.pack_price_cents != null ? row.pack_price_cents / 100 : row.pack_price_usd,
     idempotencyKey: row.idempotency_key,
     createdAt: row.created_at,
   }));

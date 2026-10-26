@@ -122,8 +122,8 @@ test('dealer identity stays out of pushes until the official offer is forwarded'
   assert.equal(planned[3]?.body, 'Your official offer is in. Open it for the price.');
   assert.equal(planned[4]?.title, 'Did you buy it?');
   assert.match(planned[4]?.body ?? '', /Did you buy the RAV4/);
-  assert.equal(planned[6]?.title, 'Your RAV4 is back');
-  assert.match(planned[6]?.body ?? '', /Dealer A didn't respond, so your RAV4 is back/);
+  assert.equal(planned[6]?.title, 'Your key is back');
+  assert.match(planned[6]?.body ?? '', /Dealer A didn't respond, so your dealer-conversation key is back/);
 
   const revealed = planShopperPush({
     kind: 'official_offer',

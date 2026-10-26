@@ -104,3 +104,149 @@ test('purchase_credits_atomic and consume_credit_atomic update the shopper balan
     await db.close();
   }
 });
+
+const KEYS = readFileSync(
+  join(HERE, '../../../../../supabase/migrations/20261026120000_key_spend_and_refunds.sql'),
+  'utf8',
+);
+
+const LISTING_ID = 'mc-listing-1';
+const OTHER_DEAL = '33333333-3333-4333-8333-333333333333';
+
+test('key spends are separate and only the dealer-conversation key refunds', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      create role anon nologin;
+      create role authenticated nologin;
+      create role service_role nologin;
+
+      create table public.shopper_credits (
+        user_id uuid primary key,
+        balance integer not null default 0 check (balance >= 0),
+        lifetime_purchased integer not null default 0,
+        lifetime_used integer not null default 0,
+        lifetime_refunded integer not null default 0,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create table public.shopper_credit_events (
+        id uuid primary key default gen_random_uuid(),
+        user_id uuid not null,
+        event_type text not null check (event_type in ('purchase', 'use', 'refund')),
+        amount integer not null check (amount > 0),
+        deal_id uuid,
+        pack_size integer,
+        pack_price_usd integer,
+        idempotency_key text not null,
+        created_at timestamptz not null default now(),
+        unique (user_id, idempotency_key)
+      );
+    `);
+    await db.exec(MIGRATION);
+    await db.exec(KEYS);
+
+    const purchased = await db.query<CreditRow & { granted: boolean }>(
+      `select * from public.purchase_credits_atomic($1, $2, $3, $4, $5)`,
+      [USER_ID, 10, 3499, 'purchase:keys_10', 'purchase_reversal:keys_10'],
+    );
+    assert.equal(purchased.rows[0]?.granted, true);
+    assert.equal(purchased.rows[0]?.balance, 10);
+
+    const price = await db.query<{ pack_price_cents: number | null; pack_price_usd: number | null }>(
+      `select pack_price_cents, pack_price_usd from public.shopper_credit_events where idempotency_key = 'purchase:keys_10'`,
+    );
+    assert.equal(price.rows[0]?.pack_price_cents, 3499);
+    assert.equal(price.rows[0]?.pack_price_usd, null);
+
+    const market = await db.query<CreditRow & { consumed: boolean; already_consumed: boolean }>(
+      `select * from public.consume_market_save_atomic($1, $2)`,
+      [USER_ID, LISTING_ID],
+    );
+    assert.equal(market.rows[0]?.consumed, true);
+    assert.equal(market.rows[0]?.already_consumed, false);
+    assert.equal(market.rows[0]?.balance, 9);
+
+    const marketAgain = await db.query<CreditRow & { consumed: boolean; already_consumed: boolean }>(
+      `select * from public.consume_market_save_atomic($1, $2)`,
+      [USER_ID, LISTING_ID],
+    );
+    assert.equal(marketAgain.rows[0]?.already_consumed, true);
+    assert.equal(marketAgain.rows[0]?.balance, 9);
+
+    const dealer = await db.query<CreditRow & { consumed: boolean; already_consumed: boolean }>(
+      `select * from public.consume_credit_atomic($1, $2)`,
+      [USER_ID, DEAL_ID],
+    );
+    assert.equal(dealer.rows[0]?.consumed, true);
+    assert.equal(dealer.rows[0]?.already_consumed, false);
+    assert.equal(dealer.rows[0]?.balance, 8);
+
+    const dealerAgain = await db.query<CreditRow & { already_consumed: boolean; balance: number }>(
+      `select * from public.consume_credit_atomic($1, $2)`,
+      [USER_ID, DEAL_ID],
+    );
+    assert.equal(dealerAgain.rows[0]?.already_consumed, true);
+    assert.equal(dealerAgain.rows[0]?.balance, 8);
+
+    const kinds = await db.query<{ spend_kind: string; idempotency_key: string }>(
+      `select spend_kind, idempotency_key from public.shopper_credit_events where event_type = 'use' order by idempotency_key`,
+    );
+    assert.deepEqual(kinds.rows.map((row) => [row.spend_kind, row.idempotency_key]), [
+      ['dealer_conversation', `use:dealer_conversation:${DEAL_ID}`],
+      ['market_save', `use:market_save:${LISTING_ID}`],
+    ]);
+
+    const refund = await db.query<{ refunded: boolean; already_refunded: boolean; new_balance: number }>(
+      `select * from public.refund_credit_atomic($1, $2, $3)`,
+      [USER_ID, DEAL_ID, `refund:${DEAL_ID}`],
+    );
+    assert.equal(refund.rows[0]?.refunded, true);
+    assert.equal(refund.rows[0]?.already_refunded, false);
+    assert.equal(refund.rows[0]?.new_balance, 9);
+
+    const refundAgain = await db.query<{ refunded: boolean; already_refunded: boolean; new_balance: number }>(
+      `select * from public.refund_credit_atomic($1, $2, $3)`,
+      [USER_ID, DEAL_ID, `refund:${DEAL_ID}`],
+    );
+    assert.equal(refundAgain.rows[0]?.refunded, false);
+    assert.equal(refundAgain.rows[0]?.already_refunded, true);
+    assert.equal(refundAgain.rows[0]?.new_balance, 9);
+
+    const marketOnly = await db.query<{ refunded: boolean; already_refunded: boolean; new_balance: number }>(
+      `select * from public.refund_credit_atomic($1, $2, $3)`,
+      [USER_ID, OTHER_DEAL, `refund:${OTHER_DEAL}`],
+    );
+    assert.equal(marketOnly.rows[0]?.refunded, false);
+    assert.equal(marketOnly.rows[0]?.already_refunded, false);
+    assert.equal(marketOnly.rows[0]?.new_balance, 9);
+
+    await db.exec(`
+      insert into public.shopper_credit_events (user_id, event_type, amount, deal_id, idempotency_key)
+      values ('${USER_ID}', 'use', 1, '${OTHER_DEAL}', 'use:${OTHER_DEAL}')
+    `);
+    const legacy = await db.query<CreditRow & { already_consumed: boolean; balance: number }>(
+      `select * from public.consume_credit_atomic($1, $2)`,
+      [USER_ID, OTHER_DEAL],
+    );
+    assert.equal(legacy.rows[0]?.already_consumed, true);
+    assert.equal(legacy.rows[0]?.balance, 9);
+    const legacyRefund = await db.query<{ refunded: boolean; new_balance: number }>(
+      `select * from public.refund_credit_atomic($1, $2, $3)`,
+      [USER_ID, OTHER_DEAL, `refund:${OTHER_DEAL}`],
+    );
+    assert.equal(legacyRefund.rows[0]?.refunded, true);
+    assert.equal(legacyRefund.rows[0]?.new_balance, 10);
+
+    const anon = await db.query<{ anon_exec: boolean; service_exec: boolean }>(`
+      select
+        has_function_privilege('anon', 'public.consume_market_save_atomic(uuid, text)', 'execute') as anon_exec,
+        has_function_privilege('service_role', 'public.refund_credit_atomic(uuid, uuid, text)', 'execute') as service_exec
+    `);
+    assert.equal(anon.rows[0]?.anon_exec, false);
+    assert.equal(anon.rows[0]?.service_exec, true);
+  } finally {
+    await db.close();
+  }
+});

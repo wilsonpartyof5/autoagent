@@ -18,6 +18,8 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  * returned on `listing`. They are not written to saved_cars.
  *
  * Create body: { "listingId": "mc-listing-1", "vin": "1GNSKCKD5RR123456", "movedToDealId": null }
+ * A heart save does not spend a key. Market details plus save is
+ * POST /api/consumer/keys/market-save.
  */
 
 export const dynamic = 'force-dynamic';
