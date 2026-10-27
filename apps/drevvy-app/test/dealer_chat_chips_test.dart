@@ -153,11 +153,19 @@ void main() {
     final pending = Completer<DealChipSuggestionSet?>();
     final sends = <String>[];
     final endpoint = _FakeChips((dealId, inputs) => pending.future);
+    const stocked = Listing(
+      id: 'listing_001',
+      vin: 'VIN123',
+      stockNo: 'R44118',
+      price: 32995,
+      build: ListingBuild(year: 2024, make: 'Toyota', model: 'RAV4'),
+      media: ListingMedia(photoLinks: []),
+    );
 
     await tester.pumpWidget(
       _frame(
         _sheet(
-          listing: listing,
+          listing: stocked,
           endpoint: endpoint,
           inputs: DealChipInputs.loaded(market: market, stockNumber: 'R44118'),
           onSend: ({templateId, message}) async {
@@ -376,10 +384,18 @@ void main() {
     final endpoint = _FakeChips((dealId, inputs) async {
       throw StateError('should not fetch');
     });
+    const stocked = Listing(
+      id: 'listing_001',
+      vin: 'VIN123',
+      stockNo: 'T12345',
+      price: 32995,
+      build: ListingBuild(year: 2024, make: 'Toyota', model: 'RAV4'),
+      media: ListingMedia(photoLinks: []),
+    );
     await tester.pumpWidget(
       _frame(
         _sheet(
-          listing: listing,
+          listing: stocked,
           dealId: null,
           endpoint: endpoint,
           inputs: DealChipInputs.loaded(market: market, stockNumber: 'T12345'),

@@ -144,19 +144,20 @@ class DealerChatSheetState extends State<DealerChatSheet> {
     final dealId = widget.dealId?.trim() ?? '';
     final inputs = widget.chipInputs;
     final endpoint = widget.chipsEndpoint;
-    final ready =
-        widget.chips == null &&
-        dealId.isNotEmpty &&
-        inputs != null &&
-        inputs.ready &&
-        endpoint != null;
 
     // didUpdateWidget is followed by build, so the loading frame sees this
     // without a nested setState.
-    _loadingChips = ready;
     _chipError = false;
     _server = null;
-    if (!ready || endpoint == null || inputs == null) return;
+    if (widget.chips != null ||
+        dealId.isEmpty ||
+        inputs == null ||
+        !inputs.ready ||
+        endpoint == null) {
+      _loadingChips = false;
+      return;
+    }
+    _loadingChips = true;
     unawaited(_request(generation, dealId, inputs, endpoint));
   }
 
