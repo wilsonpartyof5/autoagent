@@ -61,6 +61,27 @@ function scriptedAi(): ChatClient & { calls: ChatRequest[] } {
 }
 
 describe('widget chat agent', () => {
+  it('does not run the availability script for an in-network rooftop', async () => {
+    const page = new FakeChatPage(html, { replies: ['Yes, this unit is still available.'] });
+    const result = await runWidgetChat({
+      vehiclePageUrl: pageUrl,
+      page,
+      ai: scriptedAi(),
+      config: { ...liveConfig, inNetwork: true, shopperFirst: 'Maya Lopez' },
+      store: new MemoryAttemptStore(),
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.equal(result.stopReason, 'in_network_fenced');
+    assert.deepEqual(page.sent, []);
+    assert.deepEqual(page.gotos, []);
+    assert.deepEqual(page.clicks, []);
+    assert.equal(result.transcript[0]?.text, 'Maya wants your best itemized out-the-door');
+    assert.equal(JSON.stringify(result.transcript).includes('still available'), false);
+    assert.equal(JSON.stringify(result.transcript).includes('Lopez'), false);
+    assert.equal(JSON.stringify(result.transcript).includes('803-555'), false);
+  });
+
   it('opens the page in a dry run and sends nothing', async () => {
     const page = new FakeChatPage(html, { replies: ['Yes, this unit is still available.'] });
     const ai = scriptedAi();

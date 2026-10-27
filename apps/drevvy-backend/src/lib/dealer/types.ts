@@ -63,6 +63,10 @@ export interface Conversation {
   /** Display deadline for the inbox timer. Not an SLA policy. */
   replyDueAt: string;
   messages: ThreadMessage[];
+  otdWarningCount?: number;
+  otdRemovalRecommended?: boolean;
+  /** Separate from the OTD ladder. Dealer pushed come-in more than once. */
+  comeInAdminFlag?: boolean;
 }
 
 export interface SlaChip {

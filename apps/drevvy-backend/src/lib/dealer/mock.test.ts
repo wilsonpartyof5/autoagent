@@ -21,7 +21,9 @@ import {
   resetDealerDemo,
   shareNumbers,
   shareNumbersHttp,
+  useInNetworkShopper,
 } from './mock';
+import { OTD_REMOVAL_NOTICE } from './otd-warnings';
 
 const NOW = new Date('2026-10-24T15:00:00.000Z');
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -260,6 +262,54 @@ describe('dealer desk mock', { concurrency: false }, () => {
       400
     );
     walk(detail.body, 'http-detail');
+  });
+
+  test('an in-network withhold warns on that thread and recommends removal at 3', () => {
+    resetDealerDemo(NOW);
+    assert.equal(useInNetworkShopper('conv_rav4', 'Dana Blake'), true);
+    const opened = presentConversation('conv_rav4', NOW);
+    assert.equal(opened?.messages[0]?.body, 'Dana wants your best itemized out-the-door');
+    assert.equal(opened?.messages[0]?.body.includes('Blake'), false);
+
+    const replies = [
+      'Yes, stock #R44118 is still here.',
+      'The advertised price is still $33,240.',
+      'Come in and we can talk numbers.',
+    ];
+    let last = opened;
+    for (const body of replies) {
+      const posted = postMessage('conv_rav4', body, NOW);
+      assert.equal(posted.ok, true);
+      if (posted.ok) last = posted.data;
+    }
+    assert.equal(last?.otdWarningCount, 3);
+    assert.equal(last?.otdRemovalRecommended, true);
+    assert.equal(last?.comeInAdminFlag === true, false);
+    const warnings = last?.messages.filter((message) => message.body.startsWith('Warning ')) ?? [];
+    assert.equal(warnings.length, 3);
+    assert.match(warnings[0]?.body ?? '', /^Warning 1 of 3: Dana asked for your best itemized out-the-door/);
+    assert.match(warnings[2]?.body ?? '', /^Warning 3 of 3: Dana asked/);
+    assert.equal(warnings.some((message) => message.body.includes('Blake')), false);
+    assert.equal(last?.messages.at(-1)?.body, OTD_REMOVAL_NOTICE);
+
+    const fourth = postMessage('conv_rav4', 'Please come in today.', NOW);
+    assert.equal(fourth.ok, true);
+    if (!fourth.ok) return;
+    assert.equal(fourth.data.otdWarningCount, 3);
+    assert.equal(fourth.data.messages.filter((message) => message.body.startsWith('Warning ')).length, 3);
+    assert.equal(fourth.data.comeInAdminFlag, true);
+
+    assert.equal(useInNetworkShopper('conv_f150', 'Sam'), true);
+    const itemized = postMessage(
+      'conv_f150',
+      'Price $30,000, doc fee $499, tax $1,800, title $75, registration $210.',
+      NOW,
+    );
+    assert.equal(itemized.ok, true);
+    if (!itemized.ok) return;
+    assert.equal(itemized.data.otdWarningCount ?? 0, 0);
+    assert.equal(itemized.data.messages.some((message) => message.body.startsWith('Warning ')), false);
+    assert.equal(/negotiat/i.test(JSON.stringify(itemized.data)), false);
   });
 
   test('dealer routes stay outside the admin guard', () => {

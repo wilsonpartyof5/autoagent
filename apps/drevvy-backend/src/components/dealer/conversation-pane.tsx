@@ -148,7 +148,10 @@ export function ConversationPane({
       <StageStepper stage={conversation.stage} />
       <div className="note">
         Message-only. Shopper first name is shown in-dashboard; contact details
-        stay private. Chat is for transparency and answering questions.
+        stay private. Live in-network chats open with the itemized out-the-door
+        ask. Shopper chips are suggestions the shopper taps. A missing itemized
+        price warns the salesperson on this thread. This desk does not text,
+        email, or call.
       </div>
 
       <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto">

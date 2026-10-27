@@ -138,10 +138,8 @@ test('mergeListingIdentity prefers the first non-empty field', () => {
   });
 });
 
-test('the opener is message-only and asks for itemized OTD at signup terms', () => {
-  assert.match(IN_NETWORK_OPENER, /itemized best out-the-door/);
-  assert.match(IN_NETWORK_OPENER, /signup terms/);
-  assert.match(IN_NETWORK_OPENER, /A shopper is asking in Drevvy chat/);
+test('the opener is the locked in-network sentence', () => {
+  assert.equal(IN_NETWORK_OPENER, 'A shopper wants your best itemized out-the-door');
   assert.equal(/sms|email|call|telnyx/i.test(IN_NETWORK_OPENER), false);
   assert.equal(IN_NETWORK_CHANNEL, 'in_app_message');
 });
@@ -152,8 +150,15 @@ test('in-network dealers see first name only', () => {
   assert.equal(shopperFirstNameOnly('dana@example.com'), null);
   assert.equal(shopperFirstNameOnly('555-1212'), null);
   assert.equal(shopperFirstNameOnly('Dana123'), null);
-  assert.match(inNetworkOpener('Dana Blake'), /^Dana is asking in Drevvy chat/);
-  assert.equal(/Blake|@|555/.test(inNetworkOpener('Dana Blake')), false);
+  assert.equal(inNetworkOpener('Dana Blake'), 'Dana wants your best itemized out-the-door');
+  assert.equal(inNetworkOpener('Dana Blake', { financing: false, zip: '29730' }), 'Dana wants your best itemized out-the-door');
+  assert.equal(inNetworkOpener('Dana Blake', { zip: '29730' }), 'Dana wants your best itemized out-the-door');
+  assert.equal(
+    inNetworkOpener('Dana Blake', { financing: true, zip: '29730' }),
+    'Dana wants your best itemized out-the-door. ZIP 29730',
+  );
+  assert.equal(inNetworkOpener('Dana', { financing: true, zip: 'not-a-zip' }), 'Dana wants your best itemized out-the-door');
+  assert.equal(/Blake|@|555|street/i.test(inNetworkOpener('Dana Blake', { financing: true, zip: '29730' })), false);
 });
 
 test('DEALER.md documents the match function', () => {
@@ -166,4 +171,6 @@ test('DEALER.md documents the match function', () => {
   assert.match(doc, /\$300/);
   assert.match(doc, /first name only/i);
   assert.match(doc, /generic keys/i);
+  assert.match(doc, /wants your best itemized out-the-door/);
+  assert.match(doc, /Warning \{n\} of 3/);
 });

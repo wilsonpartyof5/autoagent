@@ -1,10 +1,13 @@
 /**
  * Widget and lead-form questions.
- * Same words as the dealer opening: availability first, with the stock number,
- * or the last 8 of the VIN when there is no stock number. The listed-price
- * question is a later chat message, after the dealer says the car is available.
+ * Off-network words match the dealer opening: availability first, with the
+ * stock number, or the last 8 of the VIN when there is no stock number.
+ * In-network rooftops get the desk opener instead. The listed-price
+ * question is a later off-network chat message, after the dealer says the car is available.
  * The first line does not name the year, make, model, trim, or the full VIN.
  */
+
+import { inNetworkDeskOpener } from './in-network';
 
 export const LISTING_PRICE_STALE_DAYS = 60;
 
@@ -29,7 +32,10 @@ export function availabilityQuestion(input: {
   dealerFirstName?: string | null;
   stock?: string | null;
   vin?: string | null;
+  inNetwork?: boolean;
+  shopperFirst?: string | null;
 }): string {
+  if (input.inNetwork) return inNetworkDeskOpener(input.shopperFirst);
   const stock = dealerStockNumber(input.stock);
   const tail = stock ? '' : vinLastEight(input.vin);
   const identifier = stock ? `stock #${stock}` : tail ? `VIN ending ${tail}` : '';

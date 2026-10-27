@@ -135,7 +135,7 @@ test('conversation starts only for an onboarded rooftop and spends the dealer ke
   assert.equal(started.match.channel, 'in_app_message');
   assert.equal(started.match.shopperKnown, true);
   assert.equal(started.shopperFirstName, 'Dana');
-  assert.match(started.match.opener, /^Dana is asking in Drevvy chat/);
+  assert.equal(started.match.opener, 'Dana wants your best itemized out-the-door');
   assert.equal(/Blake|@/.test(started.match.opener), false);
   assert.equal(started.credits.balance, 1);
   assert.equal(deals.rows.length, 1);
@@ -161,7 +161,7 @@ test('email and last name never reach the in-network dealer', async () => {
     vehicle: VEHICLE,
   }, deps);
   assert.equal(started.shopperFirstName, null);
-  assert.match(started.match.opener, /^A shopper is asking in Drevvy chat/);
+  assert.equal(started.match.opener, 'A shopper wants your best itemized out-the-door');
 });
 
 test('off-network listings cannot start a dealer conversation', async () => {
