@@ -187,8 +187,8 @@ export type ShopperDeal = {
   llmCostUsd: number;
 };
 
-/** Pack-mix dimension. Includes the 1-car pack. */
-export const PACK_MIX_SIZES = [1, 3, 5, 10] as const;
+/** Pack-mix dimension. Generic key packs; spend kind is assigned at use. */
+export const PACK_MIX_SIZES = [1, 5, 10, 25] as const;
 
 export type PackMixSize = (typeof PACK_MIX_SIZES)[number];
 

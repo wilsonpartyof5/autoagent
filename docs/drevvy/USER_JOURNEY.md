@@ -1,6 +1,6 @@
 # Drevvy shopper journey
 
-Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and buys a one-time car pack (1 car $35, 3 cars $55, 5 cars $75, or 10 cars $95) so an agent can chase an out-the-door price. Packs never expire. The agent talks to dealers by SMS, email, and ElevenLabs voice. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
+Drevvy is a shopper-only app. A person downloads Autogentic, figures out which car fits, shops live MarketCheck inventory without seeing the store, and buys a one-time generic key pack (1/$4.99, 5/$19.99, 10/$34.99 recommended, 25/$74.99). Spend kind is assigned at use: market intel on any VDP, or in-app dealer conversation when the listing URL matches an onboarded rooftop. Off-network OTD requests are free and are not chat. Packs never expire. In-network dealers see the shopper first name only. The shopper sees prices, stage, and summaries. The operator sees the stores, the raw threads, and the cadence.
 
 Sign in with Apple is postponed until App Store submission. The demo does not depend on it. A shopper can move through Ask, Shop, and the Deals tab on this story without an Apple account.
 
@@ -12,7 +12,7 @@ flowchart TD
   shop[Shop: MarketCheck inventory, dealers hidden]
   vdp[Vehicle detail]
   best[Get Best Price]
-  paywall["Car packs from $35"]
+  paywall["Key packs from $4.99"]
   add[Add to agent]
   outreach[SMS, email, and voice cadence]
   replies[Dealer replies and negotiation]
@@ -34,7 +34,7 @@ flowchart TD
 | Shop | Map and cards. Price, photos, city, and distance. No store name, phone, or website. | The same cards. Dealer identity stays off the shopper payload. |
 | Vehicle detail | Specs, photos, days on market, price history if we have it. | Market comps and the leverage line the agent can quote later. |
 | Get Best Price | A tap that means “have Drevvy get the out-the-door number.” | The tap, the listing id, and the listed price snapshot. |
-| Paywall | One-time packs: 1 car $35, 3 cars $55, 5 cars $75, 10 cars $95. Never expire. | Paywall shown, then the pack purchased or not. MRR is a placeholder until payments are real. |
+| Paywall | One-time generic key packs: 1/$4.99, 5/$19.99, 10/$34.99, 25/$74.99. Never expire. | Paywall shown, then the pack purchased or not. MRR is a placeholder until payments are real. |
 | Add to agent | A deal card: starting price, best OTD, savings, status chip, last activity. | That card, plus store names. |
 | Outreach | “3 dealerships contacted, 1 replied.” Counts by SMS, email, and voice. Summaries, not transcripts. | The stores, phone, email, raw transcripts, cadence, and agent notes. |
 | Best price | The lowest out-the-door total, the fee breakdown, and the offer trend. | Which store gave which number, and the next agent step. |
@@ -98,7 +98,7 @@ MarketCheck: detail enrichment (specs, days on market, price drops). The admin d
 
 ### Get Best Price
 
-The tap means the shopper wants Drevvy to get an out-the-door number. If their car balance is 0, this opens the pack picker. If they have cars left, the car is added to the agent.
+On an in-network rooftop the shopper can unlock market intel (one key) or start in-app chat (one key). Off-network they can unlock market intel (one key) or request the dealership’s out-the-door number for free — that request is analytics only, not chat. If their key balance is 0, intel and conversation open the pack picker.
 
 Event: `shopper.get_best_price`.
 
@@ -108,7 +108,7 @@ MarketCheck: the listed price and days on market are copied onto the deal so lat
 
 ### Paywall
 
-One-time packs: 1 car for $35, 3 cars for $55, 5 cars for $75, 10 cars for $95 ($9.50 per car, best value). Packs never expire. The shopper sees the prices. They do not see dealer outreach on this screen.
+One-time generic key packs: 1 key for $4.99, 5 for $19.99, 10 for $34.99 (recommended), 25 for $74.99. Spend kind is assigned at use. Packs never expire. The shopper sees the prices. They do not see dealer outreach on this screen.
 
 Event: `shopper.paywall_shown`, then `shopper.subscribed` when payment succeeds. Payments are not built. The admin MRR and churn figures are placeholders from mock subscription status.
 

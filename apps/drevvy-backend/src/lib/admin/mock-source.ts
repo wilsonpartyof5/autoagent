@@ -79,7 +79,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'chris.alvarez@example.com',
     signedUpAt: '2026-07-18T11:40:00.000Z',
     subscription: 'active',
-    purchasedPack: 3,
+    purchasedPack: 25,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply', 'best_price_ready'],
   },
   {
@@ -115,7 +115,7 @@ const SHOPPER_SEEDS: Array<{
     email: 'avery.kim@example.com',
     signedUpAt: '2026-09-25T17:45:00.000Z',
     subscription: 'active',
-    purchasedPack: 3,
+    purchasedPack: 25,
     funnel: ['signup', 'onboarding', 'first_ask_or_shop', 'first_car_viewed', 'get_best_price', 'paywall_shown', 'subscribed', 'first_car_added', 'first_dealer_reply'],
   },
 ];

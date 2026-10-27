@@ -33,6 +33,9 @@ test('product ids map to key packs and retired car packs do not', () => {
   assert.deepEqual(packForProductId('drevvy_keys_10'), { productId: 'drevvy_keys_10', size: 10, priceUsd: 34.99 });
   assert.deepEqual(packForProductId('drevvy_keys_25'), { productId: 'drevvy_keys_25', size: 25, priceUsd: 74.99 });
   assert.deepEqual(packForProductId('keys_25'), { productId: 'drevvy_keys_25', size: 25, priceUsd: 74.99 });
+  assert.deepEqual(packForProductId('drevvy_key_1'), { productId: 'drevvy_keys_1', size: 1, priceUsd: 4.99 });
+  assert.deepEqual(packForProductId('drevvy_key_10'), { productId: 'drevvy_keys_10', size: 10, priceUsd: 34.99 });
+  assert.deepEqual(packForProductId('drevvy_key_25'), { productId: 'drevvy_keys_25', size: 25, priceUsd: 74.99 });
   assert.equal(packForProductId('drevvy_pack_1'), null);
   assert.equal(packForProductId('pack_1'), null);
   assert.equal(packForProductId('pack_3'), null);

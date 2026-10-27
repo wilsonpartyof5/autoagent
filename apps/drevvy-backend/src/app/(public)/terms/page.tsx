@@ -103,8 +103,10 @@ export default function TermsPage() {
 
               <h3 className="text-xl font-medium mt-6 mb-3">One-time key packs</h3>
               <p className="text-muted-foreground mb-4">
-                Asking and shopping are free. Unlocking market details and saving a car uses one key.
-                Opening a dealer conversation uses a second key. Packs are one-time purchases and never expire:
+                Asking and shopping are free. Packs are generic keys; the spend kind is assigned when you use one.
+                Unlocking market details and saving a car uses one key. Opening a dealer conversation on a
+                matched rooftop uses one key. Requesting an out-the-door number from a dealership that is
+                not on Drevvy does not use a key. Packs are one-time purchases and never expire:
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
                 {LEGAL.KEY_PACKS.map((pack) => (
@@ -117,10 +119,10 @@ export default function TermsPage() {
               </ul>
               <p className="text-muted-foreground mb-4">
                 There is no subscription and no automatic renewal. Keys you buy stay on your account until
-                you use them. If a dealer does not reply within 7 days, the dealer-conversation key is
-                returned. That key also comes back when the car is sold or the dealer declines. The key
-                used to unlock market details and save a car is not returned. Removing a car before
-                outreach does not return a key.
+                you use them. If a dealer does not reply within 7 days of confirmed delivery, the
+                dealer-conversation key is returned. That key also comes back when the car is sold or the
+                dealer declines. The key used to unlock market details and save a car is not returned.
+                Removing a car before outreach does not return a key.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Payment Processing</h3>

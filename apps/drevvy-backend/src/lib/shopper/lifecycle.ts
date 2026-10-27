@@ -55,6 +55,8 @@ export type LifecycleRecord = {
   removedAt: string | null;
   outreachSentAt: string | null;
   outreachChannel: OutreachChannel | null;
+  /** Day-7 no-reply refund clock. Null until the first message is confirmed delivered. */
+  deliveryConfirmedAt: string | null;
   repliedAt: string | null;
   endState: DealEndState;
   endedAt: string | null;
@@ -135,6 +137,7 @@ export type DealSignalIdentity = {
 
 export type DealAgentEvent =
   | { type: 'outreach'; dealId: string; consumerUserId: string; channel: OutreachChannel; sentAt: string }
+  | { type: 'delivery'; dealId: string; consumerUserId: string; sentAt: string }
   | { type: 'reply'; dealId: string; consumerUserId: string; sentAt: string }
   | { type: 'end'; dealId: string; consumerUserId: string; endState: 'sold' | 'ended_no_response' | 'dealer_declined'; sentAt: string }
   | {
@@ -172,6 +175,7 @@ export function blankLifecycle(deal: ShopperDeal, consumerUserId: string): Lifec
     removedAt: null,
     outreachSentAt: null,
     outreachChannel: null,
+    deliveryConfirmedAt: null,
     repliedAt: null,
     endState: 'open',
     endedAt: null,
@@ -301,6 +305,11 @@ export function noteOutreach(record: LifecycleRecord, sentAt: string, channel: O
   return { ...record, outreachSentAt: sentAt, outreachChannel: channel };
 }
 
+export function noteDeliveryConfirmed(record: LifecycleRecord, sentAt: string): LifecycleRecord {
+  if (record.deliveryConfirmedAt && Date.parse(record.deliveryConfirmedAt) <= Date.parse(sentAt)) return record;
+  return { ...record, deliveryConfirmedAt: sentAt };
+}
+
 export function noteReply(record: LifecycleRecord, sentAt: string): LifecycleRecord {
   if (record.repliedAt && Date.parse(record.repliedAt) <= Date.parse(sentAt)) return record;
   return { ...record, repliedAt: sentAt };
@@ -323,8 +332,8 @@ export function removeDeal(record: LifecycleRecord, at: string): LifecycleRecord
 }
 
 export function noResponseDue(record: LifecycleRecord, nowIso: string): boolean {
-  if (record.endState !== 'open' || !record.outreachSentAt || record.repliedAt) return false;
-  const started = Date.parse(record.outreachSentAt);
+  if (record.endState !== 'open' || !record.deliveryConfirmedAt || record.repliedAt) return false;
+  const started = Date.parse(record.deliveryConfirmedAt);
   const now = Date.parse(nowIso);
   if (!Number.isFinite(started) || !Number.isFinite(now)) return false;
   return now - started >= NO_RESPONSE_MS;
@@ -498,6 +507,7 @@ export function readAgentEvent(body: unknown, nowIso: string): DealAgentEvent {
     }
     return { type: 'outreach', dealId, consumerUserId, channel: record.channel, sentAt };
   }
+  if (record.type === 'delivery') return { type: 'delivery', dealId, consumerUserId, sentAt };
   if (record.type === 'reply') return { type: 'reply', dealId, consumerUserId, sentAt };
   if (record.type === 'end' && (record.endState === 'sold' || record.endState === 'ended_no_response' || record.endState === 'dealer_declined')) {
     return { type: 'end', dealId, consumerUserId, endState: record.endState, sentAt };
@@ -542,7 +552,7 @@ export function readAgentEvent(body: unknown, nowIso: string): DealAgentEvent {
       identity: readSignalIdentity(record),
     };
   }
-  throw new ShopperDealError('Event type must be outreach, reply, end, price_drop, or offer_ready.', 400, 'invalid_event');
+  throw new ShopperDealError('Event type must be outreach, delivery, reply, end, price_drop, or offer_ready.', 400, 'invalid_event');
 }
 
 function readSignalIdentity(record: Record<string, unknown>): DealSignalIdentity {

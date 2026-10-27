@@ -26,6 +26,7 @@ const COLUMNS = [
   'removed_at',
   'first_outreach_at',
   'first_outreach_channel',
+  'delivery_confirmed_at',
   'replied_at',
   'end_state',
   'ended_at',
@@ -53,6 +54,7 @@ type LifecycleTableRow = {
   removed_at: string | null;
   first_outreach_at: string | null;
   first_outreach_channel: string | null;
+  delivery_confirmed_at: string | null;
   replied_at: string | null;
   end_state: string;
   ended_at: string | null;
@@ -181,6 +183,7 @@ function toRow(record: LifecycleRecord): LifecycleTableRow & { updated_at: strin
     removed_at: record.removedAt,
     first_outreach_at: record.outreachSentAt,
     first_outreach_channel: record.outreachChannel,
+    delivery_confirmed_at: record.deliveryConfirmedAt,
     replied_at: record.repliedAt,
     end_state: record.endState,
     ended_at: record.endedAt,
@@ -211,6 +214,7 @@ function fromRow(row: LifecycleTableRow): LifecycleRecord {
     removedAt: row.removed_at,
     outreachSentAt: row.first_outreach_at,
     outreachChannel: channel(row.first_outreach_channel),
+    deliveryConfirmedAt: row.delivery_confirmed_at,
     repliedAt: row.replied_at,
     endState: endState(row.end_state),
     endedAt: row.ended_at,

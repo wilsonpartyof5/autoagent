@@ -1,10 +1,13 @@
 /**
- * Key balance. Shoppers buy one-time key packs (1/$4.99, 5/$19.99, 10/$34.99, 25/$74.99)
- * that never expire and never reset. Two spends:
- * - market_save: one key to unlock market details and save a listing. Never refunded.
- * - dealer_conversation: a second key to open dealer outreach. Refunded once, via refund:<deal id>,
- *   when the car is sold, the dealer declines or opts out, or Day 7 ends with no reply.
- * Removing a deal before outreach does not return a key.
+ * Key balance. Packs are generic keys (1/$4.99, 5/$19.99, 10/$34.99, 25/$74.99).
+ * Spend kind is assigned at use:
+ * - market_save: unlock market details and save a listing. Never refunded.
+ * - dealer_conversation: open in-app chat only when the listing URL / domain /
+ *   MarketCheck dealer id matches an onboarded rooftop. Refunded once via
+ *   refund:<deal id> when the car is sold, the dealer declines or opts out, or
+ *   Day 7 after confirmed delivery ends with no reply.
+ * Off-network OTD requests spend nothing. Removing a deal before outreach
+ * does not return a key.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';

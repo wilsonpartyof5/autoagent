@@ -21,12 +21,16 @@ export const CREDIT_PRODUCTS = {
   drevvy_keys_25: { size: 25, priceUsd: 74.99 },
 } as const;
 
-/** RevenueCat package identifier → store product. Grants are 1/5/10/25 keys. */
+/** RevenueCat package identifier → store product. Grants are 1/5/10/25 generic keys. */
 export const CREDIT_PACKAGES = {
   keys_1: 'drevvy_keys_1',
   keys_5: 'drevvy_keys_5',
   keys_10: 'drevvy_keys_10',
   keys_25: 'drevvy_keys_25',
+  drevvy_key_1: 'drevvy_keys_1',
+  drevvy_key_5: 'drevvy_keys_5',
+  drevvy_key_10: 'drevvy_keys_10',
+  drevvy_key_25: 'drevvy_keys_25',
 } as const satisfies Record<string, CreditProductId>;
 
 export type CreditProductId = keyof typeof CREDIT_PRODUCTS;
