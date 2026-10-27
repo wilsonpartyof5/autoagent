@@ -116,5 +116,10 @@ export default async function AdminShoppersPage({
 }
 
 function StageCount({ stage, count }: { stage: DealStage; count: number }) {
-  return <StageChip label={`${count} ${stageLabel(stage)}`} stage={stage} />;
+  return (
+    <StageChip
+      label={`${count} ${stageLabel(stage)}`}
+      stageIndex={DEAL_STAGES.indexOf(stage)}
+    />
+  );
 }

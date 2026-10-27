@@ -151,14 +151,18 @@ export function MissingEnvBanner({ names }: { names: string[] }) {
   );
 }
 
-const STAGE_TONE: Record<string, string> = {
-  reaching_out: 'c-new',
-  negotiating: 'c-chat',
-  offer_received: 'c-wait',
-  best_price_ready: 'c-sold',
-  paused: 'c-no',
-};
+const STAGE_TONES = ['c-new', 'c-chat', 'c-wait', 'c-sold', 'c-no'] as const;
 
-export function StageChip({ label, stage }: { label: string; stage?: string }) {
-  return <span className={`chip ${STAGE_TONE[stage ?? ''] ?? 'c-chat'}`}>{label}</span>;
+export function StageChip({
+  label,
+  stageIndex,
+}: {
+  label: string;
+  stageIndex?: number;
+}) {
+  const tone =
+    stageIndex != null && stageIndex >= 0 && stageIndex < STAGE_TONES.length
+      ? STAGE_TONES[stageIndex]
+      : 'c-chat';
+  return <span className={`chip ${tone}`}>{label}</span>;
 }
