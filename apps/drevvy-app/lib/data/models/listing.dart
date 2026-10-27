@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'rooftop_match.dart';
+
 /// Listing model following MarketCheck API fields for clean swap-in.
 /// Fields based on MarketCheck's listing response structure.
 class Listing extends Equatable {
@@ -25,6 +27,8 @@ class Listing extends Equatable {
     this.carfaxCleanTitle,
     this.extra,
     this.colors,
+    this.vdpUrl,
+    this.rooftopMatch,
   });
 
   final String id;
@@ -48,6 +52,12 @@ class Listing extends Equatable {
   final bool? carfaxCleanTitle;
   final ListingExtra? extra;
   final ListingColors? colors;
+
+  /// Public listing / VDP URL used to match an onboarded rooftop.
+  final String? vdpUrl;
+
+  /// Server or stub rooftop match. Null until the VDP loads it.
+  final RooftopMatch? rooftopMatch;
 
   bool get isNew => inventoryType == 'new';
   bool get isUsed => inventoryType == 'used' || inventoryType == 'cpo';
@@ -125,6 +135,19 @@ class Listing extends Equatable {
           : null,
       colors: json['colors'] != null
           ? ListingColors.fromJson(json['colors'] as Map<String, dynamic>)
+          : null,
+      vdpUrl:
+          json['vdp_url'] as String? ??
+          json['listing_url'] as String? ??
+          json['url'] as String?,
+      rooftopMatch: json['rooftop_match'] is Map
+          ? RooftopMatch.fromJson(
+              Map<String, dynamic>.from(json['rooftop_match'] as Map),
+            )
+          : json['rooftop'] is Map
+          ? RooftopMatch.fromJson(
+              Map<String, dynamic>.from(json['rooftop'] as Map),
+            )
           : null,
     );
   }

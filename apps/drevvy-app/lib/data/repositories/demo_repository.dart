@@ -3,36 +3,39 @@ import 'package:flutter/foundation.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
+import '../services/key_spend_endpoint.dart';
 import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
 import '../services/purchase_service_factory.dart';
+import '../services/rooftop_match_endpoint.dart';
 import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
 ///
-/// v1.7: Uses one-time car packs instead of monthly subscription.
-/// Car credits are spent on "Unlock my price" and refunded for:
-/// - No response from dealer
-/// - Car no longer listed (sold)
-/// - Dealer decline
-/// - Removal within 30 minutes before outreach
+/// One-time key packs. Two spends from the same balance:
+/// - Key A: market intel + save (not refunded)
+/// - Key B: in-network dealer conversation (refunded on 7-day no-reply or sold)
 ///
 /// TODO: Replace with real API calls to:
 /// - https://api.drevvy.com (Drevvy backend)
 /// - Supabase auth
-/// - RevenueCat/Superwall for billing (products: drevvy_pack_1/3/5/10)
+/// - RevenueCat/Superwall for billing (products: drevvy_keys_1/5/10/25)
 class DemoRepository {
   DemoRepository({
     PurchaseConfig? config,
     PurchaseService? purchaseService,
     CreditsEndpoint? credits,
+    RooftopMatchEndpoint? rooftopMatch,
+    KeySpendEndpoint? keySpend,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
     _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
+    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
+    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     }
@@ -43,6 +46,17 @@ class DemoRepository {
   final Duration _networkDelay;
   late final CreditsEndpoint _credits;
   late final PurchaseService _purchaseService;
+  late final RooftopMatchEndpoint _rooftopMatch;
+  late final KeySpendEndpoint _keySpend;
+
+  /// Listings that have spent Key A (market intel + save).
+  final Set<String> _marketIntelUnlocked = {};
+
+  /// Listings that have spent Key B (in-network conversation).
+  final Set<String> _conversationStarted = {};
+
+  /// Off-network OTD requests captured for analytics review.
+  final Set<String> _otdRequested = {};
 
   /// Shop listens so "Run again" from the menu or account sheet opens results.
   void Function(SavedSearch search)? onSavedSearchRun;
@@ -113,7 +127,7 @@ class DemoRepository {
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
 
-  /// Server-driven avg_savings config shown beside car packs.
+  /// Server-driven avg_savings config shown beside key packs.
   final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(
     value: '3–5%',
     label: 'Buyers who compare out-the-door quotes from several dealers typically save 3–5% off the first price they\'re quoted.',
@@ -139,7 +153,7 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
 
-  /// Purchase a car pack. Grants server credits when that endpoint exists.
+  /// Purchase a key pack. Grants server credits when that endpoint exists.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
     ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
       'pack_id': packType.productId,
@@ -176,18 +190,45 @@ class DemoRepository {
     return result;
   }
 
-  /// Spend 1 credit for "Unlock my price".
-  /// Returns true if successful, false if no credits.
+  /// Spend the market-intelligence + save key (Key A).
+  /// Dealer-conversation is a separate key (see [KeySpend]).
   bool spendCredit(String dealId) {
+    return _spendKey(CreditReason.unlock, dealId: dealId);
+  }
+
+  bool spendMarketIntelKey(String listingId) {
+    if (_marketIntelUnlocked.contains(listingId)) return true;
+    final spent = _spendKey(CreditReason.marketIntel, listingId: listingId);
+    if (spent) _marketIntelUnlocked.add(listingId);
+    return spent;
+  }
+
+  bool spendConversationKey(String listingId, {String? dealId}) {
+    if (_conversationStarted.contains(listingId)) return true;
+    final spent = _spendKey(
+      CreditReason.dealerConversation,
+      listingId: listingId,
+      dealId: dealId,
+    );
+    if (spent) _conversationStarted.add(listingId);
+    return spent;
+  }
+
+  bool _spendKey(
+    CreditReason reason, {
+    String? dealId,
+    String? listingId,
+  }) {
     if (!_creditBalance.canUnlock) return false;
 
     final entry = CreditLedgerEntry(
       id: 'ledger_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
       delta: -1,
-      reason: CreditReason.unlock,
+      reason: reason,
       createdAt: DateTime.now(),
       dealId: dealId,
+      listingId: listingId,
     );
     _creditLedger.add(entry);
 
@@ -195,8 +236,105 @@ class DemoRepository {
       balance: _creditBalance.balance - 1,
       totalSpent: _creditBalance.totalSpent + 1,
     );
-    _reportBalance('unlock', -1);
+    _reportBalance(reason.name, -1);
 
+    return true;
+  }
+
+  bool hasUnlockedMarketIntel(String listingId) =>
+      _marketIntelUnlocked.contains(listingId);
+
+  bool hasStartedConversation(String listingId) =>
+      _conversationStarted.contains(listingId);
+
+  bool hasRequestedOtd(String listingId) => _otdRequested.contains(listingId);
+
+  Future<RooftopMatch> getRooftopMatch(Listing listing) async {
+    final match = await _rooftopMatch.match(listing);
+    ProductAnalytics.instance.track(AnalyticsEvents.rooftopMatchResolved, {
+      'listing_id': listing.id,
+      'matched': match.matched,
+      if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
+      'source': match.source.name,
+    });
+    return _delay(match);
+  }
+
+  Future<bool> unlockMarketIntel(Listing listing) async {
+    final remote = await _keySpend.spendMarketSave(listing);
+    if (remote.source == KeySpendSource.live) {
+      if (remote.ok) {
+        _marketIntelUnlocked.add(listing.id);
+        if (remote.balance != null) _creditBalance = remote.balance!;
+        await saveCar(listing, source: 'market_intel');
+        ProductAnalytics.instance.track(AnalyticsEvents.marketIntelUnlocked, {
+          'listing_id': listing.id,
+          'source': 'live',
+        });
+      }
+      return remote.ok;
+    }
+    if (!spendMarketIntelKey(listing.id)) return false;
+    await saveCar(listing, source: 'market_intel');
+    ProductAnalytics.instance.track(AnalyticsEvents.marketIntelUnlocked, {
+      'listing_id': listing.id,
+      'source': 'stub',
+    });
+    return true;
+  }
+
+  Future<Deal?> startDealerConversation(
+    Listing listing,
+    RooftopMatch match, {
+    String? templateId,
+    String? message,
+  }) async {
+    if (!match.isInNetwork) return null;
+    final remote = await _keySpend.startConversation(
+      listing: listing,
+      match: match,
+      templateId: templateId,
+      message: message,
+    );
+    if (remote.source == KeySpendSource.live) {
+      if (!remote.ok) return null;
+      _conversationStarted.add(listing.id);
+      if (remote.balance != null) _creditBalance = remote.balance!;
+      ProductAnalytics.instance.track(AnalyticsEvents.dealerConversationStarted, {
+        'listing_id': listing.id,
+        if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
+        if (templateId != null) 'template_id': templateId,
+        'source': 'live',
+      });
+      if (remote.dealId != null) {
+        return getDealById(remote.dealId!);
+      }
+      return addDeal(listing, spend: false);
+    }
+    if (!_conversationStarted.contains(listing.id) &&
+        !spendConversationKey(listing.id)) {
+      return null;
+    }
+    ProductAnalytics.instance.track(AnalyticsEvents.dealerConversationStarted, {
+      'listing_id': listing.id,
+      if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
+      if (templateId != null) 'template_id': templateId,
+      'source': 'stub',
+    });
+    return addDeal(listing, spend: false);
+  }
+
+  Future<bool> requestOtdNumber(Listing listing, {String? note}) async {
+    _otdRequested.add(listing.id);
+    ProductAnalytics.instance.track(AnalyticsEvents.otdNumberRequested, {
+      'listing_id': listing.id,
+      'free': true,
+      'uses_key': false,
+      'has_note': note != null && note.isNotEmpty,
+      if (listing.vdpUrl != null) 'has_vdp_url': true,
+    });
+    final remote = await _keySpend.requestOtdNumber(listing, note: note);
+    if (remote.source == KeySpendSource.live) return remote.ok;
     return true;
   }
 
@@ -312,12 +450,8 @@ class DemoRepository {
     });
   }
 
-  /// Check if a deal qualifies for early removal refund (within 30 minutes, before outreach).
-  bool canGetEarlyRemovalRefund(Deal deal) {
-    if (deal.status != DealStatus.reachingOut) return false;
-    final elapsed = DateTime.now().difference(deal.addedAt);
-    return elapsed.inMinutes < 30;
-  }
+  /// Conversation keys are not returned on cancel. Only 7-day no-reply or sold.
+  bool canGetEarlyRemovalRefund(Deal deal) => false;
 
   /// Get available pack offerings.
   Future<List<CarPackOffering>?> getPackOfferings() async {
@@ -669,7 +803,7 @@ class DemoRepository {
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing) async {
+  Future<Deal> addDeal(Listing listing, {bool spend = true}) async {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
@@ -680,12 +814,12 @@ class DemoRepository {
         return _delay(deal);
       }
     }
-    if (!_creditBalance.canUnlock) {
+    if (spend && !_creditBalance.canUnlock) {
       ProductAnalytics.instance.track(AnalyticsEvents.dealAddBlocked, {
         'listing_id': listing.id,
         'reason': 'no_credits',
       });
-      throw StateError('No cars left');
+      throw StateError('No keys left');
     }
 
     final newDeal = Deal(
@@ -703,8 +837,9 @@ class DemoRepository {
         .where((car) => car.listingId != listing.id)
         .toList();
 
-    // v1.7: Spend 1 car credit
-    spendCredit(newDeal.id);
+    if (spend) {
+      spendConversationKey(listing.id, dealId: newDeal.id);
+    }
     _bumpLists();
     ProductAnalytics.instance.track(AnalyticsEvents.dealAdded, {
       'deal_id': newDeal.id,
@@ -720,7 +855,8 @@ class DemoRepository {
     final refunded = canGetEarlyRemovalRefund(deal);
     _deals = _deals.where((d) => d.id != dealId).toList();
 
-    // v1.7: Refund credit if within 30 minutes before outreach
+    // Conversation keys are not returned on cancel. Only 7-day no-reply
+    // (clock starts at confirmed delivery) or sold refunds apply.
     if (refunded) {
       refundCredit(dealId, CreditReason.refundEarlyRemoval);
     }
@@ -1016,6 +1152,13 @@ class DemoRepository {
         ],
       ),
       colors: ListingColors(exteriorColor: 'Sage Gray', interiorColor: 'Black'),
+      vdpUrl: 'https://springfieldtoyota.example/used/listing_001',
+      rooftopMatch: RooftopMatch(
+        matched: true,
+        rooftopId: StubRooftopMatchEndpoint.demoRooftopId,
+        vdpUrl: 'https://springfieldtoyota.example/used/listing_001',
+        source: RooftopMatchSource.stub,
+      ),
     ),
     const Listing(
       id: 'listing_002',
@@ -1047,6 +1190,7 @@ class DemoRepository {
         exteriorColor: 'Crystal Black Pearl',
         interiorColor: 'Gray',
       ),
+      vdpUrl: 'https://offnetworkhonda.example/used/listing_002',
     ),
     const Listing(
       id: 'listing_003',
@@ -1194,6 +1338,13 @@ class DemoRepository {
       colors: ListingColors(
         exteriorColor: 'Solar Octane',
         interiorColor: 'Black',
+      ),
+      vdpUrl: 'https://springfieldtoyota.example/new/listing_007',
+      rooftopMatch: RooftopMatch(
+        matched: true,
+        rooftopId: StubRooftopMatchEndpoint.demoRooftopId,
+        vdpUrl: 'https://springfieldtoyota.example/new/listing_007',
+        source: RooftopMatchSource.stub,
       ),
     ),
     const Listing(
@@ -1771,14 +1922,14 @@ class DealStats {
   final int underListedTotal;
   final int offersToReview;
 
-  /// v1.7: Cars remaining from credit balance (no longer monthly usage).
+  /// Keys remaining from credit balance (no longer monthly usage).
   final int carsRemaining;
 
-  /// v1.7: Display text for cars remaining.
+  /// Display text for keys remaining.
   String get carsRemainingFormatted =>
-      carsRemaining == 1 ? '1 car left' : '$carsRemaining cars left';
+      carsRemaining == 1 ? '1 key left' : '$carsRemaining keys left';
 
-  /// v1.7: Whether user can unlock more cars.
+  /// Whether the shopper can spend another key.
   bool get canUnlock => carsRemaining > 0;
 }
 

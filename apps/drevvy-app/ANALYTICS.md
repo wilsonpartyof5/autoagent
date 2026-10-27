@@ -57,9 +57,12 @@ There is no share button in the app, so there is no share event. There is no sup
 | `chat_history` | Chat history drawer |
 | `notification_prompt` | Notification pre-prompt |
 | `location_prompt` | Pickup-check location prompt |
-| `pack_picker` | Car-pack picker |
-| `out_of_cars` | Out-of-cars sheet |
+| `pack_picker` | Key-pack picker |
+| `out_of_cars` | Out-of-keys sheet |
 | `add_to_drevvy` | Add-to-Drevvy sheet |
+| `market_intel` | Key A market-intel confirm |
+| `dealer_chat` | In-network conversation sheet |
+| `otd_request` | Off-network OTD analytics form |
 | `accept_confirm` | Accept-offer confirmation |
 | `remove_deal` | Remove-deal sheet |
 | `outcome` | Did-you-buy sheet |
@@ -591,11 +594,64 @@ A deal-list banner is dismissed.
 
 ### `add_to_drevvy_confirmed`
 
-Add-to-Drevvy confirm, before the repository `deal_added`.
+Add-to-Drevvy confirm, before the repository `deal_added`. Also fired for Key A market-intel confirm.
 
 | Property | Values |
 | --- | --- |
 | `listing_id` | Listing id |
+| `spend_kind` | `market_intel` when Key A |
+
+### `rooftop_match_resolved`
+
+VDP loaded a rooftop match for the listing URL.
+
+| Property | Values |
+| --- | --- |
+| `listing_id` | Listing id |
+| `matched` | bool |
+| `rooftop_id` | Present when matched |
+| `source` | `live` or `stub` |
+
+### `market_intel_unlocked`
+
+Key A spent: market intel + save.
+
+| Property | Values |
+| --- | --- |
+| `listing_id` | Listing id |
+| `source` | `live` or `stub` |
+
+### `dealer_conversation_started`
+
+Key B spent on an in-network rooftop chat.
+
+| Property | Values |
+| --- | --- |
+| `listing_id` | Listing id |
+| `rooftop_id` | Rooftop id |
+| `template_id` | Deal Brain chip id when a chip was used |
+| `source` | `live` or `stub` |
+
+### `deal_brain_chip_tapped`
+
+A one-click in-network message chip was tapped.
+
+| Property | Values |
+| --- | --- |
+| `listing_id` | Listing id |
+| `template_id` | Chip template id |
+
+### `otd_number_requested`
+
+Off-network out-the-door request form submitted. Free, not chat, no key.
+
+| Property | Values |
+| --- | --- |
+| `listing_id` | Listing id |
+| `free` | `true` |
+| `uses_key` | `false` |
+| `has_note` | bool |
+| `has_vdp_url` | Present when the listing has a URL |
 
 ### `paywall_viewed`
 
@@ -626,7 +682,7 @@ Paywall route or a pack sheet is shown.
 | --- | --- |
 | `placement` | Same set as `paywall_viewed` |
 | `pack_count` | `4` |
-| `pack_mix` | `1,3,5,10` |
+| `pack_mix` | `1,5,10,25` |
 
 ### `pack_selected`
 
@@ -635,8 +691,8 @@ A pack card is tapped (`stage` `preview`) or purchase starts (`stage` `purchase`
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
-| `pack_size` | `1`, `3`, `5`, or `10` |
-| `pack_mix` | `1,3,5,10` |
+| `pack_size` | `1`, `5`, `10`, or `25` |
+| `pack_mix` | `1,5,10,25` |
 | `price` | Catalog USD amount |
 | `currency` | `USD` |
 | `stage` | `preview` or `purchase` |
@@ -649,8 +705,8 @@ The store purchase succeeds.
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
-| `pack_size` | `1`, `3`, `5`, or `10` |
-| `pack_mix` | `1,3,5,10` |
+| `pack_size` | `1`, `5`, `10`, or `25` |
+| `pack_mix` | `1,5,10,25` |
 | `price` | Catalog USD amount |
 | `currency` | `USD` |
 
@@ -661,8 +717,8 @@ The store purchase does not succeed. The store message is not sent.
 | Property | Values |
 | --- | --- |
 | `pack_id` | Product id |
-| `pack_size` | `1`, `3`, `5`, or `10` |
-| `pack_mix` | `1,3,5,10` |
+| `pack_size` | `1`, `5`, `10`, or `25` |
+| `pack_mix` | `1,5,10,25` |
 | `reason` | `cancelled`, `pending`, `store_error` |
 
 ### `purchases_restore_started`

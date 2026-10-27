@@ -91,7 +91,7 @@ void main() {
 
       expect(result, isA<RestoreSuccess>());
       final success = result as RestoreSuccess;
-      expect(success.creditsRestored, 8);
+      expect(success.creditsRestored, 30);
       expect(success.transactions, hasLength(2));
     });
 
@@ -105,10 +105,10 @@ void main() {
       final offerings = await service.getOfferings();
       expect(offerings, isNotNull);
       expect(offerings!.map((offering) => offering.priceAmount), [
-        35,
-        55,
-        75,
-        95,
+        4.99,
+        19.99,
+        34.99,
+        74.99,
       ]);
     });
   });
@@ -134,7 +134,7 @@ void main() {
 
         final result = await repo.purchasePack(CarPackType.starter);
         expect(result, isA<PurchaseSuccess>());
-        expect(credits.lastProductId, 'drevvy_pack_3');
+        expect(credits.lastProductId, 'drevvy_keys_5');
         expect((await repo.getCreditBalance()).balance, 13);
       },
     );
@@ -156,11 +156,11 @@ void main() {
 
         await repo.purchasePack(CarPackType.plus);
         final balance = await repo.getCreditBalance();
-        expect(balance.balance, 6);
-        expect(balance.totalPurchased, 6);
+        expect(balance.balance, 26);
+        expect(balance.totalPurchased, 26);
 
         await repo.purchasePack(CarPackType.plus);
-        expect((await repo.getCreditBalance()).balance, 6);
+        expect((await repo.getCreditBalance()).balance, 26);
       },
     );
 
@@ -185,12 +185,12 @@ void main() {
 
       final first = await repo.restorePurchases();
       expect(first, isA<RestoreSuccess>());
-      expect((first as RestoreSuccess).creditsRestored, 13);
-      expect((await repo.getCreditBalance()).balance, 13);
+      expect((first as RestoreSuccess).creditsRestored, 15);
+      expect((await repo.getCreditBalance()).balance, 15);
 
       final second = await repo.restorePurchases();
       expect((second as RestoreSuccess).creditsRestored, 0);
-      expect((await repo.getCreditBalance()).balance, 13);
+      expect((await repo.getCreditBalance()).balance, 15);
     });
   });
 
@@ -271,27 +271,27 @@ class _FakeStore implements StoreGateway {
     return const [
       CarPackOffering(
         packType: CarPackType.single,
-        localizedPrice: r'$35.00',
+        localizedPrice: r'$4.99',
         currencyCode: 'USD',
-        priceAmount: 35,
+        priceAmount: 4.99,
       ),
       CarPackOffering(
         packType: CarPackType.starter,
-        localizedPrice: r'$55.00',
+        localizedPrice: r'$19.99',
         currencyCode: 'USD',
-        priceAmount: 55,
-      ),
-      CarPackOffering(
-        packType: CarPackType.plus,
-        localizedPrice: r'$75.00',
-        currencyCode: 'USD',
-        priceAmount: 75,
+        priceAmount: 19.99,
       ),
       CarPackOffering(
         packType: CarPackType.bestValue,
-        localizedPrice: r'$95.00',
+        localizedPrice: r'$34.99',
         currencyCode: 'USD',
-        priceAmount: 95,
+        priceAmount: 34.99,
+      ),
+      CarPackOffering(
+        packType: CarPackType.plus,
+        localizedPrice: r'$74.99',
+        currencyCode: 'USD',
+        priceAmount: 74.99,
       ),
     ];
   }

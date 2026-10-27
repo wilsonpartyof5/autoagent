@@ -25,7 +25,7 @@ import '../widgets/progress_dots.dart';
 ///
 /// Superwall placement `onboarding_paywall` can replace this screen when a
 /// key exists. With no store keys, the four demo packs render here:
-/// 1 car $35, 3 cars $55, 5 cars $75, 10 cars $95. Best value is 10 at $9.50 per car.
+/// 1 key $4.99, 5 keys $19.99, 10 keys $34.99 (Recommended), 25 keys $74.99.
 /// Asking and shopping stay free; this screen can be skipped.
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key, this.from, this.placement, this.repository});
@@ -95,7 +95,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return offering.localizedPrice;
     }
     final amount = offering?.priceAmount ?? pack.priceUsd.toDouble();
-    return '${formatUsd(amount / pack.cars, cents: true)}/car';
+    return '${formatUsd(amount / pack.keys, cents: true)}/key';
   }
 
   String _cta(CarPackType pack) =>
@@ -121,7 +121,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
     final message = switch (result) {
       PurchasePending() =>
-        'Payment is pending. Cars are added when it completes.',
+        'Payment is pending. Keys are added when it completes.',
       PurchaseError(:final message) => message,
       PurchaseCancelled() => null,
       PurchaseSuccess() => null,
@@ -234,7 +234,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         ),
                         const SizedBox(height: DrevvySpace.s3),
                         Text(
-                          'From ${CarPackType.bestValue.perCarFormatted}/car · Car packs 1 · 3 · 5 · 10 · One-time. Never expire.',
+                          'From ${CarPackType.bestValue.perKeyFormatted}/key · Key packs 1 · 5 · 10 · 25 · One-time. Never expire.',
                           style: text.callout.copyWith(color: colors.ink),
                           textAlign: TextAlign.center,
                         ),
@@ -247,7 +247,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         ),
                         const SizedBox(height: DrevvySpace.s2),
                         Text(
-                          'Asking and shopping stay free and unlimited. Buy a pack only when you tap Unlock my price and your balance is 0.',
+                          'Asking and shopping stay free and unlimited. Buy a pack for market intel or an in-network dealer chat. Requesting an out-the-door number off-network is free.',
                           style: text.callout.copyWith(color: colors.muted),
                           textAlign: TextAlign.center,
                         ),

@@ -116,14 +116,14 @@ class _AccountSheetState extends State<AccountSheet> {
       if (sheetContext.mounted) Navigator.pop(sheetContext);
       _showPurchaseMessage(
         host,
-        'Added ${result.creditsAdded == 1 ? '1 car' : '${result.creditsAdded} cars'}. Packs never expire.',
+        'Added ${result.creditsAdded == 1 ? '1 key' : '${result.creditsAdded} keys'}. Packs never expire.',
       );
       return;
     }
     if (result is PurchasePending) {
       _showPurchaseMessage(
         host,
-        'Payment is pending. Cars are added when it completes.',
+        'Payment is pending. Keys are added when it completes.',
       );
       return;
     }
@@ -136,8 +136,8 @@ class _AccountSheetState extends State<AccountSheet> {
     return switch (result) {
       RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
         creditsRestored == 1
-            ? 'Restored 1 car.'
-            : 'Restored $creditsRestored cars.',
+            ? 'Restored 1 key.'
+            : 'Restored $creditsRestored keys.',
       RestoreSuccess() => 'Purchases restored.',
       RestoreNoPurchases() => 'No purchases to restore.',
       RestoreError(:final message) => message,

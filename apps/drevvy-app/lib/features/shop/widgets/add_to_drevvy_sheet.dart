@@ -9,7 +9,7 @@ import '../../../data/models/models.dart';
 
 /// Screen 18: Add to Drevvy bottom sheet.
 /// v1.7: Uses car credits instead of monthly usage.
-/// Shows "X cars left" and "Uses 1 car" instead of "X of Y used · resets Oct 20".
+/// Confirm sheet kept for saved-to-deals. Prefer [MarketIntelSheet] / [DealerChatSheet] on VDP.
 class AddToDrevvySheet extends StatefulWidget {
   const AddToDrevvySheet({
     super.key,
@@ -142,20 +142,23 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                 const SizedBox(height: DrevvySpace.s3),
                 
                 _BulletPoint(
-                  text: 'Ask Dealer A for their best itemized out-the-door price',
+                  text: 'Send a price brief to this onboarded rooftop',
                 ),
                 _BulletPoint(
-                  text: 'Keep going until you decide to accept or stop',
+                  text: KeySpend.dealerSeesFirstNameOnly,
                 ),
                 _BulletPoint(
-                  text: 'Only share your first name—never your phone or email',
+                  text: KeySpend.refundClockNote,
+                ),
+                _BulletPoint(
+                  text: KeySpend.dealerCloseNote,
                 ),
                 
                 const SizedBox(height: DrevvySpace.s6),
                 
                 // CTA
                 DrevvyPrimaryButton(
-                  label: 'Unlock my price',
+                  label: KeySpend.conversationCta,
                   onPressed: _isLoading ? null : _handleAdd,
                   isLoading: _isLoading,
                 ),

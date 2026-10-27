@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -10,11 +9,7 @@ import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
-import '../../../data/services/cars_balance_placement.dart';
-import '../../../data/services/purchase_config.dart';
-import '../../../data/services/superwall_placement.dart';
 import '../../shop/widgets/account_sheet.dart';
-import '../../shop/widgets/unlock_paywall.dart';
 import '../widgets/saved_car_card.dart';
 
 enum SavedSortOption { recentlySaved, price, distance }
@@ -29,9 +24,6 @@ class SavedScreen extends StatefulWidget {
 
 class _SavedScreenState extends State<SavedScreen> {
   final _repo = DemoRepository.instance;
-  final CarsBalancePlacement _carsBalancePlacement = carsBalancePlacementFor(
-    PurchaseConfig.fromEnvironment(),
-  );
   List<SavedCar> _savedCars = [];
   Map<String, Listing> _listings = {};
   bool _isLoading = true;
@@ -164,45 +156,8 @@ class _SavedScreenState extends State<SavedScreen> {
   Future<void> _handleUnlock(SavedCar savedCar) async {
     final listing = _listings[savedCar.listingId];
     if (listing == null || savedCar.isNoLongerListed) return;
-
-    final balance = await _repo.getCreditBalance();
     if (!mounted) return;
-
-    await showUnlockPaywall(
-      context: context,
-      listing: listing,
-      balance: balance,
-      repo: _repo,
-      placement: _carsBalancePlacement,
-      onCanUnlock: (_) => _moveSavedToDeals(savedCar, listing),
-    );
-  }
-
-  Future<void> _moveSavedToDeals(SavedCar savedCar, Listing listing) async {
-    final deal = await _repo.moveToDeals(savedCar.id);
-    if (deal == null || !mounted) return;
-
-    setState(() {
-      _savedCars = _savedCars.where((sc) => sc.id != savedCar.id).toList();
-    });
-
-    final newBalance = await _repo.getCreditBalance();
-    if (!mounted) return;
-
-    HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "${listing.build.model} moved to Deals. Drevvy's on it. ${newBalance.balance} cars left.",
-        ),
-        action: SnackBarAction(
-          label: 'View',
-          onPressed: () => context.go('/deals'),
-        ),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    context.push('/vdp/${listing.id}');
   }
 
   void _selectSort(SavedSortOption option) {

@@ -44,7 +44,8 @@ void main() {
       ),
     );
 
-    expect(find.text("You'll have 5 cars left."), findsOneWidget);
+    expect(find.textContaining('7 days of confirmed delivery'), findsOneWidget);
+    expect(find.textContaining('4 keys left'), findsOneWidget);
     expect(find.textContaining('this month'), findsNothing);
   });
 
@@ -67,7 +68,7 @@ void main() {
     );
 
     expect(
-      find.text('Drevvy has already contacted the dealer. This uses 1 of your cars.'),
+      find.textContaining('Conversation key is not returned on cancel'),
       findsOneWidget,
     );
     expect(find.textContaining('this month'), findsNothing);

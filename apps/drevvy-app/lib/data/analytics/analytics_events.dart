@@ -70,6 +70,11 @@ abstract final class AnalyticsEvents {
   static const outcomeSubmitted = 'outcome_submitted';
   static const dealBannerDismissed = 'deal_banner_dismissed';
   static const addToDrevvyConfirmed = 'add_to_drevvy_confirmed';
+  static const rooftopMatchResolved = 'rooftop_match_resolved';
+  static const marketIntelUnlocked = 'market_intel_unlocked';
+  static const dealerConversationStarted = 'dealer_conversation_started';
+  static const dealBrainChipTapped = 'deal_brain_chip_tapped';
+  static const otdNumberRequested = 'otd_number_requested';
 
   static const paywallViewed = 'paywall_viewed';
   static const paywallDismissed = 'paywall_dismissed';
@@ -168,6 +173,11 @@ abstract final class AnalyticsEvents {
     outcomeSubmitted,
     dealBannerDismissed,
     addToDrevvyConfirmed,
+    rooftopMatchResolved,
+    marketIntelUnlocked,
+    dealerConversationStarted,
+    dealBrainChipTapped,
+    otdNumberRequested,
     paywallViewed,
     paywallDismissed,
     packViewed,

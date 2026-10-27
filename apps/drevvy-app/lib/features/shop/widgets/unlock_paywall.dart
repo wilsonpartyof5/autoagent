@@ -63,7 +63,7 @@ Future<void> showUnlockPaywall({
             }
             final message = switch (result) {
               PurchasePending() =>
-                'Payment is pending. Cars are added when it completes.',
+                'Payment is pending. Keys are added when it completes.',
               PurchaseError(:final message) => message,
               PurchaseCancelled() => null,
               PurchaseSuccess() => null,
@@ -78,8 +78,8 @@ Future<void> showUnlockPaywall({
             final message = switch (result) {
               RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
                 creditsRestored == 1
-                    ? 'Restored 1 car.'
-                    : 'Restored $creditsRestored cars.',
+                    ? 'Restored 1 key.'
+                    : 'Restored $creditsRestored keys.',
               RestoreSuccess() => 'Purchases restored.',
               RestoreNoPurchases() => 'No purchases to restore.',
               RestoreError(:final message) => message,

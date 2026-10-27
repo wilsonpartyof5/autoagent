@@ -48,7 +48,7 @@ class StatHero extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    stats.carsRemaining == 1 ? 'car' : 'cars',
+                    stats.carsRemaining == 1 ? 'key' : 'keys',
                     style: text.micro.copyWith(color: DrevvyColors.onBrandMuted),
                   ),
                 ],

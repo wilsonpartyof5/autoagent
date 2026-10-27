@@ -6,9 +6,9 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/car_pack.dart';
 import '../../../data/models/money_format.dart';
 
-/// Four full-width pack rows, order 1 · 3 · 5 · 10.
-/// The 10-pack carries the BEST VALUE badge. The same column is used on the
-/// paywall, the Out of cars sheet, and Account → Buy cars.
+/// Four full-width pack rows, order 1 · 5 · 10 · 25.
+/// The 10-pack carries the RECOMMENDED badge. The same column is used on the
+/// paywall, the Out of keys sheet, and Account → Buy keys.
 class PackPickerColumn extends StatelessWidget {
   const PackPickerColumn({
     super.key,
@@ -19,7 +19,7 @@ class PackPickerColumn extends StatelessWidget {
   });
 
   static const footnote =
-      'Savings are per car, compared with the 1-car price. Packs are one-time and never expire.';
+      'Savings are per key, compared with the 1-key price. Packs are one-time and never expire.';
 
   static const rowGap = 10.0;
 
@@ -94,7 +94,7 @@ class PackOptionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.drevvy;
     final total = totalLabel ?? formatUsd(pack.priceUsd);
-    final perCar = perCarLabel ?? '${pack.perCarFormatted}/car';
+    final perCar = perCarLabel ?? '${pack.perKeyFormatted}/key';
     final light = Theme.of(context).brightness == Brightness.light;
     final ring = isSelected ? 4.0 : 0.0;
     final savings = pack.savingsText;
@@ -280,7 +280,7 @@ class _BestValueBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(7),
       ),
       child: const Text(
-        'BEST VALUE',
+        'RECOMMENDED',
         style: TextStyle(
           fontFamily: DrevvyType.fontFamily,
           fontSize: 10.5,
