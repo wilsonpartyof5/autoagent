@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
+import '../services/deal_chips_endpoint.dart';
 import '../services/key_spend_endpoint.dart';
 import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
@@ -28,6 +29,7 @@ class DemoRepository {
     CreditsEndpoint? credits,
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
+    DealChipsEndpoint? chips,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
@@ -36,6 +38,7 @@ class DemoRepository {
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
     _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
     _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
+    _chips = chips ?? DealChipsEndpoint.fromConfig(resolved);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     }
@@ -48,12 +51,16 @@ class DemoRepository {
   late final PurchaseService _purchaseService;
   late final RooftopMatchEndpoint _rooftopMatch;
   late final KeySpendEndpoint _keySpend;
+  late final DealChipsEndpoint _chips;
 
   /// Listings that have spent Key A (market intel + save).
   final Set<String> _marketIntelUnlocked = {};
 
   /// Listings that have spent Key B (in-network conversation).
   final Set<String> _conversationStarted = {};
+
+  /// Live or stub deal id for a listing that already opened chat.
+  final Map<String, String> _conversationDealIds = {};
 
   /// Off-network OTD requests captured for analytics review.
   final Set<String> _otdRequested = {};
@@ -247,7 +254,43 @@ class DemoRepository {
   bool hasStartedConversation(String listingId) =>
       _conversationStarted.contains(listingId);
 
+  String? conversationDealId(String listingId) => _conversationDealIds[listingId];
+
   bool hasRequestedOtd(String listingId) => _otdRequested.contains(listingId);
+
+  /// Live T1–T12 chips for an in-network deal thread. Falls back to the
+  /// after-opener pair (T6, plus T1 when a stock number exists).
+  Future<List<DealBrainChip>> dealerChatChips({
+    required Listing listing,
+    MarketContext? market,
+    String? dealId,
+    Deal? deal,
+    String? visitDay,
+    String? visitTime,
+    List<ChipThreadMessage>? messages,
+    String? stage,
+    bool? itemizedOtdInThread,
+  }) async {
+    final resolvedId = dealId ?? conversationDealId(listing.id) ?? deal?.id;
+    final intel = ChipIntel.fromDealContext(
+      listing: listing,
+      market: market,
+      rep: deal?.dealer?.rep?.name,
+      visitDay: visitDay,
+      visitTime: visitTime,
+      itemizedOtdInThread: itemizedOtdInThread,
+    );
+    if (resolvedId != null) {
+      final live = await _chips.suggest(
+        dealId: resolvedId,
+        intel: intel,
+        stage: stage,
+        messages: messages,
+      );
+      if (live != null) return live.chips;
+    }
+    return DealBrainChip.suggestionsFor(stockNumber: listing.stockNo);
+  }
 
   Future<RooftopMatch> getRooftopMatch(Listing listing) async {
     final match = await _rooftopMatch.match(listing);
@@ -307,9 +350,12 @@ class DemoRepository {
         'source': 'live',
       });
       if (remote.dealId != null) {
+        _conversationDealIds[listing.id] = remote.dealId!;
         return getDealById(remote.dealId!);
       }
-      return addDeal(listing, spend: false);
+      final created = await addDeal(listing, spend: false);
+      _conversationDealIds[listing.id] = created.id;
+      return created;
     }
     if (!_conversationStarted.contains(listing.id) &&
         !spendConversationKey(listing.id)) {
@@ -321,7 +367,9 @@ class DemoRepository {
       if (templateId != null) 'template_id': templateId,
       'source': 'stub',
     });
-    return addDeal(listing, spend: false);
+    final created = await addDeal(listing, spend: false);
+    _conversationDealIds[listing.id] = created.id;
+    return created;
   }
 
   Future<bool> requestOtdNumber(Listing listing, {String? note}) async {

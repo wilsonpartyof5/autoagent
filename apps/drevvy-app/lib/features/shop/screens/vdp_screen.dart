@@ -56,6 +56,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   RooftopMatch? _rooftopMatch;
   bool _marketIntelUnlocked = false;
   bool _conversationOpen = false;
+  String? _conversationDealId;
   bool _otdRequested = false;
   String _shopperFirstName = 'Dana';
 
@@ -89,6 +90,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       _rooftopMatch = match;
       _marketIntelUnlocked = _repo.hasUnlockedMarketIntel(listing.id);
       _conversationOpen = _repo.hasStartedConversation(listing.id);
+      _conversationDealId = _repo.conversationDealId(listing.id);
       _otdRequested = _repo.hasRequestedOtd(listing.id);
       _shopperFirstName = user.firstName;
       _isLoading = false;
@@ -227,6 +229,12 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     RooftopMatch match,
     CarCreditBalance balance,
   ) async {
+    final chips = await _repo.dealerChatChips(
+      listing: listing,
+      market: _market,
+      dealId: _conversationDealId,
+    );
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -237,6 +245,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         creditBalance: balance,
         alreadyOpen: _conversationOpen,
         shopperFirstName: _shopperFirstName,
+        chips: chips,
         onSend: ({templateId, message}) async {
           final deal = await _repo.startDealerConversation(
             listing,
@@ -246,7 +255,10 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
           );
           if (!mounted) return;
           await _refreshBalance();
-          setState(() => _conversationOpen = deal != null || _conversationOpen);
+          setState(() {
+            _conversationOpen = deal != null || _conversationOpen;
+            _conversationDealId = deal?.id ?? _conversationDealId;
+          });
           if (deal != null) unawaited(_maybePromptNotifications());
         },
       ),

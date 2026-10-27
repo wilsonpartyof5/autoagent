@@ -1,5 +1,6 @@
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
+import 'package:drevvy_app/data/models/deal_brain_chip.dart';
 import 'package:drevvy_app/data/models/listing.dart';
 import 'package:drevvy_app/data/models/rooftop_match.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
@@ -167,6 +168,73 @@ void main() {
     expect(find.text('Dana'), findsWidgets);
     expect(find.textContaining(r'$300'), findsWidgets);
     expect(find.textContaining('talk to dealer'), findsNothing);
+  });
+
+  testWidgets('after-opener pair adds T1 when the listing has a stock number', (
+    tester,
+  ) async {
+    const withStock = Listing(
+      id: 'listing_001',
+      vin: 'VIN123',
+      stockNo: 'T12345',
+      price: 32995,
+      build: ListingBuild(year: 2024, make: 'Toyota', model: 'RAV4'),
+      media: ListingMedia(photoLinks: []),
+    );
+    await tester.pumpWidget(
+      _frame(
+        DealerChatSheet(
+          listing: withStock,
+          match: const RooftopMatch(
+            matched: true,
+            rooftopId: 'rooftop_demo_springfield',
+          ),
+          creditBalance: const CarCreditBalance.withBalance(4),
+          alreadyOpen: true,
+          shopperFirstName: 'Dana',
+          onSend: ({templateId, message}) async {},
+        ),
+      ),
+    );
+
+    expect(find.text('Itemized OTD'), findsOneWidget);
+    expect(find.text('Still available?'), findsOneWidget);
+    expect(find.textContaining('negotiat'), findsNothing);
+  });
+
+  testWidgets('sheet renders live server chips and hides haggle copy', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        DealerChatSheet(
+          listing: listing,
+          match: const RooftopMatch(
+            matched: true,
+            rooftopId: 'rooftop_demo_springfield',
+          ),
+          creditBalance: const CarCreditBalance.withBalance(4),
+          alreadyOpen: true,
+          shopperFirstName: 'Dana',
+          chips: const [
+            DealBrainChip.thanks,
+            DealBrainChip(
+              templateId: 'TX',
+              label: 'Negotiate now',
+              message: 'Can we negotiate this price?',
+            ),
+            DealBrainChip.hours,
+          ],
+          onSend: ({templateId, message}) async {},
+        ),
+      ),
+    );
+
+    expect(find.text('Thanks'), findsOneWidget);
+    expect(find.text('Your hours?'), findsOneWidget);
+    expect(find.text('Negotiate now'), findsNothing);
+    expect(find.text('Itemized OTD'), findsNothing);
+    expect(find.textContaining('negotiat'), findsNothing);
   });
 
   test('off-network conversation is refused and OTD does not spend a key', () async {

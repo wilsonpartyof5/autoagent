@@ -29,7 +29,8 @@ class DealerChatSheet extends StatefulWidget {
   final String shopperFirstName;
   final Future<void> Function({String? templateId, String? message}) onSend;
 
-  /// Server suggestions when the app has them. Otherwise the after-opener pair.
+  /// Live server suggestions once the deal thread and intel are loaded.
+  /// Null falls back to the after-opener pair (T6, plus T1 with a stock number).
   final List<DealBrainChip>? chips;
 
   @override
@@ -169,10 +170,12 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                         spacing: DrevvySpace.s2,
                         runSpacing: DrevvySpace.s2,
                         children: [
-                          for (final chip in widget.chips ??
-                              DealBrainChip.suggestionsFor(
-                                stockNumber: widget.listing.stockNo,
-                              ))
+                          for (final chip in DealBrainChip.safeOf(
+                            widget.chips ??
+                                DealBrainChip.suggestionsFor(
+                                  stockNumber: widget.listing.stockNo,
+                                ),
+                          ))
                             _ChipButton(
                               chip: chip,
                               selected: _selected == chip,
