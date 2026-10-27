@@ -11,9 +11,14 @@ export const CONVERSATION_STAGES = [
 
 export type ConversationStage = (typeof CONVERSATION_STAGES)[number];
 
-export const INBOX_FILTERS = ['needs_reply', 'all_open', 'closed'] as const;
+export const INBOX_FILTERS = ['needs_reply', 'in_chat', 'all'] as const;
+export const INBOX_API_FILTERS = [
+  ...INBOX_FILTERS,
+  'all_open',
+  'closed',
+] as const;
 
-export type InboxFilter = (typeof INBOX_FILTERS)[number];
+export type InboxFilter = (typeof INBOX_API_FILTERS)[number];
 
 export const ANALYTICS_RANGES = ['7d', '30d', '90d'] as const;
 
@@ -40,9 +45,11 @@ export interface VehicleSummary {
 
 export interface Conversation {
   id: string;
-  buyerLabel: 'Buyer via Drevvy';
+  /** First name only. Never last name, phone, email, or address. */
+  shopperFirstName: string;
   /** Opaque desk reference. Not a name, city, or contact. */
   shopperRef: string;
+  rooftopId: 'lakeside' | 'midtown' | 'airport';
   stage: ConversationStage;
   vehicle: VehicleSummary;
   stockNumber: string;
@@ -71,8 +78,9 @@ export interface ReplyTemplate {
 
 export interface InboxItem {
   id: string;
-  buyerLabel: 'Buyer via Drevvy';
+  shopperFirstName: string;
   shopperRef: string;
+  rooftopId: Conversation['rooftopId'];
   stage: ConversationStage;
   stageLabel: string;
   vehicleTitle: string;
@@ -121,7 +129,7 @@ export interface CloseCharge {
 
 export interface BillingSnapshot {
   source: 'mock';
-  role: 'manager';
+  role: 'owner_gm';
   dayToDay: 'free';
   closeFeeCents: number;
   closeFeeLabel: string;

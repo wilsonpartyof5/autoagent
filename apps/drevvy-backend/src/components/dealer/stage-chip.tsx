@@ -12,19 +12,19 @@ import type {
 } from '@/lib/dealer/types';
 
 const STAGE_CLASS: Record<ConversationStage, string> = {
-  new_request: 'bg-[#E3EEFF] text-[#2257C0]',
-  in_conversation: 'bg-[#FFF0D6] text-[#8A5300]',
-  numbers_shared: 'bg-[#ECEAFF] text-[#3C30C4]',
-  closed: 'bg-[#E7EAF1] text-[#4E5568]',
-  car_sold: 'bg-[#F4E9E4] text-[#7A4A3A]',
-  no_reply: 'bg-[#EEEAF3] text-[#5E5470]',
+  new_request: 'c-new',
+  in_conversation: 'c-chat',
+  numbers_shared: 'c-wait',
+  closed: 'c-no',
+  car_sold: 'c-sold',
+  no_reply: 'c-no',
 };
 
 const SLA_CLASS: Record<SlaChip['tone'], string> = {
-  waiting: 'text-[#2257C0]',
-  overdue: 'text-[#B42828]',
-  replied: 'text-[#0F7A55]',
-  ended: 'text-[#5E5470]',
+  waiting: 'c-wait',
+  overdue: 'c-no',
+  replied: 'c-sold',
+  ended: 'c-no',
 };
 
 export function StageChip({
@@ -34,21 +34,11 @@ export function StageChip({
   stage: ConversationStage;
   label: string;
 }) {
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${STAGE_CLASS[stage]}`}
-    >
-      {label}
-    </span>
-  );
+  return <span className={`chip ${STAGE_CLASS[stage]}`}>{label}</span>;
 }
 
 export function SlaText({ sla }: { sla: SlaChip }) {
-  return (
-    <span className={`text-[11px] font-semibold ${SLA_CLASS[sla.tone]}`}>
-      {sla.label}
-    </span>
-  );
+  return <span className={`chip ${SLA_CLASS[sla.tone]}`}>{sla.label}</span>;
 }
 
 export function StageStepper({ stage }: { stage: ConversationStage }) {
@@ -63,23 +53,15 @@ export function StageStepper({ stage }: { stage: ConversationStage }) {
         return (
           <li
             key={step}
-            className={
-              current
-                ? 'text-[#3C30C4]'
-                : done
-                  ? 'text-foreground'
-                  : 'text-muted-foreground'
-            }
+            className={current ? 'ok' : done ? undefined : 'mut'}
           >
-            {index > 0 ? (
-              <span className="mx-1 text-muted-foreground">→</span>
-            ) : null}
+            {index > 0 ? <span className="mut mx-1">→</span> : null}
             {STAGE_LABEL[step]}
           </li>
         );
       })}
       {ended ? (
-        <li className="text-[#5E5470]">
+        <li className="mut">
           <span className="mx-1">·</span>
           {STAGE_LABEL[stage]}
         </li>
@@ -98,7 +80,7 @@ export function PriceLine({
   priceDiffers: boolean;
 }) {
   return (
-    <div className="text-xs leading-5 text-muted-foreground">
+    <div className="mut">
       <p>
         Advertised {formatMoney(advertisedPriceCents)}
         {statedPriceCents != null
@@ -106,7 +88,7 @@ export function PriceLine({
           : ''}
       </p>
       {priceDiffers ? (
-        <p className="font-semibold text-[#8A5300]">
+        <p className="c-wait" style={{ fontWeight: 700 }}>
           Stated price differs from the advertised price.
         </p>
       ) : null}

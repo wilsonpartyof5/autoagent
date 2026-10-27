@@ -46,7 +46,9 @@ class _DrevvyDeskAppState extends State<DrevvyDeskApp> {
       child: MaterialApp.router(
         title: 'Drevvy Desk',
         debugShowCheckedModeBanner: false,
-        theme: dealerTheme(),
+        theme: dealerTheme(brightness: Brightness.light),
+        darkTheme: dealerTheme(),
+        themeMode: ThemeMode.dark,
         routerConfig: router,
       ),
     );

@@ -31,6 +31,8 @@ export const STAGE_ENDS: ConversationStage[] = [
 
 export const FILTER_LABEL: Record<InboxFilter, string> = {
   needs_reply: 'Needs reply',
+  in_chat: 'In chat',
+  all: 'All',
   all_open: 'All open',
   closed: 'Closed',
 };
@@ -42,7 +44,7 @@ export const RANGE_LABEL: Record<AnalyticsRange, string> = {
 };
 
 export const SHARE_NUMBERS_DISCLAIMER =
-  'Informational for this anonymous shopper. Not a binding offer.';
+  'Informational itemized out-the-door for this shopper. Not a binding offer.';
 
 export const CLOSE_FEE_CENTS = 30_000;
 
@@ -62,7 +64,13 @@ export function isOpenStage(stage: ConversationStage): boolean {
 }
 
 export function isInboxFilter(value: string): value is InboxFilter {
-  return value === 'needs_reply' || value === 'all_open' || value === 'closed';
+  return (
+    value === 'needs_reply' ||
+    value === 'in_chat' ||
+    value === 'all' ||
+    value === 'all_open' ||
+    value === 'closed'
+  );
 }
 
 export function isAnalyticsRange(value: string): value is AnalyticsRange {
@@ -74,15 +82,16 @@ export function isConversationStage(value: string): value is ConversationStage {
 }
 
 export function bestPriceOpener(input: {
+  shopperFirstName: string;
   stockNumber: string;
   vehicleTitle: string;
   advertisedPriceCents: number;
 }): string {
   return [
     'Get Best Price',
-    `An anonymous shopper tapped Get Best Price on stock #${input.stockNumber}, a ${input.vehicleTitle}.`,
+    `${input.shopperFirstName} asked about stock #${input.stockNumber}, a ${input.vehicleTitle}.`,
     `Advertised price ${formatMoney(input.advertisedPriceCents)}.`,
-    'Reply in this chat. Drevvy relays messages both ways. No text, email, or call.',
+    'Reply in this chat. Drevvy is the messaging middleman — chat is for transparency and answering questions. No text, email, or call.',
   ].join('\n');
 }
 
@@ -200,19 +209,29 @@ export function replyTemplates(conversation: {
 }): ReplyTemplate[] {
   return [
     {
+      id: 'otd',
+      label: 'Share itemized OTD',
+      text: 'Here’s your itemized out-the-door: vehicle, doc fee, tax, tag/title — no add-ons.',
+    },
+    {
       id: 'available',
       label: 'Still available',
-      text: `Yes, stock #${conversation.stockNumber} is still here.`,
+      text: `Yes — stock #${conversation.stockNumber} is still available at this rooftop.`,
     },
     {
-      id: 'sold',
-      label: 'Car sold',
-      text: `Stock #${conversation.stockNumber} has sold.`,
+      id: 'answer',
+      label: 'Answer question',
+      text: 'Good question — here’s the answer:',
     },
     {
-      id: 'advertised',
-      label: 'Advertised price',
-      text: `The advertised price is ${formatMoney(conversation.advertisedPriceCents)}. I can share a written out-the-door total in this chat.`,
+      id: 'fees',
+      label: 'Price & fees',
+      text: `Current listed price is ${formatMoney(conversation.advertisedPriceCents)}. I can share the itemized fees in this chat.`,
+    },
+    {
+      id: 'details',
+      label: 'Vehicle details',
+      text: 'Here are the trims and options on this vehicle:',
     },
   ];
 }
@@ -243,6 +262,8 @@ export function matchesInboxFilter(
   filter: InboxFilter
 ): boolean {
   if (filter === 'needs_reply') return item.needsReply;
+  if (filter === 'in_chat') return isOpenStage(item.stage) && !item.needsReply;
+  if (filter === 'all') return true;
   if (filter === 'all_open') return isOpenStage(item.stage);
   return !isOpenStage(item.stage);
 }

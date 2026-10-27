@@ -4,195 +4,123 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { CLOSE_FEE_COPY, formatMoney, formatStamp } from '@/lib/dealer/format';
-import { DEMO_ROOFTOP, type BillingSnapshot } from '@/lib/dealer/types';
-
-const TEAM = [
-  { name: 'Dana Ruiz', role: 'Manager' },
-  { name: 'Sam Patel', role: 'Salesperson' },
-];
+import { DEMO_ROOFTOPS } from '@/lib/dealer/demo-org';
+import type { BillingSnapshot } from '@/lib/dealer/types';
 
 export function SettingsPanel({ billing }: { billing: BillingSnapshot }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [rooftop, setRooftop] = useState<string>(DEMO_ROOFTOP.name);
-  const [docFee, setDocFee] = useState(
-    String(DEMO_ROOFTOP.docFeeDefaultCents / 100)
-  );
-  const [newConversation, setNewConversation] = useState(true);
-  const [waiting, setWaiting] = useState(true);
+  const [name, setName] = useState('Maya R.');
+  const [email, setEmail] = useState('maya@lakesidehonda.com');
+  const [alerts, setAlerts] = useState(true);
   const [cardNote, setCardNote] = useState<string | null>(null);
 
   return (
-    <div className="h-full overflow-y-auto px-5 py-6">
-      <h1 className="text-lg font-extrabold">Settings</h1>
-      <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-        Demo only. These fields stay on this page. Nothing is saved. Day-to-day
-        use is free. There is no shopper paywall on this desk.
-      </p>
-
-      <section className="mt-6 max-w-xl rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-sm font-extrabold">Profile</h2>
-        <label
-          htmlFor="profile-name"
-          className="mt-3 block text-xs font-semibold"
-        >
+    <div className="row" style={{ gridTemplateColumns: '1fr' }}>
+      <section className="g card">
+        <div className="t">Profile</div>
+        <p className="mut">Demo only. These fields stay on this page.</p>
+        <label className="lab" htmlFor="profile-name">
           Name
         </label>
         <input
           id="profile-name"
+          className="inp"
           value={name}
           onChange={event => setName(event.target.value)}
-          placeholder="Your name"
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
         />
-        <label
-          htmlFor="profile-email"
-          className="mt-3 block text-xs font-semibold"
-        >
+        <label className="lab" htmlFor="profile-email">
           Work email
         </label>
         <input
           id="profile-email"
+          className="inp"
           value={email}
           onChange={event => setEmail(event.target.value)}
-          placeholder="Work email"
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
         />
       </section>
 
-      <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-sm font-extrabold">Notifications</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Not connected.
-        </p>
-        <label className="mt-3 flex items-center gap-2 text-sm">
+      <section className="g card">
+        <div className="t">Notifications</div>
+        <label className="chk">
           <input
             type="checkbox"
-            checked={newConversation}
-            onChange={event => setNewConversation(event.target.checked)}
+            checked={alerts}
+            onChange={event => setAlerts(event.target.checked)}
           />
-          New conversation
-        </label>
-        <label className="mt-2 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={waiting}
-            onChange={event => setWaiting(event.target.checked)}
-          />
-          A shopper is waiting on a reply
+          <div>Push + email when a shopper replies</div>
         </label>
       </section>
 
-      <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-sm font-extrabold">Store</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          One demo rooftop. Multi-store is an open question. The doc fee is a
-          default on this screen, not a quote.
+      <section className="g card">
+        <div className="t">Store</div>
+        <p className="mut">
+          Demo rooftops for the Owner/GM switcher. Live matching still uses
+          `dealerships` plus `user_dealerships`.
         </p>
-        <label
-          htmlFor="rooftop-name"
-          className="mt-3 block text-xs font-semibold"
-        >
-          Rooftop
-        </label>
-        <input
-          id="rooftop-name"
-          value={rooftop}
-          onChange={event => setRooftop(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-        />
-        <label htmlFor="doc-fee" className="mt-3 block text-xs font-semibold">
-          Doc fee default
-        </label>
-        <input
-          id="doc-fee"
-          inputMode="decimal"
-          value={docFee}
-          onChange={event => setDocFee(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-        />
+        <ul>
+          {DEMO_ROOFTOPS.map(rooftop => (
+            <li key={rooftop.id} className="kc">
+              <b>{rooftop.name}</b>
+              <div className="mut">
+                {rooftop.city} · doc fee {rooftop.docFee}
+              </div>
+            </li>
+          ))}
+        </ul>
       </section>
 
-      <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-sm font-extrabold">Billing</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Manager and Admin. This demo is signed in as a manager. Stripe is not
-          connected.
+      <section className="g card">
+        <div className="t">Billing · Owner/GM</div>
+        <p className="t" style={{ marginTop: 8 }}>
+          {CLOSE_FEE_COPY}
         </p>
-        <p className="mt-3 text-sm font-extrabold">{CLOSE_FEE_COPY}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Charged when a participating dealer marks a deal sold. The desk stays
-          free until then.
+        <p className="mut">
+          Charged when a participating dealer marks a deal sold. Day-to-day use
+          is free. Stripe is not connected. Shopper keys never appear here.
         </p>
-        <div className="mt-3 rounded-xl border border-dashed border-border bg-background p-3">
-          <p className="text-xs font-semibold">Payment method</p>
-          <p className="mt-1 text-sm">
+        <div className="otd" style={{ marginTop: 12 }}>
+          <p className="lab">Payment method</p>
+          <p>
             {billing.paymentMethod.brand} ···· {billing.paymentMethod.last4}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Placeholder card. No payment is stored or sent.
           </p>
           <button
             type="button"
+            className="btn2"
+            style={{ marginTop: 8 }}
             onClick={() =>
               setCardNote('No card was saved. Stripe is not connected.')
             }
-            className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold"
           >
             Replace card
           </button>
           {cardNote ? (
-            <p className="mt-2 text-xs font-semibold" role="status">
+            <p className="mut" role="status">
               {cardNote}
             </p>
           ) : null}
         </div>
-        <h3 className="mt-4 text-xs font-extrabold">Recent charges</h3>
-        <ul className="mt-2 divide-y divide-border">
-          {billing.charges.map(charge => (
-            <li key={charge.id} className="py-2 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-semibold">
+        <h3 className="lab" style={{ marginTop: 16 }}>
+          Recent charges
+        </h3>
+        <table className="tbl">
+          <tbody>
+            {billing.charges.map(charge => (
+              <tr key={charge.id}>
+                <td>
                   {charge.shopperRef} · {charge.vehicleTitle}
-                </span>
-                <span>{formatMoney(charge.amountCents)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {formatStamp(charge.closedAt)} · placeholder
-              </p>
-            </li>
-          ))}
-        </ul>
+                </td>
+                <td>{formatMoney(charge.amountCents)}</td>
+                <td className="mut">
+                  {formatStamp(charge.closedAt)} · placeholder
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
-      <section className="mt-4 max-w-xl rounded-2xl border border-border bg-card p-4">
-        <h2 className="text-sm font-extrabold">Team</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Placeholder for managers and above. Who can share numbers, and how
-          accounts are provisioned, are open questions.
-        </p>
-        <ul className="mt-3 divide-y divide-border">
-          {TEAM.map(person => (
-            <li
-              key={person.name}
-              className="flex items-center justify-between py-2 text-sm"
-            >
-              <span className="font-semibold">{person.name}</span>
-              <span className="text-muted-foreground">{person.role}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <Link
-        href="/dealer/login"
-        className="mt-6 inline-flex rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold"
-      >
+      <Link href="/dealer/login" className="btn2" style={{ width: 'fit-content' }}>
         Sign out
       </Link>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Returns to the demo login. There is no account yet.
-      </p>
     </div>
   );
 }

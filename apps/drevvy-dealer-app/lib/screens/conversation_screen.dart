@@ -83,19 +83,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      Conversation.buyerLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.1,
-                        color: DealerColors.muted,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        conversation.shopperRef,
+                        conversation.deskLabel,
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -116,7 +106,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 StageStepper(stage: conversation.stage),
                 const SizedBox(height: 8),
                 const Text(
-                  'Templated Get Best Price opener, then freeform chat. Share numbers is informational. No text, email, or call.',
+                  'Message-only. First name is shown; contact details stay private. Share itemized OTD is informational.',
                   style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
                 ),
               ],
@@ -163,7 +153,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               Text(message.body, style: const TextStyle(height: 1.35)),
                               const SizedBox(height: 8),
                               const Text(
-                                'Informational for this anonymous shopper. Not a binding offer.',
+                                'Informational itemized out-the-door. Not a binding offer.',
                                 style: TextStyle(fontSize: 11, color: DealerColors.muted, height: 1.35),
                               ),
                             ],
@@ -231,17 +221,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     for (final template in replyTemplatesFor(conversation))
                       ActionChip(
                         label: Text(template.label),
-                        onPressed: () => setState(() => _draft.text = template.text),
+                        onPressed: () => setState(() {
+                          _draft.text = template.text;
+                          if (template.id == 'otd') {
+                            _confirmSold = false;
+                            _showNumbers = true;
+                          }
+                        }),
                       ),
-                    ActionChip(
-                      label: const Text('Share numbers'),
-                      onPressed: open
-                          ? () => setState(() {
-                                _confirmSold = false;
-                                _showNumbers = !_showNumbers;
-                              })
-                          : null,
-                    ),
                     ActionChip(
                       label: const Text('Mark as sold'),
                       onPressed: open
@@ -279,7 +266,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         controller: _draft,
                         minLines: 2,
                         maxLines: 4,
-                        decoration: const InputDecoration(hintText: 'Reply in this chat'),
+                        decoration: InputDecoration(hintText: 'Reply to ${conversation.shopperFirstName}…'),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -373,7 +360,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Share numbers', style: TextStyle(fontWeight: FontWeight.w800)),
+                const Text('Share itemized OTD', style: TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 const Text(
                   '$shareNumbersDisclaimer Where a written total becomes the record is still an open question.',
