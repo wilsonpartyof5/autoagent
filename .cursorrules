@@ -1,3 +1,5 @@
 # Drevvy
 
 This repo is the shopper iOS app (`apps/autogentic`) and the Next.js backend (`apps/drevvy-backend`, package `@drevvy/backend`). Do not restore the ChatGPT MCP server, the dealer portal, or the markdown-summary updater. Do not rename the Vercel project `autoagent-dealer-dashboard`.
+
+The dealer desk scaffold (`apps/drevvy-dealer-app`, `/dealer`, `/api/dealer/v1`) is a separate anonymous-shopper conversation product. Do not treat it as a restore of the deleted portal.

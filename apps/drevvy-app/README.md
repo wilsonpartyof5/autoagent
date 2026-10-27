@@ -126,7 +126,7 @@ final text = context.drevvyText;
 
 - **Backend API**: Replace `DemoRepository` calls with `https://api.drevvy.com`
 - **Supabase Auth**: Replace demo user with real authentication
-- **RevenueCat/Superwall**: Offering `packs` (1 car $35, 3 cars $55, 5 cars $75, 10 cars $95, $9.50/car best value, one-time, never expire). Store product ids: `drevvy_pack_1`, `drevvy_pack_3`, `drevvy_pack_5`, `drevvy_pack_10`. Package ids: `pack_1`, `pack_3`, `pack_5`, `pack_10`. Virtual currency `cars` (code `CARS`) grants 1, 3, 5, or 10. The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free; the paywall opens from Unlock my price when the balance is 0.
+- **Shopper plan**: $27/month for 10 conversations per month. Car packs are retired. There is no annual plan. Billing in the app is not switched to this plan yet.
 - **Push Notifications**: Pre-prompt UI exists, FCM not wired
 - **Geofencing**: Location permission UI exists, geofence logic not wired
 
