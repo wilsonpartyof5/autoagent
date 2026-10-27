@@ -411,7 +411,7 @@ class _UnlockButton extends StatelessWidget {
               const Icon(LucideIcons.plus, color: Colors.white, size: 16),
               const SizedBox(width: 6),
               Text(
-                'Unlock my price',
+                'Open listing',
                 style: text.label.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,

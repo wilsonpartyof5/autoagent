@@ -1,4 +1,5 @@
 import '../models/car_pack.dart';
+import '../models/money_format.dart';
 
 /// Result of a purchase attempt.
 sealed class PurchaseResult {
@@ -36,10 +37,11 @@ class PurchasePending extends PurchaseResult {
 /// Implementations: FakePurchaseService (demo), RevenueCatPurchaseService (production).
 ///
 /// RevenueCat integration notes:
-/// - Products: drevvy_pack_1, drevvy_pack_3, drevvy_pack_5, drevvy_pack_10 (consumable IAP)
-/// - Packages: pack_1, pack_3, pack_5, pack_10 on offering `packs`
-/// - Virtual currency: `cars` (code CARS) — grants 1/3/5/10 on purchase
-/// - Superwall placement: `cars_balance_empty` replaces `monthly_limit_reached`
+/// - Products: drevvy_keys_1, drevvy_keys_5, drevvy_keys_10, drevvy_keys_25 (consumable IAP)
+/// - Packages: keys_1, keys_5, keys_10, keys_25 on offering `keys`
+/// - Superwall placement: `cars_balance_empty` still names the empty-balance campaign
+///
+/// App Store / Play products are not created yet. RevenueCat catalog is updated.
 abstract class PurchaseService {
   /// Initialize the purchase service.
   Future<void> initialize();
@@ -48,7 +50,7 @@ abstract class PurchaseService {
   /// Returns null if offerings unavailable.
   Future<List<CarPackOffering>?> getOfferings();
 
-  /// Purchase a car pack.
+  /// Purchase a key pack.
   /// Shows native purchase UI.
   Future<PurchaseResult> purchasePack(CarPackType packType);
 
@@ -148,9 +150,9 @@ class FakePurchaseService implements PurchaseService {
       for (final pack in CarPackType.values)
         CarPackOffering(
           packType: pack,
-          localizedPrice: '\$${pack.priceUsd}.00',
+          localizedPrice: formatUsd(pack.priceUsd),
           currencyCode: 'USD',
-          priceAmount: pack.priceUsd.toDouble(),
+          priceAmount: pack.priceUsd,
         ),
     ];
   }

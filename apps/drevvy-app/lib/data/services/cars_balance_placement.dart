@@ -1,8 +1,7 @@
-/// Shown when a shopper has used every car credit.
+/// Shown when a shopper has used every key.
 ///
 /// Superwall placement `cars_balance_empty`. Without a Superwall key, the
-/// existing Out of cars sheet stays on screen, including per-car cost,
-/// savings versus the 3-pack, and the never-expires line.
+/// existing Out of keys sheet stays on screen.
 abstract class CarsBalancePlacement {
   static const name = 'cars_balance_empty';
 

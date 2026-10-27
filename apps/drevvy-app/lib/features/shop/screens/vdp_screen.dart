@@ -10,7 +10,6 @@ import '../../../core/providers/app_services.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
-import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
@@ -18,10 +17,13 @@ import '../../../data/services/cars_balance_placement.dart';
 import '../../../data/services/purchase_config.dart';
 import '../../../data/services/superwall_placement.dart';
 import '../../deals/widgets/notification_preprompt_sheet.dart';
-import '../widgets/add_to_drevvy_sheet.dart';
+import '../widgets/dealer_chat_sheet.dart';
+import '../widgets/market_intel_sheet.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
+import '../widgets/otd_request_sheet.dart';
 import '../widgets/unlock_paywall.dart';
+import '../widgets/vdp_cta_bar.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
 /// v1.7: Uses car credit balance instead of Pro subscription.
@@ -51,6 +53,12 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   /// v1.8: Track if car is already in Deals (hide heart if so)
   bool _isInDeals = false;
 
+  RooftopMatch? _rooftopMatch;
+  bool _marketIntelUnlocked = false;
+  bool _conversationOpen = false;
+  bool _otdRequested = false;
+  String _shopperFirstName = 'Dana';
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +75,8 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     await _repo.getSavedCars(); // ensure initialized
     final isSaved = _repo.isListingSaved(listing.id);
     final isInDeals = _repo.isListingInDeals(listing.id);
+    final match = await _repo.getRooftopMatch(listing);
+    final user = await _repo.getCurrentUser();
     if (!mounted) return;
 
     setState(() {
@@ -76,6 +86,11 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       _avgSavings = avgSavings;
       _isSaved = isSaved;
       _isInDeals = isInDeals;
+      _rooftopMatch = match;
+      _marketIntelUnlocked = _repo.hasUnlockedMarketIntel(listing.id);
+      _conversationOpen = _repo.hasStartedConversation(listing.id);
+      _otdRequested = _repo.hasRequestedOtd(listing.id);
+      _shopperFirstName = user.firstName;
       _isLoading = false;
     });
     ProductAnalytics.instance.track(AnalyticsEvents.carViewed, {
@@ -113,55 +128,35 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     }
   }
 
-  /// Adds the car, then asks for notification permission the first time only.
-  Future<void> _addCar() async {
-    await _repo.addDeal(_listing!);
-    if (!mounted) return;
-    Navigator.of(context).pop();
-
+  /// Ask for notification permission the first time a conversation starts.
+  Future<void> _maybePromptNotifications() async {
     final prompt = ref.read(notificationPromptProvider);
     final shouldAsk = await prompt.shouldPromptAfterAdd();
+    if (!mounted || !shouldAsk) return;
+    await prompt.markPrompted();
     if (!mounted) return;
-    if (shouldAsk) {
-      await prompt.markPrompted();
-      if (!mounted) return;
-      final allow = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (sheetContext) => NotificationPrepromptSheet(
-          onAllow: () => Navigator.pop(sheetContext, true),
-          onNotNow: () => Navigator.pop(sheetContext, false),
-        ),
-      );
-      if (allow == true) {
-        await ref.read(pushNotificationServiceProvider).enable();
-      }
-    }
-    if (!mounted) return;
-    context.go('/deals');
-  }
-
-  /// v1.7: Show AddToDrevvySheet when user has credits.
-  void _showAddSheet() {
-    showModalBottomSheet(
+    final allow = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => AddToDrevvySheet(
-        listing: _listing!,
-        market: _market!,
-        creditBalance: _creditBalance!,
-        onAdd: () {
-          _addCar();
-        },
+      builder: (sheetContext) => NotificationPrepromptSheet(
+        onAllow: () => Navigator.pop(sheetContext, true),
+        onNotNow: () => Navigator.pop(sheetContext, false),
       ),
     );
+    if (allow == true) {
+      await ref.read(pushNotificationServiceProvider).enable();
+    }
   }
 
-  /// Paywall at Unlock my price only when the car balance is 0.
-  /// Ask and Shop never reach this. Superwall placement: cars_balance_empty.
-  void _handleUnlockTap() {
+  Future<void> _refreshBalance() async {
+    final next = await _repo.getCreditBalance();
+    if (!mounted) return;
+    setState(() => _creditBalance = next);
+  }
+
+  /// Key A: market intel + save. Paywall only when the key balance is 0.
+  void _handleMarketIntelTap() {
     final listing = _listing;
     final balance = _creditBalance;
     if (listing == null || balance == null) return;
@@ -176,8 +171,106 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         onCanUnlock: (next) async {
           if (!mounted) return;
           setState(() => _creditBalance = next);
-          _showAddSheet();
+          await showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (sheetContext) => MarketIntelSheet(
+              listing: listing,
+              creditBalance: next,
+              onConfirm: () async {
+                final ok = await _repo.unlockMarketIntel(listing);
+                if (!mounted) return;
+                await _refreshBalance();
+                if (!ok) return;
+                setState(() {
+                  _marketIntelUnlocked = true;
+                  _isSaved = true;
+                });
+              },
+            ),
+          );
         },
+      ),
+    );
+  }
+
+  /// Key B: in-network anonymous dealer chat.
+  void _handleConversationTap() {
+    final listing = _listing;
+    final balance = _creditBalance;
+    final match = _rooftopMatch;
+    if (listing == null || balance == null || match == null) return;
+    if (_conversationOpen || balance.canUnlock) {
+      unawaited(_openConversationSheet(listing, match, balance));
+      return;
+    }
+    unawaited(
+      showUnlockPaywall(
+        context: context,
+        listing: listing,
+        balance: balance,
+        repo: _repo,
+        avgSavings: _avgSavings,
+        placement: _carsBalancePlacement,
+        onCanUnlock: (next) async {
+          if (!mounted) return;
+          setState(() => _creditBalance = next);
+          await _openConversationSheet(listing, match, next);
+        },
+      ),
+    );
+  }
+
+  Future<void> _openConversationSheet(
+    Listing listing,
+    RooftopMatch match,
+    CarCreditBalance balance,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DealerChatSheet(
+        listing: listing,
+        match: match,
+        creditBalance: balance,
+        alreadyOpen: _conversationOpen,
+        shopperFirstName: _shopperFirstName,
+        onSend: ({templateId, message}) async {
+          final deal = await _repo.startDealerConversation(
+            listing,
+            match,
+            templateId: templateId,
+            message: message,
+          );
+          if (!mounted) return;
+          await _refreshBalance();
+          setState(() => _conversationOpen = deal != null || _conversationOpen);
+          if (deal != null) unawaited(_maybePromptNotifications());
+        },
+      ),
+    );
+  }
+
+  /// Off-network: request an OTD number. Analytics only, not chat.
+  void _handleOtdRequestTap() {
+    final listing = _listing;
+    if (listing == null) return;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => OtdRequestSheet(
+          listing: listing,
+          alreadyRequested: _otdRequested,
+          onConfirm: ({note}) async {
+            await _repo.requestOtdNumber(listing, note: note);
+            if (!mounted) return;
+            setState(() => _otdRequested = true);
+          },
+        ),
       ),
     );
   }
@@ -384,8 +477,8 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
                         const SizedBox(height: DrevvySpace.s6),
                       ],
 
-                      // Space for sticky CTA
-                      SizedBox(height: 120 + bottomPadding),
+                      // Space for two-key sticky CTA
+                      SizedBox(height: 280 + bottomPadding),
                     ],
                   ),
                 ),
@@ -393,15 +486,20 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
             ],
           ),
 
-          // Sticky CTA
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _StickyCta(
+            child: VdpCtaBar(
               listing: listing,
               creditBalance: creditBalance,
-              onTap: _handleUnlockTap,
+              match: _rooftopMatch,
+              marketIntelUnlocked: _marketIntelUnlocked,
+              conversationOpen: _conversationOpen,
+              otdRequested: _otdRequested,
+              onMarketIntel: _handleMarketIntelTap,
+              onConversation: _handleConversationTap,
+              onOtdRequest: _handleOtdRequestTap,
             ),
           ),
         ],
@@ -558,13 +656,21 @@ class _HowDrevvyWorks extends StatelessWidget {
         children: [
           Text('How Drevvy works for you', style: text.title),
           const SizedBox(height: DrevvySpace.s4),
-          _Step(number: '1', text: 'You tap "Unlock my price"'),
-          _Step(number: '2', text: 'Pick a car pack (1, 3, 5, or 10 cars)'),
+          _Step(number: '1', text: 'Unlock market intel and save this listing'),
+          _Step(
+            number: '2',
+            text: 'Pick a key pack (1, 5, 10, or 25 keys) if your balance is 0',
+          ),
           _Step(
             number: '3',
-            text: 'Drevvy asks the dealer for an itemized out-the-door price',
+            text:
+                'If this listing URL matches an onboarded rooftop, ask the dealer anonymously with a second key. They see your first name only.',
           ),
-          _Step(number: '4', text: 'You review each offer and decide'),
+          _Step(
+            number: '4',
+            text:
+                'If not, request the out-the-door number for free — analytics form, not chat, no key',
+          ),
         ],
       ),
     );
@@ -611,103 +717,3 @@ class _Step extends StatelessWidget {
   }
 }
 
-/// v1.7: Sticky CTA updated to use credit balance instead of Pro subscription.
-class _StickyCta extends StatelessWidget {
-  const _StickyCta({
-    required this.listing,
-    required this.creditBalance,
-    required this.onTap,
-  });
-
-  final Listing listing;
-  final CarCreditBalance creditBalance;
-  final VoidCallback onTap;
-
-  String _formatNumber(int n) {
-    return n.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final hasCredits = creditBalance.canUnlock;
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        DrevvySpace.gutter,
-        DrevvySpace.s3,
-        DrevvySpace.gutter,
-        DrevvySpace.s3 + bottomPadding,
-      ),
-      decoration: BoxDecoration(
-        color: colors.glassSolid.withValues(alpha: 0.97),
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(DrevvyRadius.sheetTop),
-        ),
-        boxShadow: colors.elevSheet,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // v1.7: Show credit balance when user has credits
-          if (hasCredits) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: colors.lilacTint,
-                borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-              ),
-              child: Text(
-                creditBalance.displayText,
-                style: text.label.copyWith(
-                  color: colors.violet,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: DrevvySpace.s3),
-          ],
-
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '\$${_formatNumber(listing.price)}',
-                    style: text.figureS,
-                  ),
-                  Text(
-                    'Listed price',
-                    style: text.callout.copyWith(color: colors.muted),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              DrevvyButton(
-                label: 'Unlock my price',
-                icon: LucideIcons.sparkles,
-                onPressed: onTap,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: DrevvySpace.s2),
-
-          // v1.7: Updated copy - no more "Pro" or "/mo"
-          Text(
-            hasCredits
-                ? 'Drevvy contacts Dealer A during business hours'
-                : 'From ${CarPackType.bestValue.perCarFormatted}/car · Car packs never expire',
-            style: text.callout.copyWith(color: colors.muted),
-          ),
-        ],
-      ),
-    );
-  }
-}

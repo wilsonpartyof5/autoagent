@@ -43,20 +43,20 @@ void main() {
   test('dollar prices and the packs offering stay on the catalog', () {
     expect(formatUsd(55), r'$55');
     expect(formatUsd(9.5, cents: true), r'$9.50');
-    expect(CarPackType.bestValue.priceFormatted, r'$95');
-    expect(CarPackType.bestValue.perCarFormatted, r'$9.50');
-    expect(CarPackType.bestValue.ctaText, r'Get 10 cars for $95');
-    expect(packsOfferingId, 'packs');
+    expect(CarPackType.bestValue.priceFormatted, r'$34.99');
+    expect(CarPackType.bestValue.perKeyFormatted, r'$3.50');
+    expect(CarPackType.bestValue.ctaText, r'Get 10 keys for $34.99');
+    expect(keysOfferingId, 'keys');
     expect(onboardingPaywallPlacementName, 'onboarding_paywall');
     expect(
       selectPackPackages<String>(
         byOfferingId: {
           'default': ['other'],
-          packsOfferingId: ['drevvy_pack_10'],
+          keysOfferingId: ['drevvy_keys_10'],
         },
         currentPackages: ['current'],
       ),
-      ['drevvy_pack_10'],
+      ['drevvy_keys_10'],
     );
     expect(
       selectPackPackages<String>(
@@ -118,8 +118,11 @@ void main() {
     await tester.tap(find.text('Get started'));
     await tester.pumpAndSettle();
     expect(find.text('How Drevvy works'), findsOneWidget);
-    expect(find.text('Compare with market data'), findsOneWidget);
-    expect(find.textContaining('Unlock my price'), findsWidgets);
+    expect(find.text('Unlock market intel & save'), findsOneWidget);
+    expect(find.textContaining('Ask an in-network dealer'), findsWidgets);
+    expect(find.textContaining('first name only'), findsOneWidget);
+    expect(find.textContaining('confirmed delivery'), findsOneWidget);
+    expect(find.textContaining('analytics form'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
 
     await tester.tap(find.text('Continue'));
@@ -138,13 +141,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Market data, then a written price.'), findsOneWidget);
-    expect(find.text(r'$35'), findsOneWidget);
-    expect(find.text(r'$55'), findsOneWidget);
-    expect(find.text(r'$75'), findsOneWidget);
-    expect(find.text(r'$95'), findsOneWidget);
-    expect(find.text(r'$9.50/car'), findsOneWidget);
-    expect(find.text('BEST VALUE'), findsOneWidget);
-    expect(find.text('Get 10 cars for \$95'), findsOneWidget);
+    expect(find.text(r'$4.99'), findsOneWidget);
+    expect(find.text(r'$19.99'), findsOneWidget);
+    expect(find.text(r'$34.99'), findsOneWidget);
+    expect(find.text(r'$74.99'), findsOneWidget);
+    expect(find.text(r'$3.50/key'), findsOneWidget);
+    expect(find.text('RECOMMENDED'), findsOneWidget);
+    expect(find.text('Get 10 keys for \$34.99'), findsOneWidget);
     expect(find.textContaining('free and unlimited'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
 
@@ -175,14 +178,14 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text(r'$35.00/car'), findsOneWidget);
-    expect(find.text(r'$18.33/car'), findsOneWidget);
-    expect(find.text(r'$15.00/car'), findsOneWidget);
-    expect(find.text(r'$9.50/car'), findsOneWidget);
+    expect(find.text(r'$4.99/key'), findsOneWidget);
+    expect(find.text(r'$4.00/key'), findsOneWidget);
+    expect(find.text(r'$3.50/key'), findsOneWidget);
+    expect(find.text(r'$3.00/key'), findsOneWidget);
     expect(find.text('One-time · never expires'), findsOneWidget);
-    expect(find.text('Save 47.6%/car'), findsOneWidget);
-    expect(find.text('Save 57.1%/car'), findsOneWidget);
-    expect(find.text('Save 72.9%/car'), findsOneWidget);
+    expect(find.text('Save 19.9%/key'), findsOneWidget);
+    expect(find.text('Save 29.9%/key'), findsOneWidget);
+    expect(find.text('Save 39.9%/key'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
   });
 
@@ -227,9 +230,9 @@ void main() {
     await tester.tap(find.text('Unlock my price'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Let Drevvy handle this dealer.'), findsOneWidget);
-    expect(find.text(r'$9.50/car'), findsOneWidget);
-    expect(find.text('Get 10 cars for \$95'), findsOneWidget);
+    expect(find.text(KeySpend.packHeadline), findsOneWidget);
+    expect(find.text(r'$3.50/key'), findsOneWidget);
+    expect(find.text('Get 10 keys for \$34.99'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
   });
 
@@ -271,6 +274,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(unlocked, isTrue);
-    expect(find.text('BEST VALUE'), findsNothing);
+    expect(find.text('RECOMMENDED'), findsNothing);
   });
 }

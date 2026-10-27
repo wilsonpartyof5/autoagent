@@ -1,10 +1,11 @@
 import '../../data/models/car_pack.dart';
 
-/// What to show when a shopper taps "Unlock my price".
+/// What to show when a shopper spends a key.
 ///
-/// A balance above zero goes straight to Deals. A shopper who has never
-/// bought a pack sees the pack picker. A shopper who has used every car
-/// sees the out-of-cars state. Packs are one-time and never expire.
+/// A balance above zero goes through. A shopper who has never bought a pack
+/// sees the pack picker. A shopper who has used every key sees the out-of-keys
+/// state. Packs are one-time and never expire. Off-network OTD requests skip
+/// this gate.
 enum CarUnlockGate { ready, firstPack, outOfCars }
 
 CarUnlockGate carUnlockGate(CarCreditBalance balance) {

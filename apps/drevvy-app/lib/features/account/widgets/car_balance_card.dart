@@ -36,7 +36,7 @@ class CarBalanceCard extends StatelessWidget {
                   style: text.figureM.copyWith(color: Colors.white),
                 ),
                 Text(
-                  outOfCars ? 'Out of cars' : 'cars left · packs never expire',
+                  outOfCars ? 'Out of keys' : 'keys left · packs never expire',
                   style: text.callout.copyWith(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontWeight: outOfCars ? FontWeight.w800 : FontWeight.w500,
@@ -45,7 +45,7 @@ class CarBalanceCard extends StatelessWidget {
                 if (outOfCars) ...[
                   const SizedBox(height: DrevvySpace.s1),
                   Text(
-                    'Packs never expire. Add a pack to unlock another car.',
+                    'Packs never expire. Add a pack to unlock market intel or ask an in-network dealer. Off-network out-the-door requests stay free.',
                     style: text.callout.copyWith(
                       color: Colors.white.withValues(alpha: 0.8),
                     ),
@@ -64,7 +64,7 @@ class CarBalanceCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(DrevvyRadius.pill),
               ),
               child: Text(
-                outOfCars ? 'Add cars' : 'Buy cars',
+                outOfCars ? 'Add keys' : 'Buy keys',
                 style: text.label.copyWith(
                   color: colors.violet,
                   fontWeight: FontWeight.w700,

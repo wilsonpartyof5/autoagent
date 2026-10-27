@@ -21,7 +21,7 @@ class RemoveSheet extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onKeep;
 
-  String _carsLeftLabel(int count) => count == 1 ? '1 car left' : '$count cars left';
+  String _keysLeftLabel(int count) => count == 1 ? '1 key left' : '$count keys left';
 
   @override
   Widget build(BuildContext context) {
@@ -126,19 +126,15 @@ class RemoveSheet extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              canUndo
-                                  ? 'This car will be given back'
-                                  : 'This car still counts',
+                              'Conversation key is not returned on cancel',
                               style: text.bodyStrong.copyWith(
-                                color: canUndo ? colors.mint : colors.ink,
+                                color: colors.ink,
                               ),
                             ),
                             Text(
-                              canUndo
-                                  ? 'You\'ll have ${_carsLeftLabel(user.carsRemaining + 1)}.'
-                                  : 'Drevvy has already contacted the dealer. This uses 1 of your cars.',
+                              'It comes back if the dealer does not reply within 7 days of confirmed delivery, or if the car sells. You have ${_keysLeftLabel(user.carsRemaining)}.',
                               style: text.callout.copyWith(
-                                color: canUndo ? colors.mint : colors.muted,
+                                color: colors.muted,
                               ),
                             ),
                           ],

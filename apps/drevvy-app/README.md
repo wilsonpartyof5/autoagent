@@ -31,6 +31,30 @@ flutter pub get
 dart run build_runner build
 ```
 
+## Two-key VDP review (simulators)
+
+Demo listings:
+
+- `listing_001` (RAV4) and `listing_007` (new Tacoma) are **in-network** stubs (URL matches an onboarded rooftop). VDP shows Key A plus **Ask this dealer anonymously** (conversation key).
+- `listing_002` (CR-V) and other listings are **off-network**. VDP shows Key A plus a **free** out-the-door request form (analytics only, not chat, no key).
+
+Dealer inbox stub on the in-network sheet shows the shopper **first name only** and the **$300 close** (dealer pays on shopper-confirmed purchase). The 7-day conversation-key refund clock starts at **confirmed delivery**. Glass assets are not in yet; sheets use existing Halo tokens (`glassSolid`, `tile`).
+
+```bash
+cd apps/drevvy-app
+flutter pub get
+
+# iOS simulator
+flutter devices
+flutter run -d ios
+# Shop → a listing card → VDP. Start with the RAV4 (in-network) then a Honda CR-V (off-network form).
+
+# Android emulator
+flutter run -d android
+```
+
+No RevenueCat/Superwall keys needed. Demo balance starts at 6 keys. Paywall opens only when the balance is 0 for Key A or Key B.
+
 ## Running
 
 ```bash
@@ -126,7 +150,7 @@ final text = context.drevvyText;
 
 - **Backend API**: Replace `DemoRepository` calls with `https://api.drevvy.com`
 - **Supabase Auth**: Replace demo user with real authentication
-- **Shopper plan**: $27/month for 10 conversations per month. Car packs are retired. There is no annual plan. Billing in the app is not switched to this plan yet.
+- **RevenueCat/Superwall**: Offering `keys` (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99, one-time, never expire). Store product ids: `drevvy_keys_1`, `drevvy_keys_5`, `drevvy_keys_10`, `drevvy_keys_25`. Package ids: `keys_1`, `keys_5`, `keys_10`, `keys_25`. The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free. VDP Key A (market intel + save) and in-network Key B (conversation) open the paywall when the balance is 0. Off-network out-the-door requests are a free analytics form.
 - **Push Notifications**: Pre-prompt UI exists, FCM not wired
 - **Geofencing**: Location permission UI exists, geofence logic not wired
 

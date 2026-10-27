@@ -256,10 +256,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('cars left · packs never expire'), findsOneWidget);
-      expect(find.text('Buy cars'), findsOneWidget);
-      expect(find.text('Out of cars'), findsOneWidget);
-      expect(find.text('Add cars'), findsOneWidget);
+      expect(find.text('keys left · packs never expire'), findsOneWidget);
+      expect(find.text('Buy keys'), findsOneWidget);
+      expect(find.text('Out of keys'), findsOneWidget);
+      expect(find.text('Add keys'), findsOneWidget);
       expect(find.textContaining('Max out-the-door'), findsNothing);
       await _maybeCapture(tester, 'car-balance');
     });
@@ -293,6 +293,12 @@ void main() {
       'lib/features/saved/screens/saved_screen.dart',
       'lib/features/deals/screens/deal_detail_screen.dart',
       'lib/features/deals/screens/deal_timeline_screen.dart',
+      'lib/data/models/car_pack.dart',
+      'lib/features/shop/widgets/vdp_cta_bar.dart',
+      'lib/features/shop/widgets/dealer_chat_sheet.dart',
+      'lib/features/shop/widgets/otd_request_sheet.dart',
+      'lib/features/shop/widgets/dealer_inbox_stub.dart',
+      'lib/features/onboarding/screens/how_it_works_screen.dart',
     ];
     for (final path in files) {
       final text = File(path).readAsStringSync().toLowerCase();

@@ -9,18 +9,17 @@ import '../../../data/models/models.dart';
 import '../../common/analytics_privacy.dart';
 import 'pack_option_card.dart';
 
-/// Screen X: Pack picker paywall sheet shown when user taps "Unlock my price".
-/// v1.7: Replaces monthly subscription with one-time car packs.
+/// Pack picker for one-time key packs.
 ///
 /// Pack options, full-width rows, 10-pack preselected:
-/// - 1 car (Single) $35 — $35.00/car, "One-time · never expires"
-/// - 3 cars (Starter) $55 — $18.33/car, Save 47.6%/car
-/// - 5 cars (Plus) $75 — $15.00/car, Save 57.1%/car
-/// - 10 cars (Best Value) $95 — $9.50/car, Save 72.9%/car
+/// - 1 key (Single) $4.99
+/// - 5 keys (Starter) $19.99
+/// - 10 keys (Recommended) $34.99
+/// - 25 keys (Plus) $74.99
 ///
-/// Products drevvy_pack_1/3/5/10, packages pack_1/3/5/10, 1/3/5/10 CARS.
+/// Products drevvy_keys_1/5/10/25, packages keys_1/5/10/25.
 /// Superwall placement: unlock_my_price
-/// Account → Buy cars uses this same sheet.
+/// Account → Buy keys uses this same sheet.
 class PackPickerSheet extends StatefulWidget {
   const PackPickerSheet({
     super.key,
@@ -149,10 +148,10 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                   ),
                   const SizedBox(height: DrevvySpace.s2),
                 ],
-                Text('Let Drevvy handle this dealer.', style: text.headline),
+                Text(KeySpend.packHeadline, style: text.headline),
                 const SizedBox(height: DrevvySpace.s1),
                 Text(
-                  'Pick a car pack. Each car you unlock uses one.',
+                  KeySpend.packSubhead,
                   style: text.callout.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: DrevvySpace.s3),

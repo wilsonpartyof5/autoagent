@@ -40,7 +40,7 @@ class SuperwallPackPurchaseController extends PurchaseController {
   Future<PurchaseResult> _buy(String productId) async {
     final pack = CarPackType.fromProductId(productId);
     if (pack == null) {
-      return PurchaseResult.failed('Unknown car pack $productId');
+      return PurchaseResult.failed('Unknown key pack $productId');
     }
     final result = await purchase(pack);
     return switch (result) {

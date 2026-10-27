@@ -2,13 +2,12 @@ import '../models/car_pack.dart';
 import 'purchase_service.dart';
 import 'store_gateway.dart';
 
-/// RevenueCat-backed car packs.
+/// RevenueCat-backed key packs.
 ///
 /// Products are consumables so they can be bought again:
-/// `drevvy_pack_1` ($35, package `pack_1`, 1 CARS),
-/// `drevvy_pack_3` ($55), `drevvy_pack_5` ($75), `drevvy_pack_10` ($95).
-/// The credits they grant never expire. RevenueCat virtual currency `cars`
-/// (code `CARS`) is the dashboard counterpart of these grants.
+/// `drevvy_keys_1` ($4.99, package `keys_1`),
+/// `drevvy_keys_5` ($19.99), `drevvy_keys_10` ($34.99), `drevvy_keys_25` ($74.99).
+/// The credits they grant never expire.
 class RevenueCatPurchaseService implements PurchaseService {
   RevenueCatPurchaseService({required this.gateway});
 

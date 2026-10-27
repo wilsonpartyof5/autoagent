@@ -18,22 +18,24 @@ class HowItWorksScreen extends ConsumerWidget {
     (
       icon: LucideIcons.search,
       title: 'Ask or shop, free',
-      body: 'Asking and shopping stay unlimited. Browse market data with no car pack required.',
+      body: 'Asking and shopping stay free and unlimited. Browse market data with no key pack required.',
     ),
     (
       icon: LucideIcons.receipt,
-      title: 'Compare with market data',
-      body: 'Each car shows how its listed price sits against market data.',
+      title: 'Unlock market intel & save',
+      body: 'One key unlocks a price brief and saves the listing. That key is not refunded.',
     ),
     (
       icon: LucideIcons.sparkles,
-      title: 'Unlock my price',
-      body: 'When you want a written out-the-door quote, tap Unlock my price. That uses one car.',
+      title: 'Ask an in-network dealer',
+      body:
+          'If the listing URL matches an onboarded rooftop, a second key opens an anonymous chat. They see your first name only. The 7-day no-reply clock starts at confirmed delivery.',
     ),
     (
       icon: LucideIcons.check,
-      title: 'You decide',
-      body: 'Review the quote. Drevvy never accepts an offer for you.',
+      title: 'Or request the number',
+      body:
+          'If the rooftop is not on Drevvy, request the out-the-door number for free. That is an analytics form, not a chat, and it does not use a key.',
     ),
   ];
 
