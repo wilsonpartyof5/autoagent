@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Work email sign-in is a stub. Drevvy connects an anonymous shopper with a salesperson in this chat. No message is sent, and no account is created.',
+                        'Work email sign-in is a stub. Dealers see first name only. Chat is for transparency and answering questions. No message is sent, and no account is created.',
                         style: TextStyle(color: DealerColors.muted, height: 1.4),
                       ),
                       const SizedBox(height: 20),

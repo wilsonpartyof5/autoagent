@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
+import { useGlassTheme } from '@/components/glass/glass-theme';
+import { shopperDeskLabel } from '@/lib/dealer/demo-org';
 import { matchesInboxFilter } from '@/lib/dealer/format';
 import type {
   ConversationDetail,
@@ -12,7 +14,7 @@ import type {
 import { ConversationPane } from './conversation-pane';
 import { filterLabel, PriceLine, SlaText, StageChip } from './stage-chip';
 
-const FILTERS: InboxFilter[] = ['needs_reply', 'all_open', 'closed'];
+const FILTERS: InboxFilter[] = ['needs_reply', 'in_chat', 'all'];
 
 export function InboxDesk({
   initialItems,
@@ -26,6 +28,7 @@ export function InboxDesk({
   previewConversation?: ConversationDetail | null;
   selectedId: string | null;
 }) {
+  const { rooftopId } = useGlassTheme();
   const selection = selectedId ?? '';
   const [shownId, setShownId] = useState(selection);
   const [items, setItems] = useState(initialItems);
@@ -41,99 +44,85 @@ export function InboxDesk({
     setFilter(initialFilter(initialConversation ?? previewConversation));
   }
 
-  const visible = items.filter(item => matchesInboxFilter(item, filter));
+  const rooftopItems =
+    rooftopId === 'all'
+      ? items
+      : items.filter(item => item.rooftopId === rooftopId);
+  const visible = rooftopItems.filter(item => matchesInboxFilter(item, filter));
   const showList = selectedId == null;
   const detail = conversation ?? previewConversation;
   const previewId = selectedId == null ? (previewConversation?.id ?? null) : null;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)]">
+    <div className="row desk-split">
       <section
-        className={`${showList ? 'flex' : 'hidden md:flex'} min-h-0 flex-col border-r border-border bg-card`}
+        className={`g card ${showList ? 'flex' : 'hidden md:flex'} min-h-0 flex-col gap-1.5`}
       >
-        <div className="border-b border-border px-4 py-3">
-          <h1 className="text-lg font-extrabold">Inbox</h1>
-          <p className="text-xs leading-5 text-muted-foreground">
-            Buyer via Drevvy, plus a short reference. No name or city.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {FILTERS.map(value => {
-              const count = items.filter(item =>
-                matchesInboxFilter(item, value)
-              ).length;
-              const selected = filter === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setFilter(value)}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    selected
-                      ? 'bg-[#171A2C] text-white'
-                      : 'border border-border bg-background text-foreground'
-                  }`}
-                >
-                  {filterLabel(value)} {count}
-                </button>
-              );
-            })}
-          </div>
+        <div className="pills" style={{ marginBottom: 8 }}>
+          {FILTERS.map(value => {
+            const count = rooftopItems.filter(item =>
+              matchesInboxFilter(item, value)
+            ).length;
+            const selected = filter === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`pill${selected ? ' on' : ''}`}
+                aria-pressed={selected}
+                onClick={() => setFilter(value)}
+              >
+                {filterLabel(value)} {count}
+              </button>
+            );
+          })}
         </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto">
-          {visible.length === 0 ? (
-            <li className="px-4 py-8 text-sm text-muted-foreground">
-              Nothing in this filter.
-            </li>
-          ) : (
-            visible.map(item => {
-              const selected = item.id === selectedId || item.id === previewId;
-              return (
-                <li key={item.id}>
-                  <Link
-                    href={`/dealer/leads/${item.id}`}
-                    aria-current={item.id === selectedId ? 'page' : undefined}
-                    className={`block border-b border-border px-4 py-3 ${
-                      selected
-                        ? 'bg-background max-md:bg-transparent'
-                        : 'hover:bg-background'
-                    }`}
+        {visible.length === 0 ? (
+          <p className="mut" style={{ padding: 16 }}>
+            Nothing in this filter.
+          </p>
+        ) : (
+          visible.map(item => {
+            const selected = item.id === selectedId || item.id === previewId;
+            return (
+              <Link
+                key={item.id}
+                href={`/dealer/leads/${item.id}`}
+                aria-current={item.id === selectedId ? 'page' : undefined}
+                className={`lead${selected ? ' on' : ''}`}
+              >
+                <div className="av">{item.shopperFirstName.slice(0, 1)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <b>{shopperDeskLabel(item.shopperFirstName, item.shopperRef)}</b>
+                    <SlaText sla={item.sla} />
+                  </div>
+                  <div className="mut">{item.vehicleTitle}</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      marginTop: 4,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="min-w-0 truncate text-sm font-extrabold">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                          {item.buyerLabel}
-                        </span>{' '}
-                        {item.shopperRef}
-                      </p>
-                      <SlaText sla={item.sla} />
-                    </div>
-                    <p className="text-sm">{item.vehicleTitle}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Stock #{item.stockNumber}
-                    </p>
-                    <div className="mt-1">
-                      <PriceLine
-                        advertisedPriceCents={item.advertisedPriceCents}
-                        statedPriceCents={item.statedPriceCents}
-                        priceDiffers={item.priceDiffers}
-                      />
-                    </div>
-                    <div className="mt-2">
-                      <StageChip stage={item.stage} label={item.stageLabel} />
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                      {item.snippet}
-                    </p>
-                  </Link>
-                </li>
-              );
-            })
-          )}
-        </ul>
+                    {item.snippet}
+                  </div>
+                  <PriceLine
+                    advertisedPriceCents={item.advertisedPriceCents}
+                    statedPriceCents={item.statedPriceCents}
+                    priceDiffers={item.priceDiffers}
+                  />
+                </div>
+                <StageChip stage={item.stage} label={item.stageLabel} />
+              </Link>
+            );
+          })
+        )}
       </section>
       <section
-        className={`${showList ? 'hidden md:flex' : 'flex'} min-h-0 flex-col`}
+        className={`g card ${showList ? 'hidden md:flex' : 'flex'} min-h-0 flex-col gap-3`}
       >
         {detail ? (
           <ConversationPane
@@ -146,10 +135,8 @@ export function InboxDesk({
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <p className="text-sm font-extrabold">Select a conversation</p>
-            <p className="max-w-xs text-sm text-muted-foreground">
-              The thread and composer open in this pane.
-            </p>
+            <p className="t">Select a conversation</p>
+            <p className="mut">The thread and composer open in this pane.</p>
           </div>
         )}
       </section>
@@ -165,7 +152,7 @@ function initialFilter(conversation: ConversationDetail | null): InboxFilter {
     conversation.stage === 'in_conversation' ||
     conversation.stage === 'numbers_shared'
   ) {
-    return 'all_open';
+    return 'in_chat';
   }
-  return 'closed';
+  return 'all';
 }

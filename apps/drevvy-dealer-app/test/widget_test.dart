@@ -24,12 +24,12 @@ void main() {
     await tester.tap(find.byKey(const Key('continue-demo')));
     await tester.pumpAndSettle();
 
-    expect(find.text('#A7F2'), findsOneWidget);
-    expect(find.text('#B3C1'), findsOneWidget);
-    expect(find.textContaining('phone'), findsNothing);
+    expect(find.textContaining('Jordan · #A7F2'), findsOneWidget);
+    expect(find.textContaining('Sam · #B3C1'), findsOneWidget);
+    expect(find.textContaining('555-'), findsNothing);
     expect(find.textContaining('@'), findsNothing);
 
-    await tester.tap(find.text('#A7F2'));
+    await tester.tap(find.textContaining('Jordan · #A7F2'));
     await tester.pumpAndSettle();
 
     expect(find.text('Conversation'), findsOneWidget);

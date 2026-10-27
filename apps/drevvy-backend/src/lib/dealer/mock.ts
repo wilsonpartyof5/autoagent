@@ -1,6 +1,7 @@
 /**
  * In-memory dealer desk. Process-local mock for /api/dealer/v1 and /dealer.
- * The shopper is fully anonymous: no name and no city.
+ * Dealers see first name only plus a conversation ref. Never last name,
+ * phone, email, address, or city.
  * The first message is the Get Best Price template. Later messages are freeform
  * chat inside Drevvy. This desk does not send Telnyx text, email, or calls.
  * A salesperson reply moves New request to In conversation.
@@ -12,7 +13,9 @@ import {
   bestPriceOpener,
   CLOSE_FEE_CENTS,
   CLOSE_FEE_COPY,
+  isInboxFilter,
   isOpenStage,
+  matchesInboxFilter,
   needsReply,
   numbersShareBody,
   pricesDiffer,
@@ -32,6 +35,7 @@ import type {
   Conversation,
   ConversationDetail,
   DealerDemoError,
+  InboxFilter,
   InboxItem,
 } from './types';
 
@@ -54,8 +58,9 @@ export function buildSeed(now: Date): Conversation[] {
   return [
     {
       id: 'conv_rav4',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Jordan',
       shopperRef: '#A7F2',
+      rooftopId: 'lakeside',
       stage: 'new_request',
       vehicle: {
         year: 2024,
@@ -76,6 +81,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Jordan',
             stockNumber: 'R44118',
             vehicleTitle: '2024 Toyota RAV4 XLE Premium',
             advertisedPriceCents: 3_324_000,
@@ -86,8 +92,9 @@ export function buildSeed(now: Date): Conversation[] {
     },
     {
       id: 'conv_f150',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Sam',
       shopperRef: '#B3C1',
+      rooftopId: 'lakeside',
       stage: 'in_conversation',
       vehicle: { year: 2023, make: 'Ford', model: 'F-150', trim: 'XLT' },
       stockNumber: 'F31802',
@@ -103,6 +110,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Sam',
             stockNumber: 'F31802',
             vehicleTitle: '2023 Ford F-150 XLT',
             advertisedPriceCents: 4_150_000,
@@ -127,8 +135,9 @@ export function buildSeed(now: Date): Conversation[] {
     },
     {
       id: 'conv_tucson',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Avery',
       shopperRef: '#C9D4',
+      rooftopId: 'lakeside',
       stage: 'numbers_shared',
       vehicle: {
         year: 2025,
@@ -149,6 +158,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Avery',
             stockNumber: 'T55290',
             vehicleTitle: '2025 Hyundai Tucson Limited',
             advertisedPriceCents: tucsonAdvertised,
@@ -178,8 +188,9 @@ export function buildSeed(now: Date): Conversation[] {
     },
     {
       id: 'conv_sportage',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Casey',
       shopperRef: '#D2E8',
+      rooftopId: 'airport',
       stage: 'car_sold',
       vehicle: { year: 2024, make: 'Kia', model: 'Sportage', trim: 'SX' },
       stockNumber: 'K44901',
@@ -195,6 +206,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Casey',
             stockNumber: 'K44901',
             vehicleTitle: '2024 Kia Sportage SX',
             advertisedPriceCents: 3_129_000,
@@ -212,8 +224,9 @@ export function buildSeed(now: Date): Conversation[] {
     },
     {
       id: 'conv_outback',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Riley',
       shopperRef: '#E4A1',
+      rooftopId: 'midtown',
       stage: 'closed',
       vehicle: {
         year: 2022,
@@ -234,6 +247,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Riley',
             stockNumber: 'S22014',
             vehicleTitle: '2022 Subaru Outback Limited',
             advertisedPriceCents: 2_844_000,
@@ -265,8 +279,9 @@ export function buildSeed(now: Date): Conversation[] {
     },
     {
       id: 'conv_tahoe',
-      buyerLabel: 'Buyer via Drevvy',
+      shopperFirstName: 'Morgan',
       shopperRef: '#F6B0',
+      rooftopId: 'lakeside',
       stage: 'no_reply',
       vehicle: { year: 2021, make: 'Chevrolet', model: 'Tahoe', trim: 'LT' },
       stockNumber: 'C19077',
@@ -282,6 +297,7 @@ export function buildSeed(now: Date): Conversation[] {
           author: 'drevvy',
           kind: 'opener',
           body: bestPriceOpener({
+            shopperFirstName: 'Morgan',
             stockNumber: 'C19077',
             vehicleTitle: '2021 Chevrolet Tahoe LT',
             advertisedPriceCents: 4_680_000,
@@ -332,7 +348,7 @@ export function listCloseCharges(now = new Date()): CloseCharge[] {
 export function billingSnapshot(now = new Date()): BillingSnapshot {
   return {
     source: 'mock',
-    role: 'manager',
+    role: 'owner_gm',
     dayToDay: 'free',
     closeFeeCents: CLOSE_FEE_CENTS,
     closeFeeLabel: CLOSE_FEE_COPY,
@@ -348,8 +364,9 @@ function find(id: string): Conversation | undefined {
 export function toInboxItem(conversation: Conversation, now: Date): InboxItem {
   return {
     id: conversation.id,
-    buyerLabel: conversation.buyerLabel,
+    shopperFirstName: conversation.shopperFirstName,
     shopperRef: conversation.shopperRef,
+    rooftopId: conversation.rooftopId,
     stage: conversation.stage,
     stageLabel: STAGE_LABEL[conversation.stage],
     vehicleTitle: vehicleTitle(conversation.vehicle),
@@ -396,15 +413,8 @@ export function allInboxItems(now = new Date()): InboxItem[] {
     .sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
 }
 
-export function listInbox(
-  filter: 'needs_reply' | 'all_open' | 'closed',
-  now = new Date()
-): InboxItem[] {
-  return allInboxItems(now).filter(item => {
-    if (filter === 'needs_reply') return item.needsReply;
-    if (filter === 'all_open') return isOpenStage(item.stage);
-    return !isOpenStage(item.stage);
-  });
+export function listInbox(filter: InboxFilter, now = new Date()): InboxItem[] {
+  return allInboxItems(now).filter(item => matchesInboxFilter(item, filter));
 }
 
 export type DealerResult<T> =
@@ -552,11 +562,7 @@ export function inboxHttp(
   now = new Date()
 ): { status: number; body: unknown } {
   const filter = new URL(url).searchParams.get('filter') ?? 'needs_reply';
-  if (
-    filter !== 'needs_reply' &&
-    filter !== 'all_open' &&
-    filter !== 'closed'
-  ) {
+  if (!isInboxFilter(filter)) {
     return { status: 400, body: { error: 'invalid_filter' } };
   }
   return {

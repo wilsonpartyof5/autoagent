@@ -16,33 +16,45 @@ This is not the dealer portal removed in October 2026. The public page at `/deal
 
 Dealer-facing pages under `/dealer`, plus mock APIs under `/api/dealer/v1`. This is a scaffold. It does not authenticate anyone, and it does not read the database.
 
-The high-fi folder `drevvy/handoff/Drevvy-Dealer-Surfaces/mockups/` was not on this machine. The screens follow the named frames and Halo tokens: Manrope, mist `#EEF1F7`, a dark rail, and the Halo gradient only on the primary button, outgoing bubbles, and the numbers-card rule.
+The desk and `/admin` use the locked glass tokens: Manrope, dark `#07080C` / light `#F4F6FB`, orbs `#5B4FE9` / `#3563E0` / `#1FB8C9`, frosted cards (`blur(24px)`, radius 20), and a 72px icon rail plus pill top bar. Dark and light twins switch in the chrome. This is not a standalone glass preview project.
 
-Desktop inbox opens on the numbers-shared conversation in the detail pane. Narrow web and Flutter keep the list until a row is opened. Lead detail in conversation shows reply templates above the composer.
+Desktop inbox opens on the numbers-shared conversation in the detail pane. Narrow web and Flutter keep the list until a row is opened. Lead detail in conversation shows message-only chips above the composer.
 
-Desktop (the left rail is visible): **Inbox** is a split of the list and the detail. **Analytics**, **Settings**, and **Login** are their own pages. Login is a centered card, outside the rail.
+Desktop (the left rail is visible): **Inbox** is a split of the list and the detail. **Analytics**, **Team**, **Rooftops**, **Roles**, **Billing**, **Settings**, and **Login** are their own pages. Login and onboarding are centered cards, outside the rail.
 
 Narrow web and the Flutter app: **Inbox** is the list. **Lead detail** is full screen, with the composer pinned under the thread. **Analytics** and **Login** are their own screens. Flutter also has **Settings** on the bottom bar. The narrow web lead screen hides that bar so the composer stays on screen.
 
-| Route               | Screen                                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------- |
-| `/dealer/login`     | Work email, then any 6-digit code. Nothing is sent or checked.                                  |
-| `/dealer/inbox`     | Conversation list. Beside it, desktop shows “Select a conversation.”                            |
-| `/dealer/leads/:id` | Same split on desktop. On a narrow window the thread and composer fill the screen.              |
-| `/dealer/analytics` | Sample counts for 7, 30, and 90 days.                                                           |
-| `/dealer/settings`  | Profile, notifications, store, team, sign out. Nothing is saved.                                |
+| Route | Screen |
+| --- | --- |
+| `/dealer/login` | Work email, then any 6-digit code. Rooftop picker. Nothing is sent or checked. |
+| `/dealer/invite/:token` | Accept invite. |
+| `/dealer/verify` | Verify work email. |
+| `/dealer/onboarding/org` | Dealer group. |
+| `/dealer/onboarding/rooftops` | Add rooftops. |
+| `/dealer/onboarding/team` | Invite team. |
+| `/dealer/onboarding/routing` | Conversation routing. |
+| `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. |
+| `/dealer/onboarding/done` | Ready, then inbox. |
+| `/dealer/inbox` | Conversation list. Beside it, desktop shows a preview thread. |
+| `/dealer/leads/:id` | Same split on desktop. On a narrow window the thread and composer fill the screen. |
+| `/dealer/analytics` | Sample counts for 7, 30, and 90 days. |
+| `/dealer/team` | Owner/GM team invites. |
+| `/dealer/rooftops` | Demo rooftops. |
+| `/dealer/roles` | Salesperson / BDC / Sales Manager / Owner/GM. |
+| `/dealer/billing` | Owner/GM $300 close fee stub. |
+| `/dealer/settings` | Profile, notifications, store, sign out. Nothing is saved. |
 
-Inbox filters: **Needs reply**, **All open**, **Closed**.
+Inbox filters: **Needs reply**, **In chat**, **All**. The API still accepts `all_open` and `closed`.
 
-A mock row still shows **Buyer via Drevvy** plus a short reference such as **#A7F2**, year/make/model/trim, stock number, stage, advertised price, a snippet, and a timer. That anonymous label is desk-demo only. Live in-network chat uses **first name only** (`shopper_dealer_conversations.shopper_first_name`). Never last name, email, phone, or city.
+A mock row shows **first name + conversation ref** such as **Jordan · #A7F2**, year/make/model/trim, stock number, stage, advertised price, a snippet, and a timer. Never last name, email, phone, or city. Live in-network chat uses the same rule (`shopper_dealer_conversations.shopper_first_name`).
 
 Stages: **New request → In conversation → Numbers shared**, and the end states **Closed**, **Car sold**, and **No reply**.
 
-The first message is the templated **Get Best Price** opener. After that, both sides write freeform text in this chat. Reply templates only fill the box. **Share numbers** posts an informational card in the thread. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx. One-click reply chips belong on a later shopper screen.
+The first message is the templated **Get Best Price** opener. After that, both sides write freeform text in this chat. Composer chips are message-only: Share itemized OTD · Still available · Answer question · Price & fees · Vehicle details. No come-in or test-drive CTAs. **Share itemized OTD** can also open the informational numbers card. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx.
 
-Analytics cards: reply rate, median first-reply time, conversations started, conversations closed, numbers shared.
+Analytics cards: reply rate, median first-reply time, conversations started, conversations closed, itemized OTD shared.
 
-Settings includes one demo rooftop and a doc-fee default. The team list is a placeholder for managers and above.
+Settings and billing use the three demo rooftops. Billing is Owner/GM only. Shopper keys never appear on dealer or admin.
 
 ## Mock vs real
 
@@ -54,12 +66,12 @@ The inbox timer is a display value. It is not an SLA policy.
 
 | Method | Path                                                        | Body                                                        |
 | ------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
-| `GET`  | `/api/dealer/v1/inbox?filter=needs_reply\|all_open\|closed` | `{ source, filter, items }`                                 |
+| `GET`  | `/api/dealer/v1/inbox?filter=needs_reply\|in_chat\|all\|all_open\|closed` | `{ source, filter, items }`                                 |
 | `GET`  | `/api/dealer/v1/leads/:leadId`                              | `{ source, conversation }` including `messages`             |
 | `POST` | `/api/dealer/v1/leads/:leadId/messages`                     | `{ body }`                                                  |
 | `POST` | `/api/dealer/v1/leads/:leadId/numbers`                      | `{ statedPriceCents, writtenOtdCents?, note? }`             |
 | `POST` | `/api/dealer/v1/leads/:leadId/sold`                         | Marks an open conversation **Car sold**. Mock billing still records a placeholder $300 in memory. Live `dealer_close_fees` rows are written only when the **shopper confirms a purchase**. |
-| `GET`  | `/api/dealer/v1/billing`                                    | Manager billing stub. No card is charged.                   |
+| `GET`  | `/api/dealer/v1/billing`                                    | Owner/GM billing stub. No card is charged.                  |
 | `GET`  | `/api/dealer/v1/analytics?range=7d\|30d\|90d`               | reply rate, median minutes, started, closed, numbers shared |
 
 The route name `leads` matches the information architecture. The screen label is **Conversation**.

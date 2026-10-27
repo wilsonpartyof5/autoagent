@@ -8,6 +8,7 @@ import {
   postConversationMessage,
   shareConversationNumbers,
 } from '@/app/dealer/actions';
+import { shopperDeskLabel } from '@/lib/dealer/demo-org';
 import {
   dollarsToCents,
   formatMoney,
@@ -22,8 +23,6 @@ import type {
   InboxItem,
 } from '@/lib/dealer/types';
 import { PriceLine, SlaText, StageChip, StageStepper } from './stage-chip';
-
-const HALO = 'bg-[linear-gradient(135deg,#5145DB_0%,#3563E0_100%)]';
 
 const ERROR_COPY: Record<DealerDemoError, string> = {
   not_found: 'That conversation is not in the demo.',
@@ -49,6 +48,10 @@ export function ConversationPane({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const open = isOpenStage(conversation.stage);
+  const deskName = shopperDeskLabel(
+    conversation.shopperFirstName,
+    conversation.shopperRef
+  );
 
   async function sendMessage() {
     setPending(true);
@@ -107,76 +110,59 @@ export function ConversationPane({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background">
-      <header className="border-b border-border bg-card px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
+    <section className="flex h-full min-h-0 flex-col gap-3">
+      <header className="flex items-start justify-between gap-3">
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="av">{conversation.shopperFirstName.slice(0, 1)}</div>
           <div>
-            <Link
-              href="/dealer/inbox"
-              className="text-xs font-semibold text-[#3C30C4] md:hidden"
-            >
+            <Link href="/dealer/inbox" className="mut md:hidden">
               Inbox
             </Link>
-            <h1 className="text-lg font-extrabold">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                {conversation.buyerLabel}
-              </span>{' '}
-              {conversation.shopperRef}
-            </h1>
-            <p className="text-sm text-muted-foreground">Conversation</p>
-          </div>
-          <div className="text-right">
-            <StageChip
-              stage={conversation.stage}
-              label={conversation.stageLabel}
-            />
-            <div className="mt-1">
-              <SlaText sla={conversation.sla} />
+            <div className="t">{deskName}</div>
+            <div className="mut">
+              {conversation.vehicleTitle} · started via Drevvy
             </div>
           </div>
         </div>
-        <p className="mt-2 text-sm font-semibold">
-          {conversation.vehicleTitle}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Stock #{conversation.stockNumber}
-        </p>
-        <div className="mt-1">
-          <PriceLine
-            advertisedPriceCents={conversation.advertisedPriceCents}
-            statedPriceCents={conversation.statedPriceCents}
-            priceDiffers={conversation.priceDiffers}
-          />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <StageChip stage={conversation.stage} label={conversation.stageLabel} />
+          <SlaText sla={conversation.sla} />
+          <button
+            type="button"
+            disabled={!open}
+            onClick={() => {
+              setShowNumbers(false);
+              setConfirmSold(value => !value);
+            }}
+            className="btn2"
+          >
+            Mark sold · $300
+          </button>
         </div>
-        <div className="mt-2">
-          <StageStepper stage={conversation.stage} />
-        </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Templated Get Best Price opener, then freeform chat. Drevvy relays
-          both ways. One-click chips are shopper helpers on a later shopper
-          screen. This desk does not text, email, or call.
-        </p>
       </header>
+      <PriceLine
+        advertisedPriceCents={conversation.advertisedPriceCents}
+        statedPriceCents={conversation.statedPriceCents}
+        priceDiffers={conversation.priceDiffers}
+      />
+      <StageStepper stage={conversation.stage} />
+      <div className="note">
+        Message-only. Shopper first name is shown in-dashboard; contact details
+        stay private. Chat is for transparency and answering questions.
+      </div>
 
-      <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto">
         {conversation.messages.map(message => {
           if (message.kind === 'numbers') {
             return (
-              <li key={message.id} className="flex justify-start">
-                <div className="w-full max-w-[85%] overflow-hidden rounded-xl border border-border bg-card text-sm leading-5">
-                  <div className={`h-1 ${HALO}`} />
-                  <div className="px-3 py-3">
-                  <p className="text-[11px] font-semibold text-muted-foreground">
-                    Share numbers · Informational card
-                  </p>
+              <li key={message.id}>
+                <div className="otd">
+                  <p className="lab">Share itemized OTD · Informational card</p>
                   <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className="mut" style={{ marginTop: 8 }}>
                     {SHARE_NUMBERS_DISCLAIMER}
                   </p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {formatStamp(message.sentAt)}
-                  </p>
-                  </div>
+                  <p className="mut">{formatStamp(message.sentAt)}</p>
                 </div>
               </li>
             );
@@ -187,62 +173,42 @@ export function ConversationPane({
             ? 'You'
             : opener
               ? 'Drevvy'
-              : conversation.shopperRef;
+              : conversation.shopperFirstName;
           return (
-            <li
-              key={message.id}
-              className={mine ? 'flex justify-end' : 'flex justify-start'}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-5 ${
-                  mine
-                    ? `${HALO} text-white`
-                    : opener
-                      ? 'border border-[#ECEAFF] bg-[#F7F8FC] text-foreground'
-                      : 'border border-border bg-card text-foreground'
-                }`}
-              >
-                <p
-                  className={`text-[11px] font-semibold ${mine ? 'text-white/70' : 'text-muted-foreground'}`}
-                >
+            <li key={message.id} className={mine ? 'flex justify-end' : 'flex justify-start'}>
+              <div className={`bub ${mine ? 'me' : 'them'}`}>
+                <p className="lab">
                   {label}
                   {opener ? ' · Templated opener' : ''}
                 </p>
                 <p className="whitespace-pre-wrap">{message.body}</p>
-                <p
-                  className={`mt-1 text-[10px] ${mine ? 'text-white/60' : 'text-muted-foreground'}`}
-                >
-                  {formatStamp(message.sentAt)}
-                </p>
+                <p className="mut">{formatStamp(message.sentAt)}</p>
               </div>
             </li>
           );
         })}
       </ol>
 
-      <div className="shrink-0 border-t border-border bg-card px-4 py-3">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Reply in this chat
-        </p>
+      <div>
         {confirmSold && open ? (
-          <div className="mb-3 rounded-xl border border-border bg-background p-3">
-            <p className="text-sm font-extrabold">Mark as sold</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <div className="otd" style={{ marginBottom: 12 }}>
+            <p className="t">Mark as sold</p>
+            <p className="mut" style={{ marginTop: 6 }}>
               {MARK_SOLD_CONFIRM}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button
                 type="button"
                 onClick={confirmMarkSold}
                 disabled={pending}
-                className={`rounded-xl px-3 py-2 text-sm font-extrabold text-white disabled:opacity-40 ${HALO}`}
+                className="btn"
               >
                 Mark sold
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmSold(false)}
-                className="rounded-xl border border-border px-3 py-2 text-sm font-semibold"
+                className="btn2"
               >
                 Cancel
               </button>
@@ -250,129 +216,104 @@ export function ConversationPane({
           </div>
         ) : null}
         {showNumbers && open ? (
-          <div className="mb-3 overflow-hidden rounded-xl border border-border bg-background">
-            <div className={`h-1 ${HALO}`} />
-            <div className="p-3">
-            <p className="text-sm font-extrabold">Share numbers</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {SHARE_NUMBERS_DISCLAIMER} Where a written total becomes the
-              record is still an open question.
+          <div className="otd" style={{ marginBottom: 12 }}>
+            <p className="t">Share itemized OTD</p>
+            <p className="mut" style={{ marginTop: 6 }}>
+              {SHARE_NUMBERS_DISCLAIMER} Vehicle, doc fee, tax, tag/title, and
+              any add-ons — line by line.
             </p>
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mut" style={{ marginTop: 8 }}>
               Advertised {formatMoney(conversation.advertisedPriceCents)}
             </p>
-            <label
-              className="mt-2 block text-xs font-semibold"
-              htmlFor="stated-price"
-            >
+            <label className="lab" htmlFor="stated-price">
               Price you state
             </label>
             <input
               id="stated-price"
+              className="inp"
               value={stated}
               onChange={event => setStated(event.target.value)}
               inputMode="decimal"
               placeholder="35400"
-              className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
             />
-            <label
-              className="mt-2 block text-xs font-semibold"
-              htmlFor="otd-price"
-            >
+            <label className="lab" htmlFor="otd-price">
               Written out-the-door total (optional)
             </label>
             <input
               id="otd-price"
+              className="inp"
               value={otd}
               onChange={event => setOtd(event.target.value)}
               inputMode="decimal"
               placeholder="38950"
-              className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
             />
-            <label
-              className="mt-2 block text-xs font-semibold"
-              htmlFor="numbers-note"
-            >
+            <label className="lab" htmlFor="numbers-note">
               Note (optional)
             </label>
             <textarea
               id="numbers-note"
+              className="inp"
               value={note}
               onChange={event => setNote(event.target.value)}
               rows={2}
-              className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
             />
             <button
               type="button"
               onClick={share}
               disabled={pending}
-              className="mt-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+              className="btn"
+              style={{ marginTop: 10 }}
             >
               Share in chat
             </button>
-            </div>
           </div>
         ) : null}
 
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div>
           {conversation.replyTemplates.map(template => (
             <button
               key={template.id}
               type="button"
-              onClick={() => setDraft(template.text)}
-              className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold"
+              className={`cp${template.id === 'otd' ? ' p' : ''}`}
+              onClick={() => {
+                setDraft(template.text);
+                if (template.id === 'otd') {
+                  setConfirmSold(false);
+                  setShowNumbers(true);
+                }
+              }}
             >
               {template.label}
             </button>
           ))}
-          <button
-            type="button"
-            disabled={!open}
-            onClick={() => setShowNumbers(value => !value)}
-            className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40"
-          >
-            Share numbers
-          </button>
-          <button
-            type="button"
-            disabled={!open}
-            onClick={() => {
-              setShowNumbers(false);
-              setConfirmSold(value => !value);
-            }}
-            className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40"
-          >
-            Mark as sold
-          </button>
         </div>
         {!open ? (
-          <p className="mb-2 text-xs text-muted-foreground">
+          <p className="mut" style={{ marginBottom: 8 }}>
             Closed conversations stay closed in this demo. You can still reply
             in the thread.
           </p>
         ) : null}
         {error ? (
-          <p className="mb-2 text-xs font-semibold text-[#B42828]" role="alert">
+          <p className="dn" role="alert">
             {error}
           </p>
         ) : null}
-        <div className="flex items-end gap-2">
+        <div style={{ display: 'flex', gap: 8 }}>
           <label className="sr-only" htmlFor="chat-composer">
-            Reply in this chat
+            Reply to {conversation.shopperFirstName}
           </label>
-          <textarea
+          <input
             id="chat-composer"
+            className="inp"
             value={draft}
             onChange={event => setDraft(event.target.value)}
-            rows={3}
-            placeholder="Reply in this chat"
-            className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            placeholder={`Reply to ${conversation.shopperFirstName}…`}
           />
           <button
             type="button"
             onClick={sendMessage}
             disabled={pending || draft.trim().length === 0}
-            className={`rounded-xl px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(81,69,219,0.28)] disabled:opacity-40 ${HALO}`}
+            className="btn"
           >
             Send
           </button>

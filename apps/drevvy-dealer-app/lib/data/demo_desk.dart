@@ -12,7 +12,7 @@ enum ConversationStage {
   noReply,
 }
 
-enum InboxFilter { needsReply, allOpen, closed }
+enum InboxFilter { needsReply, inChat, all, allOpen, closed }
 
 enum MessageAuthor { drevvy, shopper, salesperson }
 
@@ -55,6 +55,7 @@ class ThreadMessage {
 class Conversation {
   Conversation({
     required this.id,
+    required this.shopperFirstName,
     required this.shopperRef,
     required this.stage,
     required this.vehicle,
@@ -69,7 +70,10 @@ class Conversation {
   });
 
   final String id;
+  final String shopperFirstName;
   final String shopperRef;
+
+  String get deskLabel => '$shopperFirstName · $shopperRef';
   ConversationStage stage;
   final VehicleSummary vehicle;
   final String stockNumber;
@@ -81,7 +85,6 @@ class Conversation {
   final DateTime replyDueAt;
   final List<ThreadMessage> messages;
 
-  static const buyerLabel = 'Buyer via Drevvy';
 }
 
 class SlaChip {
@@ -114,7 +117,7 @@ class InboxItem {
 }
 
 const shareNumbersDisclaimer =
-    'Informational for this anonymous shopper. Not a binding offer.';
+    'Informational itemized out-the-door for this shopper. Not a binding offer.';
 
 const demoRooftopName = 'Demo Rooftop';
 const demoDocFeeDollars = 499;
@@ -170,15 +173,16 @@ bool isOpenStage(ConversationStage stage) {
 }
 
 String bestPriceOpener({
+  required String shopperFirstName,
   required String stockNumber,
   required String vehicleTitle,
   required int advertisedPriceCents,
 }) {
   return [
     'Get Best Price',
-    'An anonymous shopper tapped Get Best Price on stock #$stockNumber, a $vehicleTitle.',
+    '$shopperFirstName asked about stock #$stockNumber, a $vehicleTitle.',
     'Advertised price ${formatMoney(advertisedPriceCents)}.',
-    'Reply in this chat. Drevvy relays messages both ways. No text, email, or call.',
+    'Reply in this chat. Drevvy is the messaging middleman — chat is for transparency and answering questions. No text, email, or call.',
   ].join('\n');
 }
 
@@ -244,19 +248,29 @@ SlaChip slaFor(Conversation conversation, DateTime now) {
 List<ReplyTemplate> replyTemplatesFor(Conversation conversation) {
   return [
     ReplyTemplate(
+      'otd',
+      'Share itemized OTD',
+      'Here’s your itemized out-the-door: vehicle, doc fee, tax, tag/title — no add-ons.',
+    ),
+    ReplyTemplate(
       'available',
       'Still available',
-      'Yes, stock #${conversation.stockNumber} is still here.',
+      'Yes — stock #${conversation.stockNumber} is still available at this rooftop.',
     ),
     ReplyTemplate(
-      'sold',
-      'Car sold',
-      'Stock #${conversation.stockNumber} has sold.',
+      'answer',
+      'Answer question',
+      'Good question — here’s the answer:',
     ),
     ReplyTemplate(
-      'advertised',
-      'Advertised price',
-      'The advertised price is ${formatMoney(conversation.advertisedPriceCents)}. I can share a written out-the-door total in this chat.',
+      'fees',
+      'Price & fees',
+      'Current listed price is ${formatMoney(conversation.advertisedPriceCents)}. I can share the itemized fees in this chat.',
+    ),
+    ReplyTemplate(
+      'details',
+      'Vehicle details',
+      'Here are the trims and options on this vehicle:',
     ),
   ];
 }
@@ -290,6 +304,7 @@ List<Conversation> buildSeed(DateTime now) {
   return [
     Conversation(
       id: 'conv_rav4',
+      shopperFirstName: 'Jordan',
       shopperRef: '#A7F2',
       stage: ConversationStage.newRequest,
       vehicle: const VehicleSummary(
@@ -311,6 +326,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Jordan',
             stockNumber: 'R44118',
             vehicleTitle: '2024 Toyota RAV4 XLE Premium',
             advertisedPriceCents: 3324000,
@@ -321,6 +337,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_f150',
+      shopperFirstName: 'Sam',
       shopperRef: '#B3C1',
       stage: ConversationStage.inConversation,
       vehicle: const VehicleSummary(year: 2023, make: 'Ford', model: 'F-150', trim: 'XLT'),
@@ -337,6 +354,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Sam',
             stockNumber: 'F31802',
             vehicleTitle: '2023 Ford F-150 XLT',
             advertisedPriceCents: 4150000,
@@ -360,6 +378,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_tucson',
+      shopperFirstName: 'Avery',
       shopperRef: '#C9D4',
       stage: ConversationStage.numbersShared,
       vehicle: const VehicleSummary(
@@ -381,6 +400,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Avery',
             stockNumber: 'T55290',
             vehicleTitle: '2025 Hyundai Tucson Limited',
             advertisedPriceCents: tucsonAdvertised,
@@ -409,6 +429,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_sportage',
+      shopperFirstName: 'Casey',
       shopperRef: '#D2E8',
       stage: ConversationStage.carSold,
       vehicle: const VehicleSummary(year: 2024, make: 'Kia', model: 'Sportage', trim: 'SX'),
@@ -425,6 +446,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Casey',
             stockNumber: 'K44901',
             vehicleTitle: '2024 Kia Sportage SX',
             advertisedPriceCents: 3129000,
@@ -441,6 +463,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_outback',
+      shopperFirstName: 'Riley',
       shopperRef: '#E4A1',
       stage: ConversationStage.closed,
       vehicle: const VehicleSummary(
@@ -462,6 +485,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Riley',
             stockNumber: 'S22014',
             vehicleTitle: '2022 Subaru Outback Limited',
             advertisedPriceCents: 2844000,
@@ -490,6 +514,7 @@ List<Conversation> buildSeed(DateTime now) {
     ),
     Conversation(
       id: 'conv_tahoe',
+      shopperFirstName: 'Morgan',
       shopperRef: '#F6B0',
       stage: ConversationStage.noReply,
       vehicle: const VehicleSummary(
@@ -511,6 +536,7 @@ List<Conversation> buildSeed(DateTime now) {
           author: MessageAuthor.drevvy,
           kind: MessageKind.opener,
           body: bestPriceOpener(
+            shopperFirstName: 'Morgan',
             stockNumber: 'C19077',
             vehicleTitle: '2021 Chevrolet Tahoe LT',
             advertisedPriceCents: 4680000,
@@ -625,6 +651,10 @@ class DealerDesk extends ChangeNotifier {
       switch (filter) {
         case InboxFilter.needsReply:
           return item.needsReply;
+        case InboxFilter.inChat:
+          return isOpenStage(item.conversation.stage) && !item.needsReply;
+        case InboxFilter.all:
+          return true;
         case InboxFilter.allOpen:
           return isOpenStage(item.conversation.stage);
         case InboxFilter.closed:

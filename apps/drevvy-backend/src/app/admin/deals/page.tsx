@@ -13,10 +13,52 @@ export default async function AdminDealsPage() {
 
   return (
     <section className="space-y-8">
-      <header>
-        <h2 className="text-2xl font-semibold">Deals overview</h2>
-        <p className="mt-1 max-w-3xl text-sm text-slate-400">{sourceCopy(overview.source, overview.partial)}</p>
-      </header>
+      <p className="mut">{sourceCopy(overview.source, overview.partial)}</p>
+      <div className="kan">
+        <div className="g card">
+          <span className="chip c-new">New</span>
+          <div className="kc">
+            <b>Jordan · CR-V EX-L</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+          <div className="kc">
+            <b>Morgan · Civic EX</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+        </div>
+        <div className="g card">
+          <span className="chip c-chat">In chat</span>
+          <div className="kc">
+            <b>Avery · Accord Sport</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+          <div className="kc">
+            <b>Riley · RAV4 XLE</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+        </div>
+        <div className="g card">
+          <span className="chip c-wait">OTD shared</span>
+          <div className="kc">
+            <b>Sam · Camry SE</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+        </div>
+        <div className="g card">
+          <span className="chip c-no">No reply</span>
+          <div className="kc">
+            <b>Taylor · Sorento LX</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+        </div>
+        <div className="g card">
+          <span className="chip c-sold">Closed–sold</span>
+          <div className="kc">
+            <b>Casey · Tacoma TRD</b>
+            <div className="mut">Lakeside Auto Group</div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {OVERVIEW_STATUSES.map((status) => (

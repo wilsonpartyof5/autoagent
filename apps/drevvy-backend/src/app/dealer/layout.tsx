@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
+import { GlassRoot } from '@/components/glass/glass-theme';
+
 export const metadata: Metadata = {
   title: {
     default: 'Drevvy Desk',
@@ -10,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function DealerLayout({ children }: { children: ReactNode }) {
-  return children;
+  return <GlassRoot>{children}</GlassRoot>;
 }

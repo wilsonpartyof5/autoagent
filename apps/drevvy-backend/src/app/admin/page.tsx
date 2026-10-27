@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { StageChip } from '@/components/admin/admin-shell';
+import { DEMO_TEAM } from '@/lib/dealer/demo-org';
 import { stageLabel, subscriptionLabel, usd, when } from '@/lib/admin/format';
 import { queryShoppers, type ShopperSort } from '@/lib/admin/repository';
 import { DEAL_STAGES, type DealStage } from '@/lib/admin/types';
@@ -30,8 +31,7 @@ export default async function AdminShoppersPage({
     <section className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">All shoppers</h2>
-          <p className="mt-1 text-sm text-slate-400">{rows.length} shoppers in the mock book. Cap is 10 cars each.</p>
+          <p className="mut">{rows.length} shoppers in the mock book. Dealer staff sit in the same directory. Shopper keys stay off this desk.</p>
         </div>
         <form className="flex gap-2" action="/admin">
           <input type="hidden" name="sort" value={sort ?? 'lastActivity'} />
@@ -87,6 +87,29 @@ export default async function AdminShoppersPage({
         </table>
       </div>
       <p className="text-xs text-slate-500">Sorted by {sort} ({dir}). Times are Eastern.</p>
+      <div className="g card">
+        <div className="t">Dealer staff</div>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Type</th>
+              <th>Detail</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DEMO_TEAM.map(person => (
+              <tr key={person.name}>
+                <td>{person.name}</td>
+                <td>Dealer · {person.role}</td>
+                <td>{person.rooftops}</td>
+                <td>{person.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

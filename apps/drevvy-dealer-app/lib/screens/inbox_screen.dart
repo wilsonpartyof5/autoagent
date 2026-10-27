@@ -33,7 +33,7 @@ class _InboxScreenState extends State<InboxScreen> {
                 Text('Inbox', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
                 Text(
-                  'Buyer via Drevvy, plus a short reference. No name or city.',
+                  'First name + conversation ref only. Never phone, email, or address.',
                   style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
                 ),
               ],
@@ -45,7 +45,11 @@ class _InboxScreenState extends State<InboxScreen> {
           child: Wrap(
             spacing: 8,
             children: [
-              for (final filter in InboxFilter.values)
+              for (final filter in const [
+                InboxFilter.needsReply,
+                InboxFilter.inChat,
+                InboxFilter.all,
+              ])
                 _FilterChip(
                   label: _filterLabel(filter),
                   count: desk.inbox(filter).length,
@@ -79,16 +83,7 @@ class _InboxScreenState extends State<InboxScreen> {
                             Row(
                               children: [
                                 Text(
-                                  Conversation.buyerLabel,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: DealerColors.muted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  conversation.shopperRef,
+                                  conversation.deskLabel,
                                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                                 ),
                                 const Spacer(),
@@ -126,6 +121,8 @@ class _InboxScreenState extends State<InboxScreen> {
 String _filterLabel(InboxFilter filter) {
   return switch (filter) {
     InboxFilter.needsReply => 'Needs reply',
+    InboxFilter.inChat => 'In chat',
+    InboxFilter.all => 'All',
     InboxFilter.allOpen => 'All open',
     InboxFilter.closed => 'Closed',
   };
@@ -147,7 +144,7 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? DealerColors.ink : DealerColors.card,
+      color: selected ? DealerColors.violet : DealerColors.card,
       shape: StadiumBorder(
         side: BorderSide(color: selected ? DealerColors.ink : DealerColors.line),
       ),

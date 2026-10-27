@@ -58,8 +58,9 @@ describe('dealer desk mock', { concurrency: false }, () => {
       needs.map(item => item.id),
       ['conv_rav4', 'conv_f150']
     );
-    assert.equal(needs[0]?.buyerLabel, 'Buyer via Drevvy');
+    assert.equal(needs[0]?.shopperFirstName, 'Jordan');
     assert.equal(needs[0]?.shopperRef, '#A7F2');
+    assert.equal(needs[0]?.rooftopId, 'lakeside');
     assert.equal(needs[0]?.sla.label, '20m left');
     assert.equal(needs[1]?.shopperRef, '#B3C1');
     const opener = presentConversation('conv_rav4', NOW);
@@ -67,6 +68,22 @@ describe('dealer desk mock', { concurrency: false }, () => {
     assert.match(opener?.messages[0]?.body ?? '', /^Get Best Price/);
     assert.match(opener?.messages[0]?.body ?? '', /stock #R44118/);
     assert.equal(JSON.stringify(allInboxItems(NOW)).includes('Alex'), false);
+    assert.equal(JSON.stringify(allInboxItems(NOW)).includes('Buyer via Drevvy'), false);
+    const templates = opener?.replyTemplates ?? [];
+    assert.deepEqual(
+      templates.map(item => item.label),
+      [
+        'Share itemized OTD',
+        'Still available',
+        'Answer question',
+        'Price & fees',
+        'Vehicle details',
+      ]
+    );
+    assert.equal(
+      templates.every(item => !/come in|test-drive|visit us/i.test(item.text)),
+      true
+    );
     assert.equal(needs[1]?.sla.label, '12m over');
     assert.equal(
       needs.every(item => item.needsReply),
@@ -158,7 +175,7 @@ describe('dealer desk mock', { concurrency: false }, () => {
     resetDealerDemo(NOW);
     const before = billingSnapshot(NOW);
     assert.equal(before.source, 'mock');
-    assert.equal(before.role, 'manager');
+    assert.equal(before.role, 'owner_gm');
     assert.equal(before.dayToDay, 'free');
     assert.equal(before.closeFeeCents, CLOSE_FEE_CENTS);
     assert.equal(before.closeFeeLabel, '$300 per closed deal');
