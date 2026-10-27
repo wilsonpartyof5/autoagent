@@ -30,7 +30,7 @@ class KeySpend {
   static const dealerSeesFirstNameOnly =
       'Dealer inbox shows your first name only — never last name, phone, or email.';
   static const refundClockNote =
-      'The 7-day no-reply clock starts when delivery of your message is confirmed.';
+      'The 7-day no-reply clock starts at confirmed delivery of your message.';
   static const dealerCloseNote =
       'If you confirm you bought it, the dealer pays Drevvy \$300. You are not charged that fee.';
 

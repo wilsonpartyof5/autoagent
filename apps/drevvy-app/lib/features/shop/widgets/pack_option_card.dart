@@ -256,6 +256,8 @@ class _SavingsChip extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontFamily: DrevvyType.fontFamily,
           fontSize: 11.5,

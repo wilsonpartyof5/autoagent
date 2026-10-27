@@ -124,8 +124,21 @@ class _DrevvyButtonState extends State<DrevvyButton> with SingleTickerProviderSt
 
     final fontSize = widget.variant == DrevvyButtonVariant.compactPill ? 14.0 : 16.0;
 
+    final label = Text(
+      widget.label,
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: text.bodyStrong.copyWith(
+        color: textColor,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        height: 1.15,
+      ),
+    );
+
     Widget child = Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: widget.isFullWidth ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (widget.icon != null && !widget.isLoading) ...[
@@ -141,15 +154,10 @@ class _DrevvyButtonState extends State<DrevvyButton> with SingleTickerProviderSt
               valueColor: AlwaysStoppedAnimation(textColor),
             ),
           )
+        else if (widget.isFullWidth)
+          Flexible(child: label)
         else
-          Text(
-            widget.label,
-            style: text.bodyStrong.copyWith(
-              color: textColor,
-              fontSize: fontSize,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          label,
       ],
     );
 
