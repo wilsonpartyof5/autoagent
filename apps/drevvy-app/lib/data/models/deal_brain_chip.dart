@@ -1,16 +1,31 @@
 import 'package:equatable/equatable.dart';
 
-/// One-click in-network message chip. T1–T12 from the middleman spec.
+/// One suggestion the shopper can place in the dealer composer.
 ///
-/// The shopper taps a chip to send it. Nothing here is sent on its own.
-/// The sheet can show the after-opener pair. A later call to
-/// `POST /api/consumer/deals/:id/chips` can pass a fuller list.
+/// T1–T12 come from the middleman spec. A tap fills the composer.
+/// Nothing here is sent on its own. `POST /api/consumer/deals/:id/chips`
+/// supplies the live list. The sheet keeps the after-opener pair until
+/// that list arrives.
 class DealBrainChip extends Equatable {
   const DealBrainChip({
     required this.templateId,
     required this.label,
     required this.message,
   });
+
+  static const labelLimit = 18;
+  static const bodyLimit = 160;
+
+  /// Same haggle block the chips service uses. Chip copy never asks the
+  /// dealer to negotiate, haggle, or bargain.
+  static final hagglePattern = RegExp(
+    r'\b(negotiat\w*|haggl\w*|bargain\w*|lowball\w*|counter-?offers?|come down|do better|best offer)\b',
+    caseSensitive: false,
+  );
+
+  static final _phrasePattern = RegExp(
+    r"^[A-Za-z0-9][A-Za-z0-9 '&./+-]{0,40}$",
+  );
 
   final String templateId;
   final String label;
@@ -19,11 +34,54 @@ class DealBrainChip extends Equatable {
   @override
   List<Object?> get props => [templateId, label, message];
 
+  /// Drops unfilled templates, over-long copy, and haggle wording.
+  static bool copyAllowed(String label, String message) {
+    final cleanLabel = label.trim();
+    final cleanMessage = message.trim();
+    if (cleanLabel.isEmpty || cleanMessage.isEmpty) return false;
+    if (cleanLabel.length > labelLimit || cleanMessage.length > bodyLimit) {
+      return false;
+    }
+    if (cleanLabel.contains('{') || cleanMessage.contains('{')) return false;
+    if (hagglePattern.hasMatch(cleanLabel) ||
+        hagglePattern.hasMatch(cleanMessage)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Phrase the chips service will accept for a feature, visit, or rep name.
+  static String? cleanPhrase(String? raw) {
+    if (raw == null) return null;
+    final text = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (!_phrasePattern.hasMatch(text)) return null;
+    if (hagglePattern.hasMatch(text)) return null;
+    return text;
+  }
+
+  /// Parses one chip from the chips route. Returns null when the copy
+  /// must not be shown. `sendsAutomatically` is ignored: the sheet never
+  /// sends a chip on its own.
+  static DealBrainChip? tryParse(Map<String, dynamic> json) {
+    final templateRaw = json['templateId'] ?? json['id'];
+    final label = json['label'];
+    final message = json['message'];
+    if (templateRaw is! String || label is! String || message is! String) {
+      return null;
+    }
+    final templateId = templateRaw.trim();
+    if (templateId.isEmpty || !copyAllowed(label, message)) return null;
+    return DealBrainChip(
+      templateId: templateId,
+      label: label.trim(),
+      message: message.trim(),
+    );
+  }
+
   static const itemizedOtd = DealBrainChip(
     templateId: 'T6',
     label: 'Itemized OTD',
-    message:
-        'Could you share the itemized out-the-door price? Price, dealer fees, tax, title and reg.',
+    message: 'Could you share the itemized out-the-door price? Price, dealer fees, tax, title and reg.',
   );
 
   static const thanks = DealBrainChip(

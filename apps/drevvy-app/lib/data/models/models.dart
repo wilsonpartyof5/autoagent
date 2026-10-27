@@ -2,6 +2,7 @@ export 'car_pack.dart';
 export 'chat.dart';
 export 'deal.dart';
 export 'deal_brain_chip.dart';
+export 'deal_chip_inputs.dart';
 export 'listing.dart';
 export 'market_context.dart';
 export 'rooftop_match.dart';
