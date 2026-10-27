@@ -54,6 +54,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credits' | 'error' = 'ok') {
   const credits = new Map<string, { balance: number; lifetime_purchased: number; lifetime_used: number; lifetime_refunded: number }>();
   const events = new Map<string, { id: string; user_id: string; idempotency_key: string }[]>();
+  const closeFees: Array<{ deal_id: string; amount_cents: number; reason: string; status: string }> = [];
 
   credits.set('shopper-1', { balance: initialBalance, lifetime_purchased: initialBalance, lifetime_used: 0, lifetime_refunded: 0 });
 
@@ -87,7 +88,26 @@ function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credit
         eq: (_col: string, val: string) => mockResult(table, val),
       }),
       upsert: async (_data: unknown, _opts?: unknown) => ({ error: null }),
-      insert: async (data: { user_id?: string; idempotency_key?: string }) => {
+      insert: async (data: {
+        user_id?: string;
+        idempotency_key?: string;
+        deal_id?: string;
+        amount_cents?: number;
+        reason?: string;
+        status?: string;
+      }) => {
+        if (table === 'dealer_close_fees' && data.deal_id) {
+          if (closeFees.some((fee) => fee.deal_id === data.deal_id)) {
+            return { error: { code: '23505', message: 'duplicate' } };
+          }
+          closeFees.push({
+            deal_id: data.deal_id,
+            amount_cents: data.amount_cents ?? 0,
+            reason: data.reason ?? '',
+            status: data.status ?? '',
+          });
+          return { error: null };
+        }
         if (table === 'shopper_credit_events' && data.user_id && data.idempotency_key) {
           const userEvents = events.get(data.user_id) ?? [];
           const existing = userEvents.find((e) => e.idempotency_key === data.idempotency_key);
@@ -101,6 +121,7 @@ function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credit
         eq: (_col: string, _val: string) => ({ error: null }),
       }),
     }),
+    closeFees,
     rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_listing_id?: string; p_idempotency_key?: string }) => {
       const userId = params.p_user_id ?? '';
       const row = rowFor(userId);
@@ -159,7 +180,7 @@ function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credit
       }
       return { data: null, error: { message: 'unknown rpc' } };
     },
-  } as unknown;
+  };
 }
 const VEHICLE = {
   year: 2024,
@@ -232,14 +253,28 @@ function harness(
 ) {
   const deals = memoryDeals();
   const lifecycle = createMemoryLifecycleRepository();
+  const supabase = createMockSupabase(balance, consumeMode);
   const deps: DealDeps = {
     deals,
     lifecycle,
     now: new Date(now),
     live: false,
-    supabase: createMockSupabase(balance, consumeMode) as DealDeps['supabase'],
+    supabase: supabase as unknown as DealDeps['supabase'],
   };
-  return { deals, lifecycle, deps };
+  return { deals, lifecycle, deps, closeFees: supabase.closeFees };
+}
+
+async function confirmDelivery(
+  box: ReturnType<typeof harness>,
+  dealId: string,
+  sentAt: string,
+) {
+  await applyAgentEvent({
+    type: 'delivery',
+    dealId,
+    consumerUserId: 'shopper-1',
+    sentAt,
+  }, box.deps);
 }
 
 async function addCar(box: ReturnType<typeof harness>, listingId: string) {
@@ -458,6 +493,7 @@ test('a dealer decline and day 7 with no reply each return the dealer-conversati
     channel: 'email',
     sentAt: started,
   }, quiet.deps);
+  await confirmDelivery(quiet, deal.deal.id, started);
   quiet.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
   const scheduled = await runLifecycleSchedule(quiet.deps);
   assert.equal(scheduled.endedNoResponse, 1);
@@ -672,7 +708,7 @@ test('the day after pickup sends the same prompt when nobody left the geofence',
   assert.equal(prompted?.buyPromptSentAt, '2026-10-13T15:00:00.000Z');
 });
 
-test('no reply for seven days ends the deal and a reply keeps it open', async () => {
+test('no reply for seven days after confirmed delivery ends the deal and a reply keeps it open', async () => {
   const box = harness();
   const quiet = await addCar(box, 'mc-quiet-01');
   const answered = await addCar(box, 'mc-reply-01');
@@ -684,6 +720,7 @@ test('no reply for seven days ends the deal and a reply keeps it open', async ()
     channel: 'email',
     sentAt: started,
   }, box.deps);
+  await confirmDelivery(box, quiet.deal.id, started);
   await applyAgentEvent({
     type: 'outreach',
     dealId: answered.deal.id,
@@ -691,6 +728,7 @@ test('no reply for seven days ends the deal and a reply keeps it open', async ()
     channel: 'text',
     sentAt: started,
   }, box.deps);
+  await confirmDelivery(box, answered.deal.id, started);
   await applyAgentEvent({
     type: 'reply',
     dealId: answered.deal.id,
@@ -727,6 +765,7 @@ test('seven days without a reply returns the dealer-conversation key', async () 
     channel: 'email',
     sentAt: started,
   }, box.deps);
+  await confirmDelivery(box, quiet.deal.id, started);
   box.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
   const first = await runLifecycleSchedule(box.deps);
   const second = await runLifecycleSchedule(box.deps);
@@ -755,6 +794,55 @@ test('seven days without a reply returns the dealer-conversation key', async () 
   assert.match(explicit[0]?.body ?? '', /Your dealer didn't respond/);
 });
 
+test('a delivery event starts the day-7 clock without ending the deal', async () => {
+  const box = harness();
+  const created = await addCar(box, 'mc-delivered');
+  const event = readAgentEvent({
+    type: 'delivery',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    sentAt: '2026-10-01T16:05:00.000Z',
+  }, box.deps.now.toISOString());
+  assert.equal(event.type, 'delivery');
+  const next = await applyAgentEvent(event, box.deps);
+  assert.equal(next.deliveryConfirmedAt, '2026-10-01T16:05:00.000Z');
+  assert.equal(next.endState, 'open');
+});
+
+test('seven days after outreach without confirmed delivery does not refund', async () => {
+  const started = '2026-10-01T16:00:00.000Z';
+  const box = harness(started, 1);
+  const quiet = await addCar(box, 'mc-quiet-send-only');
+  await applyAgentEvent({
+    type: 'outreach',
+    dealId: quiet.deal.id,
+    consumerUserId: 'shopper-1',
+    channel: 'email',
+    sentAt: started,
+  }, box.deps);
+  box.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
+  const scheduled = await runLifecycleSchedule(box.deps);
+  assert.equal(scheduled.endedNoResponse, 0);
+  assert.equal(scheduled.creditsRefunded, 0);
+  assert.equal((await box.lifecycle.get('shopper-1', quiet.deal.id))?.endState, 'open');
+  assert.equal((await box.lifecycle.get('shopper-1', quiet.deal.id))?.deliveryConfirmedAt, null);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 0);
+});
+
+test('a dealer sold event does not charge the $300 close fee', async () => {
+  const box = harness();
+  const created = await addCar(box, 'mc-dealer-sold');
+  await applyAgentEvent({
+    type: 'end',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-03T12:00:00.000Z',
+  }, box.deps);
+  assert.equal((await box.lifecycle.get('shopper-1', created.deal.id))?.endState, 'sold');
+  assert.equal(box.closeFees.length, 0);
+});
+
 test('the shopper answer stores bought and final price for the admin console', async () => {
   const box = harness();
   const created = await addCar(box, 'mc-listing-1');
@@ -767,6 +855,10 @@ test('the shopper answer stores bought and final price for the admin console', a
   assert.equal(saved.outcome.finalPrice, 48750);
   assert.equal(saved.deal.endState, 'sold');
   assert.equal(saved.deal.findSimilar, true);
+  assert.equal(box.closeFees.length, 1);
+  assert.equal(box.closeFees[0]?.amount_cents, 30_000);
+  assert.equal(box.closeFees[0]?.reason, 'shopper_confirmed_purchase');
+  assert.equal(box.closeFees[0]?.status, 'due');
   await assert.rejects(
     () => answerOutcome('shopper-1', created.deal.id, { bought: false, finalPrice: null }, box.deps),
     (error: unknown) => error instanceof ShopperDealError && error.code === 'outcome_exists',
@@ -780,6 +872,7 @@ test('the shopper answer stores bought and final price for the admin console', a
   const no = await answerOutcome('shopper-1', other.deal.id, { bought: false, finalPrice: null }, declined.deps);
   assert.equal(no.outcome.bought, false);
   assert.equal(no.deal.endState, 'open');
+  assert.equal(declined.closeFees.length, 0);
 });
 
 test('cron auth stays closed until the secret is set and lifecycle storage is opt-in', () => {

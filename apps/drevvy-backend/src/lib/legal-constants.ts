@@ -38,7 +38,7 @@ export const LEGAL = {
   SMS_PROGRAM_NAME: 'Drevvy Vehicle Inquiry Alerts',
 
   /**
-   * One-time key packs. Keys never expire.
+   * One-time generic key packs. Spend kind is assigned at use.
    * Store product ids: drevvy_keys_1, drevvy_keys_5, drevvy_keys_10, drevvy_keys_25.
    * The 10-key pack is the recommended pack.
    */

@@ -27,6 +27,7 @@ import {
   buyOutcome,
   canFindSimilar,
   endDeal,
+  noteDeliveryConfirmed,
   noteOutreach,
   noteReply,
   presentDeal,
@@ -46,6 +47,7 @@ import {
   type PresentedDeal,
 } from './lifecycle';
 import { getLifecycleRepository, type LifecycleRepository } from './lifecycle-store';
+import { closeFeeForPurchase, recordDealerCloseFee, rooftopIdForDeal } from './close-fee';
 import { shouldRefundCredit } from './quota';
 import {
   checkCanAddCar,
@@ -277,6 +279,15 @@ export async function answerOutcome(
   const answered = recordOutcome(current, input, deps.now.toISOString());
   await deps.lifecycle.save(answered);
 
+  if (input.bought) {
+    const rooftopId = await rooftopIdForDeal(supabase, deal.id);
+    await recordDealerCloseFee(supabase, closeFeeForPurchase({
+      dealId: deal.id,
+      rooftopId,
+      at: answered.outcomeAnsweredAt ?? deps.now.toISOString(),
+    }));
+  }
+
   if (answered.endState !== 'open') {
     await deps.deals.close(userId, deal.id);
 
@@ -311,6 +322,7 @@ export async function applyAgentEvent(event: DealAgentEvent, deps: Pick<DealDeps
   const previousState = current.endState;
   let next = current;
   if (event.type === 'outreach') next = noteOutreach(current, event.sentAt, event.channel);
+  if (event.type === 'delivery') next = noteDeliveryConfirmed(current, event.sentAt);
   if (event.type === 'reply') next = noteReply(current, event.sentAt);
   if (event.type === 'end') next = endDeal(current, event.endState, event.sentAt);
   await deps.lifecycle.save(next);

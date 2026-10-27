@@ -1,8 +1,9 @@
 /**
- * Dealer-conversation key refunds. Day 7 with no reply, a sold listing, and a
- * dealer decline or opt-out each return that one key. Removing a deal does not,
- * including a cancel inside 30 minutes before outreach. The market+save key
- * is never refunded from an end state.
+ * Dealer-conversation key refunds. Day 7 with no reply (clock starts at
+ * confirmed delivery), a sold listing, and a dealer decline or opt-out each
+ * return that one key. Removing a deal does not, including a cancel inside
+ * 30 minutes before outreach. The market+save key is never refunded from an
+ * end state.
  */
 
 export const NO_RESPONSE_MS = 7 * 24 * 60 * 60 * 1000;
