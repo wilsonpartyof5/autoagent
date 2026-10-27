@@ -23,6 +23,7 @@ class _DrevvyDeskAppState extends State<DrevvyDeskApp> {
   late final DealerDesk desk;
   late final GoRouter router;
   late final bool _ownsDesk;
+  var _themeMode = ThemeMode.dark;
 
   @override
   void initState() {
@@ -43,13 +44,17 @@ class _DrevvyDeskAppState extends State<DrevvyDeskApp> {
   Widget build(BuildContext context) {
     return DeskScope(
       desk: desk,
-      child: MaterialApp.router(
-        title: 'Drevvy Desk',
-        debugShowCheckedModeBanner: false,
-        theme: dealerTheme(brightness: Brightness.light),
-        darkTheme: dealerTheme(),
-        themeMode: ThemeMode.dark,
-        routerConfig: router,
+      child: DealerThemeController(
+        mode: _themeMode,
+        setMode: (mode) => setState(() => _themeMode = mode),
+        child: MaterialApp.router(
+          title: 'Drevvy Desk',
+          debugShowCheckedModeBanner: false,
+          theme: dealerTheme(brightness: Brightness.light),
+          darkTheme: dealerTheme(),
+          themeMode: _themeMode,
+          routerConfig: router,
+        ),
       ),
     );
   }

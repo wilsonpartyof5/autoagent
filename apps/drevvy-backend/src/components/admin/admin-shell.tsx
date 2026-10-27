@@ -101,6 +101,7 @@ export function AdminShell({
             {item.icon}
           </Link>
         ))}
+        <div style={{ flex: 1 }} />
       </nav>
       <div className="main">
         <header className="top g">
@@ -150,6 +151,14 @@ export function MissingEnvBanner({ names }: { names: string[] }) {
   );
 }
 
-export function StageChip({ label }: { label: string }) {
-  return <span className="chip c-sold">{label}</span>;
+const STAGE_TONE: Record<string, string> = {
+  reaching_out: 'c-new',
+  negotiating: 'c-chat',
+  offer_received: 'c-wait',
+  best_price_ready: 'c-sold',
+  paused: 'c-no',
+};
+
+export function StageChip({ label, stage }: { label: string; stage?: string }) {
+  return <span className={`chip ${STAGE_TONE[stage ?? ''] ?? 'c-chat'}`}>{label}</span>;
 }

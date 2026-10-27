@@ -15,7 +15,7 @@ export default async function AdminOpsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      <div className="row stats-5">
         <article className="g card">
           <div className="lab">Active dealer convos</div>
           <div className="num">{analytics.activeCars}</div>
@@ -48,7 +48,7 @@ export default async function AdminOpsPage() {
           <div className="dn">canceled subs in the book</div>
         </article>
       </div>
-      <div className="row" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
+      <div className="row stats-2">
         <article className="g card">
           <div className="t">Conversation funnel</div>
           <div className="bar" style={{ width: '100%' }}>

@@ -42,43 +42,44 @@ export default async function AdminShoppersPage({
             name="q"
             defaultValue={params.q ?? ''}
             placeholder="Search name, email, or car"
-            className="w-64 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            className="inp"
+            style={{ width: 260 }}
           />
-          <button className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-slate-950" type="submit">Search</button>
+          <button className="btn" type="submit">Search</button>
         </form>
       </header>
-      <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
+      <div className="g card" style={{ overflowX: 'auto' }}>
+        <table className="tbl">
+          <thead>
             <tr>
               {sorts.map((column) => (
-                <th key={column.key} className="px-3 py-3 font-medium">
+                <th key={column.key}>
                   <Link href={`/admin?q=${encodeURIComponent(params.q ?? '')}&sort=${column.key}&dir=${sort === column.key ? nextDir : 'desc'}`}>
                     {column.label}
                   </Link>
                 </th>
               ))}
-              <th className="px-3 py-3 font-medium">Stages</th>
+              <th>Stages</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((shopper) => (
-              <tr key={shopper.id} className="border-t border-slate-800">
-                <td className="px-3 py-3">
-                  <Link href={`/admin/shoppers/${shopper.id}`} className="font-medium text-emerald-200 hover:underline">{shopper.name}</Link>
-                  <div className="text-xs text-slate-500">{shopper.email}</div>
+              <tr key={shopper.id}>
+                <td>
+                  <Link href={`/admin/shoppers/${shopper.id}`} style={{ color: 'var(--acc)', fontWeight: 700 }}>{shopper.name}</Link>
+                  <div className="mut">{shopper.email}</div>
                 </td>
-                <td className="px-3 py-3">{when(shopper.signedUpAt)}</td>
-                <td className="px-3 py-3">{subscriptionLabel(shopper.subscription)}</td>
-                <td className="px-3 py-3">{shopper.cars}/{shopper.carCap}</td>
-                <td className="px-3 py-3">{usd(shopper.totalSavings)}</td>
-                <td className="px-3 py-3">{when(shopper.lastActivityAt)}</td>
-                <td className="px-3 py-3">
+                <td>{when(shopper.signedUpAt)}</td>
+                <td>{subscriptionLabel(shopper.subscription)}</td>
+                <td>{shopper.cars}/{shopper.carCap}</td>
+                <td>{usd(shopper.totalSavings)}</td>
+                <td>{when(shopper.lastActivityAt)}</td>
+                <td>
                   <div className="flex flex-wrap gap-1">
                     {DEAL_STAGES.filter((stage) => shopper.stageCounts[stage] > 0).map((stage) => (
                       <StageCount key={stage} stage={stage} count={shopper.stageCounts[stage]} />
                     ))}
-                    {shopper.cars === 0 ? <span className="text-slate-500">No cars yet</span> : null}
+                    {shopper.cars === 0 ? <span className="mut">No cars yet</span> : null}
                   </div>
                 </td>
               </tr>
@@ -86,7 +87,7 @@ export default async function AdminShoppersPage({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-slate-500">Sorted by {sort} ({dir}). Times are Eastern.</p>
+      <p className="mut">Sorted by {sort} ({dir}). Times are Eastern.</p>
       <div className="g card">
         <div className="t">Dealer staff</div>
         <table className="tbl">
@@ -115,5 +116,5 @@ export default async function AdminShoppersPage({
 }
 
 function StageCount({ stage, count }: { stage: DealStage; count: number }) {
-  return <StageChip label={`${count} ${stageLabel(stage)}`} />;
+  return <StageChip label={`${count} ${stageLabel(stage)}`} stage={stage} />;
 }

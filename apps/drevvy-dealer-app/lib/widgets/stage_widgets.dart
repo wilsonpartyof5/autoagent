@@ -11,9 +11,9 @@ class StageChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (background, foreground) = switch (stage) {
-      ConversationStage.newRequest => (DealerColors.infoTint, DealerColors.info),
-      ConversationStage.inConversation => (DealerColors.honeyTint, DealerColors.honey),
-      ConversationStage.numbersShared => (DealerColors.lilacTint, DealerColors.lilac),
+      ConversationStage.newRequest => (DealerColors.lilacTint, DealerColors.lilac),
+      ConversationStage.inConversation => (DealerColors.infoTint, DealerColors.info),
+      ConversationStage.numbersShared => (DealerColors.honeyTint, DealerColors.honey),
       ConversationStage.closed => (DealerColors.closedTint, DealerColors.closed),
       ConversationStage.carSold => (DealerColors.soldTint, DealerColors.sold),
       ConversationStage.noReply => (DealerColors.endedTint, DealerColors.ended),
@@ -40,7 +40,7 @@ class SlaText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (sla.tone) {
-      SlaTone.waiting => DealerColors.info,
+      SlaTone.waiting => DealerColors.honey,
       SlaTone.overdue => DealerColors.danger,
       SlaTone.replied => DealerColors.mint,
       SlaTone.ended => DealerColors.ended,
@@ -67,7 +67,7 @@ class StageStepper extends StatelessWidget {
       children: [
         for (var index = 0; index < stagePath.length; index++) ...[
           if (index > 0)
-            const Text('→', style: TextStyle(color: DealerColors.muted, fontSize: 11)),
+            Text('→', style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 11)),
           Text(
             stageLabels[stagePath[index]]!,
             style: TextStyle(
@@ -76,13 +76,13 @@ class StageStepper extends StatelessWidget {
               color: !ended && stagePath[index] == stage
                   ? DealerColors.lilac
                   : !ended && currentIndex > index
-                      ? DealerColors.ink
-                      : DealerColors.muted,
+                      ? DealerColors.inkOf(context)
+                      : DealerColors.mutedOf(context),
             ),
           ),
         ],
         if (ended) ...[
-          const Text('·', style: TextStyle(color: DealerColors.muted, fontSize: 11)),
+          Text('·', style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 11)),
           Text(
             stageLabels[stage]!,
             style: const TextStyle(
@@ -113,7 +113,7 @@ class PriceBlock extends StatelessWidget {
           stated == null
               ? 'Advertised ${formatMoney(conversation.advertisedPriceCents)}'
               : 'Advertised ${formatMoney(conversation.advertisedPriceCents)} · Stated ${formatMoney(stated)}',
-          style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+          style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
         ),
         if (item.priceDiffers)
           const Text(

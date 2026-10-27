@@ -77,7 +77,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            color: DealerColors.card,
+            color: DealerColors.cardOf(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -98,16 +98,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 Text(conversation.vehicle.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 Text(
                   'Stock #${conversation.stockNumber}',
-                  style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+                  style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
                 ),
                 const SizedBox(height: 4),
                 PriceBlock(item: item),
                 const SizedBox(height: 8),
                 StageStepper(stage: conversation.stage),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Message-only. First name is shown; contact details stay private. Share itemized OTD is informational.',
-                  style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+                  style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4),
                 ),
               ],
             ),
@@ -124,9 +124,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: DealerColors.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: DealerColors.line),
+                      color: DealerColors.cardOf(context),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: DealerColors.lineOf(context)),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
@@ -146,15 +146,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: DealerColors.muted,
+                                  color: DealerColors.mutedOf(context),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(message.body, style: const TextStyle(height: 1.35)),
                               const SizedBox(height: 8),
-                              const Text(
+                              Text(
                                 'Informational itemized out-the-door. Not a binding offer.',
-                                style: TextStyle(fontSize: 11, color: DealerColors.muted, height: 1.35),
+                                style: TextStyle(fontSize: 11, color: DealerColors.mutedOf(context), height: 1.35),
                               ),
                             ],
                           ),
@@ -172,9 +172,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       gradient: mine ? DealerColors.brandGradient : null,
-                      color: mine ? null : DealerColors.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: mine ? null : Border.all(color: DealerColors.line),
+                      color: mine ? null : DealerColors.cardOf(context),
+                      borderRadius: BorderRadius.circular(20),
+                      border: mine ? null : Border.all(color: DealerColors.lineOf(context)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,14 +188,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: mine ? Colors.white70 : DealerColors.muted,
+                            color: mine ? Colors.white70 : DealerColors.mutedOf(context),
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           message.body,
                           style: TextStyle(
-                            color: mine ? Colors.white : DealerColors.ink,
+                            color: mine ? Colors.white : DealerColors.inkOf(context),
                             height: 1.35,
                           ),
                         ),
@@ -207,7 +207,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             ),
           ),
           Container(
-            color: DealerColors.card,
+            color: DealerColors.cardOf(context),
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +245,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       'Closed conversations stay closed in this demo. You can still reply in the thread.',
-                      style: TextStyle(color: DealerColors.muted, fontSize: 12),
+                      style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
                     ),
                   ),
                 if (_error != null)
@@ -299,18 +299,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: DealerColors.canvas,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: DealerColors.line),
+        color: DealerColors.canvasOf(context),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: DealerColors.lineOf(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Mark as sold', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             markSoldConfirm,
-            style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+            style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 8),
           Row(
@@ -344,9 +344,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: DealerColors.canvas,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: DealerColors.line),
+        color: DealerColors.canvasOf(context),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: DealerColors.lineOf(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,14 +362,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
               children: [
                 const Text('Share itemized OTD', style: TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   '$shareNumbersDisclaimer Where a written total becomes the record is still an open question.',
-                  style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+                  style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Advertised ${formatMoney(conversation.advertisedPriceCents)}',
-                  style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+                  style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 const Text('Price you state', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),

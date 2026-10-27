@@ -20,8 +20,12 @@ class PrimaryButton extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: enabled ? DealerColors.brandGradient : null,
-        color: enabled ? null : const Color(0xFFD6DBE7),
-        borderRadius: BorderRadius.circular(12),
+        color: enabled
+            ? null
+            : Theme.of(context).brightness == Brightness.dark
+                ? const Color(0x33FFFFFF)
+                : const Color(0xFFD6DBE7),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: enabled
             ? const [
                 BoxShadow(
@@ -37,7 +41,7 @@ class PrimaryButton extends StatelessWidget {
         child: InkWell(
           key: buttonKey,
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Center(

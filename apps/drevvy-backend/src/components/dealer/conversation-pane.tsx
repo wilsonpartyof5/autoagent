@@ -111,7 +111,7 @@ export function ConversationPane({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
-      <header className="flex items-start justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div className="av">{conversation.shopperFirstName.slice(0, 1)}</div>
           <div>
@@ -301,7 +301,7 @@ export function ConversationPane({
             {error}
           </p>
         ) : null}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="composer">
           <label className="sr-only" htmlFor="chat-composer">
             Reply to {conversation.shopperFirstName}
           </label>

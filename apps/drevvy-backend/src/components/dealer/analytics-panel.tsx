@@ -53,10 +53,7 @@ export function AnalyticsPanel({
           </button>
         ))}
       </div>
-      <div
-        className="row"
-        style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginTop: 16 }}
-      >
+      <div className="row stats-5" style={{ marginTop: 16 }}>
         {cards.map(card => (
           <div key={card.label} className="g card">
             <div className="lab">{card.label}</div>

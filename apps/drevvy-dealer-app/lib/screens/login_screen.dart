@@ -55,24 +55,26 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: DealerColors.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: DealerColors.line),
-                ),
+                decoration: DealerColors.cardDecoration(context),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'DREVVY',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                          color: DealerColors.muted,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            'DREVVY',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.4,
+                              color: DealerColors.mutedOf(context),
+                            ),
+                          ),
+                          const Spacer(),
+                          const DealerThemeToggle(),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       const Text(
@@ -80,9 +82,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Work email sign-in is a stub. Dealers see first name only. Chat is for transparency and answering questions. No message is sent, and no account is created.',
-                        style: TextStyle(color: DealerColors.muted, height: 1.4),
+                        style: TextStyle(color: DealerColors.mutedOf(context), height: 1.4),
                       ),
                       const SizedBox(height: 20),
                       const Text('Work email', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
@@ -96,9 +98,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       if (_sent) ...[
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'No email was sent. Enter any 6-digit code to open the demo inbox.',
-                          style: TextStyle(color: DealerColors.muted, height: 1.4),
+                          style: TextStyle(color: DealerColors.mutedOf(context), height: 1.4),
                         ),
                         const SizedBox(height: 12),
                         const Text('One-time code', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
