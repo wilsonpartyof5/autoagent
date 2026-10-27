@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -6,7 +8,24 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
+import '../../../data/services/deal_chips_endpoint.dart';
 import 'dealer_inbox_stub.dart';
+
+/// Where the suggestion row is in its fetch.
+enum DealerChatChipsStatus {
+  /// No deal yet, or the thread, market intel, feature, or visit time
+  /// is still loading. The after-opener pair is showing.
+  fallback,
+
+  /// Those inputs are loaded and the chips route has not answered yet.
+  loading,
+
+  /// The route returned an in-network list. It may be empty.
+  loaded,
+
+  /// The route failed. The after-opener pair is showing.
+  error,
+}
 
 /// In-network Key B: anonymous dealer chat with Deal Brain chips.
 /// Glass tokens stand in until Design glass assets land.
@@ -20,6 +39,9 @@ class DealerChatSheet extends StatefulWidget {
     required this.shopperFirstName,
     required this.onSend,
     this.chips,
+    this.dealId,
+    this.chipInputs,
+    this.chipsEndpoint,
   });
 
   final Listing listing;
@@ -29,42 +51,173 @@ class DealerChatSheet extends StatefulWidget {
   final String shopperFirstName;
   final Future<void> Function({String? templateId, String? message}) onSend;
 
-  /// Server suggestions when the app has them. Otherwise the after-opener pair.
+  /// Explicit suggestions. When set, they replace the live route.
+  /// Used by tests and by a caller that already fetched chips.
   final List<DealBrainChip>? chips;
 
+  /// In-network deal whose chips route should be read. Null keeps the
+  /// after-opener pair. Off-network deals never open this sheet.
+  final String? dealId;
+
+  /// Thread, market intel, feature, and visit time. The route is called
+  /// only after [DealChipInputs.ready], and again when this value changes.
+  final DealChipInputs? chipInputs;
+
+  final DealChipsEndpoint? chipsEndpoint;
+
   @override
-  State<DealerChatSheet> createState() => _DealerChatSheetState();
+  State<DealerChatSheet> createState() => DealerChatSheetState();
 }
 
-class _DealerChatSheetState extends State<DealerChatSheet> {
+class DealerChatSheetState extends State<DealerChatSheet> {
+  final TextEditingController _composer = TextEditingController();
   DealBrainChip? _selected;
-  bool _isLoading = false;
+  bool _isSending = false;
   bool _sent = false;
+  bool _loadingChips = false;
+  bool _chipError = false;
+  DealChipSuggestionSet? _server;
+  int _generation = 0;
+
+  /// Chips never send themselves, including when a payload says otherwise.
+  bool get autoSend => false;
+
+  DealerChatChipsStatus get chipsStatus {
+    if (widget.chips != null) return DealerChatChipsStatus.loaded;
+    if (_loadingChips) return DealerChatChipsStatus.loading;
+    if (_chipError) return DealerChatChipsStatus.error;
+    if (_server != null) return DealerChatChipsStatus.loaded;
+    return DealerChatChipsStatus.fallback;
+  }
+
+  List<DealBrainChip> get visibleChips {
+    final explicit = widget.chips;
+    if (explicit != null) return _allowed(explicit);
+    final server = _server;
+    if (!_loadingChips && !_chipError && server != null) {
+      return _allowed(server.chips);
+    }
+    return DealBrainChip.suggestionsFor(stockNumber: widget.listing.stockNo);
+  }
+
+  static List<DealBrainChip> _allowed(List<DealBrainChip> chips) {
+    return [
+      for (final chip in chips)
+        if (DealBrainChip.copyAllowed(chip.label, chip.message)) chip,
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
+    _beginFetch();
     ProductAnalytics.instance.screen('dealer_chat', {
       'listing_id': widget.listing.id,
       if (widget.match.rooftopId != null) 'rooftop_id': widget.match.rooftopId,
     });
   }
 
-  Future<void> _send(DealBrainChip chip) async {
+  @override
+  void didUpdateWidget(covariant DealerChatSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final inputsChanged = widget.chipInputs != oldWidget.chipInputs;
+    final dealChanged = widget.dealId != oldWidget.dealId;
+    final endpointChanged = !identical(
+      widget.chipsEndpoint,
+      oldWidget.chipsEndpoint,
+    );
+    final explicitChanged = widget.chips != oldWidget.chips;
+    if (inputsChanged || dealChanged || endpointChanged || explicitChanged) {
+      _beginFetch();
+    }
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _composer.dispose();
+    super.dispose();
+  }
+
+  void _beginFetch() {
+    final generation = ++_generation;
+    final dealId = widget.dealId?.trim() ?? '';
+    final inputs = widget.chipInputs;
+    final endpoint = widget.chipsEndpoint;
+
+    // didUpdateWidget is followed by build, so the loading frame sees this
+    // without a nested setState.
+    _chipError = false;
+    _server = null;
+    if (widget.chips != null ||
+        dealId.isEmpty ||
+        inputs == null ||
+        !inputs.ready ||
+        endpoint == null) {
+      _loadingChips = false;
+      return;
+    }
+    _loadingChips = true;
+    unawaited(_request(generation, dealId, inputs, endpoint));
+  }
+
+  Future<void> _request(
+    int generation,
+    String dealId,
+    DealChipInputs inputs,
+    DealChipsEndpoint endpoint,
+  ) async {
+    DealChipSuggestionSet? value;
+    var failed = false;
+    try {
+      value = await endpoint.suggest(dealId, inputs);
+      failed = value == null;
+    } catch (_) {
+      failed = true;
+      value = null;
+    }
+    if (!mounted || generation != _generation) return;
+    setState(() {
+      _loadingChips = false;
+      _chipError = failed;
+      _server = failed ? null : value;
+    });
+  }
+
+  void _fillChip(DealBrainChip chip) {
     ProductAnalytics.instance.track(AnalyticsEvents.dealBrainChipTapped, {
       'listing_id': widget.listing.id,
       'template_id': chip.templateId,
     });
-    setState(() {
-      _selected = chip;
-      _isLoading = true;
-    });
-    await widget.onSend(templateId: chip.templateId, message: chip.message);
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _sent = true;
-    });
+    _composer.text = chip.message;
+    _composer.selection = TextSelection.collapsed(
+      offset: _composer.text.length,
+    );
+    setState(() => _selected = chip);
+  }
+
+  bool get _canSend =>
+      !_isSending && !_sent && _composer.text.trim().isNotEmpty;
+
+  Future<void> _submit() async {
+    final message = _composer.text.trim();
+    if (message.isEmpty || _isSending || _sent) return;
+    final selected = _selected;
+    final templateId = selected != null && selected.message.trim() == message
+        ? selected.templateId
+        : null;
+    setState(() => _isSending = true);
+    try {
+      await widget.onSend(templateId: templateId, message: message);
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+        _sent = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSending = false);
+    }
   }
 
   @override
@@ -72,6 +225,7 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final chips = visibleChips;
 
     return Container(
       decoration: BoxDecoration(
@@ -124,7 +278,7 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                       DealerInboxStub(
                         shopperFirstName: widget.shopperFirstName,
                         listing: widget.listing,
-                        message: _selected?.message,
+                        message: _selected?.message ?? _composer.text,
                       ),
                       const SizedBox(height: DrevvySpace.s3),
                       Text(
@@ -143,17 +297,21 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        KeySpend.conversationCta,
-                        style: text.headline,
-                      ),
+                      Text(KeySpend.conversationCta, style: text.headline),
                       const SizedBox(height: DrevvySpace.s2),
                       Text(
                         widget.alreadyOpen
-                            ? 'Tap a suggestion. Nothing sends until you do.'
+                            ? 'Tap a suggestion to fill your message. Nothing sends until you tap Send.'
                             : KeySpend.conversationNote,
                         style: text.callout.copyWith(color: colors.muted),
                       ),
+                      if (!widget.alreadyOpen) ...[
+                        const SizedBox(height: DrevvySpace.s2),
+                        Text(
+                          'Tap a suggestion to fill your message. Nothing sends until you tap Send.',
+                          style: text.callout.copyWith(color: colors.muted),
+                        ),
+                      ],
                       const SizedBox(height: DrevvySpace.s2),
                       Text(
                         KeySpend.refundClockNote,
@@ -169,17 +327,58 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                         spacing: DrevvySpace.s2,
                         runSpacing: DrevvySpace.s2,
                         children: [
-                          for (final chip in widget.chips ??
-                              DealBrainChip.suggestionsFor(
-                                stockNumber: widget.listing.stockNo,
-                              ))
+                          for (final chip in chips)
                             _ChipButton(
                               chip: chip,
                               selected: _selected == chip,
-                              enabled: !_isLoading,
-                              onTap: () => _send(chip),
+                              enabled: !_isSending,
+                              onTap: () => _fillChip(chip),
                             ),
                         ],
+                      ),
+                      const SizedBox(height: DrevvySpace.s4),
+                      TextField(
+                        key: const Key('dealer-chat-composer'),
+                        controller: _composer,
+                        minLines: 1,
+                        maxLines: 3,
+                        enabled: !_isSending,
+                        textInputAction: TextInputAction.send,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => unawaited(_submit()),
+                        style: text.body,
+                        decoration: InputDecoration(
+                          hintText: 'Message the dealer',
+                          hintStyle: text.body.copyWith(
+                            color: colors.placeholder,
+                          ),
+                          filled: true,
+                          fillColor: colors.tile,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              DrevvyRadius.md,
+                            ),
+                            borderSide: BorderSide(color: colors.glassBorder),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              DrevvyRadius.md,
+                            ),
+                            borderSide: BorderSide(color: colors.glassBorder),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: DrevvySpace.s3),
+                      DrevvyButton(
+                        key: const Key('dealer-chat-send'),
+                        label: 'Send',
+                        isFullWidth: true,
+                        isLoading: _isSending,
+                        onPressed: _canSend ? () => unawaited(_submit()) : null,
                       ),
                       const SizedBox(height: DrevvySpace.s5),
                       if (!widget.alreadyOpen)

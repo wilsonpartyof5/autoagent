@@ -227,6 +227,10 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     RooftopMatch match,
     CarCreditBalance balance,
   ) async {
+    final dealId = _conversationOpen
+        ? _repo.dealIdForListing(listing.id)
+        : null;
+    final inputs = _chipInputsFor(listing, dealId);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -237,6 +241,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         creditBalance: balance,
         alreadyOpen: _conversationOpen,
         shopperFirstName: _shopperFirstName,
+        dealId: dealId,
+        chipInputs: inputs,
+        chipsEndpoint: _repo.dealChips,
         onSend: ({templateId, message}) async {
           final deal = await _repo.startDealerConversation(
             listing,
@@ -244,12 +251,34 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
             templateId: templateId,
             message: message,
           );
+          final threadId = _repo.dealIdForListing(listing.id) ?? deal?.id;
+          if (threadId != null &&
+              message != null &&
+              message.trim().isNotEmpty) {
+            _repo.rememberDealMessage(threadId, body: message);
+          }
           if (!mounted) return;
           await _refreshBalance();
           setState(() => _conversationOpen = deal != null || _conversationOpen);
           if (deal != null) unawaited(_maybePromptNotifications());
         },
       ),
+    );
+  }
+
+  /// Thread, market intel, feature, and visit time for [dealId].
+  /// Visit day and time are loaded as absent until the shopper picks them.
+  /// A brand-new conversation has no deal id yet, so the sheet keeps the
+  /// after-opener pair until the thread exists.
+  DealChipInputs? _chipInputsFor(Listing listing, String? dealId) {
+    if (dealId == null) return null;
+    return DealChipInputs.loaded(
+      messages: _repo.dealThread(dealId),
+      market: _market,
+      feature: DealChipInputs.featureFromListing(listing),
+      stockNumber: listing.stockNo,
+      listedPrice: listing.price,
+      dom: listing.domActive,
     );
   }
 
@@ -663,13 +692,11 @@ class _HowDrevvyWorks extends StatelessWidget {
           ),
           _Step(
             number: '3',
-            text:
-                'If this listing URL matches an onboarded rooftop, ask the dealer anonymously with a second key. They see your first name only.',
+            text: 'If this listing URL matches an onboarded rooftop, ask the dealer anonymously with a second key. They see your first name only.',
           ),
           _Step(
             number: '4',
-            text:
-                'If not, request the out-the-door number for free — analytics form, not chat, no key',
+            text: 'If not, request the out-the-door number for free — analytics form, not chat, no key',
           ),
         ],
       ),
@@ -716,4 +743,3 @@ class _Step extends StatelessWidget {
     );
   }
 }
-

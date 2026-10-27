@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
+import '../services/deal_chips_endpoint.dart';
 import '../services/key_spend_endpoint.dart';
 import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
@@ -28,6 +29,7 @@ class DemoRepository {
     CreditsEndpoint? credits,
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
+    DealChipsEndpoint? dealChips,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
@@ -36,6 +38,7 @@ class DemoRepository {
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
     _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
     _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
+    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     }
@@ -48,6 +51,46 @@ class DemoRepository {
   late final PurchaseService _purchaseService;
   late final RooftopMatchEndpoint _rooftopMatch;
   late final KeySpendEndpoint _keySpend;
+  late final DealChipsEndpoint _dealChips;
+
+  /// Chips route for an in-network deal. Missing base URL keeps the opener pair.
+  DealChipsEndpoint get dealChips => _dealChips;
+
+  /// Deal id for a listing that already has an in-network conversation.
+  final Map<String, String> _conversationDealIds = {};
+
+  /// Messages this shopper has placed on a deal thread.
+  final Map<String, List<DealThreadMessage>> _dealThreads = {};
+
+  String? dealIdForListing(String listingId) {
+    final known = _conversationDealIds[listingId];
+    if (known != null) return known;
+    _ensureDealsLoaded();
+    for (final deal in _deals) {
+      if (deal.listingId == listingId) return deal.id;
+    }
+    return null;
+  }
+
+  List<DealThreadMessage> dealThread(String dealId) {
+    return List<DealThreadMessage>.unmodifiable(
+      _dealThreads[dealId] ?? const [],
+    );
+  }
+
+  void rememberDealMessage(
+    String dealId, {
+    String? author,
+    required String body,
+  }) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return;
+    final current = _dealThreads[dealId] ?? const <DealThreadMessage>[];
+    _dealThreads[dealId] = [
+      ...current,
+      DealThreadMessage(author: author ?? 'shopper', body: trimmed),
+    ];
+  }
 
   /// Listings that have spent Key A (market intel + save).
   final Set<String> _marketIntelUnlocked = {};
@@ -214,11 +257,7 @@ class DemoRepository {
     return spent;
   }
 
-  bool _spendKey(
-    CreditReason reason, {
-    String? dealId,
-    String? listingId,
-  }) {
+  bool _spendKey(CreditReason reason, {String? dealId, String? listingId}) {
     if (!_creditBalance.canUnlock) return false;
 
     final entry = CreditLedgerEntry(
@@ -300,16 +339,22 @@ class DemoRepository {
       if (!remote.ok) return null;
       _conversationStarted.add(listing.id);
       if (remote.balance != null) _creditBalance = remote.balance!;
-      ProductAnalytics.instance.track(AnalyticsEvents.dealerConversationStarted, {
-        'listing_id': listing.id,
-        if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
-        if (templateId != null) 'template_id': templateId,
-        'source': 'live',
-      });
+      ProductAnalytics.instance.track(
+        AnalyticsEvents.dealerConversationStarted,
+        {
+          'listing_id': listing.id,
+          if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
+          if (templateId != null) 'template_id': templateId,
+          'source': 'live',
+        },
+      );
       if (remote.dealId != null) {
+        _conversationDealIds[listing.id] = remote.dealId!;
         return getDealById(remote.dealId!);
       }
-      return addDeal(listing, spend: false);
+      final created = await addDeal(listing, spend: false);
+      _conversationDealIds[listing.id] = created.id;
+      return created;
     }
     if (!_conversationStarted.contains(listing.id) &&
         !spendConversationKey(listing.id)) {
@@ -321,7 +366,9 @@ class DemoRepository {
       if (templateId != null) 'template_id': templateId,
       'source': 'stub',
     });
-    return addDeal(listing, spend: false);
+    final created = await addDeal(listing, spend: false);
+    _conversationDealIds[listing.id] = created.id;
+    return created;
   }
 
   Future<bool> requestOtdNumber(Listing listing, {String? note}) async {
