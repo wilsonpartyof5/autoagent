@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 
 import { dealerAskedForShopperContact, dealerAskedIfBot, sharesDisallowedContact } from '../src/widgets/guards';
 import { availabilityLine, isExactScriptMessage, renderScript } from '../src/widgets/script';
-import { listedPriceQuestion } from '../src/widgets/questions';
+import { availabilityQuestion, listedPriceQuestion } from '../src/widgets/questions';
 import { resolveNextMessage } from '../src/chat/resolve';
 
 const script = renderScript({
@@ -58,6 +58,31 @@ describe('chat script', () => {
     assert.equal(/2024|honda|civic|1HGCV1F16NA000123/i.test(vinOnly.availability), false);
     assert.equal(vinOnly.listing_price, 'We see $24,995 listed. Is that still current?');
     assert.equal(listedPriceQuestion({ listedPrice: 24995, priceChangedRecently: true }), 'We see $24,995 listed. Is that still current?');
+  });
+
+  it('gives an in-network rooftop only the desk opener', () => {
+    const fenced = renderScript({
+      stockNumber: 'H24118',
+      listedPrice: 24995,
+      drevvyTextNumber: '803-555-0148',
+      drevvyEmail: 'deals@drevvy.test',
+      shopperFirst: 'Sarah Connor',
+      inNetwork: true,
+    });
+    assert.equal(fenced.availability, 'Sarah wants your best itemized out-the-door');
+    assert.equal(fenced.listing_price, fenced.availability);
+    assert.equal(fenced.continue_offline, fenced.availability);
+    assert.equal(fenced.continue_offline.includes('803'), false);
+    assert.equal(fenced.availability.includes('still available'), false);
+    assert.equal(fenced.availability.includes('Connor'), false);
+    assert.equal(
+      availabilityLine({ stockNumber: '17646', dealerFirstName: 'Jordan', inNetwork: true, shopperFirst: 'Sarah' }),
+      'Sarah wants your best itemized out-the-door',
+    );
+    assert.equal(
+      availabilityQuestion({ stock: '17646', inNetwork: true, shopperFirst: 'sarah@example.com' }),
+      'A shopper wants your best itemized out-the-door',
+    );
   });
 
   it('asks the price after an available reply even if the model picks the handoff', () => {

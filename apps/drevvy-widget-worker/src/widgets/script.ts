@@ -1,3 +1,4 @@
+import { inNetworkDeskOpener } from './in-network';
 import { listedPriceQuestion } from './questions';
 
 export const SCRIPT_IDS = ['availability', 'listing_price', 'continue_offline', 'bot_disclosure'] as const;
@@ -16,7 +17,18 @@ export function renderScript(input: {
   drevvyTextNumber: string;
   drevvyEmail: string;
   shopperFirst: string;
+  /** In-network rooftops only get the desk opener. No availability, price, or contact line. */
+  inNetwork?: boolean;
 }): RenderedScript {
+  if (input.inNetwork) {
+    const opener = inNetworkDeskOpener(input.shopperFirst);
+    return {
+      availability: opener,
+      listing_price: opener,
+      continue_offline: opener,
+      bot_disclosure: opener,
+    };
+  }
   const price = input.listedPrice != null && Number.isFinite(input.listedPrice)
     ? listedPriceQuestion({
       listedPrice: input.listedPrice,
@@ -44,7 +56,10 @@ export function availabilityLine(input: {
   stockNumber?: string | null;
   vin?: string | null;
   dealerFirstName?: string | null;
+  inNetwork?: boolean;
+  shopperFirst?: string | null;
 }): string {
+  if (input.inNetwork) return inNetworkDeskOpener(input.shopperFirst);
   const stock = input.stockNumber?.trim().replace(/^#/, '') ?? '';
   const tail = stock ? '' : vinEnding(input.vin);
   const identifier = stock ? `stock #${stock}` : tail ? `VIN ending ${tail}` : '';

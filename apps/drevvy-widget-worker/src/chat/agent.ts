@@ -12,6 +12,7 @@ import { prepareInspection } from '../widgets/inspect';
 import { actionsFor } from '../widgets/playbooks';
 import { isTimeoutError } from '../widgets/timeout';
 import { extractWidgetScope, type WidgetVendor } from '../widgets/vendors';
+import { inNetworkDeskOpener } from '../widgets/in-network';
 import { extractStockNumber, extractVin, isExactScriptMessage, renderScript, type RenderedScript, type ScriptId } from '../widgets/script';
 import { priceAppearsIn } from '../research/validate';
 import { siteUrlFromVehiclePage } from '../research/urls';
@@ -35,6 +36,8 @@ export type WidgetChatConfig = {
   vehicle?: string | null;
   daysOnMarket?: number | null;
   priceChangedRecently?: boolean;
+  /** Onboarded rooftop. Do not run the availability-first widget script. */
+  inNetwork?: boolean;
 };
 
 export type ChatAttemptResult = AttemptResult;
@@ -75,6 +78,63 @@ export async function runWidgetChat(input: {
   const now = input.now ?? (() => new Date());
   const log = input.log ?? (() => undefined);
   const started = now();
+  if (input.config.inNetwork) {
+    const opener = inNetworkDeskOpener(input.config.shopperFirst);
+    const fenced: TranscriptEntry[] = [{
+      role: 'system',
+      text: opener,
+      at: started.toISOString(),
+    }];
+    log(`[in-network] availability-first script was not sent: ${opener}`);
+    try {
+      const saved = await input.store.insert({
+        vehicle_page_url: input.vehiclePageUrl,
+        dealer_site_url: null,
+        stock_number: input.stockNumber?.trim() || null,
+        widget_vendor: null,
+        status: 'blocked',
+        price: null,
+        dry_run: input.config.dryRun,
+        transcript: fenced,
+        stop_reason: 'in_network_fenced',
+        error: null,
+        started_at: started.toISOString(),
+        finished_at: now().toISOString(),
+        channel: 'widget',
+        first_reply_channel: null,
+        ...selectionColumns(input.selection),
+      });
+      return {
+        id: saved.id,
+        vehiclePageUrl: input.vehiclePageUrl,
+        dealerSiteUrl: null,
+        stockNumber: input.stockNumber?.trim() || null,
+        widgetVendor: null,
+        status: 'blocked',
+        price: null,
+        dryRun: input.config.dryRun,
+        transcript: fenced,
+        stopReason: 'in_network_fenced',
+        error: null,
+        channel: 'widget',
+      };
+    } catch (storeError) {
+      return {
+        id: null,
+        vehiclePageUrl: input.vehiclePageUrl,
+        dealerSiteUrl: null,
+        stockNumber: input.stockNumber?.trim() || null,
+        widgetVendor: null,
+        status: 'error',
+        price: null,
+        dryRun: input.config.dryRun,
+        transcript: fenced,
+        stopReason: 'in_network_fenced',
+        error: storeError instanceof Error ? storeError.message : 'Could not save the attempt.',
+        channel: 'widget',
+      };
+    }
+  }
   const transcript: TranscriptEntry[] = [];
   let status: AttemptStatus = 'unknown';
   let stopReason: string | null = null;

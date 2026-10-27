@@ -19,6 +19,7 @@ class DealerChatSheet extends StatefulWidget {
     required this.alreadyOpen,
     required this.shopperFirstName,
     required this.onSend,
+    this.chips,
   });
 
   final Listing listing;
@@ -27,6 +28,9 @@ class DealerChatSheet extends StatefulWidget {
   final bool alreadyOpen;
   final String shopperFirstName;
   final Future<void> Function({String? templateId, String? message}) onSend;
+
+  /// Server suggestions when the app has them. Otherwise the after-opener pair.
+  final List<DealBrainChip>? chips;
 
   @override
   State<DealerChatSheet> createState() => _DealerChatSheetState();
@@ -100,7 +104,7 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                       Icon(LucideIcons.send, color: colors.violet, size: 32),
                       const SizedBox(height: DrevvySpace.s4),
                       Text(
-                        'Price brief sent.',
+                        'Message sent.',
                         style: text.headline,
                         textAlign: TextAlign.center,
                       ),
@@ -146,7 +150,7 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                       const SizedBox(height: DrevvySpace.s2),
                       Text(
                         widget.alreadyOpen
-                            ? 'Send a one-click price brief. The dealer already has this thread.'
+                            ? 'Tap a suggestion. Nothing sends until you do.'
                             : KeySpend.conversationNote,
                         style: text.callout.copyWith(color: colors.muted),
                       ),
@@ -165,7 +169,10 @@ class _DealerChatSheetState extends State<DealerChatSheet> {
                         spacing: DrevvySpace.s2,
                         runSpacing: DrevvySpace.s2,
                         children: [
-                          for (final chip in DealBrainChip.stubs)
+                          for (final chip in widget.chips ??
+                              DealBrainChip.suggestionsFor(
+                                stockNumber: widget.listing.stockNo,
+                              ))
                             _ChipButton(
                               chip: chip,
                               selected: _selected == chip,

@@ -27,6 +27,8 @@ import {
   vehicleTitle,
   RANGE_LABEL,
 } from './format';
+import { inNetworkOpener, shopperFirstNameOnly } from './rooftop-match';
+import { evaluateOtdWithhold } from './otd-warnings';
 import type {
   AnalyticsRange,
   AnalyticsSummary,
@@ -425,6 +427,56 @@ function fail(error: DealerDemoError): DealerResult<never> {
   return { ok: false, error };
 }
 
+/** Point a mock thread at the live in-network opener. Seed rows stay on the demo template until this runs. */
+export function useInNetworkShopper(id: string, firstName: string | null): boolean {
+  const conversation = find(id);
+  if (!conversation) return false;
+  const first = shopperFirstNameOnly(firstName);
+  if (first) conversation.shopperFirstName = first;
+  const opener = conversation.messages.find((message) => message.kind === 'opener');
+  if (opener) opener.body = inNetworkOpener(first ?? conversation.shopperFirstName);
+  return true;
+}
+
+function planOtdStrike(conversation: Conversation, dealerReply: string) {
+  return evaluateOtdWithhold({
+    shopperFirstName: conversation.shopperFirstName,
+    messages: conversation.messages,
+    dealerReply,
+    warningCount: conversation.otdWarningCount ?? 0,
+    removalRecommended: conversation.otdRemovalRecommended === true,
+    comeInAdminFlag: conversation.comeInAdminFlag === true,
+  });
+}
+
+function appendOtdStrike(
+  conversation: Conversation,
+  result: ReturnType<typeof planOtdStrike>,
+  now: Date,
+): void {
+  if (result.comeInAdminFlag) conversation.comeInAdminFlag = true;
+  if (!result.warning) return;
+  conversation.otdWarningCount = result.warningCount;
+  const sentAt = now.toISOString();
+  conversation.messages.push({
+    id: `local-${sequence++}`,
+    author: 'drevvy',
+    kind: 'chat',
+    body: result.warning,
+    sentAt,
+  });
+  if (result.removalNotice) {
+    conversation.otdRemovalRecommended = true;
+    conversation.messages.push({
+      id: `local-${sequence++}`,
+      author: 'drevvy',
+      kind: 'chat',
+      body: result.removalNotice,
+      sentAt,
+    });
+  }
+}
+
 export function postMessage(
   id: string,
   body: string,
@@ -436,6 +488,7 @@ export function postMessage(
   if (!text) return fail('empty_message');
   if (text.length > MESSAGE_LIMIT) return fail('message_too_long');
 
+  const strike = planOtdStrike(conversation, text);
   conversation.messages.push({
     id: `local-${sequence++}`,
     author: 'salesperson',
@@ -443,6 +496,7 @@ export function postMessage(
     body: text,
     sentAt: now.toISOString(),
   });
+  appendOtdStrike(conversation, strike, now);
   if (!conversation.firstReplyAt) conversation.firstReplyAt = now.toISOString();
   if (conversation.stage === 'new_request') {
     conversation.stage = 'in_conversation';
@@ -471,18 +525,21 @@ export function shareNumbers(
 
   conversation.statedPriceCents = input.statedPriceCents;
   conversation.writtenOtdCents = input.writtenOtdCents;
+  const numbersBody = numbersShareBody({
+    advertisedPriceCents: conversation.advertisedPriceCents,
+    statedPriceCents: input.statedPriceCents,
+    writtenOtdCents: input.writtenOtdCents,
+    note,
+  });
+  const strike = planOtdStrike(conversation, numbersBody);
   conversation.messages.push({
     id: `local-${sequence++}`,
     author: 'salesperson',
     kind: 'numbers',
-    body: numbersShareBody({
-      advertisedPriceCents: conversation.advertisedPriceCents,
-      statedPriceCents: input.statedPriceCents,
-      writtenOtdCents: input.writtenOtdCents,
-      note,
-    }),
+    body: numbersBody,
     sentAt: now.toISOString(),
   });
+  appendOtdStrike(conversation, strike, now);
   if (!conversation.firstReplyAt) conversation.firstReplyAt = now.toISOString();
   if (
     conversation.stage === 'new_request' ||

@@ -1,5 +1,8 @@
 /**
- * Two-question dealer opening.
+ * Two-question dealer opening for off-network outreach.
+ *
+ * In-network rooftops pass `inNetwork: true`. That draft is `inNetworkOpener`
+ * only. Availability and listed-price follow-ups stay off.
  *
  * 1. Ask only if this car is still available, by stock number. With a
  *    salesperson's first name: "Hey Jordan, is stock #17646 still available?"
@@ -23,6 +26,7 @@ import {
   spokenAvailabilityQuestion,
   vehicleTitle,
 } from '../admin/outreach/opener';
+import { inNetworkOpener, type InNetworkOpenerOptions } from '../dealer/rooftop-match';
 import { detectSmsOptOut } from '../sms/opt-out';
 import { SHADOW_MODE } from './config';
 import { runGuardrails, type GuardrailResult } from './guardrails';
@@ -89,7 +93,13 @@ export function openingVehicleLabel(vehicle: OpeningVehicle): string {
   return vehicleTitle(vehicle);
 }
 
-export function openingAvailabilityLine(shopperFirst: string, vehicle: OpeningVehicle, channel: OpeningChannel): string {
+export function openingAvailabilityLine(
+  shopperFirst: string,
+  vehicle: OpeningVehicle,
+  channel: OpeningChannel,
+  options?: { inNetwork?: boolean } & InNetworkOpenerOptions,
+): string {
+  if (options?.inNetwork) return inNetworkOpener(shopperFirst, options);
   const question = availabilityQuestion({
     dealerFirstName: vehicle.dealerFirstName,
     stock: vehicle.stock,
@@ -114,13 +124,22 @@ export function startDealerOpening(input: {
   at: string;
   hasOptedInToText?: boolean;
   hasTextedBefore?: boolean;
+  /** In-network rooftops get the desk opener only. Availability-first stays off. */
+  inNetwork?: boolean;
+  financing?: boolean | null;
+  zip?: string | null;
 }): OpeningTurn {
-  const draft = openingAvailabilityLine(input.shopperFirst, input.vehicle, input.channel);
+  const draft = openingAvailabilityLine(input.shopperFirst, input.vehicle, input.channel, {
+    inNetwork: input.inNetwork,
+    financing: input.financing,
+    zip: input.zip,
+  });
   const guardrailResult = guard(draft, {
     shopperFirst: input.shopperFirst,
     channel: input.channel,
     hasOptedInToText: input.hasOptedInToText ?? input.channel !== 'sms',
-    hasTextedBefore: input.hasTextedBefore ?? false,
+    // The desk opener is in-app. It is not a cold SMS.
+    hasTextedBefore: input.hasTextedBefore ?? input.inNetwork === true,
   });
   if (guardrailResult.blocked) {
     return {
@@ -140,12 +159,13 @@ export function startDealerOpening(input: {
     listedPrice: input.vehicle.listedPrice,
     listedPriceCopiedAt: input.at,
     listedPriceIncludedAt: null,
-    phase: 'awaiting_availability',
+    phase: input.inNetwork ? 'complete' : 'awaiting_availability',
     availability: null,
     availabilityAt: null,
     statedPrice: null,
     statedPriceAt: null,
     history: [historyItem(input.at, 'outbound', draft, null)],
+    ...(input.inNetwork ? { inNetwork: true as const } : {}),
   };
   return {
     record: { ...input.record, opening },
@@ -154,7 +174,9 @@ export function startDealerOpening(input: {
     followSold: false,
     changed: true,
     guardrailResult,
-    reasoning: 'Asked only whether this vehicle is still available.',
+    reasoning: input.inNetwork
+      ? 'In-network desk opener. Availability-first script was not used.'
+      : 'Asked only whether this vehicle is still available.',
     shadowMode: SHADOW_MODE,
   };
 }
@@ -170,6 +192,13 @@ export function advanceDealerOpening(input: {
   hasTextedBefore: boolean;
 }): OpeningTurn {
   const opening = input.record.opening;
+  if (opening?.inNetwork) {
+    return untouched(
+      input.record,
+      'waiting',
+      'In-network desk owns this thread. Availability-first follow-ups stay off.',
+    );
+  }
   if (!opening || opening.phase === 'complete') {
     return untouched(input.record, 'unhandled', 'Opening is not waiting on the dealer.');
   }

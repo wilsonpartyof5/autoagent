@@ -59,6 +59,41 @@ function started() {
   });
 }
 
+test('an in-network rooftop gets the desk opener and not the availability script', () => {
+  const turn = startDealerOpening({
+    record: blankLifecycle(deal, 'shopper-1'),
+    vehicle,
+    shopperFirst: 'Maya Lopez',
+    channel: 'sms',
+    at: AT,
+    inNetwork: true,
+    financing: true,
+    zip: '29730',
+  });
+  assert.equal(turn.draft, 'Maya wants your best itemized out-the-door. ZIP 29730');
+  assert.equal(turn.draft?.includes('still available'), false);
+  assert.equal(turn.draft?.includes('Lopez'), false);
+  assert.equal(turn.record.opening?.inNetwork, true);
+  assert.equal(
+    openingAvailabilityLine('Maya', vehicle, 'email', { inNetwork: true }),
+    'Maya wants your best itemized out-the-door',
+  );
+  const next = advanceDealerOpening({
+    record: turn.record,
+    vehicle,
+    dealerMessage: 'Yes, that one is still available.',
+    shopperFirst: 'Maya',
+    channel: 'sms',
+    at: LATER,
+    hasOptedInToText: true,
+    hasTextedBefore: true,
+  });
+  assert.equal(next.draft, null);
+  assert.equal(next.kind, 'waiting');
+  assert.equal(next.changed, false);
+  assert.equal(next.reasoning.includes('Availability-first'), true);
+});
+
 test('the first message asks only about the stock number and signs email with the shopper', () => {
   const turn = started();
   const line = 'Hi, is stock #A1234 still available?\n\nMaya';

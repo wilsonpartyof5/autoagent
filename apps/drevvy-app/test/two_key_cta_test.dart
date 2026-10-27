@@ -161,7 +161,9 @@ void main() {
 
     expect(find.text(KeySpend.conversationCta), findsOneWidget);
     expect(find.textContaining('confirmed delivery'), findsWidgets);
-    expect(find.text('Price brief'), findsOneWidget);
+    expect(find.text('Itemized OTD'), findsOneWidget);
+    expect(find.text('Still available?'), findsNothing);
+    expect(find.textContaining('negotiat'), findsNothing);
     expect(find.text('Dana'), findsWidgets);
     expect(find.textContaining(r'$300'), findsWidgets);
     expect(find.textContaining('talk to dealer'), findsNothing);

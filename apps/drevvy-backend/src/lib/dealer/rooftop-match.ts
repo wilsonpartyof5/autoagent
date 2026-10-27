@@ -16,6 +16,7 @@
 export const IN_NETWORK_CHANNEL = 'in_app_message' as const;
 
 const FIRST_NAME = /^[A-Za-z][A-Za-z'-]{0,39}$/;
+const ZIP = /^\d{5}(?:-\d{4})?$/;
 
 /** First token only. Never last name, email, or phone. */
 export function shopperFirstNameOnly(raw: string | null | undefined): string | null {
@@ -26,10 +27,30 @@ export function shopperFirstNameOnly(raw: string | null | undefined): string | n
   return first;
 }
 
-/** Dealer-facing opener. The in-network dealer sees first name only. Message-only. */
-export function inNetworkOpener(firstName: string | null | undefined): string {
+export type InNetworkOpenerOptions = {
+  /**
+   * Zip is included only when the shopper is financing and a zip is already known.
+   * Conversation start does not have a financing flag, so callers omit this.
+   */
+  financing?: boolean | null;
+  zip?: string | null;
+};
+
+/**
+ * First dealer-facing line for an in-network rooftop.
+ * Exactly `{first} wants your best itemized out-the-door`, first name only.
+ * A financing zip may follow. No phone, email, street address, or last name.
+ */
+export function inNetworkOpener(
+  firstName: string | null | undefined,
+  options?: InNetworkOpenerOptions,
+): string {
   const who = shopperFirstNameOnly(firstName) ?? 'A shopper';
-  return `${who} is asking in Drevvy chat for your itemized best out-the-door price on this car, including taxes, fees, and add-ons at your signup terms.`;
+  const base = `${who} wants your best itemized out-the-door`;
+  if (options?.financing !== true) return base;
+  const zip = typeof options.zip === 'string' ? options.zip.trim() : '';
+  if (!ZIP.test(zip)) return base;
+  return `${base}. ZIP ${zip}`;
 }
 
 export const IN_NETWORK_OPENER = inNetworkOpener(null);

@@ -45,6 +45,8 @@ export type DealOpening = {
   statedPrice: number | null;
   statedPriceAt: string | null;
   history: DealOpeningHistoryItem[];
+  /** Desk thread. Availability-first outreach must not continue. */
+  inNetwork?: boolean;
 };
 
 export type LifecycleRecord = {
@@ -228,6 +230,7 @@ export function parseDealOpening(value: unknown): DealOpening | null {
     statedPrice: typeof row.statedPrice === 'number' && Number.isFinite(row.statedPrice) ? row.statedPrice : null,
     statedPriceAt: typeof row.statedPriceAt === 'string' ? row.statedPriceAt : null,
     history,
+    ...(row.inNetwork === true ? { inNetwork: true as const } : {}),
   };
 }
 

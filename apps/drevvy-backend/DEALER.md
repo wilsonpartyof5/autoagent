@@ -50,7 +50,7 @@ A mock row shows **first name + conversation ref** such as **Jordan · #A7F2**, 
 
 Stages: **New request → In conversation → Numbers shared**, and the end states **Closed**, **Car sold**, and **No reply**.
 
-The first message is the templated **Get Best Price** opener. After that, both sides write freeform text in this chat. Composer chips are message-only: Share itemized OTD · Still available · Answer question · Price & fees · Vehicle details. No come-in or test-drive CTAs. **Share itemized OTD** can also open the informational numbers card. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx.
+The mock seed still opens with the templated **Get Best Price** demo line. Live in-network chat does not. Its first dealer-facing message is exactly `{first} wants your best itemized out-the-door` (`inNetworkOpener`), first name only. A ZIP is added only when the shopper is financing and a ZIP is already known. This path does not have a financing flag, so the ZIP is omitted. After that, both sides write freeform text in this chat. Composer chips are message-only: Share itemized OTD · Still available · Answer question · Price & fees · Vehicle details. No come-in or test-drive CTAs. **Share itemized OTD** can also open the informational numbers card. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx. Shopper chips are suggestions. Nothing is sent until the shopper taps.
 
 Analytics cards: reply rate, median first-reply time, conversations started, conversations closed, itemized OTD shared.
 
@@ -127,7 +127,23 @@ In-network conversation rules (stored on `shopper_dealer_conversations`):
 
 - Shopper is known in-message. The dealer sees **first name only** (`shopper_first_name`). Never last name, email, or phone.
 - Message-only (`channel = in_app_message`). Do not start SMS, email, or voice from this row.
-- First message asks for the itemized best out-the-door price at the rooftop’s signup terms (`inNetworkOpener`).
+- First message is exactly `{first} wants your best itemized out-the-door` (`inNetworkOpener`). Fallback when the first name is missing: `A shopper wants your best itemized out-the-door`.
+
+## Chat quality runtime
+
+Dealer Desk owns this. Deal Brain owns the T1–T12 copy. Chips are suggestions on `POST /api/consumer/deals/:id/chips` (GET returns the same with no extra intel). `autoSend` is false. Labels are at most 18 characters. Bodies are at most 160. A chip with a missing required field is hidden. T3, T4, and T5 use the spec fallback sentence when a market figure is missing. They do not invent a price. Exact dollars, comp counts, and days on market are filled in when that intel is present. Chip copy is dropped if it contains negotiate or haggle language.
+
+Stage order, after the opener is already sent: no dealer reply yet → T6, then T1 when a stock number exists. After availability → T2, T6, T3. After a price → T6, T4, T5, T7. After an itemized OTD → T7, T8, T9, T10, T11, T12. T6 hides once an itemized OTD is in the thread. T11 and T12 also wait for that.
+
+If a dealer reply still does not include an itemized best OTD (vehicle price, a dealer fee, and at least two of tax, title, and registration, with dollar amounts), the desk adds a warning on that conversation:
+
+`Warning {n} of 3: {first} asked for your best itemized out-the-door and hasn't received it. Transparency is why Drevvy exists. After 3 warnings, your store is removed from the Drevvy dealer network.`
+
+The count is `shopper_dealer_conversations.otd_warning_count`, with each warning row in `dealer_otd_warnings`. The third warning also posts:
+
+`Your store has been removed from the Drevvy dealer network after 3 warnings for not giving an itemized best out-the-door. Transparency is why Drevvy exists.`
+
+That sets `otd_removal_recommended_at`. It recommends network removal for an admin. It does not delete the rooftop. A come-in push more than once sets `come_in_admin_flag` and stays separate from this ladder. There is no come-in rebuttal. The mock desk runs the same check when the thread opener is the live sentence. Demo **Get Best Price** rows are not warned.
 
 ## Keys
 
@@ -171,7 +187,7 @@ No new environment variables are required. Do not change the Vercel project `aut
 | Conversation id                           | A chat row tied to `shopper_deals.id`, matched with `matchOnboardedRooftop`.                                             |
 | Year, make, model, trim, advertised price | `shopper_deals.vehicle_snapshot`. Older rows may not have trim.                                                         |
 | Stock number                              | Not a column on `shopper_deals` today.                                                                                  |
-| Messages                                  | A new in-app chat table. The first row is the Get Best Price template. Do not reuse `shopper_outreach_messages`. Do not wire Telnyx. |
+| Messages                                  | A new in-app chat table. The first row is `inNetworkOpener`. Do not reuse `shopper_outreach_messages`. Do not wire Telnyx. |
 | Shopper label                             | First name only from `shopper_dealer_conversations.shopper_first_name`. The mock `#A7F2` reference is desk-demo.        |
 | Stage, reply timer, analytics             | Derived from that chat table. The sample numbers are not live.                                                          |
 | Doc fee default                           | Settings only. Not a quote.                                                                                             |
