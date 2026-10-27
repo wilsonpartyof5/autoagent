@@ -10,6 +10,7 @@ import {
   type ListingDealerIdentity,
   type RooftopMatch,
 } from '@/lib/dealer/rooftop-match';
+import { recordInNetworkVdpMatch } from '@/lib/dealer/vdp-match';
 import { addShopperCar, type CreditSummary, type DealDeps } from './deal-actions';
 import { ShopperDealError, isShopperListingId, readCreateDealInput } from './deals';
 import type { PresentedDeal } from './lifecycle';
@@ -53,7 +54,10 @@ export async function startDealerConversation(
   const match = await requireInNetworkMatch({ listingId, listingUrl }, deps.rooftops);
   const shopperFirstName = deps.supabase ? await loadShopperFirstName(deps.supabase, userId) : null;
   const namedMatch = { ...match, opener: inNetworkOpener(shopperFirstName) };
-  const result = await addShopperCar(userId, { ...input, zip }, deps);
+  const vdpMatchId = deps.supabase && listingId
+    ? await recordInNetworkVdpMatch(deps.supabase, { listingId, listingUrl, match: namedMatch })
+    : null;
+  const result = await addShopperCar(userId, { ...input, zip, vdpMatchId }, deps);
   if (deps.supabase && listingId) {
     await recordInNetworkConversation(deps.supabase, {
       dealId: result.deal.id,

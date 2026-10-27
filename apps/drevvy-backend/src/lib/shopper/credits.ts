@@ -23,7 +23,33 @@ export const KEY_PACKS = [
 
 export type KeySpendKind = 'market_save' | 'dealer_conversation';
 
-export type DealerKeyRefundReason = 'sold' | 'ended_no_response' | 'dealer_declined';
+/** App-level spend kind mapped onto Analytics `key_kind`. */
+export type AnalyticsKeyKind = 'market_intel' | 'conversation';
+
+/** App-level refund cause. Mapped onto Analytics `refund_reason` at write time. */
+export type DealerKeyRefundReason =
+  | 'sold'
+  | 'ended_no_response'
+  | 'dealer_declined'
+  | 'dealer_opted_out'
+  | 'admin';
+
+/** Values allowed on `shopper_credit_events.refund_reason`. */
+export type AnalyticsRefundReason =
+  | 'no_reply_7d'
+  | 'sold'
+  | 'dealer_declined'
+  | 'dealer_opted_out'
+  | 'admin';
+
+export function analyticsKeyKind(spend: KeySpendKind): AnalyticsKeyKind {
+  return spend === 'market_save' ? 'market_intel' : 'conversation';
+}
+
+export function analyticsRefundReason(reason: DealerKeyRefundReason): AnalyticsRefundReason {
+  if (reason === 'ended_no_response') return 'no_reply_7d';
+  return reason;
+}
 
 export function usdToCents(priceUsd: number): number {
   return Math.round(priceUsd * 100);
@@ -135,15 +161,22 @@ function readSpendRow(data: unknown): KeySpendResult {
   return { success: true, newBalance, alreadyConsumed };
 }
 
+export type ConsumeCreditOptions = {
+  /** In-network `drevvy_vdp_matches.id`. Required on prod for conversation spends. */
+  vdpMatchId?: string | null;
+};
+
 /** Spend the dealer-conversation key. Idempotent per deal. Does not spend the market+save key. */
 export async function consumeCredit(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
+  options?: ConsumeCreditOptions,
 ): Promise<KeySpendResult> {
   const { data, error } = await supabase.rpc('consume_credit_atomic', {
     p_user_id: userId,
     p_deal_id: dealId,
+    p_vdp_match_id: options?.vdpMatchId ?? null,
   });
 
   if (error) {
@@ -189,6 +222,7 @@ export async function refundCredit(
     p_user_id: userId,
     p_deal_id: dealId,
     p_idempotency_key: idempotencyKey,
+    p_refund_reason: analyticsRefundReason(reason),
   });
 
   if (error) {
