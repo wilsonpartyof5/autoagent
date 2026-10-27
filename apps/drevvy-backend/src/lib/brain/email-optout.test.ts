@@ -36,6 +36,9 @@ describe('email optout - credit refund eligibility', () => {
 
     assert.equal(shouldRefundCredit('open'), false, 'open deal should not refund');
     assert.equal(shouldRefundCredit('dealer_declined'), true, 'dealer decline or opt-out should refund the dealer key');
+    const { analyticsRefundReason } = await import('@/lib/shopper/credits');
+    assert.equal(analyticsRefundReason('dealer_opted_out'), 'dealer_opted_out');
+    assert.equal(analyticsRefundReason('ended_no_response'), 'no_reply_7d');
     assert.equal(shouldRefundCredit('sold'), true, 'a sold car should refund the dealer key');
     assert.equal(shouldRefundCredit('ended_no_response'), true, 'day 7 with no reply should refund the dealer key');
     assert.equal(shouldRefundCredit('removed'), false, 'removing a deal should not refund');

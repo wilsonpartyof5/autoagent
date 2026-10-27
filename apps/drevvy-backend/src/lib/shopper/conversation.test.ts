@@ -70,8 +70,12 @@ function credits(balance: number, firstName = 'Dana Blake') {
   const row = { balance, lifetime_purchased: balance, lifetime_used: 0, lifetime_refunded: 0 };
   const keys = new Set<string>();
   const conversations: Array<Record<string, unknown>> = [];
+  const vdpMatches: Array<Record<string, unknown>> = [];
+  const spends: Array<Record<string, unknown>> = [];
   return {
     conversations,
+    vdpMatches,
+    spends,
     from: (table: string) => {
       if (table === 'consumer_profiles') {
         return {
@@ -90,6 +94,19 @@ function credits(balance: number, firstName = 'Dana Blake') {
           },
         };
       }
+      if (table === 'drevvy_vdp_matches') {
+        return {
+          insert: (data: Record<string, unknown>) => {
+            const saved = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...data };
+            vdpMatches.push(saved);
+            return {
+              select: () => ({
+                single: async () => ({ data: saved, error: null }),
+              }),
+            };
+          },
+        };
+      }
       return {
         select: () => ({
           eq: () => ({
@@ -99,8 +116,9 @@ function credits(balance: number, firstName = 'Dana Blake') {
         upsert: async () => ({ error: null }),
       };
     },
-    rpc: async (fnName: string, params: { p_deal_id?: string }) => {
+    rpc: async (fnName: string, params: { p_deal_id?: string; p_vdp_match_id?: string | null }) => {
       if (fnName !== 'consume_credit_atomic') return { data: null, error: { message: 'unknown' } };
+      spends.push(params);
       const key = `use:dealer_conversation:${params.p_deal_id ?? ''}`;
       if (keys.has(key)) return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
       if (row.balance <= 0) return { data: [{ consumed: false, already_consumed: false, ...row }], error: null };
@@ -140,6 +158,10 @@ test('conversation starts only for an onboarded rooftop and spends the dealer ke
   assert.equal(started.credits.balance, 1);
   assert.equal(deals.rows.length, 1);
   assert.equal(supabase.conversations[0]?.shopper_first_name, 'Dana');
+  assert.equal(supabase.vdpMatches[0]?.network_status, 'in_network');
+  assert.equal(supabase.vdpMatches[0]?.dealership_id, HONDA.id);
+  assert.equal(supabase.vdpMatches[0]?.match_method, 'dealer_map');
+  assert.equal(supabase.spends[0]?.p_vdp_match_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 });
 
 test('email and last name never reach the in-network dealer', async () => {

@@ -176,7 +176,7 @@ export async function endDealOnOptout(
     supabase,
     record.consumerUserId,
     dealId,
-    'dealer_declined',
+    'dealer_opted_out',
   );
 
   console.log(JSON.stringify({

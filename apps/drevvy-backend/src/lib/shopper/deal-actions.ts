@@ -104,7 +104,7 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
 
 export async function addShopperCar(
   userId: string,
-  input: { listingId: unknown; vehicle: unknown; zip?: unknown },
+  input: { listingId: unknown; vehicle: unknown; zip?: unknown; vdpMatchId?: string | null },
   deps: DealDeps,
 ): Promise<{ deal: PresentedDeal; credits: CreditSummary }> {
   const supabase = getAdminClient(deps);
@@ -113,7 +113,7 @@ export async function addShopperCar(
     const existing = await deps.deals.findOpen(userId, input.listingId);
     if (existing) {
       const deal = toShopperDeal(existing);
-      await chargeDeal(supabase, userId, deal.id, false, deps);
+      await chargeDeal(supabase, userId, deal.id, false, deps, input.vdpMatchId);
       const records = await deps.lifecycle.listForShopper(userId);
       return {
         deal: await withFairPrice(presentDeal(deal, findRecord(records, deal.id)), 'unlock_with_agent', input.zip, deps),
@@ -136,7 +136,7 @@ export async function addShopperCar(
     listingId: input.listingId,
     vehicle: input.vehicle,
   });
-  await chargeDeal(supabase, userId, provisioned.deal.id, provisioned.created, deps);
+  await chargeDeal(supabase, userId, provisioned.deal.id, provisioned.created, deps, input.vdpMatchId);
 
   const records = await deps.lifecycle.listForShopper(userId);
   if (!findRecord(records, provisioned.deal.id)) {
@@ -492,8 +492,9 @@ async function chargeDeal(
   dealId: string,
   discardIfUncharged: boolean,
   deps: DealDeps,
+  vdpMatchId?: string | null,
 ): Promise<void> {
-  const useResult = await consumeCredit(supabase, userId, dealId);
+  const useResult = await consumeCredit(supabase, userId, dealId, { vdpMatchId });
   if (useResult.success) return;
   if (discardIfUncharged && useResult.error === 'no_credits') {
     try {
