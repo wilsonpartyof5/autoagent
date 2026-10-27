@@ -120,7 +120,7 @@ test('conversation starts only for an onboarded rooftop and spends the dealer ke
     lifecycle: createMemoryLifecycleRepository(),
     now: new Date('2026-10-27T16:00:00.000Z'),
     live: false,
-    supabase: supabase as DealDeps['supabase'],
+    supabase: supabase as unknown as DealDeps['supabase'],
     rooftops: {
       listOnboardedRooftops: async () => [HONDA],
       loadListingIdentity: async () => ({ marketcheckDealerId: '1038994' }),
@@ -150,7 +150,7 @@ test('email and last name never reach the in-network dealer', async () => {
     lifecycle: createMemoryLifecycleRepository(),
     now: new Date('2026-10-27T16:00:00.000Z'),
     live: false,
-    supabase: supabase as DealDeps['supabase'],
+    supabase: supabase as unknown as DealDeps['supabase'],
     rooftops: {
       listOnboardedRooftops: async () => [HONDA],
       loadListingIdentity: async () => ({ marketcheckDealerId: '1038994' }),

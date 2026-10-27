@@ -34,8 +34,8 @@ const PATH_ROOF: OnboardedRooftop = {
 };
 
 test('normalizeHost strips protocol, www, trailing dots, and default ports', () => {
-  assert.equal(normalizeHost('https://www.HondaCarsOfRockHill.com/inventory/tahoe'), 'hondacarsorockhill.com');
-  assert.equal(normalizeHost('HondaCarsOfRockHill.com.'), 'hondacarsorockhill.com');
+  assert.equal(normalizeHost('https://www.HondaCarsOfRockHill.com/inventory/tahoe'), 'hondacarsofrockhill.com');
+  assert.equal(normalizeHost('HondaCarsOfRockHill.com.'), 'hondacarsofrockhill.com');
   assert.equal(normalizeHost('http://www.hondacarsorockhill.com:80/'), 'hondacarsorockhill.com');
   assert.equal(normalizeHost(''), null);
   assert.equal(normalizeHost('not a url'), null);

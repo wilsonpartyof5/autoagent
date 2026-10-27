@@ -259,7 +259,7 @@ function harness(
     lifecycle,
     now: new Date(now),
     live: false,
-    supabase: supabase as DealDeps['supabase'],
+    supabase: supabase as unknown as DealDeps['supabase'],
   };
   return { deals, lifecycle, deps, closeFees: supabase.closeFees };
 }
