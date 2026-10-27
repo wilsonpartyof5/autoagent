@@ -99,24 +99,28 @@ export default function TermsPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-semibold mb-4">Car Packs and Billing</h2>
+              <h2 className="text-2xl font-semibold mb-4">Key Packs and Billing</h2>
 
-              <h3 className="text-xl font-medium mt-6 mb-3">One-time car packs</h3>
+              <h3 className="text-xl font-medium mt-6 mb-3">One-time key packs</h3>
               <p className="text-muted-foreground mb-4">
-                Asking and shopping are free. Unlocking a dealer price uses one car from a pack you buy.
-                Packs are one-time purchases and never expire:
+                Asking and shopping are free. Unlocking market details and saving a car uses one key.
+                Opening a dealer conversation uses a second key. Packs are one-time purchases and never expire:
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2 mb-4">
-                {LEGAL.CAR_PACKS.map((pack) => (
-                  <li key={pack.cars}>
-                    {pack.cars === 1 ? '1 car' : `${pack.cars} cars`} for {pack.price} ({pack.perCar} per car)
+                {LEGAL.KEY_PACKS.map((pack) => (
+                  <li key={pack.keys}>
+                    {pack.keys === 1 ? '1 key' : `${pack.keys} keys`} for {pack.price}
+                    {pack.keys === 1 ? '' : ` (${pack.perKey} per key)`}
+                    {pack.name === 'Recommended' ? ' — Recommended' : ''}
                   </li>
                 ))}
               </ul>
               <p className="text-muted-foreground mb-4">
-                There is no subscription and no automatic renewal. Cars you buy stay on your account until
-                you use them. Each unlock includes a written out-the-door price request. If a dealer never
-                replies, that car is returned to your balance.
+                There is no subscription and no automatic renewal. Keys you buy stay on your account until
+                you use them. If a dealer does not reply within 7 days, the dealer-conversation key is
+                returned. That key also comes back when the car is sold or the dealer declines. The key
+                used to unlock market details and save a car is not returned. Removing a car before
+                outreach does not return a key.
               </p>
 
               <h3 className="text-xl font-medium mt-6 mb-3">Payment Processing</h3>
@@ -141,8 +145,7 @@ export default function TermsPage() {
                 <li>Any specific savings or discount amount</li>
               </ul>
               <p className="text-muted-foreground mt-4">
-                Prices may change, vehicles may be sold, and final terms are subject to negotiation and
-                dealership policies.
+                Prices may change, vehicles may be sold, and final terms follow dealership policies.
               </p>
             </section>
 

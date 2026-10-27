@@ -1,12 +1,11 @@
 /**
- * Car credits system. Shoppers buy one-time car packs (1/$35, 3/$55, 5/$75, 10/$95)
- * that never expire and never reset monthly. A credit returns only when the
- * shopper removes the deal within 30 minutes of adding it and before any
- * outreach, or when the dealer declines or opts out. Buying the car does not
- * return a credit, and neither does ending with no dealer response.
+ * Dealer-conversation key refunds. Day 7 with no reply, a sold listing, and a
+ * dealer decline or opt-out each return that one key. Removing a deal does not,
+ * including a cancel inside 30 minutes before outreach. The market+save key
+ * is never refunded from an end state.
  */
 
-export const NO_RESPONSE_MS = 5 * 24 * 60 * 60 * 1000;
+export const NO_RESPONSE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type QuotaEndState = 'open' | 'sold' | 'ended_no_response' | 'removed' | 'dealer_declined';
 
@@ -19,6 +18,8 @@ export type QuotaDeal = {
   endedAt: string | null;
 };
 
-export function shouldRefundCredit(endState: QuotaEndState): endState is 'dealer_declined' {
-  return endState === 'dealer_declined';
+export function shouldRefundCredit(
+  endState: QuotaEndState,
+): endState is 'sold' | 'ended_no_response' | 'dealer_declined' {
+  return endState === 'sold' || endState === 'ended_no_response' || endState === 'dealer_declined';
 }

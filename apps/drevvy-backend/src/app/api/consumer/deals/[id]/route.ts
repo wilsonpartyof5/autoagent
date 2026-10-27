@@ -12,8 +12,8 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  * is not found. Dealer identity is not included. `visit` is included only
  * after the official offer is forwarded. Opening this deal loads MarketCheck
  * Price when `zip` is present (used or CPO, cached 24 hours). DELETE removes
- * the car from the shopper's list and returns the car credit only inside the
- * 30-minute window before any outreach.
+ * the car from the shopper's list. It does not return a key, including a
+ * cancel inside 30 minutes before outreach.
  */
 
 export const dynamic = 'force-dynamic';

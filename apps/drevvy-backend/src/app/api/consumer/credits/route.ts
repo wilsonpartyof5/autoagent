@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     const granted = await grantVerifiedPurchase(createAdminClient(), auth.userId, verified);
     if (!granted.success) {
       return NextResponse.json(
-        { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these credits.' } },
+        { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these keys.' } },
         { status: 500 },
       );
     }

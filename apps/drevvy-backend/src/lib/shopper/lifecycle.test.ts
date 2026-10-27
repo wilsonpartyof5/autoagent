@@ -25,7 +25,6 @@ import {
   getShopperCar,
   listBuyOutcomes,
   listShopperCars,
-  REMOVAL_REFUND_MS,
   removeShopperCar,
   runLifecycleSchedule,
   similarForDeal,
@@ -46,6 +45,7 @@ import {
   selectLifecycleRepository,
   type LifecycleRepository,
 } from './lifecycle-store';
+import { spendMarketSaveKey } from './credits';
 import { NO_RESPONSE_MS } from './quota';
 import { findSimilarListings, similarSearchQuery, toShopperListing } from './similar';
 
@@ -101,16 +101,32 @@ function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credit
         eq: (_col: string, _val: string) => ({ error: null }),
       }),
     }),
-    rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_idempotency_key?: string }) => {
+    rpc: async (fnName: string, params: { p_user_id?: string; p_deal_id?: string; p_listing_id?: string; p_idempotency_key?: string }) => {
       const userId = params.p_user_id ?? '';
       const row = rowFor(userId);
       const userEvents = events.get(userId) ?? [];
       events.set(userId, userEvents);
 
+      if (fnName === 'consume_market_save_atomic') {
+        if (consumeMode === 'error') return { data: null, error: { message: 'db down' } };
+        const key = `use:market_save:${params.p_listing_id ?? ''}`;
+        if (userEvents.some((event) => event.idempotency_key === key)) {
+          return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
+        }
+        if (consumeMode === 'no_credits' || row.balance <= 0) {
+          return { data: [{ consumed: false, already_consumed: false, ...row }], error: null };
+        }
+        userEvents.push({ id: randomUUID(), user_id: userId, idempotency_key: key });
+        row.balance -= 1;
+        row.lifetime_used += 1;
+        return { data: [{ consumed: true, already_consumed: false, ...row }], error: null };
+      }
+
       if (fnName === 'consume_credit_atomic') {
         if (consumeMode === 'error') return { data: null, error: { message: 'db down' } };
-        const key = `use:${params.p_deal_id ?? ''}`;
-        if (userEvents.some((event) => event.idempotency_key === key)) {
+        const key = `use:dealer_conversation:${params.p_deal_id ?? ''}`;
+        const legacy = `use:${params.p_deal_id ?? ''}`;
+        if (userEvents.some((event) => event.idempotency_key === key || event.idempotency_key === legacy)) {
           return { data: [{ consumed: true, already_consumed: true, ...row }], error: null };
         }
         if (consumeMode === 'no_credits' || row.balance <= 0) {
@@ -129,7 +145,10 @@ function createMockSupabase(initialBalance = 999, consumeMode: 'ok' | 'no_credit
         if (existingRefund) {
           return { data: [{ refunded: false, already_refunded: true, new_balance: row.balance }], error: null };
         }
-        const useEvent = userEvents.find((event) => event.idempotency_key === `use:${dealId}`);
+        const useEvent = userEvents.find((event) =>
+          event.idempotency_key === `use:dealer_conversation:${dealId}`
+          || event.idempotency_key === `use:${dealId}`,
+        );
         if (!useEvent) {
           return { data: [{ refunded: false, already_refunded: false, new_balance: row.balance }], error: null };
         }
@@ -235,7 +254,7 @@ test('a removed deal can be added again with a new id', async () => {
   assert.notEqual(second.deal.id, created.deal.id);
 });
 
-test('adding a deal consumes one car and repeating that listing does not', async () => {
+test('adding a deal consumes one dealer-conversation key and repeating that listing does not', async () => {
   const box = harness('2026-10-01T16:10:00.000Z', 2);
   const first = await addCar(box, 'mc-car-consume');
   assert.equal(first.credits.balance, 1);
@@ -323,32 +342,32 @@ test('a failed charge discards the new deal and a credit error keeps it', async 
   assert.equal(failed.deals.rows[0]?.status, 'interested');
 });
 
-test('removing a deal within 30 minutes and before outreach returns the car once', async () => {
+test('removing a deal within 30 minutes and before outreach does not return a key', async () => {
   const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-window');
   assert.equal(created.credits.balance, 0);
   const added = Date.parse(created.deal.createdAt);
-  box.deps.now = new Date(added + REMOVAL_REFUND_MS);
+  box.deps.now = new Date(added + 30 * 60 * 1000);
   const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
-  assert.equal(result.refunded, true);
-  assert.equal(result.credits.balance, 1);
+  assert.equal(result.refunded, false);
+  assert.equal(result.credits.balance, 0);
 
   const again = await removeShopperCar('shopper-1', created.deal.id, box.deps);
   assert.equal(again.refunded, false);
-  assert.equal(again.credits.balance, 1);
+  assert.equal(again.credits.balance, 0);
 });
 
-test('removing a deal after 30 minutes does not return the car', async () => {
+test('removing a deal after 30 minutes does not return a key', async () => {
   const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-late');
   const added = Date.parse(created.deal.createdAt);
-  box.deps.now = new Date(added + REMOVAL_REFUND_MS + 1);
+  box.deps.now = new Date(added + 30 * 60 * 1000 + 1);
   const result = await removeShopperCar('shopper-1', created.deal.id, box.deps);
   assert.equal(result.refunded, false);
   assert.equal(result.credits.balance, 0);
 });
 
-test('buying a car does not return the car credit', async () => {
+test('buying the car returns the dealer-conversation key once', async () => {
   const box = harness('2026-10-01T16:10:00.000Z', 1);
   const created = await addCar(box, 'mc-car-bought');
   assert.equal(created.credits.balance, 0);
@@ -361,10 +380,10 @@ test('buying a car does not return the car credit', async () => {
   );
   assert.equal(saved.outcome.bought, true);
   assert.equal(saved.deal.endState, 'sold');
-  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 0);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 1);
 });
 
-test('a sold ending does not return the car credit', async () => {
+test('a sold ending returns the dealer-conversation key', async () => {
   const box = harness('2026-10-01T16:10:00.000Z', 1);
   const created = await addCar(box, 'mc-car-sold-elsewhere');
   assert.equal(created.credits.balance, 0);
@@ -376,10 +395,47 @@ test('a sold ending does not return the car credit', async () => {
     sentAt: '2026-10-03T16:10:00.000Z',
   }, box.deps);
   assert.equal((await box.lifecycle.get('shopper-1', created.deal.id))?.endState, 'sold');
-  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 0);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 1);
+  await applyAgentEvent({
+    type: 'end',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-04T16:10:00.000Z',
+  }, box.deps);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 1);
 });
 
-test('a dealer decline returns the car credit and no response does not', async () => {
+test('market save and the dealer conversation spend separate keys, and sold returns only the dealer key', async () => {
+  const box = harness('2026-10-01T16:10:00.000Z', 2);
+  const supabase = box.deps.supabase;
+  if (!supabase) throw new Error('supabase mock missing');
+  const market = await spendMarketSaveKey(supabase, 'shopper-1', 'mc-car-both');
+  assert.equal(market.success, true);
+  assert.equal(market.alreadyConsumed, false);
+  assert.equal(market.newBalance, 1);
+  const marketAgain = await spendMarketSaveKey(supabase, 'shopper-1', 'mc-car-both');
+  assert.equal(marketAgain.alreadyConsumed, true);
+  assert.equal(marketAgain.newBalance, 1);
+
+  const created = await addCar(box, 'mc-car-both');
+  assert.equal(created.credits.balance, 0);
+
+  await applyAgentEvent({
+    type: 'end',
+    dealId: created.deal.id,
+    consumerUserId: 'shopper-1',
+    endState: 'sold',
+    sentAt: '2026-10-03T16:10:00.000Z',
+  }, box.deps);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 1);
+
+  const removed = await removeShopperCar('shopper-1', created.deal.id, box.deps);
+  assert.equal(removed.refunded, false);
+  assert.equal(removed.credits.balance, 1);
+});
+
+test('a dealer decline and day 7 with no reply each return the dealer-conversation key', async () => {
   const declined = harness('2026-10-01T16:10:00.000Z', 1);
   const created = await addCar(declined, 'mc-car-declined');
   await applyAgentEvent({
@@ -405,12 +461,12 @@ test('a dealer decline returns the car credit and no response does not', async (
   quiet.deps.now = new Date(Date.parse(started) + NO_RESPONSE_MS);
   const scheduled = await runLifecycleSchedule(quiet.deps);
   assert.equal(scheduled.endedNoResponse, 1);
-  assert.equal(scheduled.creditsRefunded, 0);
+  assert.equal(scheduled.creditsRefunded, 1);
   assert.equal((await quiet.lifecycle.get('shopper-1', deal.deal.id))?.endState, 'ended_no_response');
-  assert.equal((await listShopperCars('shopper-1', quiet.deps)).credits.balance, 0);
+  assert.equal((await listShopperCars('shopper-1', quiet.deps)).credits.balance, 1);
 });
 
-test('removing a deal after outreach does not return the car', async () => {
+test('removing a deal after outreach does not return a key', async () => {
   const box = harness('2026-10-01T16:00:00.000Z', 1);
   const created = await addCar(box, 'mc-car-refund-outreach');
   const added = Date.parse(created.deal.createdAt);
@@ -616,7 +672,7 @@ test('the day after pickup sends the same prompt when nobody left the geofence',
   assert.equal(prompted?.buyPromptSentAt, '2026-10-13T15:00:00.000Z');
 });
 
-test('no reply for five days ends the deal and a reply keeps it open', async () => {
+test('no reply for seven days ends the deal and a reply keeps it open', async () => {
   const box = harness();
   const quiet = await addCar(box, 'mc-quiet-01');
   const answered = await addCar(box, 'mc-reply-01');
@@ -656,7 +712,7 @@ test('no reply for five days ends the deal and a reply keeps it open', async () 
   assert.equal(replyRecord?.endState, 'open');
 });
 
-test('five days without a reply tells the shopper the car is back', async () => {
+test('seven days without a reply returns the dealer-conversation key', async () => {
   const started = '2026-10-01T16:00:00.000Z';
   const box = harness(started);
   const pushes: ShopperPush[] = [];
@@ -677,8 +733,9 @@ test('five days without a reply tells the shopper the car is back', async () => 
   assert.equal(first.endedNoResponse, 1);
   assert.equal(second.endedNoResponse, 0);
   assert.deepEqual(pushes.map((push) => push.event), ['no_response']);
-  assert.match(pushes[0]?.title ?? '', /Your Tahoe is back/);
-  assert.match(pushes[0]?.body ?? '', /Your dealer didn't respond, so your Tahoe is back/);
+  assert.equal(pushes[0]?.title, 'Your key is back');
+  assert.match(pushes[0]?.body ?? '', /Your dealer didn't respond, so your dealer-conversation key is back/);
+  assert.equal((await listShopperCars('shopper-1', box.deps)).credits.balance, 999);
   assert.equal(/negotiat/i.test(`${pushes[0]?.title} ${pushes[0]?.body}`), false);
 
   const ended = harness(started);

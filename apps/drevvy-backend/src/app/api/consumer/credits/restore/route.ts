@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       const granted = await grantVerifiedPurchase(admin, auth.userId, verified);
       if (!granted.success) {
         return NextResponse.json(
-          { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not restore these credits.' } },
+          { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not restore these keys.' } },
           { status: 500 },
         );
       }

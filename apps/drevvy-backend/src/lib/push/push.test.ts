@@ -29,8 +29,8 @@ test('push copy shares one wording and never says negotiate', () => {
   assert.equal(pushCopy('did_you_buy').body, 'Tell Drevvy whether you bought this car.');
   assert.equal(pushCopy('price_drop').body, 'Tap to see the new price.');
   assert.equal(pushCopy('offer_ready').body, 'A new offer is ready on your car. Tap to review.');
-  assert.equal(pushCopy('no_response').title, 'Your car is back');
-  assert.match(pushCopy('no_response').body, /Your dealer didn't respond, so your car is back/);
+  assert.equal(pushCopy('no_response').title, 'Your key is back');
+  assert.match(pushCopy('no_response').body, /Your dealer didn't respond, so your dealer-conversation key is back/);
 });
 
 test('demo and cron events reject a custom message', () => {
