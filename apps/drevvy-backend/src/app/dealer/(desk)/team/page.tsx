@@ -5,15 +5,7 @@ export const metadata = { title: 'Team' };
 export default function DealerTeamPage() {
   return (
     <div className="row" style={{ gridTemplateColumns: '1fr' }}>
-      <div
-        className="g card"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1.4fr 1fr 1.4fr auto',
-          gap: 10,
-          alignItems: 'end',
-        }}
-      >
+      <div className="g card invite-grid">
         <div>
           <div className="lab">Work email</div>
           <input className="inp" placeholder="name@lakesidehonda.com" />

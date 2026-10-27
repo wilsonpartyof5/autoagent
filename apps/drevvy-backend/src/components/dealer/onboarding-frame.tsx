@@ -20,13 +20,7 @@ export function OnboardingFrame({
 
   return (
     <div className="ob">
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className="top g" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Link className="logo" href="/dealer/login">
             D

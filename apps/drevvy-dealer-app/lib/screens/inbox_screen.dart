@@ -23,18 +23,18 @@ class _InboxScreenState extends State<InboxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SafeArea(
+        SafeArea(
           bottom: false,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Inbox', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                SizedBox(height: 4),
+                const Text('Inbox', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
                 Text(
                   'First name + conversation ref only. Never phone, email, or address.',
-                  style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+                  style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4),
                 ),
               ],
             ),
@@ -61,10 +61,10 @@ class _InboxScreenState extends State<InboxScreen> {
         ),
         Expanded(
           child: items.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     'Nothing in this filter.',
-                    style: TextStyle(color: DealerColors.muted),
+                    style: TextStyle(color: DealerColors.mutedOf(context)),
                   ),
                 )
               : ListView.separated(
@@ -93,7 +93,7 @@ class _InboxScreenState extends State<InboxScreen> {
                             Text(conversation.vehicle.title),
                             Text(
                               'Stock #${conversation.stockNumber}',
-                              style: const TextStyle(color: DealerColors.muted, fontSize: 12),
+                              style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
                             ),
                             const SizedBox(height: 4),
                             PriceBlock(item: item),
@@ -104,7 +104,7 @@ class _InboxScreenState extends State<InboxScreen> {
                               item.snippet,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: DealerColors.muted),
+                              style: TextStyle(color: DealerColors.mutedOf(context)),
                             ),
                           ],
                         ),
@@ -144,9 +144,9 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? DealerColors.violet : DealerColors.card,
+      color: selected ? DealerColors.violet : DealerColors.cardOf(context),
       shape: StadiumBorder(
-        side: BorderSide(color: selected ? DealerColors.ink : DealerColors.line),
+        side: BorderSide(color: selected ? DealerColors.inkOf(context) : DealerColors.lineOf(context)),
       ),
       child: InkWell(
         onTap: onTap,
@@ -156,7 +156,7 @@ class _FilterChip extends StatelessWidget {
           child: Text(
             '$label $count',
             style: TextStyle(
-              color: selected ? Colors.white : DealerColors.ink,
+              color: selected ? Colors.white : DealerColors.inkOf(context),
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),

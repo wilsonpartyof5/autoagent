@@ -4,7 +4,7 @@ export const metadata = { title: 'Roles' };
 
 export default function DealerRolesPage() {
   return (
-    <div className="row" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+    <div className="row pair">
       {DEALER_ROLES.map(role => (
         <article key={role.id} className="g card">
           <span className="chip c-new">{role.label}</span>

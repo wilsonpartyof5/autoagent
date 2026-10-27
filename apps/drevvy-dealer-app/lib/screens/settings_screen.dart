@@ -38,9 +38,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Text('Settings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Demo only. These fields stay on this page. Nothing is saved. Day-to-day use is free. There is no shopper paywall on this desk.',
-          style: TextStyle(color: DealerColors.muted, height: 1.4),
+          style: TextStyle(color: DealerColors.mutedOf(context), height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: DealerThemeToggle(),
         ),
         const SizedBox(height: 16),
         _card(
@@ -118,9 +123,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: const Text('Sign out'),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Returns to the demo login. There is no account yet.',
-          style: TextStyle(color: DealerColors.muted, fontSize: 12),
+          style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
         ),
       ],
     );
@@ -130,18 +135,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: DealerColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DealerColors.line),
-      ),
+      decoration: DealerColors.cardDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           if (caption != null) ...[
             const SizedBox(height: 4),
-            Text(caption, style: const TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4)),
+            Text(caption, style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4)),
           ],
           const SizedBox(height: 8),
           child,
@@ -170,19 +171,15 @@ class _BillingCardState extends State<_BillingCard> {
       children: [
         Text(closeFeeCopy, style: const TextStyle(fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Charged when a participating dealer marks a deal sold. The desk stays free until then.',
-          style: TextStyle(color: DealerColors.muted, fontSize: 12, height: 1.4),
+          style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, height: 1.4),
         ),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: DealerColors.canvas,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: DealerColors.line),
-          ),
+          decoration: DealerColors.cardDecoration(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -190,9 +187,9 @@ class _BillingCardState extends State<_BillingCard> {
               const SizedBox(height: 4),
               const Text('Visa ···· 4242'),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Placeholder card. No payment is stored or sent.',
-                style: TextStyle(color: DealerColors.muted, fontSize: 12),
+                style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12),
               ),
               const SizedBox(height: 8),
               OutlinedButton(

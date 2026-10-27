@@ -2,7 +2,8 @@
    Scoped to .glass-app so the public shopper site stays on Halo/mist. */
 
 .glass-app,
-.glass-app[data-theme='dark'] {
+.glass-app[data-theme='dark'],
+html[data-drevvy-theme='dark'] .glass-app {
   --bg: #07080c;
   --o1: #5b4fe9;
   --o2: #3563e0;
@@ -19,9 +20,20 @@
   --soft2: rgba(0, 0, 0, 0.3);
   --acc: #8e86ff;
   --in: rgba(255, 255, 255, 0.04);
+  --chip-new: #8e86ff;
+  --chip-new-bg: rgba(164, 156, 255, 0.16);
+  --chip-wait: #d9a23e;
+  --chip-wait-bg: rgba(245, 196, 107, 0.16);
+  --chip-chat: #3aa6e0;
+  --chip-chat-bg: rgba(107, 200, 255, 0.16);
+  --chip-sold: #1fbf7a;
+  --chip-sold-bg: rgba(61, 220, 151, 0.16);
+  --chip-no: #f06a78;
+  --chip-no-bg: rgba(255, 138, 150, 0.16);
   color-scheme: dark;
 }
 
+html[data-drevvy-theme='light'] .glass-app,
 .glass-app[data-theme='light'] {
   --bg: #f4f6fb;
   --orbop: 0.28;
@@ -36,7 +48,25 @@
   --soft2: rgba(22, 26, 43, 0.05);
   --acc: #5145db;
   --in: rgba(255, 255, 255, 0.6);
+  --chip-new: #5145db;
+  --chip-new-bg: rgba(81, 69, 219, 0.12);
+  --chip-wait: #8a5a00;
+  --chip-wait-bg: rgba(217, 162, 62, 0.16);
+  --chip-chat: #3563e0;
+  --chip-chat-bg: rgba(53, 99, 224, 0.12);
+  --chip-sold: #0f7a55;
+  --chip-sold-bg: rgba(31, 191, 122, 0.14);
+  --chip-no: #c23b4a;
+  --chip-no-bg: rgba(240, 106, 120, 0.14);
   color-scheme: light;
+}
+
+html:has(.glass-app) {
+  background: #07080c;
+}
+
+html[data-drevvy-theme='light']:has(.glass-app) {
+  background: #f4f6fb;
 }
 
 .glass-app {
@@ -144,6 +174,13 @@
   color: var(--mut);
 }
 
+.glass-app .ic:hover,
+.glass-app .pill:hover,
+.glass-app .lead:hover,
+.glass-app .cp:hover {
+  background: var(--soft);
+}
+
 .glass-app .ic.on,
 .glass-app .btn,
 .glass-app .pill.on,
@@ -153,6 +190,11 @@
   box-shadow:
     0 6px 20px rgba(91, 79, 233, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.glass-app .ic.on:hover,
+.glass-app .pill.on:hover {
+  background: linear-gradient(135deg, #5145db, #3563e0);
 }
 
 .glass-app .logo {
@@ -295,6 +337,41 @@
   min-height: 720px;
 }
 
+.glass-app .stats-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.glass-app .stats-2 {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.glass-app .pair {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.glass-app .invite-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1.4fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.glass-app .composer {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.glass-app .composer .inp {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.glass-app .composer .btn {
+  flex: none;
+}
+
 .glass-app .lab {
   font-size: 12px;
   color: var(--mut);
@@ -309,13 +386,13 @@
 }
 
 .glass-app .up {
-  color: #1fbf7a;
+  color: var(--chip-sold);
   font-size: 12px;
   font-weight: 700;
 }
 
 .glass-app .dn {
-  color: #ff6b7a;
+  color: var(--chip-no);
   font-size: 12px;
   font-weight: 700;
 }
@@ -339,28 +416,28 @@
 }
 
 .glass-app .c-new {
-  background: rgba(164, 156, 255, 0.16);
-  color: #8e86ff;
+  background: var(--chip-new-bg);
+  color: var(--chip-new);
 }
 
 .glass-app .c-wait {
-  background: rgba(245, 196, 107, 0.16);
-  color: #d9a23e;
+  background: var(--chip-wait-bg);
+  color: var(--chip-wait);
 }
 
 .glass-app .c-chat {
-  background: rgba(107, 200, 255, 0.16);
-  color: #3aa6e0;
+  background: var(--chip-chat-bg);
+  color: var(--chip-chat);
 }
 
 .glass-app .c-sold {
-  background: rgba(61, 220, 151, 0.16);
-  color: #1fbf7a;
+  background: var(--chip-sold-bg);
+  color: var(--chip-sold);
 }
 
 .glass-app .c-no {
-  background: rgba(255, 138, 150, 0.16);
-  color: #f06a78;
+  background: var(--chip-no-bg);
+  color: var(--chip-no);
 }
 
 .glass-app .sel {
@@ -597,8 +674,8 @@
 }
 
 .glass-app .step.done .dot {
-  background: rgba(61, 220, 151, 0.2);
-  color: #1fbf7a;
+  background: var(--chip-sold-bg);
+  color: var(--chip-sold);
 }
 
 .glass-app .chk {
@@ -662,7 +739,7 @@
 }
 
 .glass-app .ok {
-  color: #1fbf7a;
+  color: var(--chip-sold);
   font-weight: 800;
 }
 
@@ -673,8 +750,13 @@
 /* Existing admin pages keep their markup; remap slate/emerald onto glass tokens. */
 .glass-app .bg-slate-950,
 .glass-app .bg-slate-900,
-.glass-app .bg-slate-900\/40 {
+.glass-app .bg-slate-900\/40,
+.glass-app .bg-slate-800 {
   background-color: var(--in);
+}
+
+.glass-app .hover\:bg-slate-800:hover {
+  background-color: var(--soft);
 }
 
 .glass-app .border-slate-800,
@@ -694,6 +776,10 @@
   color: var(--mut);
 }
 
+.glass-app .text-slate-950 {
+  color: #fff;
+}
+
 .glass-app .text-emerald-200,
 .glass-app .text-emerald-300 {
   color: var(--acc);
@@ -703,14 +789,34 @@
 .glass-app .bg-emerald-400 {
   background: linear-gradient(135deg, #5145db, #3563e0);
   color: #fff;
+  border-radius: 999px;
+  border: 0;
 }
 
 .glass-app .bg-emerald-400\/15 {
-  background: rgba(61, 220, 151, 0.16);
+  background: var(--chip-sold-bg);
+  color: var(--chip-sold);
 }
 
-.glass-app .text-emerald-200 {
-  color: #1fbf7a;
+.glass-app .bg-emerald-400\/5 {
+  background: rgba(91, 79, 233, 0.08);
+}
+
+.glass-app .hover\:border-emerald-700:hover {
+  border-color: var(--acc);
+}
+
+.glass-app .border-amber-400\/30,
+.glass-app .border-amber-900\/60 {
+  border-color: rgba(217, 162, 62, 0.35);
+}
+
+.glass-app .rounded-xl {
+  border-radius: 20px;
+}
+
+.glass-app .rounded-lg {
+  border-radius: 14px;
 }
 
 .glass-app .rounded-xl.border,
@@ -729,6 +835,15 @@
   background: var(--in);
   border-color: var(--bd);
   color: var(--tx);
+}
+
+@media (max-width: 1100px) {
+  .glass-app .stats-5,
+  .glass-app .stats-2,
+  .glass-app .pair,
+  .glass-app .invite-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -753,7 +868,11 @@
   }
 
   .glass-app .kan,
-  .glass-app .desk-split {
+  .glass-app .desk-split,
+  .glass-app .stats-5,
+  .glass-app .stats-2,
+  .glass-app .pair,
+  .glass-app .invite-grid {
     grid-template-columns: 1fr;
     min-height: auto;
   }

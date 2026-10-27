@@ -60,45 +60,47 @@ export default async function AdminDealsPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="row pair">
         {OVERVIEW_STATUSES.map((status) => (
-          <article key={status} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">{OVERVIEW_STATUS_LABEL[status]}</p>
-            <p className="mt-1 text-2xl font-semibold">{overview.counts[status]}</p>
+          <article key={status} className="g card">
+            <p className="lab">{OVERVIEW_STATUS_LABEL[status]}</p>
+            <p className="num">{overview.counts[status]}</p>
           </article>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-800 p-4">
-          <h3 className="font-medium">Average dealer response time</h3>
-          <p className="mt-2 text-2xl font-semibold">{hours(overview.averageResponseHours)}</p>
-          <p className="mt-1 text-sm text-slate-400">
+      <div className="row pair">
+        <article className="g card">
+          <h3 className="t">Average dealer response time</h3>
+          <p className="num">{hours(overview.averageResponseHours)}</p>
+          <p className="mut">
             {overview.replies === 0
               ? 'No replies to average yet.'
               : `Mean time from the first outbound message to the first dealer reply, across ${overview.replies} deals.`}
           </p>
         </article>
-        <article className="rounded-xl border border-slate-800 p-4">
-          <h3 className="font-medium">Price-drop rounds</h3>
-          <p className="mt-2 text-2xl font-semibold">{rounds}</p>
-          <p className="mt-1 text-sm text-slate-400">
+        <article className="g card">
+          <h3 className="t">Price-drop rounds</h3>
+          <p className="num">{rounds}</p>
+          <p className="mut">
             {overview.source === 'demo'
               ? 'Average recorded price drops per car in the demo book.'
               : 'Average per deal. A round is a later offer that comes in lower than the one before it.'}
           </p>
-          <ul className="mt-4 space-y-2 text-sm">
-            {overview.roundBuckets.map((bucket) => (
-              <li key={bucket.label} className="flex justify-between border-b border-slate-800 py-1">
-                <span>{bucket.label} {bucket.label === '1' ? 'round' : 'rounds'}</span>
-                <span>{bucket.count}</span>
-              </li>
-            ))}
-          </ul>
+          <table className="tbl" style={{ marginTop: 12 }}>
+            <tbody>
+              {overview.roundBuckets.map((bucket) => (
+                <tr key={bucket.label}>
+                  <td>{bucket.label} {bucket.label === '1' ? 'round' : 'rounds'}</td>
+                  <td>{bucket.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </article>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="mut">
         {overview.counted} deals in these four statuses.
         {overview.excluded > 0 ? ` ${overview.excluded} ended another way and stay out of the counts.` : ''}
       </p>

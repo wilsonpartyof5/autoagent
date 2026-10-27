@@ -32,9 +32,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           child: Text('Analytics', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Sample counts for Demo Rooftop. Not live. Reply rate, time to first reply, conversations, and numbers shared.',
-          style: TextStyle(color: DealerColors.muted, height: 1.4),
+          style: TextStyle(color: DealerColors.mutedOf(context), height: 1.4),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -53,15 +53,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: DealerColors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: DealerColors.line),
-            ),
+            decoration: DealerColors.cardDecoration(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(card.$1, style: const TextStyle(color: DealerColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                Text(card.$1, style: TextStyle(color: DealerColors.mutedOf(context), fontSize: 12, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
                 Text(card.$2, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
               ],
