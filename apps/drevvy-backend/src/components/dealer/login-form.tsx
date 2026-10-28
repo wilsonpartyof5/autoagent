@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { ThemeToggle } from '@/components/glass/glass-theme';
+import { dealerAuthRedirectTo } from '@/lib/dealer/auth-redirect';
 import { createClient } from '@/lib/supabase/client';
 
 export function LoginForm() {
@@ -14,6 +15,15 @@ export function LoginForm() {
   const [sent, setSent] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const flag = new URLSearchParams(window.location.search).get('error');
+    if (flag === 'membership') {
+      setError('This work email is not on a Drevvy rooftop.');
+    } else if (flag === 'link') {
+      setError('That sign-in link did not open the desk. Request a new one in this browser.');
+    }
+  }, []);
 
   async function sendCode(event: FormEvent) {
     event.preventDefault();
@@ -26,10 +36,24 @@ export function LoginForm() {
     setError(null);
     try {
       const supabase = createClient();
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      const emailRedirectTo = dealerAuthRedirectTo(window.location.origin);
+      let { error: otpError } = await supabase.auth.signInWithOtp({
         email: workEmail,
-        options: { shouldCreateUser: false },
+        options: {
+          shouldCreateUser: false,
+          ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        },
       });
+      if (otpError && emailRedirectTo && /redirect/i.test(otpError.message)) {
+        // Auth rejects an emailRedirectTo that is not on the allow list.
+        // Send the Site URL link instead. The marketing page forwards ?code=
+        // back to the dealer callback in this browser.
+        const fallback = await supabase.auth.signInWithOtp({
+          email: workEmail,
+          options: { shouldCreateUser: false },
+        });
+        otpError = fallback.error;
+      }
       if (otpError) {
         setError(otpError.message || 'Drevvy could not email a sign-in code.');
         return;
@@ -100,8 +124,9 @@ export function LoginForm() {
       >
         <div className="h1">Sign in</div>
         <p className="mut" style={{ margin: '6px 0 18px' }}>
-          Use your work email. We’ll send a 6-digit code. Only rooftop members
-          can open the desk.
+          Use your work email. We’ll email a sign-in link that opens this dealer
+          desk. If the email includes a 6-digit code, enter it here. Only rooftop
+          members can open the desk.
         </p>
         <label className="lab" htmlFor="work-email">
           Work email
@@ -117,7 +142,8 @@ export function LoginForm() {
         {sent ? (
           <>
             <p className="mut" style={{ margin: '12px 0' }}>
-              Enter the 6-digit code we sent to {email.trim()}.
+              Open the sign-in link in this browser. It returns to the dealer desk.
+              If the email to {email.trim()} shows a 6-digit code, enter it here.
             </p>
             <label className="lab" htmlFor="otp-code">
               One-time code
@@ -144,7 +170,7 @@ export function LoginForm() {
           style={{ width: '100%', marginTop: 8 }}
           disabled={pending}
         >
-          {sent ? 'Continue to Inbox' : 'Email me a code'}
+          {sent ? 'Continue to Inbox' : 'Email me a sign-in link'}
         </button>
         <p className="mut" style={{ marginTop: 12, textAlign: 'center' }}>
           New dealer?{' '}

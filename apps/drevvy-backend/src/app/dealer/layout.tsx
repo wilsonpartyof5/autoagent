@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { GlassRoot, GlassThemeScript } from '@/components/glass/glass-theme';
-import { loadDealerSession } from '@/lib/dealer/session';
+import { loadDealerPageSession } from '@/lib/dealer/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ export default async function DealerLayout({ children }: { children: ReactNode }
   let rooftops: Array<{ id: string; name: string }> = [];
   let canSwitchAllRooftops = false;
   try {
-    const session = await loadDealerSession();
+    const session = await loadDealerPageSession();
     if (session) {
       rooftops = session.rooftops.map((rooftop) => ({ id: rooftop.id, name: rooftop.name }));
       canSwitchAllRooftops = session.canSwitchAllRooftops;

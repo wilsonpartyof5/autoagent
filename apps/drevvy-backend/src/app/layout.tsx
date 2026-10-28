@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import React from 'react';
 import { Manrope } from 'next/font/google';
+import Script from 'next/script';
+
+import { marketingAuthCodeScript } from '@/lib/dealer/auth-redirect';
 import './globals.css';
 
 const manrope = Manrope({
@@ -60,7 +63,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={manrope.variable}>
-      <body className={`${manrope.className} antialiased`}>{children}</body>
+      <body className={`${manrope.className} antialiased`}>
+        <Script id="dealer-auth-code-forward" strategy="beforeInteractive">
+          {marketingAuthCodeScript()}
+        </Script>
+        {children}
+      </body>
     </html>
   );
 }

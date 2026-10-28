@@ -14,7 +14,7 @@ This is not the dealer portal removed in October 2026. The public page at `/deal
 
 ## Drevvy Desk
 
-Dealer-facing pages under `/dealer`, plus APIs under `/api/dealer/v1`. A signed-in rooftop member sees live auth, inbox, conversation threads, and analytics. Unsigned access in non-production with `DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1` still serves the in-memory mock. Production always requires a `user_dealerships` membership.
+Dealer-facing pages under `/dealer`, plus APIs under `/api/dealer/v1`. A signed-in rooftop member sees live auth, inbox, conversation threads, and analytics. Completing the public demo invite through Terms (`/dealer/invite/demo`) sets a signed demo desk session. That session opens inbox and analytics on the in-memory mock. It does not read or write `user_dealerships`. Unsigned access in non-production with `DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1` still serves the mock without a session. Live APIs still require a `user_dealerships` membership.
 
 The desk and `/admin` use the locked glass tokens: Manrope, dark `#07080C` / light `#F4F6FB`, orbs `#5B4FE9` / `#3563E0` / `#1FB8C9`, frosted cards (`blur(24px)`, radius 20), and a 72px icon rail plus pill top bar. Dark and light twins switch in the chrome. This is not a standalone glass preview project.
 
@@ -26,14 +26,14 @@ Narrow web and the Flutter app: **Inbox** is the list. **Lead detail** is full s
 
 | Route | Screen |
 | --- | --- |
-| `/dealer/login` | Work email, then a 6-digit Supabase OTP. Membership is checked on `user_dealerships`. |
+| `/dealer/login` | Work email. Supabase emails a sign-in link to `/dealer/auth/callback` on this host. A 6-digit code is accepted when the email includes one. Membership is checked on `user_dealerships`. |
 | `/dealer/invite/:token` | Accept invite. |
 | `/dealer/verify` | Verify work email. |
 | `/dealer/onboarding/org` | Dealer group. |
 | `/dealer/onboarding/rooftops` | Add rooftops. |
 | `/dealer/onboarding/team` | Invite team. |
 | `/dealer/onboarding/routing` | Conversation routing. |
-| `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. |
+| `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. Accepting the demo invite starts the demo desk session. |
 | `/dealer/onboarding/done` | Ready, then inbox. |
 | `/dealer/inbox` | Rooftop-scoped conversation list. Beside it, desktop shows a preview thread. |
 | `/dealer/leads/:id` | Same split on desktop. On a narrow window the thread and composer fill the screen. |
@@ -60,7 +60,9 @@ The Owner/GM rooftop switcher lists `user_dealerships` memberships. Billing is O
 
 Signed-in dealers read `shopper_dealer_conversations` (first name only), `shopper_deals.vehicle_snapshot`, `shopper_dealer_messages`, and rooftop-scoped analytics. Composer replies persist on `shopper_dealer_messages` and still run `recordLiveDealerReply`.
 
-`src/lib/dealer/mock.ts` is the unsigned non-prod preview only (`DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1`). A preview reply is visible until that server process exits.
+`src/lib/dealer/mock.ts` is the demo desk session and the unsigned non-prod preview (`DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1`). A preview reply is visible until that server process exits.
+
+Sign-in calls `signInWithOtp` with `emailRedirectTo` set to this origin’s `/dealer/auth/callback`. The callback exchanges a PKCE `code` or verifies `token_hash`. A `?code=` that still lands on `https://www.drevvy.com` (the Auth Site URL) is forwarded to `https://admin.drevvy.com/dealer/auth/callback` so the same browser can finish. The email body is the hosted Magic Link template. To put the 6-digit code in that email, set its subject to `Your Drevvy sign-in code` and its body to `DEALER_MAGIC_LINK_TEMPLATE` (`{{ .Token }}` plus `{{ .ConfirmationURL }}`). That is an Auth dashboard change, not a SQL migration.
 
 The inbox timer is a display value. It is not an SLA policy.
 

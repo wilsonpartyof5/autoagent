@@ -1,9 +1,15 @@
 import { createClient as createJwtClient, type User } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import {
+  DEMO_DEALER_COOKIE,
+  demoSessionSecret,
+  openDemoDealerSession,
+} from './demo-session';
 
 export const DEALER_ROLES = ['salesperson', 'bdc', 'sales_manager', 'owner_gm'] as const;
 export type DealerRole = (typeof DEALER_ROLES)[number];
@@ -15,6 +21,8 @@ export type DealerRooftop = {
 };
 
 export type DealerSession = {
+  /** `demo` is the invite walkthrough. It never reads or writes live rooftop rows. */
+  source: 'live' | 'demo';
   userId: string;
   email: string;
   displayName: string;
@@ -147,6 +155,7 @@ export function sessionFromUser(
   const displayName = dealerDisplayName(email);
   const role = highestDealerRole(rooftops.map((rooftop) => rooftop.role));
   return {
+    source: 'live',
     userId: user.id,
     email,
     displayName,
@@ -155,6 +164,25 @@ export function sessionFromUser(
     rooftops,
     canSwitchAllRooftops: role === 'owner_gm' && rooftops.length > 1,
   };
+}
+
+export type LiveDealerSession = DealerSession & { source: 'live' };
+
+export function isLiveDealerSession(
+  session: DealerSession | null,
+): session is LiveDealerSession {
+  return session?.source === 'live';
+}
+
+export function pageSessionDecision(
+  live: DealerSession | null,
+  demo: DealerSession | null,
+  preview: boolean,
+): { session: DealerSession | null; redirectToLogin: boolean } {
+  if (live?.source === 'live') return { session: live, redirectToLogin: false };
+  if (demo?.source === 'demo') return { session: demo, redirectToLogin: false };
+  if (preview) return { session: null, redirectToLogin: false };
+  return { session: null, redirectToLogin: true };
 }
 
 async function userFromRequest(request?: Request): Promise<User | null> {
@@ -197,11 +225,25 @@ export async function loadDealerSession(request?: Request): Promise<DealerSessio
   }
 }
 
+async function loadDemoDealerSession(): Promise<DealerSession | null> {
+  const secret = demoSessionSecret();
+  if (!secret) return null;
+  const jar = await cookies();
+  return openDemoDealerSession(jar.get(DEMO_DEALER_COOKIE)?.value, secret, Date.now());
+}
+
+export async function loadDealerPageSession(): Promise<DealerSession | null> {
+  const live = await loadDealerSession();
+  if (live) return live;
+  return loadDemoDealerSession();
+}
+
 export async function requireDealerPageSession(): Promise<DealerSession | null> {
-  const session = await loadDealerSession();
-  if (session) return session;
-  if (dealerPreviewEnabled()) return null;
-  redirect('/dealer/login');
+  const live = await loadDealerSession();
+  const demo = live ? null : await loadDemoDealerSession();
+  const decision = pageSessionDecision(live, demo, dealerPreviewEnabled());
+  if (decision.redirectToLogin) redirect('/dealer/login');
+  return decision.session;
 }
 
 export async function requireDealerApi(request: Request): Promise<DealerSession> {

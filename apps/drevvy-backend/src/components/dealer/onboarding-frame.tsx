@@ -53,11 +53,13 @@ export function OnboardingNav({
   nextHref,
   nextLabel,
   nextDisabled,
+  submit,
 }: {
   backHref: string;
   nextHref?: string;
   nextLabel: string;
   nextDisabled?: boolean;
+  submit?: boolean;
 }) {
   return (
     <div
@@ -70,7 +72,11 @@ export function OnboardingNav({
       <Link className="btn2" href={backHref}>
         Back
       </Link>
-      {nextHref ? (
+      {submit || !nextHref ? (
+        <button type="submit" className="btn" disabled={nextDisabled}>
+          {nextLabel}
+        </button>
+      ) : (
         <Link
           className="btn"
           href={nextHref}
@@ -79,10 +85,6 @@ export function OnboardingNav({
         >
           {nextLabel}
         </Link>
-      ) : (
-        <button type="submit" className="btn" disabled={nextDisabled}>
-          {nextLabel}
-        </button>
       )}
     </div>
   );
