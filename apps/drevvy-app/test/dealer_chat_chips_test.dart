@@ -378,6 +378,161 @@ void main() {
     expect(state.autoSend, isFalse);
   });
 
+  testWidgets('confirm chips fill the composer and do not send themselves', (
+    tester,
+  ) async {
+    const confirmOtd =
+        'Just confirming: the out-the-door total you sent is \$32,584, including all dealer fees, tax and registration. Is that correct?';
+    const confirmLease = 'And just confirming: total due at signing is \$2,500?';
+    final sends = <({String? templateId, String? message})>[];
+    final endpoint = _FakeChips((dealId, inputs) async {
+      final intel = inputs.toRequestBody()['intel'] as Map;
+      expect(intel['otdTotal'], 32584);
+      expect(intel['lease'], isTrue);
+      expect(intel['dueAtSigning'], 2500);
+      expect(intel['shopperFirst'], 'Dana');
+      return DealChipSuggestionSet(
+        network: 'in_network',
+        stage: 'after_itemized_otd',
+        chips: [
+          DealBrainChip(
+            templateId: 'T13',
+            label: 'Confirm OTD',
+            message: confirmOtd,
+          ),
+          DealBrainChip(
+            templateId: 'T13b',
+            label: 'Confirm lease due',
+            message: confirmLease,
+          ),
+        ],
+      );
+    });
+
+    await tester.pumpWidget(
+      _frame(
+        _sheet(
+          listing: listing,
+          endpoint: endpoint,
+          inputs: DealChipInputs.loaded(
+            market: market,
+            messages: const [
+              DealThreadMessage(
+                author: 'salesperson',
+                body:
+                    'Price \$30,000, doc fee \$499, tax \$1,800, title \$75, registration \$210. Out-the-door total: \$32,584. Lease. Total due at signing is \$2,500.',
+              ),
+            ],
+            itemizedOtdInThread: true,
+            otdTotal: 32584,
+            lease: true,
+            dueAtSigning: 2500,
+            shopperFirst: 'Dana Wilson',
+          ),
+          onSend: ({templateId, message}) async {
+            sends.add((templateId: templateId, message: message));
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Confirm OTD'), findsOneWidget);
+    expect(find.text('Confirm lease due'), findsOneWidget);
+    expect(find.text('Numbers first'), findsNothing);
+    expect(sends, isEmpty);
+
+    final state = tester.state<DealerChatSheetState>(
+      find.byType(DealerChatSheet),
+    );
+    expect(state.autoSend, isFalse);
+    expect(state.chipsStatus, DealerChatChipsStatus.loaded);
+    _expectNoHaggle(tester, state);
+
+    await tester.tap(find.text('Confirm OTD'));
+    await tester.pump();
+    expect(sends, isEmpty);
+    final composer = tester.widget<TextField>(
+      find.byKey(const Key('dealer-chat-composer')),
+    );
+    expect(composer.controller?.text, confirmOtd);
+
+    await tester.ensureVisible(find.byKey(const Key('dealer-chat-send')));
+    await tester.tap(find.byKey(const Key('dealer-chat-send')));
+    await tester.pump();
+    expect(sends, hasLength(1));
+    expect(sends.single.templateId, 'T13');
+    expect(sends.single.message, confirmOtd);
+    expect(state.autoSend, isFalse);
+  });
+
+  testWidgets('a come-in stay chip fills the composer and does not send itself', (
+    tester,
+  ) async {
+    const warmStay =
+        'Happy to come in once we have the numbers. Could you send the itemized out-the-door so Dana can plan the visit?';
+    final sends = <String>[];
+    final endpoint = _FakeChips((dealId, inputs) async {
+      expect(
+        inputs.toRequestBody()['intel'],
+        containsPair('shopperFirst', 'Dana'),
+      );
+      return DealChipSuggestionSet(
+        network: 'in_network',
+        stage: 'after_opener',
+        chips: [
+          const DealBrainChip(
+            templateId: 'STAY',
+            label: 'Numbers first',
+            message:
+                'Happy to come in once we have the numbers. Could you send the itemized out-the-door so Dana can plan the visit?',
+          ),
+        ],
+      );
+    });
+
+    await tester.pumpWidget(
+      _frame(
+        _sheet(
+          listing: listing,
+          endpoint: endpoint,
+          inputs: DealChipInputs.loaded(
+            market: market,
+            shopperFirst: 'Dana',
+            messages: const [
+              DealThreadMessage(
+                author: 'drevvy',
+                body: 'Dana wants your best itemized out-the-door',
+              ),
+              DealThreadMessage(
+                author: 'salesperson',
+                body: 'Please come in today.',
+              ),
+            ],
+          ),
+          onSend: ({templateId, message}) async {
+            sends.add(message ?? '');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Numbers first'), findsOneWidget);
+    expect(sends, isEmpty);
+    await tester.tap(find.text('Numbers first'));
+    await tester.pump();
+    expect(sends, isEmpty);
+    final composer = tester.widget<TextField>(
+      find.byKey(const Key('dealer-chat-composer')),
+    );
+    expect(composer.controller?.text, warmStay);
+    expect(
+      tester.state<DealerChatSheetState>(find.byType(DealerChatSheet)).autoSend,
+      isFalse,
+    );
+  });
+
   testWidgets('no deal id keeps the opener pair and does not call the route', (
     tester,
   ) async {

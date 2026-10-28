@@ -42,7 +42,13 @@ Future<bool> openDealDealerChat({
       alreadyOpen: true,
       shopperFirstName: firstName,
       dealId: deal.id,
-      chipInputs: _chipInputsFor(repo, deal, listing, resolvedMarket),
+      chipInputs: _chipInputsFor(
+        repo,
+        deal,
+        listing,
+        resolvedMarket,
+        firstName,
+      ),
       chipsEndpoint: repo.dealChips,
       onSend: ({templateId, message}) async {
         await repo.startDealerConversation(
@@ -67,6 +73,7 @@ DealChipInputs _chipInputsFor(
   Deal deal,
   Listing listing,
   MarketContext? market,
+  String? shopperFirst,
 ) {
   return DealChipInputs.loaded(
     messages: repo.dealThread(deal.id),
@@ -75,5 +82,6 @@ DealChipInputs _chipInputsFor(
     stockNumber: listing.stockNo,
     listedPrice: listing.price,
     dom: listing.domActive,
+    shopperFirst: shopperFirst,
   );
 }

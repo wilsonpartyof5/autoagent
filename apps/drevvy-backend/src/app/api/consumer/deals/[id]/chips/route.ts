@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * In-network chip suggestions for one deal thread. Nothing is sent.
  * POST body may include `{ stage, messages, intel }`. Missing intel hides
  * a chip, except T3–T5, which use the spec fallback and never invent a price.
+ * T13 needs a dealer itemized OTD total. T13b also needs a lease due at signing.
  */
 
 export const dynamic = 'force-dynamic';
