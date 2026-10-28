@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -8,7 +10,9 @@ import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../widgets/ask_drevvy_sheet.dart';
 import '../widgets/deal_card.dart';
+import '../widgets/deal_dealer_chat.dart';
 import '../widgets/stat_hero.dart';
 import '../../shop/widgets/account_sheet.dart';
 
@@ -66,6 +70,21 @@ class _DealsScreenState extends State<DealsScreen> {
       'status': deal?.status.name ?? 'unknown',
     });
     setState(() => _dismissedBannerId = dealId);
+  }
+
+  Future<void> _openDealChat(Deal deal) async {
+    final opened = await openDealDealerChat(
+      context: context,
+      repo: _repo,
+      deal: deal,
+    );
+    if (opened || !mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => AskDrevvySheet(deal: deal),
+    );
   }
 
   /// v1.8: Show Account sheet
@@ -181,6 +200,9 @@ class _DealsScreenState extends State<DealsScreen> {
                               onTap: () {
                                 context.push('/deal/${deal.id}');
                               },
+                              onAsk: deal.status.isEnded
+                                  ? null
+                                  : () => unawaited(_openDealChat(deal)),
                               onFindSimilar: () {
                                 ProductAnalytics.instance.track(
                                   AnalyticsEvents.findSimilarTapped,
