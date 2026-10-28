@@ -30,7 +30,7 @@ Noted here only. Stripe is not connected. There is no shopper paywall in this ap
 
 The desk is free day to day. A participating dealer is charged **$300 per closed deal**. Settings includes a Billing stub for a manager: a placeholder card, that fee, and mock recent charges. Mark as sold asks for confirmation and names the $300 fee. That copy is a placeholder.
 
-Shopper plan, separate from this desk: **$27/month for 10 conversations per month**. Car packs are retired. There is no annual plan.
+Shopper plan, separate from this desk: one-time **key packs** (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99). Two spends from the same balance: market-intelligence unlock + save on a VDP, and a separate dealer-conversation key when the VDP URL matches an onboarded rooftop. Off-network out-the-door requests are free (analytics only, no in-app chat). The conversation-key refund clock is 7 days from confirmed delivery. There is no monthly conversation plan and no annual plan.
 
 ## Run
 

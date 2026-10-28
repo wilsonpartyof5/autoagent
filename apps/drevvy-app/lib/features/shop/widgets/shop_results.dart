@@ -23,7 +23,7 @@ class ShopResults extends StatelessWidget {
 
   final List<Listing>? listings;
   final bool isLoading;
-  /// v1.7: Whether user has car credits (for future A/B testing).
+  /// v1.7: Whether user has keys (for future A/B testing).
   final bool hasCredits;
   final ValueChanged<Listing> onListingTap;
   /// v1.8: Set of listing IDs that are saved.

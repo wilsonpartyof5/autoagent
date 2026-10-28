@@ -63,8 +63,8 @@ const STEPS: Step[] = [
   { id: 'D0-C2', channel: 'call', minutes: 360, call: true },
   { id: 'D1-E2', channel: 'email', minutes: 24 * 60 + 90 },
   { id: 'D2-C3', channel: 'call', minutes: 2 * 24 * 60 + 150, call: true },
-  { id: 'D4-E3', channel: 'email', minutes: 4 * 24 * 60 + 90 },
-  { id: 'D5-E4', channel: 'email', minutes: 5 * 24 * 60 + 90 },
+  { id: 'D6-E3', channel: 'email', minutes: 6 * 24 * 60 + 90 },
+  { id: 'D7-E4', channel: 'email', minutes: 7 * 24 * 60 + 90 },
 ];
 
 const VARIANTS: Variant[] = ['A', 'B', 'C'];
@@ -138,8 +138,8 @@ function shouldReply(touchpoint: TouchpointId, variant: Variant, index: number):
   if (touchpoint === 'D1-T2' && variant === 'B') return slot < 4;
   if (touchpoint === 'D1-T2' && variant === 'A') return slot < 2;
   if (touchpoint === 'D2-T3' && variant === 'B') return slot < 3;
-  if (touchpoint === 'D4-T4' && variant !== 'C') return slot < 2;
-  if (touchpoint === 'D5-E4' && variant === 'C') return slot < 1;
+  if (touchpoint === 'D6-T4' && variant !== 'C') return slot < 2;
+  if (touchpoint === 'D7-E4' && variant === 'C') return slot < 1;
   return false;
 }
 
@@ -309,18 +309,18 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
     }
   }
 
-  if (stop === 'in_progress' && events.some((row) => row.touchpoint === 'D5-E4' && row.direction === 'outbound')) {
-    finish('ended_no_response', events.filter((row) => row.touchpoint === 'D5-E4').at(-1)?.sentAt ?? started.toISOString());
+  if (stop === 'in_progress' && events.some((row) => row.touchpoint === 'D7-E4' && row.direction === 'outbound')) {
+    finish('ended_no_response', events.filter((row) => row.touchpoint === 'D7-E4').at(-1)?.sentAt ?? started.toISOString());
   }
-  if (!stopAt && events.length > 0 && events.every((row) => row.sentAt <= new Date(AS_OF).toISOString()) && events.some((row) => row.touchpoint === 'D5-E4')) {
+  if (!stopAt && events.length > 0 && events.every((row) => row.sentAt <= new Date(AS_OF).toISOString()) && events.some((row) => row.touchpoint === 'D7-E4')) {
     finish('ended_no_response', events.at(-1)?.sentAt ?? started.toISOString());
   }
 
   const firstOutbound = events.find((row) => row.direction === 'outbound' && row.status !== 'skipped_not_textable');
   const firstReply = events.find((row) => row.direction === 'inbound');
   const attributed = [...events].reverse().find((row) => row.replied);
-  const replyWithin5Days = Boolean(
-    firstOutbound && firstReply && Date.parse(firstReply.sentAt) - Date.parse(firstOutbound.sentAt) <= 5 * 24 * 60 * 60 * 1000,
+  const replyWithin7Days = Boolean(
+    firstOutbound && firstReply && Date.parse(firstReply.sentAt) - Date.parse(firstOutbound.sentAt) <= 7 * 24 * 60 * 60 * 1000,
   );
   const otdReceived = events.some((row) => row.direction === 'inbound' && /\$\d/.test(row.body));
 
@@ -346,7 +346,7 @@ function buildDeal(index: number, used: Set<string>): OutreachDeal {
     otdReceived,
     firstReplyAt: firstReply?.sentAt ?? null,
     firstReplyTouchpoint: attributed?.touchpoint ?? null,
-    replyWithin5Days,
+    replyWithin7Days,
     events,
   };
 }

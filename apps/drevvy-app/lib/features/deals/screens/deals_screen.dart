@@ -420,7 +420,7 @@ class _EndedBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: DrevvySpace.s1),
                 Text(
-                  'You got your car credit back.',
+                  'You got your conversation key back.',
                   style: text.callout.copyWith(color: colors.sold),
                 ),
               ],

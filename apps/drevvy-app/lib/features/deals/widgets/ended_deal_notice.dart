@@ -39,7 +39,7 @@ class EndedDealNotice extends StatelessWidget {
                 child: Text(
                   sold
                       ? 'No longer listed (likely sold)'
-                      : 'No dealer response after 5 days',
+                      : 'No dealer response after 7 days',
                   style: text.bodyStrong.copyWith(color: colors.sold),
                 ),
               ),
@@ -47,7 +47,7 @@ class EndedDealNotice extends StatelessWidget {
           ),
           const SizedBox(height: DrevvySpace.s2),
           Text(
-            'You got your car credit back. This car is off your active deals.',
+            'You got your conversation key back. This car is off your active deals.',
             style: text.callout.copyWith(color: colors.muted),
           ),
           const SizedBox(height: DrevvySpace.s4),

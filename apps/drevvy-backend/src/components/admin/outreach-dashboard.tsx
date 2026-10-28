@@ -68,13 +68,13 @@ export function OutreachDashboard({
         <Metric label="Emails sent" value={String(report.kpis.emailsSent)} detail="Delivered or sent" />
         <Metric label="Texts sent" value={String(report.kpis.textsSent)} detail={`${report.kpis.textsSkipped} skipped, not textable`} />
         <Metric label="Calls sent" value={String(report.kpis.callsSent)} detail={`${report.kpis.voicemailsSent} voicemails`} />
-        <Metric label="Reply within 5 days" value={percent(report.kpis.replyRateWithin5Days)} detail="Any channel" />
+        <Metric label="Reply within 7 days" value={percent(report.kpis.replyRateWithin7Days)} detail="Any channel" />
         <Metric label="Median time to reply" value={hours(report.kpis.medianHoursToFirstReply)} detail="From first touch" />
         <Metric label="OTD price received" value={percent(report.kpis.otdReceivedRate)} detail="Itemized price in a reply" />
         <Metric label="Number capture" value={percent(report.kpis.numberCaptureRate)} detail="Captured ÷ connected calls" />
         <Metric label="Opt-out / complaint" value={percent(report.kpis.optOutRate)} detail="STOP or don't call" />
         <Metric label="Sold before reply" value={percent(report.kpis.soldBeforeReplyRate)} detail="Car gone, no reply" />
-        <Metric label="Ended, no response" value={String(report.kpis.endedNoResponse)} detail="Closed after D5-E4" />
+        <Metric label="Ended, no response" value={String(report.kpis.endedNoResponse)} detail="Closed after Day 7" />
         <Metric label="Voicemails" value={String(report.kpis.voicemailsSent)} detail="VM-1 after a missed call" />
       </div>
 

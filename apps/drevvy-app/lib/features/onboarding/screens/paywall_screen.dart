@@ -21,7 +21,7 @@ import '../../shop/widgets/pack_option_card.dart';
 import '../onboarding_controller.dart';
 import '../widgets/progress_dots.dart';
 
-/// First-run and in-context car-pack paywall.
+/// First-run and in-context key-pack paywall.
 ///
 /// Superwall placement `onboarding_paywall` can replace this screen when a
 /// key exists. With no store keys, the four demo packs render here:

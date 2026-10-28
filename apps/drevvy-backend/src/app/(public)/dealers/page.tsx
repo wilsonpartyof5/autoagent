@@ -42,7 +42,7 @@ export default function DealersPage() {
               <h2 className="text-2xl font-semibold mb-4">Who We Are</h2>
               <p className="text-muted-foreground mb-4">
                 Drevvy is a consumer car-buying app that helps shoppers understand what they&apos;ll actually pay
-                for a vehicle. Our subscribers use the app to browse inventory, and when they find a car they
+                for a vehicle. Shoppers use the app to browse inventory, and when they find a car they
                 like, they ask us to get the full out-the-door price.
               </p>
               <p className="text-muted-foreground">
@@ -55,7 +55,7 @@ export default function DealersPage() {
             <section>
               <h2 className="text-2xl font-semibold mb-4">How We Contact You</h2>
               <p className="text-muted-foreground mb-4">
-                When a subscriber requests pricing on one of your vehicles, our AI agent reaches out to your
+                When a shopper requests pricing on one of your vehicles, our AI agent reaches out to your
                 dealership using the following methods, in order:
               </p>
               <ol className="list-decimal pl-6 text-muted-foreground space-y-3">
@@ -147,8 +147,8 @@ export default function DealersPage() {
               <h2 className="text-2xl font-semibold mb-4">Benefits for Your Dealership</h2>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
                 <li>
-                  <strong>Qualified leads:</strong> Drevvy subscribers have paid for the service. They&apos;re
-                  actively shopping and serious about buying.
+                  <strong>Qualified leads:</strong> Drevvy shoppers who unlock a listing have paid for a key.
+                  They&apos;re actively shopping and serious about buying.
                 </li>
                 <li>
                   <strong>No surprises:</strong> Shoppers who know the price upfront are less likely to walk

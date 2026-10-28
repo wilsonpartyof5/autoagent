@@ -10,8 +10,8 @@ export const metadata = { title: 'Shoppers | Drevvy Admin' };
 const sorts: Array<{ key: ShopperSort; label: string }> = [
   { key: 'name', label: 'Shopper' },
   { key: 'signedUp', label: 'Signed up' },
-  { key: 'subscription', label: 'Subscription' },
-  { key: 'cars', label: 'Cars' },
+  { key: 'subscription', label: 'Status' },
+  { key: 'cars', label: 'Deals' },
   { key: 'savings', label: 'Savings' },
   { key: 'lastActivity', label: 'Last activity' },
 ];
@@ -71,7 +71,7 @@ export default async function AdminShoppersPage({
                 </td>
                 <td>{when(shopper.signedUpAt)}</td>
                 <td>{subscriptionLabel(shopper.subscription)}</td>
-                <td>{shopper.cars}/{shopper.carCap}</td>
+                <td>{shopper.cars}</td>
                 <td>{usd(shopper.totalSavings)}</td>
                 <td>{when(shopper.lastActivityAt)}</td>
                 <td>

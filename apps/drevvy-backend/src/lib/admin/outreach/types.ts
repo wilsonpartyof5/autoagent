@@ -7,9 +7,9 @@ export const TOUCHPOINT_IDS = [
   'D1-T2',
   'D2-C3',
   'D2-T3',
-  'D4-E3',
-  'D4-T4',
-  'D5-E4',
+  'D6-E3',
+  'D6-T4',
+  'D7-E4',
   'VM-1',
 ] as const;
 
@@ -107,7 +107,7 @@ export type OutreachDeal = {
   otdReceived: boolean;
   firstReplyAt: string | null;
   firstReplyTouchpoint: TouchpointId | null;
-  replyWithin5Days: boolean;
+  replyWithin7Days: boolean;
   events: OutreachEvent[];
   isTest?: boolean;
 };
@@ -146,7 +146,7 @@ export type OutreachReport = {
     callsSent: number;
     voicemailsSent: number;
     textsSkipped: number;
-    replyRateWithin5Days: number | null;
+    replyRateWithin7Days: number | null;
     medianHoursToFirstReply: number | null;
     otdReceivedRate: number | null;
     numberCaptureRate: number | null;

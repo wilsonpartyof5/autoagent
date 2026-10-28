@@ -147,7 +147,7 @@ That sets `otd_removal_recommended_at`. It recommends network removal for an adm
 
 ## Keys
 
-Packs never expire: `drevvy_keys_1/5/10/25` at $4.99 / $19.99 / $34.99 / $74.99. RevenueCat packages `keys_1/5/10/25`. The brief’s `drevvy_key_*` ids alias the same packs. Retired car packs grant nothing. The 10-key pack is recommended. There is no $27/month conversation plan.
+Packs never expire: `drevvy_keys_1/5/10/25` at $4.99 / $19.99 / $34.99 / $74.99. RevenueCat packages `keys_1/5/10/25`. The brief’s `drevvy_key_*` ids alias the same packs. The 10-key pack is recommended. Two spends from the same balance: market-intelligence unlock + save on a VDP, and a separate dealer-conversation key when the VDP URL matches an onboarded rooftop. Off-network out-the-door requests are free (analytics only, no in-app chat). Retired car packs grant nothing. There is no monthly conversation plan.
 
 Dealer-conversation refunds (that spend only):
 

@@ -45,7 +45,7 @@ export default function SMSPage() {
               </p>
               <p className="text-muted-foreground">
                 Drevvy is a consumer car-buying application. Our AI agent contacts vehicle dealerships on behalf
-                of our subscribers to request clear, itemized out-the-door pricing information.
+                of shoppers to request clear, itemized out-the-door pricing information.
               </p>
             </section>
 

@@ -50,7 +50,7 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
     .filter((deal) => deal.firstReplyAt)
     .map((deal) => hoursBetween(deal.startedAt, deal.firstReplyAt as string));
 
-  const replied = liveDeals.filter((deal) => deal.replyWithin5Days).length;
+  const replied = liveDeals.filter((deal) => deal.replyWithin7Days).length;
   const opted = liveDeals.filter((deal) => deal.stop === 'opt_out').length;
   const sold = liveDeals.filter((deal) => deal.stop === 'sold').length;
   const withOtd = liveDeals.filter((deal) => deal.otdReceived).length;
@@ -66,7 +66,7 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
       callsSent: calls.length,
       voicemailsSent: outbound.filter((event) => event.channel === 'voicemail').length,
       textsSkipped: liveDeals.flatMap((deal) => deal.events).filter((event) => event.status === 'skipped_not_textable').length,
-      replyRateWithin5Days: rate(replied, contacted),
+      replyRateWithin7Days: rate(replied, contacted),
       medianHoursToFirstReply: median(replyHours),
       otdReceivedRate: rate(withOtd, contacted),
       numberCaptureRate: rate(captured.length, connected.length),
@@ -74,9 +74,9 @@ export function buildOutreachReport(from: string, to: string, deals = dealsStart
       soldBeforeReplyRate: rate(sold, contacted),
       endedNoResponse: deals.filter((deal) => deal.stop === 'ended_no_response').length,
     },
-    firstReplyByDay: [0, 1, 2, 3, 4, 5].map((day) => ({
+    firstReplyByDay: [0, 1, 2, 3, 4, 5, 6, 7].map((day) => ({
       day,
-      count: liveDeals.filter((deal) => deal.replyWithin5Days && replyDay(deal) === day).length,
+      count: liveDeals.filter((deal) => deal.replyWithin7Days && replyDay(deal) === day).length,
     })),
     firstReplyByTouchpoint: TOUCHPOINT_IDS.map((touchpoint) => ({
       touchpoint,
@@ -163,7 +163,7 @@ function dealSegments(deals: OutreachDeal[], labelOf: (deal: OutreachDeal) => st
   const labels = [...new Set(deals.map(labelOf))];
   return labels.map((label) => {
     const rows = deals.filter((deal) => labelOf(deal) === label);
-    const replies = rows.filter((deal) => deal.replyWithin5Days).length;
+    const replies = rows.filter((deal) => deal.replyWithin7Days).length;
     return { label, deals: rows.length, replies, replyRate: rate(replies, rows.length) };
   }).sort((a, b) => b.deals - a.deals);
 }

@@ -126,11 +126,11 @@ class WithdrawSheet extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'This car credit was used',
+                              'This key was used',
                               style: text.bodyStrong.copyWith(color: colors.sold),
                             ),
                             Text(
-                              'Drevvy has already contacted the dealer. This car credit will not be refunded.',
+                              'Drevvy has already contacted the dealer. This key will not be refunded.',
                               style: text.callout.copyWith(color: colors.sold),
                             ),
                           ],

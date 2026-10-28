@@ -1,6 +1,6 @@
 import { buildAnalytics } from '@/lib/admin/analytics';
 import { hours, pct, stageLabel, usd } from '@/lib/admin/format';
-import { FUNNEL_EVENT_NAME, FUNNEL_STEP_LABEL, MONTHLY_PRICE_USD } from '@/lib/admin/types';
+import { FUNNEL_EVENT_NAME, FUNNEL_STEP_LABEL } from '@/lib/admin/types';
 
 export const metadata = { title: 'Analytics | Drevvy Admin' };
 
@@ -13,7 +13,7 @@ export default async function AdminAnalyticsPage() {
       <header>
         <h2 className="text-2xl font-semibold">Shopper analytics</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          Counts come from the mock book, shaped like rows in <code>app_events</code>. Live signup and chat events already land there. Deal and payment steps are the names to write next. MRR is {usd(analytics.mrrUsd)} from {analytics.activeSubscribers} active subscriptions at {usd(MONTHLY_PRICE_USD)}. {analytics.churnNote}
+          Counts come from the mock book, shaped like rows in <code>app_events</code>. Live signup and chat events already land there. Deal and payment steps are the names to write next. Shopper billing is one-time key packs (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99). MRR is a placeholder ({usd(analytics.mrrUsd)} from {analytics.activeSubscribers} mock shoppers marked active). {analytics.churnNote}
         </p>
       </header>
 
@@ -23,9 +23,9 @@ export default async function AdminAnalyticsPage() {
         <Metric label="Time to first reply" value={hours(analytics.medianHoursToFirstReply)} detail="Median after first outbound" />
         <Metric label="Time to best price" value={hours(analytics.medianHoursToBestPrice)} detail="Median from car added" />
         <Metric label="Messages / deal" value={analytics.messagesPerDeal == null ? '—' : analytics.messagesPerDeal.toFixed(1)} detail={`Cadence reply rate ${pct(analytics.cadenceReplyRate == null ? null : analytics.cadenceReplyRate * 100)}`} />
-        <Metric label="Active cars" value={String(analytics.activeCars)} detail={`${analytics.subscribersAtCap} subscribers at the 10-car cap`} />
+        <Metric label="Active deals" value={String(analytics.activeCars)} detail={`${analytics.subscribersAtCap} shoppers with 10 open deals in the mock book`} />
         <Metric label="LLM cost / deal" value={analytics.llmCostPerDeal == null ? '—' : `$${analytics.llmCostPerDeal.toFixed(2)}`} detail={`${usd(Math.round(analytics.totalLlmCostUsd))} mock total`} />
-        <Metric label="Subscribers" value={String(analytics.activeSubscribers)} detail="Placeholder until payments are real" />
+        <Metric label="Active shoppers" value={String(analytics.activeSubscribers)} detail="Placeholder until key-pack purchases are live" />
       </div>
 
       <article className="rounded-xl border border-slate-800 p-4">
@@ -48,7 +48,7 @@ export default async function AdminAnalyticsPage() {
         <ul className="mt-3 space-y-2 text-sm">
           {analytics.packMix.map((row) => (
             <li key={row.size} className="flex justify-between border-b border-slate-800 py-1">
-              <span>{row.size === 1 ? '1 car' : `${row.size} cars`}</span>
+              <span>{row.size === 1 ? '1 key' : `${row.size} keys`}</span>
               <span>{row.purchases}</span>
             </li>
           ))}

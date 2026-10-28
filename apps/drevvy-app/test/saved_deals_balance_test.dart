@@ -190,7 +190,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No longer listed (likely sold)'), findsOneWidget);
-      expect(find.text('No dealer response after 5 days'), findsOneWidget);
+      expect(find.text('No dealer response after 7 days'), findsOneWidget);
       expect(find.text('Find similar cars'), findsNWidgets(2));
       await tester.tap(find.text('Find similar cars').first);
       await tester.pump();

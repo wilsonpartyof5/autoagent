@@ -23,7 +23,7 @@ CarsBalancePlacement onboardingPaywallPlacementFor(PurchaseConfig config) {
 
 /// Registers [CarsBalancePlacement.name] when Superwall is configured.
 ///
-/// If Superwall has no campaign for the placement, the local Out of cars
+/// If Superwall has no campaign for the placement, the local Out of keys
 /// sheet is presented so the pack copy stays in the app.
 class SuperwallCarsBalancePlacement implements CarsBalancePlacement {
   SuperwallCarsBalancePlacement({this.placementName = CarsBalancePlacement.name});
