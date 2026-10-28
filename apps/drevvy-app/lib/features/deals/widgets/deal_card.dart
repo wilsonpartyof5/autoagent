@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
@@ -11,12 +12,14 @@ class DealCard extends StatelessWidget {
     super.key,
     required this.deal,
     required this.onTap,
+    this.onAsk,
     this.onFindSimilar,
     this.showUndoHint = false,
   });
 
   final Deal deal;
   final VoidCallback onTap;
+  final VoidCallback? onAsk;
   final VoidCallback? onFindSimilar;
   final bool showUndoHint;
 
@@ -91,9 +94,9 @@ class DealCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(width: DrevvySpace.s3),
-                    
+
                     // Info
                     Expanded(
                       child: Column(
@@ -104,7 +107,8 @@ class DealCard extends StatelessWidget {
                             children: [
                               Text(
                                 deal.status.dealerRevealed
-                                    ? deal.dealer?.name ?? 'Dealer ${deal.letter}'
+                                    ? deal.dealer?.name ??
+                                          'Dealer ${deal.letter}'
                                     : 'Dealer ${deal.letter}',
                                 style: text.label.copyWith(color: colors.muted),
                               ),
@@ -112,9 +116,9 @@ class DealCard extends StatelessWidget {
                               StatusChip(deal.status),
                             ],
                           ),
-                          
+
                           const SizedBox(height: DrevvySpace.s1),
-                          
+
                           // Car title
                           Text(
                             listing.shortTitle,
@@ -122,7 +126,7 @@ class DealCard extends StatelessWidget {
                               color: isEnded ? colors.muted : colors.ink,
                             ),
                           ),
-                          
+
                           // Price info
                           Text(
                             listing.milesFormatted,
@@ -133,13 +137,13 @@ class DealCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                
+
                 // Progress bar (for active deals)
                 if (!isEnded) ...[
                   const SizedBox(height: DrevvySpace.s3),
                   _ProgressSegments(steps: deal.progressSteps),
                 ],
-                
+
                 // Offer info (if has offer)
                 if (deal.latestOffer != null && !isEnded) ...[
                   const SizedBox(height: DrevvySpace.s3),
@@ -173,7 +177,9 @@ class DealCard extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               color: colors.mintTint,
-                              borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+                              borderRadius: BorderRadius.circular(
+                                DrevvyRadius.pill,
+                              ),
                             ),
                             child: Text(
                               '${_formatPrice(deal.savings!)} under listed',
@@ -184,7 +190,7 @@ class DealCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                
+
                 // Undo hint
                 if (showUndoHint && deal.canUndo) ...[
                   const SizedBox(height: DrevvySpace.s3),
@@ -203,7 +209,25 @@ class DealCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                
+
+                // In-network dealer chat (same sheet as VDP / deal detail).
+                if (onAsk != null && !isEnded) ...[
+                  const SizedBox(height: DrevvySpace.s3),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: Key('deal-inbox-ask-${deal.id}'),
+                      onPressed: onAsk,
+                      icon: Icon(LucideIcons.messageCircle, size: 16),
+                      label: const Text('Ask'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: colors.violet,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                ],
+
                 // Ended state with "Find similar cars"
                 if (isEnded) ...[
                   const SizedBox(height: DrevvySpace.s3),

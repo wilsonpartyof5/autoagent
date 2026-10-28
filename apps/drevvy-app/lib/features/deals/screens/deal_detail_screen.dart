@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +14,7 @@ import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/accept_confirm_sheet.dart';
 import '../widgets/ask_drevvy_sheet.dart';
+import '../widgets/deal_dealer_chat.dart';
 import '../widgets/ended_deal_notice.dart';
 import '../widgets/offer_rounds.dart';
 import '../widgets/outcome_sheet.dart';
@@ -122,6 +125,18 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
     );
   }
 
+  /// In-network deals use the VDP [DealerChatSheet] path so live chips load.
+  Future<void> _showDealerChat() async {
+    final deal = _deal;
+    if (deal == null) return;
+    final opened = await openDealDealerChat(
+      context: context,
+      repo: _repo,
+      deal: deal,
+    );
+    if (!opened && mounted) _showAskDrevvySheet();
+  }
+
   Future<void> _showOutcomeSheet() async {
     if (!mounted) return;
 
@@ -186,7 +201,8 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
     final listing = deal.listing;
     final offer = deal.latestOffer;
     final hasOffer = offer != null;
-    final showAccept = hasOffer &&
+    final showAccept =
+        hasOffer &&
         (deal.status == DealStatus.offerReceived ||
             deal.status == DealStatus.findingBestPrice ||
             deal.status == DealStatus.paused ||
@@ -224,9 +240,10 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                 ),
                 centerTitle: true,
                 actions: [
-                  // Ask Drevvy button
+                  // Ask: in-network dealer chat, or Ask Drevvy off-network.
                   TextButton.icon(
-                    onPressed: _showAskDrevvySheet,
+                    key: const Key('deal-detail-ask'),
+                    onPressed: () => unawaited(_showDealerChat()),
                     icon: Icon(LucideIcons.messageCircle, size: 18),
                     label: const Text('Ask'),
                     style: TextButton.styleFrom(foregroundColor: colors.violet),
@@ -361,8 +378,8 @@ class _DealDetailScreenState extends State<DealDetailScreen> {
                         height: showKeepGoing
                             ? 180 + bottomPadding
                             : showAccept
-                                ? 120 + bottomPadding
-                                : 80,
+                            ? 120 + bottomPadding
+                            : 80,
                       ),
                     ],
                   ),
