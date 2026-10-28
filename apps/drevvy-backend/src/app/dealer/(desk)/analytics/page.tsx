@@ -1,15 +1,12 @@
 import type { Metadata } from 'next';
 
 import { AnalyticsPanel } from '@/components/dealer/analytics-panel';
-import { analyticsSummary } from '@/lib/dealer/mock';
-import type { AnalyticsRange } from '@/lib/dealer/types';
+import { loadDeskAnalytics } from '@/lib/dealer/desk-data';
+import { requireDealerPageSession } from '@/lib/dealer/session';
 
 export const metadata: Metadata = { title: 'Analytics' };
 
-const RANGES: AnalyticsRange[] = ['7d', '30d', '90d'];
-
-export default function DealerAnalyticsPage() {
-  return (
-    <AnalyticsPanel summaries={RANGES.map(range => analyticsSummary(range))} />
-  );
+export default async function DealerAnalyticsPage() {
+  const session = await requireDealerPageSession();
+  return <AnalyticsPanel summaries={await loadDeskAnalytics(session)} />;
 }

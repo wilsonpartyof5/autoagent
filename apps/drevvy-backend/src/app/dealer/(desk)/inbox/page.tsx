@@ -1,16 +1,19 @@
 import type { Metadata } from 'next';
 
 import { InboxDesk } from '@/components/dealer/inbox-desk';
-import { allInboxItems, presentConversation } from '@/lib/dealer/mock';
+import { loadDeskInbox } from '@/lib/dealer/desk-data';
+import { requireDealerPageSession } from '@/lib/dealer/session';
 
 export const metadata: Metadata = { title: 'Inbox' };
 
-export default function DealerInboxPage() {
+export default async function DealerInboxPage() {
+  const session = await requireDealerPageSession();
+  const desk = await loadDeskInbox(session);
   return (
     <InboxDesk
-      initialItems={allInboxItems()}
+      initialItems={desk.items}
       initialConversation={null}
-      previewConversation={presentConversation('conv_tucson')}
+      previewConversation={desk.preview}
       selectedId={null}
     />
   );

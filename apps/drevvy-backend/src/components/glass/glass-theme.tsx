@@ -10,9 +10,14 @@ import {
   type ReactNode,
 } from 'react';
 
-import { DEMO_ROOFTOPS, type DemoRooftopId } from '@/lib/dealer/demo-org';
+import { DEMO_ROOFTOPS } from '@/lib/dealer/demo-org';
 
 export type GlassTheme = 'dark' | 'light';
+
+export type GlassRooftop = {
+  id: string;
+  name: string;
+};
 
 const THEME_KEY = 'drevvy-theme';
 const ROOFTOP_KEY = 'drevvy-rooftop';
@@ -20,9 +25,11 @@ const ROOFTOP_KEY = 'drevvy-rooftop';
 interface GlassState {
   theme: GlassTheme;
   setTheme: (theme: GlassTheme) => void;
-  rooftopId: DemoRooftopId;
-  setRooftopId: (id: DemoRooftopId) => void;
+  rooftopId: string;
+  setRooftopId: (id: string) => void;
   rooftopLabel: string;
+  rooftops: GlassRooftop[];
+  canSwitchAllRooftops: boolean;
 }
 
 const GlassContext = createContext<GlassState | null>(null);
@@ -70,17 +77,34 @@ export function GlassThemeScript() {
   );
 }
 
+function fallbackRooftops(): GlassRooftop[] {
+  return DEMO_ROOFTOPS.map((rooftop) => ({ id: rooftop.id, name: rooftop.name }));
+}
+
 export function GlassRoot({
   children,
-  defaultRooftop = 'lakeside',
+  rooftops,
+  canSwitchAllRooftops = false,
+  defaultRooftop,
 }: {
   children: ReactNode;
-  defaultRooftop?: DemoRooftopId;
+  rooftops?: GlassRooftop[];
+  canSwitchAllRooftops?: boolean;
+  defaultRooftop?: string;
 }) {
+  const rooftopKey = (rooftops ?? []).map((item) => item.id).join('|');
+  const available = useMemo(
+    () => (rooftops && rooftops.length > 0 ? rooftops : fallbackRooftops()),
+    // rooftopKey is the stable identity of the live membership list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rooftopKey],
+  );
+  const initialId = defaultRooftop
+    ?? (canSwitchAllRooftops ? 'all' : available[0]?.id ?? 'all');
   const [theme, setThemeState] = useState<GlassTheme>(
     () => readStoredTheme() ?? 'dark'
   );
-  const [rooftopId, setRooftopState] = useState<DemoRooftopId>(defaultRooftop);
+  const [rooftopId, setRooftopState] = useState(initialId);
 
   useEffect(() => {
     const savedTheme = readStoredTheme();
@@ -89,27 +113,42 @@ export function GlassRoot({
       persistTheme(savedTheme);
     }
     const savedRooftop = window.localStorage.getItem(ROOFTOP_KEY);
-    if (savedRooftop && DEMO_ROOFTOPS.some(item => item.id === savedRooftop)) {
-      setRooftopState(savedRooftop as DemoRooftopId);
+    const known = savedRooftop === 'all'
+      ? canSwitchAllRooftops
+      : available.some((item) => item.id === savedRooftop);
+    if (savedRooftop && known) {
+      setRooftopState(savedRooftop);
+      return;
     }
-  }, []);
+    setRooftopState(canSwitchAllRooftops ? 'all' : available[0]?.id ?? 'all');
+  }, [available, canSwitchAllRooftops]);
 
   const setTheme = useCallback((next: GlassTheme) => {
     setThemeState(next);
     persistTheme(next);
   }, []);
 
-  const setRooftopId = useCallback((id: DemoRooftopId) => {
+  const setRooftopId = useCallback((id: string) => {
     setRooftopState(id);
     window.localStorage.setItem(ROOFTOP_KEY, id);
   }, []);
 
   const rooftopLabel =
-    DEMO_ROOFTOPS.find(item => item.id === rooftopId)?.name ?? 'All rooftops';
+    rooftopId === 'all'
+      ? 'All rooftops'
+      : (available.find((item) => item.id === rooftopId)?.name ?? available[0]?.name ?? 'Rooftop');
 
   const value = useMemo(
-    () => ({ theme, setTheme, rooftopId, setRooftopId, rooftopLabel }),
-    [theme, setTheme, rooftopId, setRooftopId, rooftopLabel]
+    () => ({
+      theme,
+      setTheme,
+      rooftopId,
+      setRooftopId,
+      rooftopLabel,
+      rooftops: available,
+      canSwitchAllRooftops,
+    }),
+    [theme, setTheme, rooftopId, setRooftopId, rooftopLabel, available, canSwitchAllRooftops]
   );
 
   return (

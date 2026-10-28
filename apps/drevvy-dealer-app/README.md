@@ -1,6 +1,6 @@
 # Drevvy Desk (Flutter)
 
-Dealer-facing iOS and Android shell for conversations with anonymous shoppers. This is a scaffold with demo data. It does not sign anyone in, and it does not talk to a live API.
+Dealer-facing iOS and Android shell for conversations with anonymous shoppers. This is still a scaffold with demo data. It does not sign anyone in, and it does not talk to a live API. The web desk at `/dealer` now uses real Supabase auth and rooftop-scoped `/api/dealer/v1` routes.
 
 This is not the old SwiftUI dealer app, and it is not the deleted “dealers pay for leads” portal.
 

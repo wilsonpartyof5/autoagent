@@ -30,7 +30,7 @@ Search calls MarketCheck's hosted MCP from `apps/drevvy-backend/src/lib/marketch
 
 ## Dealer desk
 
-`/dealer` is a mock conversation desk for salespeople. Each shopper is labeled Buyer via Drevvy plus a short reference such as #A7F2. The thread starts with a Get Best Price opener, then stays in Drevvy chat. Details and the mock API are in `apps/drevvy-backend/DEALER.md`. The mobile shell is `apps/drevvy-dealer-app`. The dealer desk is free day to day. A participating dealer is charged $300 when the shopper confirms a purchase. That billing screen is a mock, with no Stripe charge. Shopper plan, noted only: one-time key packs (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99). Two spends from the same balance: market-intelligence unlock + save on a VDP, and a separate dealer-conversation key when the VDP URL matches an onboarded rooftop. Off-network out-the-door requests are free (analytics only, no in-app chat). The conversation-key refund clock is 7 days from confirmed delivery. There is no monthly conversation plan and no annual plan. This is not the deleted dealer portal. `/admin` is unchanged.
+`/dealer` is the salesperson desk. A rooftop member signs in with a work-email code. Each shopper is labeled first name plus a short reference such as #A7F2. Live in-network threads open with `{first} wants your best itemized out-the-door`. Details and the `/api/dealer/v1` routes are in `apps/drevvy-backend/DEALER.md`. The Flutter shell is `apps/drevvy-dealer-app` and still uses demo data. The dealer desk is free day to day. A participating dealer is charged $300 when the shopper confirms a purchase. Stripe is not connected. Shopper keys never appear on the desk. Shopper plan, noted only: one-time key packs (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99). Two spends from the same balance: market-intelligence unlock + save on a VDP, and a separate dealer-conversation key when the VDP URL matches an onboarded rooftop. Off-network out-the-door requests are free (analytics only, no in-app chat). The conversation-key refund clock is 7 days from confirmed delivery. There is no monthly conversation plan and no annual plan. This is not the deleted dealer portal. `/admin` is unchanged.
 
 ## Local setup
 
@@ -42,7 +42,7 @@ cp apps/drevvy-backend/.env.example apps/drevvy-backend/.env.local
 pnpm --filter @drevvy/backend dev
 ```
 
-`ADMIN_EMAILS` is a comma-separated list of Supabase auth emails allowed into `/admin`. Leave it empty to hide the console. `ADMIN_PREVIEW=1` only works when `NODE_ENV` is not production.
+`ADMIN_EMAILS` is a comma-separated list of Supabase auth emails allowed into `/admin`. Leave it empty to hide the console. `ADMIN_PREVIEW=1` only works when `NODE_ENV` is not production. The same flag, or `DEALER_PREVIEW=1`, serves the unsigned dealer mock in non-production.
 
 ```bash
 pnpm --filter @drevvy/backend typecheck

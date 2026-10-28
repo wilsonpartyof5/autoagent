@@ -3,16 +3,16 @@
 import { useState } from 'react';
 
 import { useGlassTheme } from '@/components/glass/glass-theme';
-import { DEMO_ROOFTOPS } from '@/lib/dealer/demo-org';
 
 export function RooftopSwitcher() {
-  const { rooftopId, setRooftopId } = useGlassTheme();
+  const { rooftopId, setRooftopId, rooftops, canSwitchAllRooftops } = useGlassTheme();
   const [open, setOpen] = useState(false);
   const current =
     rooftopId === 'all'
       ? 'All rooftops'
-      : (DEMO_ROOFTOPS.find(item => item.id === rooftopId)?.name ??
-        'Lakeside Honda');
+      : (rooftops.find(item => item.id === rooftopId)?.name ?? rooftops[0]?.name ?? 'Rooftop');
+
+  if (rooftops.length === 0) return null;
 
   return (
     <div className={`sel${open ? ' open' : ''}`}>
@@ -37,7 +37,7 @@ export function RooftopSwitcher() {
         <span aria-hidden>▾</span>
       </button>
       <div className="menu g" role="listbox">
-        {DEMO_ROOFTOPS.map(rooftop => (
+        {rooftops.map(rooftop => (
           <button
             key={rooftop.id}
             type="button"
@@ -48,21 +48,23 @@ export function RooftopSwitcher() {
               setOpen(false);
             }}
           >
-            {rooftop.name} · {rooftop.city}
+            {rooftop.name}
           </button>
         ))}
-        <button
-          type="button"
-          className="mut"
-          role="option"
-          aria-selected={rooftopId === 'all'}
-          onClick={() => {
-            setRooftopId('all');
-            setOpen(false);
-          }}
-        >
-          All rooftops (Owner/GM)
-        </button>
+        {canSwitchAllRooftops ? (
+          <button
+            type="button"
+            className="mut"
+            role="option"
+            aria-selected={rooftopId === 'all'}
+            onClick={() => {
+              setRooftopId('all');
+              setOpen(false);
+            }}
+          >
+            All rooftops (Owner/GM)
+          </button>
+        ) : null}
       </div>
     </div>
   );

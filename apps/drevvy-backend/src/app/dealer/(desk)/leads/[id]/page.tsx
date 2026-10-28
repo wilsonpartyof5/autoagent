@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { InboxDesk } from '@/components/dealer/inbox-desk';
-import { allInboxItems, presentConversation } from '@/lib/dealer/mock';
+import { loadDeskConversation } from '@/lib/dealer/desk-data';
+import { requireDealerPageSession } from '@/lib/dealer/session';
 
 export const metadata: Metadata = { title: 'Conversation' };
 
@@ -12,12 +13,13 @@ export default async function DealerConversationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const conversation = presentConversation(id);
-  if (!conversation) notFound();
+  const session = await requireDealerPageSession();
+  const desk = await loadDeskConversation(session, id);
+  if (!desk.conversation) notFound();
   return (
     <InboxDesk
-      initialItems={allInboxItems()}
-      initialConversation={conversation}
+      initialItems={desk.items}
+      initialConversation={desk.conversation}
       selectedId={id}
     />
   );

@@ -16,29 +16,31 @@ export function AnalyticsPanel({
   const { rooftopLabel } = useGlassTheme();
   const [range, setRange] = useState<AnalyticsRange>('7d');
   const summary = summaries.find(item => item.range === range) ?? summaries[0];
+  const live = summary?.source === 'live';
 
   const cards = [
-    { label: 'Reply rate', value: `${Math.round(summary.replyRate * 100)}%` },
+    { label: 'Reply rate', value: `${Math.round((summary?.replyRate ?? 0) * 100)}%` },
     {
       label: 'Median first reply',
-      value: `${summary.medianFirstReplyMinutes} min`,
+      value: `${summary?.medianFirstReplyMinutes ?? 0} min`,
     },
     {
       label: 'Conversations started',
-      value: String(summary.conversationsStarted),
+      value: String(summary?.conversationsStarted ?? 0),
     },
     {
       label: 'Conversations closed',
-      value: String(summary.conversationsClosed),
+      value: String(summary?.conversationsClosed ?? 0),
     },
-    { label: 'Itemized OTD shared', value: String(summary.numbersShared) },
+    { label: 'Itemized OTD shared', value: String(summary?.numbersShared ?? 0) },
   ];
 
   return (
     <div>
       <p className="mut" style={{ marginBottom: 12 }}>
-        Sample counts for {rooftopLabel}. Not live. Reply rate, time to first
-        reply, conversations, and itemized out-the-door shares.
+        {live
+          ? `Live rooftop counts for ${rooftopLabel}. Reply rate, time to first reply, conversations, and itemized out-the-door shares.`
+          : `Sample counts for ${rooftopLabel}. Not live. Reply rate, time to first reply, conversations, and itemized out-the-door shares.`}
       </p>
       <div className="pills" role="group" aria-label="Date range">
         {RANGES.map(value => (

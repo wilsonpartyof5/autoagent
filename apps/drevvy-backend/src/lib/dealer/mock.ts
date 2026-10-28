@@ -16,17 +16,12 @@ import {
   isInboxFilter,
   isOpenStage,
   matchesInboxFilter,
-  needsReply,
   numbersShareBody,
-  pricesDiffer,
-  replyTemplates,
-  slaChip,
-  snippetFrom,
-  STAGE_LABEL,
   validCents,
   vehicleTitle,
   RANGE_LABEL,
 } from './format';
+import { presentFromConversation, toInboxItem } from './present';
 import { inNetworkOpener, shopperFirstNameOnly } from './rooftop-match';
 import { evaluateOtdWithhold } from './otd-warnings';
 import type {
@@ -363,29 +358,7 @@ function find(id: string): Conversation | undefined {
   return store().find(conversation => conversation.id === id);
 }
 
-export function toInboxItem(conversation: Conversation, now: Date): InboxItem {
-  return {
-    id: conversation.id,
-    shopperFirstName: conversation.shopperFirstName,
-    shopperRef: conversation.shopperRef,
-    rooftopId: conversation.rooftopId,
-    stage: conversation.stage,
-    stageLabel: STAGE_LABEL[conversation.stage],
-    vehicleTitle: vehicleTitle(conversation.vehicle),
-    stockNumber: conversation.stockNumber,
-    advertisedPriceCents: conversation.advertisedPriceCents,
-    statedPriceCents: conversation.statedPriceCents,
-    priceDiffers: pricesDiffer(
-      conversation.advertisedPriceCents,
-      conversation.statedPriceCents
-    ),
-    snippet: snippetFrom(conversation),
-    needsReply: needsReply(conversation),
-    openedAt: conversation.openedAt,
-    replyDueAt: conversation.replyDueAt,
-    sla: slaChip(conversation, now),
-  };
-}
+export { toInboxItem } from './present';
 
 export function presentConversation(
   id: string,
@@ -393,20 +366,7 @@ export function presentConversation(
 ): ConversationDetail | null {
   const conversation = find(id);
   if (!conversation) return null;
-  return {
-    ...conversation,
-    messages: conversation.messages.map(message => ({ ...message })),
-    vehicleTitle: vehicleTitle(conversation.vehicle),
-    stageLabel: STAGE_LABEL[conversation.stage],
-    priceDiffers: pricesDiffer(
-      conversation.advertisedPriceCents,
-      conversation.statedPriceCents
-    ),
-    needsReply: needsReply(conversation),
-    snippet: snippetFrom(conversation),
-    sla: slaChip(conversation, now),
-    replyTemplates: replyTemplates(conversation),
-  };
+  return presentFromConversation(conversation, now);
 }
 
 export function allInboxItems(now = new Date()): InboxItem[] {

@@ -13,7 +13,7 @@
     "test:get": "tsx --test src/lib/store-links.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
     "test:admin": "tsx --test src/lib/admin/*.test.ts",
-    "test:dealer": "tsx --test --test-concurrency=1 src/lib/dealer/mock.test.ts",
+    "test:dealer": "tsx --test --test-concurrency=1 src/lib/dealer/*.test.ts",
     "test:brain": "tsx --test src/lib/brain/*.test.ts src/lib/brain/eval/*.test.ts",
     "eval:brain": "tsx src/lib/brain/eval/run-eval.ts",
     "test:marketcheck": "tsx --test src/lib/marketcheck/*.test.ts",

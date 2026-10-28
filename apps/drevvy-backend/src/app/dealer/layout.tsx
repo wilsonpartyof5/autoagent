@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { GlassRoot, GlassThemeScript } from '@/components/glass/glass-theme';
+import { loadDealerSession } from '@/lib/dealer/session';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: {
@@ -11,11 +14,25 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function DealerLayout({ children }: { children: ReactNode }) {
+export default async function DealerLayout({ children }: { children: ReactNode }) {
+  let rooftops: Array<{ id: string; name: string }> = [];
+  let canSwitchAllRooftops = false;
+  try {
+    const session = await loadDealerSession();
+    if (session) {
+      rooftops = session.rooftops.map((rooftop) => ({ id: rooftop.id, name: rooftop.name }));
+      canSwitchAllRooftops = session.canSwitchAllRooftops;
+    }
+  } catch {
+    rooftops = [];
+  }
+
   return (
     <>
       <GlassThemeScript />
-      <GlassRoot>{children}</GlassRoot>
+      <GlassRoot rooftops={rooftops} canSwitchAllRooftops={canSwitchAllRooftops}>
+        {children}
+      </GlassRoot>
     </>
   );
 }
