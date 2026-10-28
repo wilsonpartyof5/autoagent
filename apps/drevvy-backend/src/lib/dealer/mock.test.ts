@@ -330,6 +330,7 @@ describe('dealer desk mock', { concurrency: false }, () => {
     for (const file of routeFiles) {
       const source = readFileSync(join(HERE, file), 'utf8');
       assert.equal(source.includes('requireAdmin'), false, file);
+      assert.match(source, /withDealerApi/, file);
       assert.equal(source.includes('telnyx'), false, file);
     }
   });

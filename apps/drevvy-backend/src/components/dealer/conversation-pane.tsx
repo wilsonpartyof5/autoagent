@@ -25,11 +25,11 @@ import type {
 import { PriceLine, SlaText, StageChip, StageStepper } from './stage-chip';
 
 const ERROR_COPY: Record<DealerDemoError, string> = {
-  not_found: 'That conversation is not in the demo.',
+  not_found: 'That conversation is not in this inbox.',
   empty_message: 'Write a message first.',
-  message_too_long: 'That message is too long for this demo.',
+  message_too_long: 'That message is too long.',
   invalid_price: 'Enter a price in dollars, at least $1.',
-  conversation_closed: 'Closed conversations stay closed in this demo.',
+  conversation_closed: 'Closed conversations stay closed.',
 };
 
 export function ConversationPane({
@@ -292,8 +292,7 @@ export function ConversationPane({
         </div>
         {!open ? (
           <p className="mut" style={{ marginBottom: 8 }}>
-            Closed conversations stay closed in this demo. You can still reply
-            in the thread.
+            Closed conversations stay closed. You can still read the thread.
           </p>
         ) : null}
         {error ? (

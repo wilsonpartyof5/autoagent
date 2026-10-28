@@ -1,6 +1,6 @@
 # Dealer desk, rooftops, and shopper VDP CTAs
 
-Shopper keys and vehicle-detail CTAs follow the 2026-10-27 locked model. Live matching uses `dealerships` plus `user_dealerships`. The dealer desk at `/dealer` is still the #102 mock scaffold: it does not authenticate anyone and it does not persist rooftops.
+Shopper keys and vehicle-detail CTAs follow the 2026-10-27 locked model. Live matching uses `dealerships` plus `user_dealerships`. The dealer desk at `/dealer` signs in with a Supabase work-email OTP, then loads a rooftop-scoped inbox from `shopper_dealer_conversations`.
 
 This is not the dealer portal removed in October 2026. The public page at `/dealers` is unchanged. The operator console at `/admin` is unchanged. Do not rename the Vercel project `autoagent-dealer-dashboard`.
 
@@ -12,9 +12,9 @@ This is not the dealer portal removed in October 2026. The public page at `/deal
 - **$300 close fee:** the dealer pays when the **shopper confirms a purchase**. Not when a dealer marks sold. Stripe is not connected; live rows stay `due`.
 - In-network dealers see the shopper **first name only**.
 
-## Drevvy Desk (web scaffold)
+## Drevvy Desk
 
-Dealer-facing pages under `/dealer`, plus mock APIs under `/api/dealer/v1`. This is a scaffold. It does not authenticate anyone, and it does not read the database.
+Dealer-facing pages under `/dealer`, plus APIs under `/api/dealer/v1`. A signed-in rooftop member sees live auth, inbox, conversation threads, and analytics. Unsigned access in non-production with `DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1` still serves the in-memory mock. Production always requires a `user_dealerships` membership.
 
 The desk and `/admin` use the locked glass tokens: Manrope, dark `#07080C` / light `#F4F6FB`, orbs `#5B4FE9` / `#3563E0` / `#1FB8C9`, frosted cards (`blur(24px)`, radius 20), and a 72px icon rail plus pill top bar. Dark and light twins switch in the chrome. This is not a standalone glass preview project.
 
@@ -26,7 +26,7 @@ Narrow web and the Flutter app: **Inbox** is the list. **Lead detail** is full s
 
 | Route | Screen |
 | --- | --- |
-| `/dealer/login` | Work email, then any 6-digit code. Rooftop picker. Nothing is sent or checked. |
+| `/dealer/login` | Work email, then a 6-digit Supabase OTP. Membership is checked on `user_dealerships`. |
 | `/dealer/invite/:token` | Accept invite. |
 | `/dealer/verify` | Verify work email. |
 | `/dealer/onboarding/org` | Dealer group. |
@@ -35,14 +35,14 @@ Narrow web and the Flutter app: **Inbox** is the list. **Lead detail** is full s
 | `/dealer/onboarding/routing` | Conversation routing. |
 | `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. |
 | `/dealer/onboarding/done` | Ready, then inbox. |
-| `/dealer/inbox` | Conversation list. Beside it, desktop shows a preview thread. |
+| `/dealer/inbox` | Rooftop-scoped conversation list. Beside it, desktop shows a preview thread. |
 | `/dealer/leads/:id` | Same split on desktop. On a narrow window the thread and composer fill the screen. |
-| `/dealer/analytics` | Sample counts for 7, 30, and 90 days. |
-| `/dealer/team` | Owner/GM team invites. |
-| `/dealer/rooftops` | Demo rooftops. |
-| `/dealer/roles` | Salesperson / BDC / Sales Manager / Owner/GM. |
-| `/dealer/billing` | Owner/GM $300 close fee stub. |
-| `/dealer/settings` | Profile, notifications, store, sign out. Nothing is saved. |
+| `/dealer/analytics` | Live reply rate, median first reply, started, closed, and itemized OTD shares for 7, 30, and 90 days. |
+| `/dealer/team` | Owner/GM team invites. Preview-gated demo roster. |
+| `/dealer/rooftops` | Preview-gated demo cards. Live rooftops come from the Owner/GM switcher. |
+| `/dealer/roles` | Salesperson / BDC / Sales Manager / Owner/GM. Preview-gated. |
+| `/dealer/billing` | Owner/GM $300 close fee. Charges from `dealer_close_fees`. Payment method still a stub. |
+| `/dealer/settings` | Live work email, live rooftops, sign out. Profile fields are not saved. |
 
 Inbox filters: **Needs reply**, **In chat**, **All**. The API still accepts `all_open` and `closed`.
 
@@ -54,24 +54,27 @@ The mock seed still opens with the templated **Get Best Price** demo line. Live 
 
 Analytics cards: reply rate, median first-reply time, conversations started, conversations closed, itemized OTD shared.
 
-Settings and billing use the three demo rooftops. Billing is Owner/GM only. Shopper keys never appear on dealer or admin.
+The Owner/GM rooftop switcher lists `user_dealerships` memberships. Billing is Owner/GM only. Shopper keys never appear on dealer or admin.
 
 ## Mock vs real
 
-`src/lib/dealer/mock.ts` holds the demo in process memory. A reply or a shared-number message is visible until that server process exits. It is not written to Supabase.
+Signed-in dealers read `shopper_dealer_conversations` (first name only), `shopper_deals.vehicle_snapshot`, `shopper_dealer_messages`, and rooftop-scoped analytics. Composer replies persist on `shopper_dealer_messages` and still run `recordLiveDealerReply`.
+
+`src/lib/dealer/mock.ts` is the unsigned non-prod preview only (`DEALER_PREVIEW=1` or `ADMIN_PREVIEW=1`). A preview reply is visible until that server process exits.
 
 The inbox timer is a display value. It is not an SLA policy.
 
-`/api/dealer/v1/*` returns the same mock. `source` is `"mock"`.
+`/api/dealer/v1/*` returns `{ source: "live" }` for a rooftop member. Preview without a session returns `{ source: "mock" }`.
 
 | Method | Path                                                        | Body                                                        |
 | ------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
+| `GET`  | `/api/dealer/v1/session`                                    | `{ source, email, role, rooftops }`                         |
 | `GET`  | `/api/dealer/v1/inbox?filter=needs_reply\|in_chat\|all\|all_open\|closed` | `{ source, filter, items }`                                 |
 | `GET`  | `/api/dealer/v1/leads/:leadId`                              | `{ source, conversation }` including `messages`             |
 | `POST` | `/api/dealer/v1/leads/:leadId/messages`                     | `{ body }`                                                  |
 | `POST` | `/api/dealer/v1/leads/:leadId/numbers`                      | `{ statedPriceCents, writtenOtdCents?, note? }`             |
-| `POST` | `/api/dealer/v1/leads/:leadId/sold`                         | Marks an open conversation **Car sold**. Mock billing still records a placeholder $300 in memory. Live `dealer_close_fees` rows are written only when the **shopper confirms a purchase**. |
-| `GET`  | `/api/dealer/v1/billing`                                    | Owner/GM billing stub. No card is charged.                  |
+| `POST` | `/api/dealer/v1/leads/:leadId/sold`                         | Marks an open conversation **Car sold** on the desk. Does not write `dealer_close_fees`. Live `dealer_close_fees` rows are written only when the **shopper confirms a purchase**. |
+| `GET`  | `/api/dealer/v1/billing`                                    | Close-fee rows for the member rooftops. No card is charged. |
 | `GET`  | `/api/dealer/v1/analytics?range=7d\|30d\|90d`               | reply rate, median minutes, started, closed, numbers shared |
 
 The route name `leads` matches the information architecture. The screen label is **Conversation**.
@@ -178,29 +181,28 @@ pnpm --filter @drevvy/backend test:dealer
 pnpm --filter @drevvy/backend typecheck
 ```
 
-No new environment variables are required. Do not change the Vercel project `autoagent-dealer-dashboard` for this scaffold.
+`DEALER_PREVIEW=1` (or `ADMIN_PREVIEW=1`) serves the mock desk without a session only when `NODE_ENV` is not production. Do not change the Vercel project `autoagent-dealer-dashboard`.
 
 ## Later data
 
-| Desk field                                | Intended source, when a real desk exists                                                                                |
+| Desk field                                | Live source                                                                                                             |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Conversation id                           | A chat row tied to `shopper_deals.id`, matched with `matchOnboardedRooftop`.                                             |
-| Year, make, model, trim, advertised price | `shopper_deals.vehicle_snapshot`. Older rows may not have trim.                                                         |
-| Stock number                              | Not a column on `shopper_deals` today.                                                                                  |
-| Messages                                  | A new in-app chat table. The first row is `inNetworkOpener`. Do not reuse `shopper_outreach_messages`. Do not wire Telnyx. |
-| Shopper label                             | First name only from `shopper_dealer_conversations.shopper_first_name`. The mock `#A7F2` reference is desk-demo.        |
-| Stage, reply timer, analytics             | Derived from that chat table. The sample numbers are not live.                                                          |
-| Doc fee default                           | Settings only. Not a quote.                                                                                             |
+| Conversation id                           | `shopper_dealer_conversations.deal_id` (`shopper_deals.id`), matched with `matchOnboardedRooftop`.                      |
+| Year, make, model, trim, advertised price | `shopper_deals.vehicle_snapshot`. Older rows may not have trim. VIN, city, and contact are stripped before the desk.    |
+| Stock number                              | Not a column on `shopper_deals` today. Desk shows — until it is.                                                        |
+| Messages                                  | `shopper_dealer_messages`. The first row is `inNetworkOpener`. Do not reuse `shopper_outreach_messages`. Do not wire Telnyx. |
+| Shopper label                             | First name only from `shopper_dealer_conversations.shopper_first_name`. Ref is `#` plus the first four of the deal id.  |
+| Stage, reply timer, analytics             | Derived from that chat table plus OTD / sold flags, scoped to member rooftops.                                          |
+| Doc fee default                           | Settings only. Not a quote. Preview-gated.                                                                              |
 
-A salesperson reply in the stub moves **New request** to **In conversation** and clears “needs reply.” **Share numbers** moves an open conversation to **Numbers shared** and stores the stated price. **Closed**, **Car sold**, and **No reply** stay closed. Those transitions are demo behavior for this scaffold.
+A salesperson reply moves **New request** to **In conversation** and clears “needs reply.” **Share numbers** moves an open conversation to **Numbers shared** and stores the stated price. **Closed**, **Car sold**, and **No reply** stay closed. Desk mark-sold does not write `dealer_close_fees`.
 
 ## Open questions
 
 - How a dealership account is provisioned, and how a work email becomes a salesperson
-- Whether one login covers more than one rooftop
 - Which teammates can share numbers
 - When a written out-the-door total in this chat becomes the record the shopper relies on
 
 ## Next
 
-Add real auth without touching `/admin`. Store the chat separately from outreach logs. Wire the desk to `shopper_dealer_conversations` (first name only). The Flutter shell is `apps/drevvy-dealer-app` and can call these routes after auth exists. Do not add RevenueCat or Telnyx wiring in that step.
+Team, rooftops, roles, onboarding (except Terms), and the Flutter shell stay preview-gated. `apps/drevvy-dealer-app` can call `/api/dealer/v1` with a Bearer session after that auth exists. Do not add RevenueCat or Telnyx wiring in that step.

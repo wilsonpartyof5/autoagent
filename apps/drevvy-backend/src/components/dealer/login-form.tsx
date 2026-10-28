@@ -4,34 +4,80 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
-import { ThemeToggle, useGlassTheme } from '@/components/glass/glass-theme';
-import { DEMO_ROOFTOPS } from '@/lib/dealer/demo-org';
+import { ThemeToggle } from '@/components/glass/glass-theme';
+import { createClient } from '@/lib/supabase/client';
 
 export function LoginForm() {
   const router = useRouter();
-  const { rooftopId, setRooftopId } = useGlassTheme();
-  const [email, setEmail] = useState('maya@lakesidehonda.com');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function sendLink(event: FormEvent) {
+  async function sendCode(event: FormEvent) {
     event.preventDefault();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError('Enter a work email. Nothing is sent.');
+    const workEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) {
+      setError('Enter a work email.');
       return;
     }
+    setPending(true);
     setError(null);
-    setSent(true);
+    try {
+      const supabase = createClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: workEmail,
+        options: { shouldCreateUser: false },
+      });
+      if (otpError) {
+        setError(otpError.message || 'Drevvy could not email a sign-in code.');
+        return;
+      }
+      setSent(true);
+    } catch {
+      setError('Drevvy could not email a sign-in code.');
+    } finally {
+      setPending(false);
+    }
   }
 
-  function continueDemo(event: FormEvent) {
+  async function verifyCode(event: FormEvent) {
     event.preventDefault();
     if (!/^\d{6}$/.test(code.trim())) {
-      setError('Enter any 6 digits. No code is checked.');
+      setError('Enter the 6-digit code from your email.');
       return;
     }
-    router.push('/dealer/inbox');
+    setPending(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: code.trim(),
+        type: 'email',
+      });
+      if (verifyError) {
+        setError(verifyError.message || 'That code did not match.');
+        return;
+      }
+      const session = await fetch('/api/dealer/v1/session', { credentials: 'include' });
+      if (session.status === 403) {
+        await supabase.auth.signOut();
+        setError('This work email is not on a Drevvy rooftop.');
+        return;
+      }
+      if (!session.ok) {
+        setError('Signed in, but Drevvy could not load rooftop access.');
+        return;
+      }
+      router.push('/dealer/inbox');
+      router.refresh();
+    } catch {
+      setError('That code did not match.');
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -50,12 +96,12 @@ export function LoginForm() {
       <form
         className="g card"
         style={{ padding: 28, marginTop: 18 }}
-        onSubmit={sent ? continueDemo : sendLink}
+        onSubmit={sent ? verifyCode : sendCode}
       >
         <div className="h1">Sign in</div>
         <p className="mut" style={{ margin: '6px 0 18px' }}>
-          Use your work email — we’ll send a 6-digit code. Demo only: nothing is
-          sent, and no account is created.
+          Use your work email. We’ll send a 6-digit code. Only rooftop members
+          can open the desk.
         </p>
         <label className="lab" htmlFor="work-email">
           Work email
@@ -71,7 +117,7 @@ export function LoginForm() {
         {sent ? (
           <>
             <p className="mut" style={{ margin: '12px 0' }}>
-              No email was sent. Enter any 6-digit code to open the demo inbox.
+              Enter the 6-digit code we sent to {email.trim()}.
             </p>
             <label className="lab" htmlFor="otp-code">
               One-time code
@@ -87,30 +133,18 @@ export function LoginForm() {
             />
           </>
         ) : null}
-        <div className="lab" style={{ margin: '14px 0 8px' }}>
-          Choose rooftop
-        </div>
-        {DEMO_ROOFTOPS.map(rooftop => (
-          <label key={rooftop.id} className="chk">
-            <input
-              type="radio"
-              name="rooftop"
-              checked={rooftopId === rooftop.id}
-              onChange={() => setRooftopId(rooftop.id)}
-            />
-            <div>
-              <b>{rooftop.name}</b>
-              <div className="mut">Owner/GM</div>
-            </div>
-          </label>
-        ))}
         {error ? (
           <p className="dn" role="alert">
             {error}
           </p>
         ) : null}
-        <button type="submit" className="btn" style={{ width: '100%', marginTop: 8 }}>
-          {sent ? 'Continue to Inbox' : 'Email me a link'}
+        <button
+          type="submit"
+          className="btn"
+          style={{ width: '100%', marginTop: 8 }}
+          disabled={pending}
+        >
+          {sent ? 'Continue to Inbox' : 'Email me a code'}
         </button>
         <p className="mut" style={{ marginTop: 12, textAlign: 'center' }}>
           New dealer?{' '}

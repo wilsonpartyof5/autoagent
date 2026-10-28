@@ -1,4 +1,4 @@
-/** Dealer desk v0.1 shapes. Mock data only. No shopper contact fields. */
+/** Dealer desk shapes. Live rows are rooftop-scoped. No shopper contact fields. */
 
 export const CONVERSATION_STAGES = [
   'new_request',
@@ -49,7 +49,7 @@ export interface Conversation {
   shopperFirstName: string;
   /** Opaque desk reference. Not a name, city, or contact. */
   shopperRef: string;
-  rooftopId: 'lakeside' | 'midtown' | 'airport';
+  rooftopId: string;
   stage: ConversationStage;
   vehicle: VehicleSummary;
   stockNumber: string;
@@ -110,7 +110,7 @@ export interface ConversationDetail extends Conversation {
 }
 
 export interface AnalyticsSummary {
-  source: 'mock';
+  source: 'mock' | 'live';
   range: AnalyticsRange;
   rangeLabel: string;
   replyRate: number;
@@ -126,14 +126,14 @@ export interface CloseCharge {
   shopperRef: string;
   vehicleTitle: string;
   amountCents: number;
-  /** Placeholder row. Not a Stripe charge. */
-  status: 'placeholder';
+  /** Placeholder until Stripe. Live close-fee rows stay `due`. */
+  status: 'placeholder' | 'due' | 'invoiced' | 'paid' | 'void';
   closedAt: string;
 }
 
 export interface BillingSnapshot {
-  source: 'mock';
-  role: 'owner_gm';
+  source: 'mock' | 'live';
+  role: string;
   dayToDay: 'free';
   closeFeeCents: number;
   closeFeeLabel: string;

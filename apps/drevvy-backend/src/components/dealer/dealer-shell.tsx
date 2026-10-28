@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { RooftopSwitcher } from '@/components/dealer/rooftop-switcher';
+import { SignOutButton } from '@/components/dealer/sign-out-button';
 import { ThemeToggle, useGlassTheme } from '@/components/glass/glass-theme';
 
 const rail = [
@@ -64,7 +65,13 @@ function pageMeta(pathname: string, rooftopLabel: string): { crumb: string; titl
   return { crumb: `Dealer · ${rooftopLabel}`, title: 'Inbox' };
 }
 
-export function DealerShell({ children }: { children: ReactNode }) {
+export function DealerShell({
+  children,
+  initials = 'D',
+}: {
+  children: ReactNode;
+  initials?: string;
+}) {
   const pathname = usePathname();
   const { rooftopLabel } = useGlassTheme();
   const meta = pageMeta(pathname, rooftopLabel);
@@ -88,9 +95,7 @@ export function DealerShell({ children }: { children: ReactNode }) {
           </Link>
         ))}
         <div style={{ flex: 1 }} />
-        <Link className="ic" href="/dealer/login" title="Sign out">
-          ⎋
-        </Link>
+        <SignOutButton className="ic">⎋</SignOutButton>
       </nav>
       <div className="main">
         <header className="top g">
@@ -114,7 +119,7 @@ export function DealerShell({ children }: { children: ReactNode }) {
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <ThemeToggle />
-            <div className="av">MR</div>
+            <div className="av">{initials}</div>
           </div>
         </header>
         <div className="hd">
