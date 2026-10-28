@@ -14,7 +14,7 @@ import {
   postMessage,
   shareNumbers,
 } from '@/lib/dealer/mock';
-import { requireDealerPageSession } from '@/lib/dealer/session';
+import { isLiveDealerSession, requireDealerPageSession } from '@/lib/dealer/session';
 import type {
   ConversationDetail,
   DealerDemoError,
@@ -40,7 +40,7 @@ function publish(
 
 async function liveItems(leadId: string, conversation: ConversationDetail): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (!session) return publish(leadId, conversation, allInboxItems());
+  if (!isLiveDealerSession(session)) return publish(leadId, conversation, allInboxItems());
   const items = await listLiveInbox(session, 'all', null);
   return publish(leadId, conversation, items ?? []);
 }
@@ -49,7 +49,7 @@ export async function markConversationSold(
   leadId: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (session) {
+  if (isLiveDealerSession(session)) {
     const result = await markLiveSold(session, leadId);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -64,7 +64,7 @@ export async function postConversationMessage(
   body: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (session) {
+  if (isLiveDealerSession(session)) {
     const result = await postLiveMessage(session, leadId, body);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -83,7 +83,7 @@ export async function shareConversationNumbers(
   },
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (session) {
+  if (isLiveDealerSession(session)) {
     const result = await shareLiveNumbers(session, leadId, input);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);

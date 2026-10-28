@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { signOutDealer } from '@/app/dealer/demo-actions';
 import { createClient } from '@/lib/supabase/client';
 
 export function SignOutButton({
@@ -15,6 +16,11 @@ export function SignOutButton({
   const router = useRouter();
 
   async function signOut() {
+    try {
+      await signOutDealer();
+    } catch {
+      /* still leave the desk */
+    }
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
