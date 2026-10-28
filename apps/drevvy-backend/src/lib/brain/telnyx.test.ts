@@ -303,6 +303,33 @@ describe('call and message requests', () => {
     assert.equal(state.dealerId, 'dlr-3');
     assert.equal(state.touchpoint, 'D0-C2');
     assert.equal(String(body.StatusCallbackEvent).includes('analyzed'), true);
+    assert.equal(body.AIAssistantDynamicVariables, undefined);
+  });
+
+  it('passes deal dynamic variables to the TeXML AI assistant', () => {
+    const body = buildTexmlAiCallBody({
+      from: '+18039878296',
+      to: '+18392748197',
+      assistantId: 'assistant-c9821868-8ec6-46d6-a5bc-f0c2340089f7',
+      webhookUrl: webhook,
+      link,
+      dynamicVariables: {
+        shopper_first_name: 'Maya',
+        stock_number: '17646',
+        reply_text_number: '+18035550148',
+        reply_email: 'maya.ab12@offers.drevvy.com',
+      },
+    });
+    assert.deepEqual(body.AIAssistantDynamicVariables, {
+      shopper_first_name: 'Maya',
+      stock_number: '17646',
+      reply_text_number: '+18035550148',
+      reply_email: 'maya.ab12@offers.drevvy.com',
+    });
+    assert.notEqual(
+      (body.AIAssistantDynamicVariables as { reply_text_number: string }).reply_text_number,
+      body.From,
+    );
   });
 
   it('points outbound calls at the webhook with client state and a dual mp3', () => {

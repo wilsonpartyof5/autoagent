@@ -1,6 +1,10 @@
 /**
  * ElevenLabs post-call webhook HMAC verification.
- * See: https://elevenlabs.io/docs/api-reference/conversational-ai/webhooks
+ * The documented header is "t=<unix>,v0=<hex>". The hex is HMAC-SHA256 of
+ * `${timestamp}.${rawBody}`. A header may carry more than one v0 value; any
+ * match is valid. v1 is accepted as well. Timestamps must fall inside the
+ * five-minute tolerance window.
+ * See: https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -12,8 +16,8 @@ export type ElevenLabsSignatureResult =
   | { valid: false; reason: string };
 
 /**
- * Verify ElevenLabs webhook signature using HMAC-SHA256.
- * The signature header format is: "t=timestamp,v1=signature"
+ * Verify ElevenLabs webhook signature using HMAC-SHA256 over `timestamp.body`.
+ * Accepts the documented v0 scheme and the legacy v1 scheme.
  */
 export function verifyElevenLabsSignature(
   payload: string,
@@ -27,16 +31,15 @@ export function verifyElevenLabsSignature(
     return { valid: false, reason: 'Missing ElevenLabs-Signature header' };
   }
 
-  const parts = signatureHeader.split(',');
-  const timestampPart = parts.find((p) => p.startsWith('t='));
-  const signaturePart = parts.find((p) => p.startsWith('v1='));
+  const parts = signatureHeader.split(',').map((part) => part.trim());
+  const timestampPart = parts.find((part) => part.startsWith('t='));
+  const signatures = parts.filter((part) => part.startsWith('v0=') || part.startsWith('v1='));
 
-  if (!timestampPart || !signaturePart) {
+  if (!timestampPart || signatures.length === 0) {
     return { valid: false, reason: 'Invalid signature header format' };
   }
 
   const timestamp = timestampPart.slice(2);
-  const signature = signaturePart.slice(3);
 
   const timestampMs = Number(timestamp) * 1000;
   if (!Number.isFinite(timestampMs)) {
@@ -54,22 +57,21 @@ export function verifyElevenLabsSignature(
       .update(signedPayload)
       .digest('hex');
 
-    const signatureBuffer = Buffer.from(signature, 'hex');
-    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-
-    if (signatureBuffer.length !== expectedBuffer.length) {
-      return { valid: false, reason: 'Signature verification failed' };
-    }
-
-    if (!timingSafeEqual(signatureBuffer, expectedBuffer)) {
-      return { valid: false, reason: 'Signature verification failed' };
-    }
-
+    const matched = signatures.some((part) => hmacMatches(part.slice(3), expectedSignature));
+    if (!matched) return { valid: false, reason: 'Signature verification failed' };
     return { valid: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { valid: false, reason: `Signature verification error: ${message}` };
   }
+}
+
+function hmacMatches(provided: string, expectedHex: string): boolean {
+  const hex = provided.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) return false;
+  const left = Buffer.from(hex, 'hex');
+  const right = Buffer.from(expectedHex, 'hex');
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 export type ElevenLabsPostCallPayload = {

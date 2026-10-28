@@ -215,7 +215,17 @@ test('the same shopper can use a cooled number again, and an empty live pool nev
 
 test('a voice call uses the state caller ID after the identity is assigned', async () => {
   const db = memoryDb({
-    deals: [deal('deal-1', 'shopper-1', 'SC')],
+    deals: [{
+      ...deal('deal-1', 'shopper-1', 'SC'),
+      vehicle_snapshot: {
+        year: 2024,
+        make: 'Toyota',
+        model: 'RAV4',
+        price: 30000,
+        state: 'SC',
+        vin: '1HGBH41JXMN109186',
+      },
+    }],
     profiles: [{ user_id: 'shopper-1', first_name: 'Maya' }],
     pool: [number('+18035550101', false)],
     voices: [{ state_code: 'SC', phone_e164: '+18035551000' }],
@@ -233,11 +243,110 @@ test('a voice call uses the state caller ID after the identity is assigned', asy
     link: { dealId: 'deal-1', dealerId: 'dealer-a', touchpointId: 'D0-C1' },
     assignment: { supabase: db.client },
     script: 'Please text or email us.',
+    env: {},
   });
   assert.equal('callSid' in call, true);
   assert.equal(sent[0]?.From, '+18035551000');
-  assert.equal(db.rows('conversation_identities')[0]?.sms_number_e164, '+18035550101');
+  const identity = db.rows('conversation_identities')[0];
+  assert.equal(identity?.sms_number_e164, '+18035550101');
   assert.notEqual(sent[0]?.From, '+18035550101');
+  assert.deepEqual(sent[0]?.AIAssistantDynamicVariables, {
+    shopper_first_name: 'Maya',
+    stock_number: 'MN109186',
+    reply_text_number: '+18035550101',
+    reply_email: identity?.email_alias,
+  });
+});
+
+test('test mode courtesy calls pass deal variables and a separate reply number', async () => {
+  const db = memoryDb({
+    deals: [{
+      ...deal('deal-1', 'shopper-1', 'SC'),
+      vehicle_snapshot: {
+        year: 2024,
+        make: 'Toyota',
+        model: 'RAV4',
+        price: 30000,
+        state: 'SC',
+        stock: '#17646',
+        vin: '1HGBH41JXMN109186',
+      },
+    }],
+    profiles: [{ user_id: 'shopper-1', first_name: 'Maya' }],
+    pool: [number('+18039878296', true)],
+    voices: [{ state_code: 'SC', phone_e164: '+18039878296' }],
+    settings: { sms_cooldown_days: 90, sms_pool_low_watermark: 2, purchase_needed: false },
+  });
+  const sent: Record<string, unknown>[] = [];
+  const call = await placeTexmlAiCall(store(), {
+    testMode: true,
+    connectionId: 'conn',
+    from: '+18039878296',
+    to: '+18392748197',
+    assistantId: 'assistant',
+    webhookUrl: 'https://app.example.com/api/webhooks/telnyx',
+    apiKey: 'secret',
+    fetchImpl: capture(sent),
+    link: { dealId: 'deal-1', dealerId: 'dealer-a', touchpointId: 'D0-C1' },
+    assignment: { supabase: db.client },
+    identity: {
+      id: 'conv-test',
+      dealId: 'deal-1',
+      dealerId: 'dealer-a',
+      shopperId: 'shopper-1',
+      shopperFirstName: 'Maya',
+      emailAlias: 'maya.abcd@offers.drevvy.com',
+      aliasDomain: 'offers.drevvy.com',
+      smsNumberE164: '+18039878296',
+      voiceNumberE164: '+18039878296',
+      lockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      isTest: true,
+      endedAt: null,
+    },
+    env: {
+      DREVVY_TEXT_NUMBER: '+18039878296',
+      DREVVY_TEST_TEXT_NUMBER: '803-555-0148',
+      DREVVY_EMAIL: 'deals@drevvy.test',
+    },
+  });
+  assert.equal('callSid' in call, true);
+  assert.equal(sent[0]?.From, '+18039878296');
+  assert.deepEqual(sent[0]?.AIAssistantDynamicVariables, {
+    shopper_first_name: 'Maya',
+    stock_number: '17646',
+    reply_text_number: '+18035550148',
+    reply_email: 'deals@drevvy.test',
+  });
+  assert.equal(db.rows('conversation_identities').length, 0);
+});
+
+test('a courtesy call is not placed when the reply number is a caller ID', async () => {
+  const saved: BrainVendorEvent[] = [];
+  let called = false;
+  const result = await placeTexmlAiCall(recordingStore(saved), {
+    testMode: true,
+    connectionId: 'conn',
+    from: '+18035551000',
+    to: '+15551212000',
+    assistantId: 'assistant',
+    webhookUrl: 'https://app.example.com/api/webhooks/telnyx',
+    apiKey: 'secret',
+    fetchImpl: async () => {
+      called = true;
+      throw new Error('Telnyx must not be called');
+    },
+    link: { dealId: 'deal-1', dealerId: 'dealer-a', touchpointId: 'D0-C1' },
+    shopperFirstName: 'Maya',
+    stock: '17646',
+    env: { DREVVY_TEXT_NUMBER: '+18392748197', DREVVY_EMAIL: 'deals@drevvy.test' },
+  });
+  assert.equal('error' in result && result.error, 'The reply text number cannot be the caller ID.');
+  assert.equal(called, false);
+  assert.equal(saved[0]?.status, 'failed');
+  assert.equal(saved[0]?.event_type, 'call.failed');
+  assert.equal(saved[0]?.error_code, 'courtesy_call_refused');
+  assert.match(String(saved[0]?.error_detail), /caller ID/);
 });
 
 test('test mode sends the env number and does not assign an identity', async () => {
@@ -292,6 +401,17 @@ function capture(sent: Record<string, unknown>[]): typeof fetch {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
+  };
+}
+
+function recordingStore(saved: BrainVendorEvent[]): CommunicationsStore {
+  const base = store();
+  return {
+    ...base,
+    async save(event) {
+      saved.push(event);
+      return base.save(event);
+    },
   };
 }
 
