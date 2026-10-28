@@ -104,6 +104,59 @@ void main() {
     },
   );
 
+  testWidgets(
+    'send starts the conversation even when it has not been started yet',
+    (tester) async {
+      final endpoint = _FakeChips(
+        (dealId, inputs) async => const DealChipSuggestionSet(
+          network: 'in_network',
+          stage: 'after_opener',
+          chips: [
+            DealBrainChip(
+              templateId: 'T7',
+              label: 'Thanks',
+              message: 'Thanks, that helps!',
+            ),
+          ],
+        ),
+      );
+      final repo = DemoRepository(
+        networkDelay: Duration.zero,
+        initialBalance: const CarCreditBalance.withBalance(6),
+        dealChips: endpoint,
+      );
+      final deal = _inNetworkDeal();
+      expect(repo.hasStartedConversation(deal.listing.id), isFalse);
+
+      await tester.pumpWidget(_frame(const SizedBox.shrink()));
+      final opened = await openDealDealerChat(
+        context: tester.element(find.byType(SizedBox)),
+        repo: repo,
+        deal: deal,
+        match: deal.listing.rooftopMatch,
+        creditBalance: const CarCreditBalance.withBalance(6),
+        shopperFirstName: 'Dana',
+        market: deal.marketContext,
+      );
+      await tester.pump();
+      expect(opened, isTrue);
+
+      final sheet = tester.widget<DealerChatSheet>(
+        find.byType(DealerChatSheet),
+      );
+      await tester.runAsync(() async {
+        await sheet.onSend(templateId: 'T7', message: 'Thanks, that helps!');
+        expect((await repo.getCreditBalance()).balance, 5);
+      });
+
+      expect(repo.hasStartedConversation(deal.listing.id), isTrue);
+      expect(
+        repo.dealThread(deal.id).map((message) => message.body),
+        contains('Thanks, that helps!'),
+      );
+    },
+  );
+
   testWidgets('off-network inbox helper does not open DealerChatSheet', (
     tester,
   ) async {
@@ -160,6 +213,8 @@ void main() {
     expect(helper.contains('chipsEndpoint: repo.dealChips'), isTrue);
     expect(helper.contains('dealId: deal.id'), isTrue);
     expect(helper.contains('alreadyOpen: true'), isTrue);
+    expect(helper.contains('await repo.startDealerConversation'), isTrue);
+    expect(helper.contains('hasStartedConversation'), isFalse);
     final detail = File('lib/features/deals/screens/deal_detail_screen.dart')
         .readAsStringSync();
     expect(detail.contains('deal-detail-ask'), isTrue);

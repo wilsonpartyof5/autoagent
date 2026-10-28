@@ -45,14 +45,12 @@ Future<bool> openDealDealerChat({
       chipInputs: _chipInputsFor(repo, deal, listing, resolvedMarket),
       chipsEndpoint: repo.dealChips,
       onSend: ({templateId, message}) async {
-        if (repo.hasStartedConversation(listing.id)) {
-          await repo.startDealerConversation(
-            listing,
-            resolvedMatch,
-            templateId: templateId,
-            message: message,
-          );
-        }
+        await repo.startDealerConversation(
+          listing,
+          resolvedMatch,
+          templateId: templateId,
+          message: message,
+        );
         final text = message?.trim() ?? '';
         if (text.isNotEmpty) {
           repo.rememberDealMessage(deal.id, body: text);
