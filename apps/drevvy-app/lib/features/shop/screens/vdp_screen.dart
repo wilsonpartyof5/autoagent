@@ -26,7 +26,7 @@ import '../widgets/unlock_paywall.dart';
 import '../widgets/vdp_cta_bar.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
-/// v1.7: Uses car credit balance instead of Pro subscription.
+/// v1.7: Uses key balance instead of a monthly subscription.
 class VdpScreen extends ConsumerStatefulWidget {
   const VdpScreen({super.key, required this.listingId});
 

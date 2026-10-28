@@ -11,7 +11,8 @@ create table if not exists public.outreach_events (
   touchpoint text not null check (touchpoint in (
     'D0-E1', 'D0-C1', 'D0-T1', 'D0-TS', 'D0-C2',
     'D1-E2', 'D1-T2', 'D2-C3', 'D2-T3',
-    'D4-E3', 'D4-T4', 'D5-E4', 'VM-1'
+    'D4-E3', 'D4-T4', 'D5-E4',
+    'D6-E3', 'D6-T4', 'D7-E4', 'VM-1'
   )),
   variant text not null check (variant in ('A', 'B', 'C')),
   channel text not null check (channel in ('email', 'sms', 'call', 'voicemail')),

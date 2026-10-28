@@ -15,10 +15,10 @@ const BANNED = /automated assistant/i;
 
 test('cadence uses the spec touchpoint ids and sends no cold day-0 text', () => {
   assert.deepEqual([...TOUCHPOINT_IDS], [
-    'D0-E1', 'D0-C1', 'D0-TS', 'D0-C2', 'D1-E2', 'D1-T2', 'D2-C3', 'D2-T3', 'D4-E3', 'D4-T4', 'D5-E4', 'VM-1',
+    'D0-E1', 'D0-C1', 'D0-TS', 'D0-C2', 'D1-E2', 'D1-T2', 'D2-C3', 'D2-T3', 'D6-E3', 'D6-T4', 'D7-E4', 'VM-1',
   ]);
   const seen = new Set(getOutreachDeals().flatMap((deal) => deal.events.map((event) => event.touchpoint)));
-  for (const id of ['D0-E1', 'D0-C1', 'D0-C2', 'D1-E2', 'D2-C3', 'D4-E3', 'D5-E4', 'VM-1'] as const) {
+  for (const id of ['D0-E1', 'D0-C1', 'D0-C2', 'D1-E2', 'D2-C3', 'D6-E3', 'D7-E4', 'VM-1'] as const) {
     assert.equal(seen.has(id), true, id);
   }
   assert.equal(seen.has('D0-T1' as TouchpointId), false);
@@ -84,7 +84,7 @@ test('openings are a short hello and do not lead with being an AI', () => {
   const opener = 'Hi, this is Drevvy, working for Maya.';
   const casual = 'Hi, is stock #A1234 still available?';
   const leadsWithAi = /i'm an ai|i am an ai|i'm drevvy's ai|i am drevvy's ai/i;
-  for (const touchpoint of ['D0-E1', 'D1-E2', 'D4-E3', 'D5-E4'] as const) {
+  for (const touchpoint of ['D0-E1', 'D1-E2', 'D6-E3', 'D7-E4'] as const) {
     for (const variant of ['A', 'B', 'C'] as const) {
       const email = emailCopy(touchpoint, variant, ctx);
       assert.ok(email, `${touchpoint} ${variant}`);
@@ -98,7 +98,7 @@ test('openings are a short hello and do not lead with being an AI', () => {
       assert.equal(email.body.includes('@'), false, email.body);
     }
   }
-  for (const touchpoint of ['D0-TS', 'D1-T2', 'D2-T3', 'D4-T4'] as const) {
+  for (const touchpoint of ['D0-TS', 'D1-T2', 'D2-T3', 'D6-T4'] as const) {
     for (const variant of ['A', 'B', 'C'] as const) {
       const sms = smsCopy(touchpoint, variant, ctx);
       assert.ok(sms, `${touchpoint} ${variant}`);
@@ -181,10 +181,10 @@ test('day-0 email names the stock number and leaves out the vehicle and the full
   }
 });
 
-test('day-5 email A mentions a text only after one was sent', () => {
+test('day-7 email A mentions a text only after one was sent', () => {
   const ctx = { first: 'Maya', vehicle: '2024 Toyota RAV4 Hybrid XLE', vehicleShort: 'RAV4 Hybrid', stock: 'A1234', price: '$34,990', number: '843-555-0123', vin: '2T3P1RFV8RW000123' };
-  const quiet = emailCopy('D5-E4', 'A', ctx);
-  const texted = emailCopy('D5-E4', 'A', { ...ctx, textSent: true });
+  const quiet = emailCopy('D7-E4', 'A', ctx);
+  const texted = emailCopy('D7-E4', 'A', { ...ctx, textSent: true });
   assert.equal(quiet?.body.includes('email and phone'), true);
   assert.equal(/\btext\b/i.test(quiet?.body ?? ''), false);
   assert.equal(texted?.body.includes('email, text, and phone'), true);
@@ -194,13 +194,13 @@ test('outreach report rates stay in range and surface a guardrail', () => {
   const range = defaultOutreachRange();
   const report = buildOutreachReport(range.from, range.to);
   assert.equal(report.kpis.dealsContacted, getOutreachDeals().length);
-  assert.equal(report.kpis.replyRateWithin5Days != null && report.kpis.replyRateWithin5Days > 0 && report.kpis.replyRateWithin5Days <= 1, true);
+  assert.equal(report.kpis.replyRateWithin7Days != null && report.kpis.replyRateWithin7Days > 0 && report.kpis.replyRateWithin7Days <= 1, true);
   assert.equal(report.stops.reduce((sum, row) => sum + row.count, 0), report.kpis.dealsContacted);
   assert.equal(report.variants.some((row) => row.guardrail), true);
   assert.equal(report.variants.some((row) => row.enoughData), true);
   const empty = buildOutreachReport('2020-01-01', '2020-01-02');
   assert.equal(empty.kpis.dealsContacted, 0);
-  assert.equal(empty.kpis.replyRateWithin5Days, null);
+  assert.equal(empty.kpis.replyRateWithin7Days, null);
   const interval = wilson(10, 40);
   assert.equal(interval != null && interval.low >= 0 && interval.high <= 1 && interval.low <= interval.high, true);
 });

@@ -370,7 +370,7 @@ function finalize(draft: Draft): OutreachMonitorRow {
   let status = draft.status;
   if (draft.optOut || (dealerReplyText != null && /^stop$/i.test(dealerReplyText.trim()))) status = 'opted_out';
   else if (!status && firstReplyChannel) status = 'replied';
-  else if (!status && (cadenceDay ?? 0) >= 5) status = 'no_response';
+  else if (!status && (cadenceDay ?? 0) >= 7) status = 'no_response';
   else if (!status) status = 'waiting';
 
   return {
@@ -584,13 +584,13 @@ const DEMO: OutreachMonitorRow[] = [
     touches: [
       touch('email', '2026-09-12T15:00:00.000Z', 'outbound', 0),
       touch('text', '2026-09-13T15:00:00.000Z', 'outbound', 1),
-      touch('call', '2026-09-17T15:00:00.000Z', 'outbound', 5),
+      touch('call', '2026-09-19T15:00:00.000Z', 'outbound', 7),
     ],
     firstReplyChannel: null,
     firstReplyAt: null,
     status: 'no_response',
     dealerReplyText: null,
-    cadenceDay: 5,
+    cadenceDay: 7,
   }),
   row({
     id: 'mon-008',

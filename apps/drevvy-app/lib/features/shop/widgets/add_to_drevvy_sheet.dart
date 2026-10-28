@@ -8,7 +8,7 @@ import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
 /// Screen 18: Add to Drevvy bottom sheet.
-/// v1.7: Uses car credits instead of monthly usage.
+/// v1.7: Uses keys instead of monthly usage.
 /// Confirm sheet kept for saved-to-deals. Prefer [MarketIntelSheet] / [DealerChatSheet] on VDP.
 class AddToDrevvySheet extends StatefulWidget {
   const AddToDrevvySheet({

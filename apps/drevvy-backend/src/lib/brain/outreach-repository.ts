@@ -51,7 +51,7 @@ export async function getOutreachDealsFromDb(
         otdReceived: false,
         firstReplyAt: null,
         firstReplyTouchpoint: null,
-        replyWithin5Days: false,
+        replyWithin7Days: false,
         events: [],
       };
       dealMap.set(event.deal_id, deal);
@@ -115,14 +115,14 @@ export async function getOutreachDealsFromDb(
     if (deal.firstReplyAt) {
       const replyMs = Date.parse(deal.firstReplyAt);
       const startMs = Date.parse(deal.startedAt);
-      deal.replyWithin5Days = replyMs - startMs <= 5 * 24 * 60 * 60 * 1000;
+      deal.replyWithin7Days = replyMs - startMs <= 7 * 24 * 60 * 60 * 1000;
       if (deal.stop === 'in_progress') {
         deal.stop = 'reply';
         deal.stopAt = deal.firstReplyAt;
       }
     }
 
-    if (deal.events.some((e) => e.touchpoint === 'D5-E4' && e.direction === 'outbound') && deal.stop === 'in_progress') {
+    if (deal.events.some((e) => e.touchpoint === 'D7-E4' && e.direction === 'outbound') && deal.stop === 'in_progress') {
       deal.stop = 'ended_no_response';
       deal.stopAt = deal.events.at(-1)?.sentAt ?? null;
     }

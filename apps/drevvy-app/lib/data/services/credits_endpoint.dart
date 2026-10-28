@@ -8,7 +8,7 @@ import '../models/car_pack.dart';
 import 'purchase_config.dart';
 import 'shopper_session_store.dart';
 
-/// Grants car credits after a store purchase.
+/// Grants keys after a store purchase.
 ///
 /// `GET` and `POST /api/consumer/credits` and `POST /api/consumer/credits/restore`.
 /// A purchase body is `{productId, transactionId}`. A restore body is

@@ -69,7 +69,7 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
       body: `${OPENER} Could you share an itemized out-the-door price on the {vehicle} (#{stock})? Text {number} or reply here.\n\nDrevvy, on behalf of {first}`,
     },
   },
-  'D4-E3': {
+  'D6-E3': {
     A: {
       subject: 'Re: {vehicle}, stock #{stock}',
       body: `${OPENER} We'll close the request on the {vehicle} (#{stock}) tomorrow. If it's still available, text {number} or reply with your itemized out-the-door price and we'll pass it to {first}.\n\nDrevvy, on behalf of {first}`,
@@ -83,7 +83,7 @@ const EMAIL: Partial<Record<TouchpointId, Record<Variant, { subject: string; bod
       body: `${OPENER} We'd still like to work with you on the {vehicle} (#{stock}). We'll close the request tomorrow. Text {number} or reply with an itemized out-the-door price.\n\nDrevvy, on behalf of {first}`,
     },
   },
-  'D5-E4': {
+  'D7-E4': {
     A: {
       subject: 'Re: {vehicle}, stock #{stock}',
       body: `${OPENER} We've reached out by {channels} about the {vehicle} (#{stock}) and don't have an out-the-door price, so we're closing this request today. If you'd still like to earn their business, reply with an itemized out-the-door price and we'll pass it to {first}.\n\nDrevvy, on behalf of {first}`,
@@ -125,7 +125,7 @@ const SMS: Partial<Record<TouchpointId | 'D0-T1', Record<Variant, string>>> = {
     B: `${OPENER} Is the {vehicle_short} #{stock} still available?`,
     C: `${OPENER} A clear out-the-door price on the {vehicle_short} (#{stock}) is all we need.`,
   },
-  'D4-T4': {
+  'D6-T4': {
     A: `${OPENER} We'll close the request on #{stock} tomorrow. Still available? Text the out-the-door price and we'll pass it on.`,
     B: `${OPENER} Last note on #{stock}. Out-the-door price by tomorrow?`,
     C: `${OPENER} We'd still like to work with you on #{stock}. Text an itemized out-the-door price before tomorrow and it goes to {first}.`,

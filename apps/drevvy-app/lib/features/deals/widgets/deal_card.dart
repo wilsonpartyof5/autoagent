@@ -227,7 +227,7 @@ class DealCard extends StatelessWidget {
                           child: Text(
                             deal.status == DealStatus.noLongerListed
                                 ? 'No longer listed (likely sold)'
-                                : 'No dealer response after 5 days',
+                                : 'No dealer response after 7 days',
                             style: text.callout.copyWith(color: colors.ended),
                           ),
                         ),

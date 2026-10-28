@@ -35,7 +35,7 @@ class PurchaseBootstrap {
 
     Superwall.configure(apiKey, purchaseController: controller);
     try {
-      // Car packs are consumables, not a subscription. Leave Superwall
+      // Key packs are consumables, not a subscription. Leave Superwall
       // inactive so `cars_balance_empty` can still present.
       await Superwall.shared.setSubscriptionStatus(SubscriptionStatus.inactive);
     } on Exception catch (error) {

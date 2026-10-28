@@ -21,8 +21,8 @@ export default async function ShopperPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-slate-400">{shopper.email}</p>
         </div>
         <div className="text-right text-sm text-slate-300">
-          <div>{subscriptionLabel(shopper.subscription)}{shopper.monthlyPriceUsd ? ` · ${usd(shopper.monthlyPriceUsd)}/mo` : ''}</div>
-          <div>{cards.length}/10 cars</div>
+          <div>{subscriptionLabel(shopper.subscription)}{shopper.purchasedPack ? ` · ${shopper.purchasedPack}-key pack` : ''}</div>
+          <div>{cards.length} {cards.length === 1 ? 'deal' : 'deals'}</div>
           <div className="text-slate-500">Joined {when(shopper.signedUpAt)}</div>
         </div>
       </header>

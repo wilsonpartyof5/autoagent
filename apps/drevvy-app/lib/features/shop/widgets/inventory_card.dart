@@ -24,7 +24,7 @@ class InventoryCard extends StatelessWidget {
 
   final Listing listing;
 
-  /// v1.7: Whether user has car credits (unused for now, kept for future A/B).
+  /// v1.7: Whether user has keys (unused for now, kept for future A/B).
   final bool hasCredits;
   final VoidCallback onTap;
   final int? marketDelta;

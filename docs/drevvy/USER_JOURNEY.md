@@ -120,7 +120,7 @@ MarketCheck: not used.
 
 The car becomes a deal card. Starting price is the listed price. Best OTD and savings fill in as quotes arrive. The status chip starts at Reaching out. Last activity updates on each touch.
 
-The cap is 10 open cars. The admin shopper table shows N/10.
+There is no monthly car cap. Keys are one-time packs; spend kind is assigned at use.
 
 Event: `shopper.deal_added`.
 
@@ -137,7 +137,7 @@ Cadence:
 1. Day 0: intro SMS and an email that asks for an itemized out-the-door total.
 2. Day 1: a voice call if nobody has replied.
 3. Day 3: a price-check SMS.
-4. Day 5: a follow-up email if the quote is still incomplete.
+4. Day 7: close the request if there is still no reply. The conversation-key refund clock is 7 days from confirmed delivery.
 5. Escalate to a manager call only after the written steps have had a chance to land.
 6. Stop when the shopper pauses the car, the car is won, or the best price is ready and the agent is told to hold.
 
@@ -191,7 +191,7 @@ The admin Analytics page reads the same funnel. When these events exist in `app_
 | Best price ready | `shopper.best_price_ready` |
 | Bought or won | `shopper.won` |
 
-Also on the admin analytics page: deals by stage, average savings in dollars and percent versus listed price, median time to first dealer response, median time to best price, response rate by SMS/email/voice, cadence reply rate, messages per deal, active cars versus the 10-car cap, MRR and churn placeholders, and LLM cost per deal.
+Also on the admin analytics page: deals by stage, average savings in dollars and percent versus listed price, median time to first dealer response, median time to best price, response rate by SMS/email/voice, cadence reply rate, messages per deal, key-pack mix, MRR and churn placeholders, and LLM cost per deal.
 
 ## Where this is demoed
 

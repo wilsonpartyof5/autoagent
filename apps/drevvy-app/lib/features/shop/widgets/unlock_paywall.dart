@@ -11,7 +11,7 @@ import '../../../data/services/superwall_placement.dart';
 import 'out_of_cars_sheet.dart';
 import 'pack_picker_sheet.dart';
 
-/// Opens the car-pack paywall when [balance] is 0.
+/// Opens the key-pack paywall when [balance] is 0.
 ///
 /// Superwall placement `cars_balance_empty` drives the screen when a key
 /// exists. With no key, the local pack picker (first purchase) or out-of-cars

@@ -178,7 +178,7 @@ class DemoRepository {
     kind: 'market',
   );
 
-  /// Get current car credit balance.
+  /// Get current key balance.
   Future<CarCreditBalance> getCreditBalance() async {
     return _delay(_creditBalance);
   }
