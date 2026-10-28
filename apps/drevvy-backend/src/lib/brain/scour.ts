@@ -2,6 +2,11 @@
  * Social Scour reply rules.
  * These are fixed replies for situations dealers actually used.
  * Drevvy still never accepts, agrees, or signs for the shopper.
+ *
+ * Spec §4b: flat or mandatory fees are thanked and passed as-is, transport
+ * terms are relayed verbatim and never agreed, and a listed price change is
+ * relayed plainly (`They say it's now {new_price}`) with no bait-and-switch
+ * claim. This module does not auto-send those relays.
  */
 
 export type FinancingQuote = {

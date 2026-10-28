@@ -279,6 +279,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       stockNumber: listing.stockNo,
       listedPrice: listing.price,
       dom: listing.domActive,
+      shopperFirst: _shopperFirstName,
     );
   }
 

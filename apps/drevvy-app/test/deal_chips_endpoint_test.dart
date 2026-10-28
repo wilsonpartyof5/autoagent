@@ -151,6 +151,42 @@ void main() {
     },
   );
 
+  test('confirm chips send OTD, lease due, and a first name only', () {
+    const inputs = DealChipInputs(
+      threadLoaded: true,
+      marketLoaded: true,
+      featureLoaded: true,
+      visitLoaded: true,
+      itemizedOtdInThread: true,
+      otdTotal: 32584,
+      lease: true,
+      dueAtSigning: 2500,
+      shopperFirst: 'Dana Wilson',
+    );
+    final intel = inputs.toRequestBody()['intel'] as Map;
+    expect(intel['itemizedOtdInThread'], isTrue);
+    expect(intel['otdTotal'], 32584);
+    expect(intel['lease'], isTrue);
+    expect(intel['dueAtSigning'], 2500);
+    expect(intel['shopperFirst'], 'Dana');
+
+    const confirmOtd =
+        'Just confirming: the out-the-door total you sent is \$32,584, including all dealer fees, tax and registration. Is that correct?';
+    const confirmLease = 'And just confirming: total due at signing is \$2,500?';
+    const warmStay =
+        'Happy to come in once we have the numbers. Could you send the itemized out-the-door so Dana can plan the visit?';
+    expect(DealBrainChip.copyAllowed('Confirm OTD', confirmOtd), isTrue);
+    expect(DealBrainChip.copyAllowed('Confirm lease due', confirmLease), isTrue);
+    expect(DealBrainChip.copyAllowed('Numbers first', warmStay), isTrue);
+    expect(
+      DealBrainChip.catalog.map((chip) => chip.templateId),
+      containsAll(['T13', 'T13b', 'STAY']),
+    );
+    for (final chip in DealBrainChip.catalog) {
+      expect(chip.label.length, lessThanOrEqualTo(DealBrainChip.labelLimit));
+    }
+  });
+
   test('a payload without chips or for another network is not a chip set', () {
     expect(
       DealChipSuggestionSet.tryParse({

@@ -2,7 +2,8 @@ import 'package:equatable/equatable.dart';
 
 /// One suggestion the shopper can place in the dealer composer.
 ///
-/// T1–T12 come from the middleman spec. A tap fills the composer.
+/// T1–T13, T13b, and the come-in stay chip come from the middleman spec.
+/// A tap fills the composer.
 /// Nothing here is sent on its own. `POST /api/consumer/deals/:id/chips`
 /// supplies the live list. The sheet keeps the after-opener pair until
 /// that list arrives.
@@ -116,6 +117,9 @@ class DealBrainChip extends Equatable {
     hours,
     DealBrainChip(templateId: 'T11', label: 'Trade-in question', message: ''),
     DealBrainChip(templateId: 'T12', label: 'Plan a visit', message: ''),
+    DealBrainChip(templateId: 'T13', label: 'Confirm OTD', message: ''),
+    DealBrainChip(templateId: 'T13b', label: 'Confirm lease due', message: ''),
+    DealBrainChip(templateId: 'STAY', label: 'Numbers first', message: ''),
   ];
 
   /// After the desk opener, before a dealer reply. T1 needs a stock number.

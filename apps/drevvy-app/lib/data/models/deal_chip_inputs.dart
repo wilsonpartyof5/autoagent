@@ -44,6 +44,10 @@ class DealChipInputs extends Equatable {
     this.visitTime,
     this.rep,
     this.itemizedOtdInThread = false,
+    this.otdTotal,
+    this.lease = false,
+    this.dueAtSigning,
+    this.shopperFirst,
     this.stage,
   });
 
@@ -73,6 +77,19 @@ class DealChipInputs extends Equatable {
   final String? rep;
 
   final bool itemizedOtdInThread;
+
+  /// Dealer-stated itemized out-the-door total, in dollars.
+  final int? otdTotal;
+
+  /// Lease deal. The due-at-signing confirm stays hidden otherwise.
+  final bool lease;
+
+  /// Lease amount due at signing, in dollars.
+  final int? dueAtSigning;
+
+  /// Shopper first name only. The server drops a last name.
+  final String? shopperFirst;
+
   final String? stage;
 
   /// All four inputs are loaded. Null market, feature, or visit means the
@@ -88,6 +105,10 @@ class DealChipInputs extends Equatable {
     int? dom,
     String? rep,
     bool itemizedOtdInThread = false,
+    int? otdTotal,
+    bool lease = false,
+    int? dueAtSigning,
+    String? shopperFirst,
     String? stage,
   }) {
     return DealChipInputs(
@@ -107,6 +128,10 @@ class DealChipInputs extends Equatable {
       visitTime: DealBrainChip.cleanPhrase(visitTime),
       rep: DealBrainChip.cleanPhrase(rep),
       itemizedOtdInThread: itemizedOtdInThread,
+      otdTotal: _positive(otdTotal),
+      lease: lease,
+      dueAtSigning: _positive(dueAtSigning),
+      shopperFirst: _shopperFirst(shopperFirst),
       stage: stage,
     );
   }
@@ -144,6 +169,11 @@ class DealChipInputs extends Equatable {
     final time = DealBrainChip.cleanPhrase(visitTime);
     if (time != null) intel['visitTime'] = time;
     if (itemizedOtdInThread) intel['itemizedOtdInThread'] = true;
+    _putPositive(intel, 'otdTotal', otdTotal);
+    _putPositive(intel, 'dueAtSigning', dueAtSigning);
+    if (lease) intel['lease'] = true;
+    final first = _shopperFirst(shopperFirst);
+    if (first != null) intel['shopperFirst'] = first;
 
     final stageText = stage?.trim();
     return {
@@ -169,6 +199,13 @@ class DealChipInputs extends Equatable {
     if (next != null) intel[key] = next;
   }
 
+  /// First token only. A last name, email, or phone never goes to the dealer.
+  static String? _shopperFirst(String? raw) {
+    if (raw == null) return null;
+    final token = raw.trim().split(RegExp(r'\s+')).first;
+    return DealBrainChip.cleanPhrase(token);
+  }
+
   @override
   List<Object?> get props => [
     threadLoaded,
@@ -187,6 +224,10 @@ class DealChipInputs extends Equatable {
     visitTime,
     rep,
     itemizedOtdInThread,
+    otdTotal,
+    lease,
+    dueAtSigning,
+    shopperFirst,
     stage,
   ];
 }

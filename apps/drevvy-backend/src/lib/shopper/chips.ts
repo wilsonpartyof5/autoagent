@@ -1,8 +1,14 @@
 /**
- * In-network shopper chips (Deal Brain middleman spec, T1–T12).
+ * In-network shopper chips (Deal Brain middleman spec, T1–T13 and T13b).
  * Suggestions only. The shopper taps send. Nothing here is auto-sent.
  * A chip with a missing required field is omitted. T3–T5 use the spec
  * fallback sentence when a market figure is missing. They never invent a price.
+ *
+ * Spec §4b: flat or mandatory fees are thanked and passed as-is, transport
+ * terms are relayed verbatim and never agreed, and a listed price change is
+ * relayed plainly (`They say it's now {new_price}`) with no bait-and-switch
+ * claim. This module does not auto-send those relays. A come-in push offers
+ * the warm stay chip. The admin flag stays in otd-warnings and is not cleared.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -15,7 +21,7 @@ import { ShopperDealError, type ShopperDealRepository } from './deals';
 export const CHIP_LABEL_LIMIT = 18;
 export const CHIP_BODY_LIMIT = 160;
 
-export const CHIP_IDS = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'] as const;
+export const CHIP_IDS = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T13b', 'STAY'] as const;
 export type ChipId = (typeof CHIP_IDS)[number];
 
 export const CHIP_STAGES = ['after_opener', 'after_availability', 'after_price', 'after_itemized_otd'] as const;
@@ -25,7 +31,7 @@ const STAGE_ORDER: Record<ChipStage, readonly ChipId[]> = {
   after_opener: ['T6', 'T1'],
   after_availability: ['T2', 'T6', 'T3'],
   after_price: ['T6', 'T4', 'T5', 'T7'],
-  after_itemized_otd: ['T7', 'T8', 'T9', 'T10', 'T11', 'T12'],
+  after_itemized_otd: ['T13', 'T13b', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'],
 };
 
 const LABELS: Record<ChipId, string> = {
@@ -41,6 +47,9 @@ const LABELS: Record<ChipId, string> = {
   T10: 'Your hours?',
   T11: 'Trade-in question',
   T12: 'Plan a visit',
+  T13: 'Confirm OTD',
+  T13b: 'Confirm lease due',
+  STAY: 'Numbers first',
 };
 
 export type ChipIntel = {
@@ -55,6 +64,15 @@ export type ChipIntel = {
   visitDay?: string | null;
   visitTime?: string | null;
   itemizedOtdInThread?: boolean | null;
+  /** Dealer-stated itemized out-the-door total. Not a sum we invent. */
+  otdTotal?: number | null;
+  /** Lease deal. T13b stays hidden on a cash or finance thread. */
+  lease?: boolean | null;
+  dueAtSigning?: number | null;
+  /** Shopper first name only. Used by the come-in warm stay chip. */
+  shopperFirst?: string | null;
+  /** Dealer pushed a visit before the numbers. Not a come-in from our side. */
+  comeInPush?: boolean | null;
 };
 
 export type ChipSuggestion = {
@@ -163,6 +181,98 @@ function fill(template: string, values: Record<string, string>): string | null {
   return body;
 }
 
+const DOLLAR = String.raw`\$\s*(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.(\d{2}))?`;
+const COME_IN = /\b(come on in|come in|stop by|swing by|visit (?:us|the (?:store|dealership)))\b/i;
+const LEASE = /\bleas(?:e|ing)\b/i;
+
+function isDealerAuthor(author: string | null | undefined): boolean {
+  return author === 'salesperson' || author === 'dealer';
+}
+
+function readDollar(match: RegExpMatchArray | null): number | null {
+  if (!match?.[1]) return null;
+  const dollars = Number(match[1].replace(/,/g, ''));
+  const cents = match[2] ? Number(match[2]) / 100 : 0;
+  const amount = Math.round((dollars + cents) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 500_000) return null;
+  return amount;
+}
+
+function lastDollarAfter(text: string, lead: RegExp): number | null {
+  const pattern = new RegExp(`${lead.source}\\s*${DOLLAR}`, 'gi');
+  let found: number | null = null;
+  for (const match of text.matchAll(pattern)) {
+    const amount = readDollar(match);
+    if (amount != null) found = amount;
+  }
+  return found;
+}
+
+/** Dealer-stated total only. A worksheet sum is not a total the dealer sent. */
+function statedOtdTotal(text: string): number | null {
+  const explicit = [
+    /(?:written\s+)?out[-\s]the[-\s]door\s+total\s*(?:is|:)?/i,
+    /total\s+out[-\s]the[-\s]door(?:\s+price)?\s*(?:is|:)?/i,
+    /\bo\.?t\.?d\.?\s+total\s*(?:is|:)?/i,
+    /(?:^|[^A-Za-z])(?:o\.?t\.?d\.?|out[-\s]the[-\s]door)\s*(?:is|:)/i,
+  ];
+  for (const lead of explicit) {
+    const amount = lastDollarAfter(text, lead);
+    if (amount != null) return amount;
+  }
+  if (!messageHasItemizedOtd(text)) return null;
+  return lastDollarAfter(text, /(?:^|[.\n])\s*total\s*(?:is|:)?/i);
+}
+
+function statedDueAtSigning(text: string): number | null {
+  return lastDollarAfter(text, /(?:total\s+)?due\s+at\s+signing\s*(?:is|:)?/i);
+}
+
+function usableFirst(raw: string | null | undefined): string | null {
+  const name = shopperFirstNameOnly(raw);
+  if (!name || name === 'A') return null;
+  return name;
+}
+
+function shopperFirstFromThread(messages: readonly ThreadMessage[]): string | null {
+  for (const row of messages) {
+    const body = (row.body ?? '').trim();
+    const match = body.match(/^([A-Za-z][A-Za-z'-]{0,39}) wants your best itemized out-the-door\b/);
+    if (!match) continue;
+    const name = usableFirst(match[1]);
+    if (name) return name;
+  }
+  return null;
+}
+
+function readThreadFacts(messages: readonly ThreadMessage[]): {
+  otdTotal: number | null;
+  dueAtSigning: number | null;
+  lease: boolean;
+  comeIn: boolean;
+  itemized: boolean;
+  shopperFirst: string | null;
+} {
+  const dealer = messages.filter((row) => isDealerAuthor(row.author));
+  let otdTotal: number | null = null;
+  let dueAtSigning: number | null = null;
+  for (const row of dealer) {
+    const body = row.body ?? '';
+    const total = statedOtdTotal(body);
+    if (total != null) otdTotal = total;
+    const due = statedDueAtSigning(body);
+    if (due != null) dueAtSigning = due;
+  }
+  return {
+    otdTotal,
+    dueAtSigning,
+    lease: dealer.some((row) => LEASE.test(row.body ?? '')),
+    comeIn: dealer.some((row) => COME_IN.test(row.body ?? '')),
+    itemized: dealer.some((row) => messageHasItemizedOtd(row.body ?? '')),
+    shopperFirst: shopperFirstFromThread(messages),
+  };
+}
+
 function render(id: ChipId, intel: ChipIntel, itemized: boolean): string | null {
   const rep = repName(intel.rep);
   if (id === 'T1') {
@@ -222,6 +332,24 @@ function render(id: ChipId, intel: ChipIntel, itemized: boolean): string | null 
       visit_time: visitTime,
     });
   }
+  if (id === 'T13') {
+    if (!itemized) return null;
+    const total = formatChipMoney(intel.otdTotal);
+    if (!total) return null;
+    return `Just confirming: the out-the-door total you sent is ${total}, including all dealer fees, tax and registration. Is that correct?`;
+  }
+  if (id === 'T13b') {
+    if (!itemized || intel.lease !== true) return null;
+    const due = formatChipMoney(intel.dueAtSigning);
+    if (!due) return null;
+    return `And just confirming: total due at signing is ${due}?`;
+  }
+  if (id === 'STAY') {
+    if (itemized || intel.comeInPush !== true) return null;
+    const first = usableFirst(intel.shopperFirst);
+    if (!first) return null;
+    return `Happy to come in once we have the numbers. Could you send the itemized out-the-door so ${first} can plan the visit?`;
+  }
   return null;
 }
 
@@ -243,11 +371,31 @@ export function suggestShopperChips(input: {
   intel?: ChipIntel | null;
   messages?: readonly ThreadMessage[] | null;
 }): ChipSuggestionSet {
-  const intel = input.intel ?? {};
+  const provided = input.intel ?? {};
+  const facts = readThreadFacts(input.messages ?? []);
+  const intel: ChipIntel = {
+    ...provided,
+    otdTotal: facts.otdTotal ?? provided.otdTotal,
+    dueAtSigning: facts.dueAtSigning ?? provided.dueAtSigning,
+    lease: provided.lease === true || facts.lease,
+    comeInPush: provided.comeInPush === true || facts.comeIn,
+    shopperFirst: usableFirst(provided.shopperFirst) ?? facts.shopperFirst,
+    itemizedOtdInThread: provided.itemizedOtdInThread === true || facts.itemized,
+  };
   const inferred = inferChipStage(input.messages);
-  const stage = input.stage ?? inferred;
+  const stage = input.stage ?? (intel.itemizedOtdInThread || inferred === 'after_itemized_otd' ? 'after_itemized_otd' : inferred);
   const itemized = intel.itemizedOtdInThread === true || stage === 'after_itemized_otd' || inferred === 'after_itemized_otd';
   const chips: ChipSuggestion[] = [];
+  const stay = render('STAY', intel, itemized);
+  if (stay && LABELS.STAY.length <= CHIP_LABEL_LIMIT && chipCopyAllowed(stay)) {
+    chips.push({
+      id: 'STAY',
+      templateId: 'STAY',
+      label: LABELS.STAY,
+      message: stay,
+      sendsAutomatically: false,
+    });
+  }
   for (const id of STAGE_ORDER[stage]) {
     const label = LABELS[id];
     if (label.length > CHIP_LABEL_LIMIT) continue;
@@ -296,6 +444,11 @@ function readIntel(value: unknown): ChipIntel {
     visitDay: typeof row.visitDay === 'string' ? row.visitDay : null,
     visitTime: typeof row.visitTime === 'string' ? row.visitTime : null,
     itemizedOtdInThread: row.itemizedOtdInThread === true,
+    otdTotal: readNumber(row.otdTotal),
+    lease: row.lease === true || (typeof row.dealType === 'string' && row.dealType.trim().toLowerCase() === 'lease'),
+    dueAtSigning: readNumber(row.dueAtSigning),
+    shopperFirst: typeof row.shopperFirst === 'string' ? row.shopperFirst : null,
+    comeInPush: row.comeInPush === true,
   };
 }
 
@@ -318,6 +471,54 @@ function vehicleNumbers(vehicle: unknown): { listedPrice: number | null; dom: nu
   return { listedPrice, dom };
 }
 
+type ConversationChipRow = {
+  otd_itemized_at?: string | null;
+  written_otd_cents?: number | null;
+  shopper_first_name?: string | null;
+  come_in_count?: number | null;
+  opener?: string | null;
+};
+
+async function loadStoredMessages(supabase: SupabaseClient, dealId: string): Promise<ThreadMessage[]> {
+  try {
+    const selected = supabase.from('shopper_dealer_messages').select('author, body').eq('deal_id', dealId);
+    const ordered = typeof selected.order === 'function'
+      ? selected.order('sent_at', { ascending: true })
+      : selected;
+    const limited = typeof ordered.limit === 'function' ? ordered.limit(40) : ordered;
+    const loaded = await limited as {
+      data?: Array<{ author?: unknown; body?: unknown }> | null;
+      error?: { message?: string } | null;
+    };
+    if (loaded?.error) {
+      if (!/does not exist|schema cache/i.test(loaded.error.message ?? '')) {
+        console.error(JSON.stringify({ event: 'shopper_chips_messages_failed', dealId, message: loaded.error.message }));
+      }
+      return [];
+    }
+    if (!Array.isArray(loaded?.data)) return [];
+    return loaded.data.flatMap((item) => {
+      if (typeof item.body !== 'string' || !item.body.trim()) return [];
+      const author = typeof item.author === 'string' ? item.author : null;
+      return [{ author, body: item.body.slice(0, 2000) }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function mergeMessages(stored: readonly ThreadMessage[], client: readonly ThreadMessage[]): ThreadMessage[] {
+  const seen = new Set(stored.map((row) => `${row.author ?? ''}\n${row.body ?? ''}`));
+  const merged = [...stored];
+  for (const row of client) {
+    const key = `${row.author ?? ''}\n${row.body ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged.slice(-40);
+}
+
 export async function suggestDealChips(
   userId: string,
   dealId: string,
@@ -332,7 +533,7 @@ export async function suggestDealChips(
 
   const { data, error } = await deps.supabase
     .from('shopper_dealer_conversations')
-    .select('deal_id, otd_itemized_at')
+    .select('deal_id, otd_itemized_at, written_otd_cents, shopper_first_name, come_in_count, opener')
     .eq('deal_id', dealId)
     .eq('consumer_user_id', userId)
     .maybeSingle();
@@ -351,10 +552,18 @@ export async function suggestDealChips(
   const payload = body && typeof body === 'object' && !Array.isArray(body) ? body as ChipBody : {};
   const requested = readIntel(payload.intel);
   const fromVehicle = vehicleNumbers(deal.vehicle);
-  const messages = readMessages(payload.messages);
+  const row = data as ConversationChipRow;
+  const messages = mergeMessages(await loadStoredMessages(deps.supabase, dealId), readMessages(payload.messages));
+  const opener = typeof row.opener === 'string' ? row.opener.trim() : '';
+  if (opener && !messages.some((message) => (message.body ?? '').trim() === opener)) {
+    messages.unshift({ author: 'drevvy', body: opener.slice(0, 2000) });
+  }
+  const writtenOtd = typeof row.written_otd_cents === 'number' && row.written_otd_cents >= 100
+    ? row.written_otd_cents / 100
+    : null;
   const itemized = requested.itemizedOtdInThread === true
-    || data.otd_itemized_at != null
-    || messages.some((row) => (row.author === 'salesperson' || row.author === 'dealer') && messageHasItemizedOtd(row.body ?? ''));
+    || row.otd_itemized_at != null
+    || messages.some((message) => isDealerAuthor(message.author) && messageHasItemizedOtd(message.body ?? ''));
   const stage = isChipStage(payload.stage) ? payload.stage : null;
   return suggestShopperChips({
     stage,
@@ -364,6 +573,9 @@ export async function suggestDealChips(
       listedPrice: requested.listedPrice ?? fromVehicle.listedPrice,
       dom: requested.dom ?? fromVehicle.dom,
       itemizedOtdInThread: itemized,
+      otdTotal: requested.otdTotal ?? writtenOtd,
+      shopperFirst: requested.shopperFirst ?? row.shopper_first_name ?? null,
+      comeInPush: requested.comeInPush === true || (typeof row.come_in_count === 'number' && row.come_in_count > 0),
     },
   });
 }
