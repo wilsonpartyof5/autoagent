@@ -122,30 +122,43 @@ export function consumerAuthErrorResponse(error: unknown): NextResponse {
   );
 }
 
-export async function ensureConsumerProfile(user: User): Promise<'active' | 'disabled'> {
-  const admin = createAdminClient();
-  const { data: existing, error: readError } = await admin
-    .from('consumer_profiles')
-    .select('status')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (readError) throw new Error(readError.message);
-  if (existing?.status === 'active' || existing?.status === 'disabled') {
-    return existing.status;
+function readEnsuredProfile(data: unknown): { status: 'active' | 'disabled'; starterGranted: boolean; balance: number } | null {
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    status?: string;
+    starter_granted?: boolean;
+    balance?: number;
+  } | null | undefined;
+  if (row?.status !== 'active' && row?.status !== 'disabled') return null;
+  return {
+    status: row.status,
+    starterGranted: row.starter_granted === true,
+    balance: typeof row.balance === 'number' ? row.balance : 0,
+  };
+}
+
+/**
+ * Opens the shopper profile. The first call inserts consumer_profiles and
+ * grants starter keys. A later sign-in returns the existing status and does
+ * not grant again.
+ */
+export async function ensureConsumerProfile(
+  user: User,
+  admin: SupabaseClient = createAdminClient(),
+): Promise<'active' | 'disabled'> {
+  const { data, error } = await admin.rpc('ensure_consumer_profile', {
+    p_user_id: user.id,
+  });
+  if (error) throw new Error(error.message);
+  const profile = readEnsuredProfile(data);
+  if (!profile) throw new Error('Drevvy could not open this shopper profile.');
+  if (profile.starterGranted) {
+    console.log(JSON.stringify({
+      event: 'starter_keys_granted',
+      userId: user.id,
+      balance: profile.balance,
+    }));
   }
-
-  const { error: insertError } = await admin.from('consumer_profiles').insert({
-    user_id: user.id,
-    status: 'active',
-  });
-  if (insertError) throw new Error(insertError.message);
-
-  const { error: eventError } = await admin.from('consumer_profile_status_events').insert({
-    user_id: user.id,
-    status: 'active',
-  });
-  if (eventError) throw new Error(eventError.message);
-  return 'active';
+  return profile.status;
 }
 
 export async function recordConsumerAuthEvent(input: {
