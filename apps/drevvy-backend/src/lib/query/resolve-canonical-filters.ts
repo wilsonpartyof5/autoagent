@@ -16,9 +16,9 @@
  * Exported fn:     cleanupFacetCache()   – no-op; facets are not stored
  */
 
-import OpenAI from 'openai';
 import { callMcpTool, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
 import type { ApiCompatibleFilters } from './parse-inventory-query';
+import { createShoppingModelClient, SHOPPING_MODEL, shoppingGatewayCredential } from './shopping-llm';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -209,16 +209,15 @@ async function resolveAllCategoricalFields(
 
   if (Object.keys(needsAI).length === 0) return results;
 
-  // Pass 2: single OpenAI call for all unresolved fields
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
+  // Pass 2: one shopping-model call for every field that did not match a facet.
+  if (!shoppingGatewayCredential()) {
     for (const [field, intent] of Object.entries(needsAI)) {
       results[field] = { value: intent, source: 'fallback', confidence: 0.5 };
     }
     return results;
   }
 
-  const openai = new OpenAI({ apiKey: openaiApiKey });
+  const openai = createShoppingModelClient();
 
   // Build a compact structured prompt
   const fieldLines = Object.entries(needsAI)
@@ -241,9 +240,11 @@ Return format: {"fieldName": "chosen value or null", ...}`;
 
   try {
     const resp = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: SHOPPING_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 200,
+      // Luna is a reasoning model. The completion budget has to cover the
+      // short JSON answer after thinking, or the facet match comes back empty.
+      max_tokens: 2000,
       temperature: 0,
       response_format: { type: 'json_object' },
     });
