@@ -10,7 +10,7 @@
  *   functions – parseQueryWithOpenAI, validateAndNormalize, geocodeLocation
  */
 
-import OpenAI from 'openai';
+import { createShoppingModelClient, SHOPPING_MODEL } from './shopping-llm';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -503,16 +503,13 @@ Rules for explicitFields:
 - "just show me cars" → []`;
 
 export async function parseQueryWithOpenAI(query: string): Promise<ParseOpenAIResult> {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) throw new Error('OPENAI_API_KEY environment variable is not set');
-
-  const openai = new OpenAI({ apiKey: openaiApiKey });
+  const openai = createShoppingModelClient();
 
   interface ParsedResponse { filters: ParsedFilters; explicitFields: string[] }
 
   try {
     const completion = await openai.beta.chat.completions.parse({
-      model: 'gpt-5-mini',
+      model: SHOPPING_MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: query },

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 
 import {
   parseQueryWithOpenAI,
@@ -8,6 +7,7 @@ import {
   type LocationData,
   type ApiCompatibleFilters,
 } from '@/lib/query/parse-inventory-query';
+import { createShoppingModelClient, SHOPPING_MODEL, shoppingGatewayCredential } from '@/lib/query/shopping-llm';
 
 import {
   resolveCanonicalFilters,
@@ -189,13 +189,12 @@ async function generateAssistantReply(
   groundingContext: string,
   total: number,
 ): Promise<string> {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
+  if (!shoppingGatewayCredential()) {
     // Graceful fallback — never block the response on AI generation
-    return null as unknown as string;
+    return '';
   }
 
-  const openai = new OpenAI({ apiKey: openaiApiKey });
+  const openai = createShoppingModelClient();
 
   const systemPrompt = `You are Drevvy, a friendly AI car-shopping assistant embedded in a mobile app.
 The user just submitted a vehicle search. Given the search context and actual results found, write a helpful 1–2 sentence response that:
@@ -214,12 +213,13 @@ Rules:
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: SHOPPING_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: groundingContext },
       ],
-      max_tokens: 150,
+      // Reasoning tokens count against this budget.
+      max_tokens: 800,
     });
     return completion.choices[0]?.message?.content?.trim() ?? '';
   } catch (error) {
