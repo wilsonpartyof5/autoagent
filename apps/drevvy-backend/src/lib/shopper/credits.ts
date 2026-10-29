@@ -1,5 +1,7 @@
 /**
  * Key balance. Packs are generic keys (1/$4.99, 5/$19.99, 10/$34.99, 25/$74.99).
+ * A new shopper also receives STARTER_FREE_KEYS once, when the consumer profile
+ * is first created. That grant is a starter_grant credit event, not a purchase.
  * Spend kind is assigned at use:
  * - market_save: unlock market details and save a listing. Never refunded.
  * - dealer_conversation: open in-app chat only when the listing URL / domain /
@@ -20,6 +22,19 @@ export const KEY_PACKS = [
   { size: 10, priceUsd: 34.99, productId: 'drevvy_keys_10', packageId: 'keys_10', recommended: true },
   { size: 25, priceUsd: 74.99, productId: 'drevvy_keys_25', packageId: 'keys_25', recommended: false },
 ] as const;
+
+/**
+ * Free keys added to the shopper balance the first time a consumer profile
+ * is created. Later sign-ins do not grant again. Pack prices stay as published.
+ * The same amount is hardcoded in grant_starter_keys_atomic.
+ */
+export const STARTER_FREE_KEYS = 3;
+
+/** shopper_credit_events.event_type for the signup grant. Distinct from purchase. */
+export const STARTER_GRANT_EVENT_TYPE = 'starter_grant' as const;
+
+/** One row per shopper. Unique with user_id, so a second begin cannot grant again. */
+export const STARTER_GRANT_IDEMPOTENCY_KEY = 'starter_grant';
 
 export type KeySpendKind = 'market_save' | 'dealer_conversation';
 
@@ -67,7 +82,7 @@ export function dealerConversationRefundKey(dealId: string): string {
   return `refund:${dealId}`;
 }
 
-export type CreditEventType = 'purchase' | 'use' | 'refund';
+export type CreditEventType = 'purchase' | 'use' | 'refund' | 'starter_grant';
 
 export type ShopperCredits = {
   userId: string;

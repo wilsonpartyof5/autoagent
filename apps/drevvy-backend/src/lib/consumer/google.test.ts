@@ -117,7 +117,8 @@ test('google shoppers skip the dealer profile and keep the consumer profile path
 
   const profile = readFileSync(join(HERE, 'auth.ts'), 'utf8');
   const ensure = profile.slice(profile.indexOf('export async function ensureConsumerProfile'));
-  assert.match(ensure, /consumer_profiles/);
+  assert.match(ensure, /ensure_consumer_profile/);
+  assert.equal(ensure.includes("from('consumer_profiles')"), false);
   assert.equal(ensure.includes("provider' === 'apple'"), false);
   assert.equal(ensure.includes('google'), false);
 
