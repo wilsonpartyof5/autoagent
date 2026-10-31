@@ -193,6 +193,9 @@ enum CreditReason {
 
   /// Manual adjustment (admin)
   adjustment,
+
+  /// #119 three free keys on first begin. Not a purchase.
+  starterGrant,
 }
 
 /// A single entry in the key credit ledger.

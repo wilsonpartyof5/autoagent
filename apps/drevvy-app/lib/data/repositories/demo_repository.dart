@@ -134,6 +134,33 @@ class DemoRepository {
   /// Clears the in-memory demo shopper so tests can start from the seed user.
   void resetDemoUser() {
     _currentUser = null;
+    _starterGranted = false;
+  }
+
+  /// Grants [starterFreeKeys] once. If the demo balance already covers that
+  /// amount, this only records the grant so first-run does not stack keys.
+  Future<bool> grantStarterKeys() async {
+    if (_starterGranted) return false;
+    _starterGranted = true;
+    if (_creditBalance.balance >= starterFreeKeys) {
+      return true;
+    }
+    final needed = starterFreeKeys - _creditBalance.balance;
+    _creditLedger.add(
+      CreditLedgerEntry(
+        id: 'starter_grant',
+        userId: _currentUser?.id ?? 'user_demo_001',
+        delta: needed,
+        reason: CreditReason.starterGrant,
+        createdAt: DateTime.now(),
+        rcEventId: 'starter_grant',
+      ),
+    );
+    _creditBalance = _creditBalance.copyWith(
+      balance: _creditBalance.balance + needed,
+    );
+    _reportBalance('starter_grant', needed);
+    return true;
   }
 
   static final _demoUser = User(
@@ -169,6 +196,11 @@ class DemoRepository {
 
   /// Current balance computed from ledger. Start with demo credits.
   CarCreditBalance _creditBalance = const CarCreditBalance.withBalance(6);
+
+  /// Three free keys on first begin. Distinct from a pack purchase.
+  static const starterFreeKeys = 3;
+
+  bool _starterGranted = false;
 
   /// Server-driven avg_savings config shown beside key packs.
   final AvgSavingsConfig _avgSavingsConfig = const AvgSavingsConfig(

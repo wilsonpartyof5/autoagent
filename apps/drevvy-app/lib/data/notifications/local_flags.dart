@@ -71,6 +71,9 @@ class SharedPreferencesFlags implements LocalFlags {
 
 abstract final class OnboardingFlags {
   static const complete = 'drevvy.onboarding.complete';
+
+  /// Idempotent #119 starter_grant for demo / unsigned first-run.
+  static const starterGranted = 'drevvy.credits.starter_granted';
 }
 
 abstract final class PushFlags {

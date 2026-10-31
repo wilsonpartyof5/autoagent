@@ -22,41 +22,14 @@ AnalyticsRoute? resolveAnalyticsRoute(Uri uri) {
   final from = uri.queryParameters['from'];
   final code = _code(uri.queryParameters['code']);
 
-  if (path == '/onboarding/welcome') {
-    return const AnalyticsRoute(
-      screen: 'onboarding_welcome',
-      onboardingStep: 'welcome',
-      onboardingIndex: 1,
-    );
-  }
-  if (path == '/onboarding/how') {
-    return const AnalyticsRoute(
-      screen: 'onboarding_how_it_works',
-      onboardingStep: 'how_it_works',
-      onboardingIndex: 2,
-    );
-  }
-  if (path == '/onboarding/location') {
-    return const AnalyticsRoute(
-      screen: 'onboarding_location',
-      onboardingStep: 'location',
-      onboardingIndex: 3,
-    );
-  }
-  if (path == '/onboarding/preferences') {
-    return const AnalyticsRoute(
-      screen: 'onboarding_preferences',
-      onboardingStep: 'preferences',
-      onboardingIndex: 4,
-    );
+  if (path == '/onboarding' || path.startsWith('/onboarding/')) {
+    return const AnalyticsRoute(screen: 'onboarding');
   }
   if (path == '/paywall') {
     final onboarding = from == 'onboarding';
     return AnalyticsRoute(
       screen: 'paywall',
       properties: {'placement': onboarding ? 'onboarding' : 'paywall'},
-      onboardingStep: onboarding ? 'paywall' : null,
-      onboardingIndex: onboarding ? 5 : null,
       paywallPlacement: onboarding ? 'onboarding' : 'paywall',
     );
   }

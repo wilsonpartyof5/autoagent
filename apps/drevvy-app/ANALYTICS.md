@@ -39,10 +39,7 @@ There is no share button in the app, so there is no share event. There is no sup
 | `saved` | `/saved` |
 | `profile` | Account sheet opens |
 | `settings` | Account sheet opens (same surface as Profile) |
-| `onboarding_welcome` | `/onboarding/welcome` |
-| `onboarding_how_it_works` | `/onboarding/how` |
-| `onboarding_location` | `/onboarding/location` |
-| `onboarding_preferences` | `/onboarding/preferences` |
+| `onboarding` | `/onboarding` (Matters v5, 10 steps) |
 | `paywall` | `/paywall` |
 | `create_account` | `/account/create` |
 | `car_detail` | `/vdp/:id` |
@@ -129,34 +126,37 @@ Shop, Deals, or Saved tab is tapped.
 
 ### `onboarding_step_viewed`
 
-A named onboarding route is shown.
+A Matters v5 onboarding step is shown. Fired from the flow, not from the route.
 
 | Property | Values |
 | --- | --- |
-| `step` | `welcome`, `how_it_works`, `location`, `preferences`, `paywall` |
-| `index` | `1` through `5` |
+| `step` | `know_the_market`, `avoid`, `want_to_know`, `dealers`, `shopping_priorities`, `market_intel`, `real_dealers_draft`, `where_to_look`, `car_type`, `free_keys` |
+| `index` | `1` through `10` |
 
-`paywall` is included only for `/paywall?from=onboarding`.
+`/paywall` is Superwall control / in-context only. It is not a first-run step.
 
 ### `onboarding_skipped`
 
-Welcome "I already have an account", or How it works "Skip". Both still complete first run, which can fire `onboarding_completed`.
+Step 7 "Skip for now" skips the draft question only. First-run is not complete.
 
 | Property | Values |
 | --- | --- |
-| `step` | `welcome` or `how_it_works` |
-| `reason` | `existing_account` or `skip` |
+| `step` | `real_dealers_draft` |
+| `reason` | `skip_question` |
 
 ### `onboarding_preferences_saved`
 
-Preferences Continue. The ZIP value is not included.
+Fired when step 10 completes, before `onboarding_completed`. The ZIP value is not included.
 
 | Property | Values |
 | --- | --- |
-| `budget_band` | `under_25k`, `25_35`, `35_50`, `over_50`, `unsure` |
-| `body_types` | Allowlisted vehicle words, comma-separated, omitted when none match |
-| `trade_in` | `yes`, `no`, `unsure` |
-| `payment` | `cash`, `finance`, `unsure` |
+| `pain` | `surpriseFees`, `priceChanging`, `salesCalls`, `wastedTrip`, `justLooking` |
+| `outcome` | `wholePrice`, `fairPrice`, `both` |
+| `control` | `keepInDrevvy`, `contactMyself` |
+| `ask` | `wholePrice`, `extraFees`, `stillThere`, `writeOwn` |
+| `car_type` | `suv`, `truck`, `sedan`, `other`, `notSure` |
+| `condition` | `brandNew`, `used`, `either` |
+| `timing` | `soon`, `thisMonth`, `justLooking` |
 | `location_granted` | bool |
 | `has_zip` | bool |
 
@@ -194,7 +194,7 @@ Shopper chooses ZIP instead, or Not now on the pickup sheet.
 
 ### `location_zip_started`
 
-Onboarding "Enter ZIP" is tapped, before a ZIP is stored.
+Onboarding zip field is first edited, before a ZIP is stored.
 
 | Property | Values |
 | --- | --- |

@@ -298,7 +298,9 @@ void main() {
       'lib/features/shop/widgets/dealer_chat_sheet.dart',
       'lib/features/shop/widgets/otd_request_sheet.dart',
       'lib/features/shop/widgets/dealer_inbox_stub.dart',
-      'lib/features/onboarding/screens/how_it_works_screen.dart',
+      'lib/features/onboarding/screens/onboarding_flow_screen.dart',
+      'lib/features/onboarding/matters_v5.dart',
+      'lib/features/onboarding/widgets/onboarding_steps.dart',
     ];
     for (final path in files) {
       final text = File(path).readAsStringSync().toLowerCase();
