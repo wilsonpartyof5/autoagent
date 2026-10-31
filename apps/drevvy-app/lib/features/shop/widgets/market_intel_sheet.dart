@@ -86,8 +86,7 @@ class _MarketIntelSheetState extends State<MarketIntelSheet> {
             padding: const EdgeInsets.all(DrevvySpace.gutter),
             child: _showConfirmation
                 ? const _DoneView(
-                    title: 'Market intel unlocked.',
-                    body: 'This listing is saved with a price brief.',
+                    title: KeySpend.marketIntelUnlockedConfirm,
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,10 +156,9 @@ class _Bullet extends StatelessWidget {
 }
 
 class _DoneView extends StatelessWidget {
-  const _DoneView({required this.title, required this.body});
+  const _DoneView({required this.title});
 
   final String title;
-  final String body;
 
   @override
   Widget build(BuildContext context) {
@@ -181,12 +179,6 @@ class _DoneView extends StatelessWidget {
         ),
         const SizedBox(height: DrevvySpace.s5),
         Text(title, style: text.headline, textAlign: TextAlign.center),
-        const SizedBox(height: DrevvySpace.s2),
-        Text(
-          body,
-          style: text.body.copyWith(color: colors.muted),
-          textAlign: TextAlign.center,
-        ),
         const SizedBox(height: DrevvySpace.s6),
       ],
     );

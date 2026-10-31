@@ -21,6 +21,13 @@ class KeySpend {
   static const marketIntelNote =
       'Unlocks a price brief and saves this listing. This key is not refunded.';
 
+  /// VDP teaser on the blurred Marketplace Intelligence card.
+  static const marketIntelTeaser =
+      'See fair price, similar cars, days listed, price drops · 1 key';
+
+  /// Shown after Key A spends and the listing is saved.
+  static const marketIntelUnlockedConfirm = 'Fair price unlocked · Car saved.';
+
   static const conversationCta = 'Ask this dealer anonymously';
   static const conversationUse = 'Uses 1 conversation key';
   static const conversationNote =

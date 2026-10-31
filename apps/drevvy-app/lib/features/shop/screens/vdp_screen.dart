@@ -18,6 +18,7 @@ import '../../../data/services/purchase_config.dart';
 import '../../../data/services/superwall_placement.dart';
 import '../../deals/widgets/notification_preprompt_sheet.dart';
 import '../widgets/dealer_chat_sheet.dart';
+import '../widgets/market_intel_gate.dart';
 import '../widgets/market_intel_sheet.dart';
 import '../widgets/market_price_bar.dart';
 import '../widgets/new_car_market_card.dart';
@@ -446,20 +447,32 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
 
                       const SizedBox(height: DrevvySpace.s6),
 
-                      // Market card: different for new vs used cars (per spec §10.6)
-                      if (listing.isNew)
-                        NewCarMarketCard(listing: listing, market: market)
-                      else
-                        MarketPriceBar(listing: listing, market: market),
+                      // Marketplace Intelligence: blurred on VDP until Key A.
+                      MarketIntelGate(
+                        unlocked: _marketIntelUnlocked,
+                        onUnlock: _handleMarketIntelTap,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (listing.isNew)
+                              NewCarMarketCard(
+                                listing: listing,
+                                market: market,
+                              )
+                            else
+                              MarketPriceBar(
+                                listing: listing,
+                                market: market,
+                              ),
+                            if (!listing.isNew) ...[
+                              const SizedBox(height: DrevvySpace.s6),
+                              _MarketTiles(listing: listing, market: market),
+                            ],
+                          ],
+                        ),
+                      ),
 
                       const SizedBox(height: DrevvySpace.s6),
-
-                      // Market tiles (used cars only)
-                      if (!listing.isNew)
-                        _MarketTiles(listing: listing, market: market),
-
-                      if (!listing.isNew)
-                        const SizedBox(height: DrevvySpace.s6),
 
                       // Key specs (per audit: no cargo, no LATCH)
                       Text('Key specs', style: text.title),
