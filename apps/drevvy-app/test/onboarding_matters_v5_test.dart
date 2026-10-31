@@ -269,4 +269,98 @@ void main() {
       expect(text.contains(r'$34.99'), isFalse, reason: path);
     }
   });
+
+  test('step 6 fuller copy stays third-grade and omits locked extras', () {
+    expect(mattersPriceDropValue(0), 'None yet');
+    expect(mattersPriceDropValue(1), '1 drop');
+    expect(mattersPriceDropValue(2), '2 drops');
+
+    const files = [
+      'lib/features/onboarding/matters_v5.dart',
+      'lib/features/onboarding/widgets/onboarding_steps.dart',
+    ];
+    for (final path in files) {
+      final text = File(path).readAsStringSync().toLowerCase();
+      expect(text.contains('deal score'), isFalse, reason: path);
+      expect(text.contains('sold cars'), isFalse, reason: path);
+      expect(text.contains('talk point'), isFalse, reason: path);
+      expect(text.contains('out-the-door'), isFalse, reason: path);
+      expect(text.contains('price-drop watch'), isFalse, reason: path);
+      expect(text.contains('refund'), isFalse, reason: path);
+    }
+    expect(
+      File('lib/features/onboarding/matters_v5.dart').readAsStringSync(),
+      contains(mattersMarketIntelHeadline),
+    );
+  });
+
+  testWidgets('step 6 fuller sample fits 393x852 without scroll', (
+    tester,
+  ) async {
+    final view = tester.view;
+    view.physicalSize = const Size(393, 852);
+    view.devicePixelRatio = 1;
+    addTearDown(() {
+      view.resetPhysicalSize();
+      view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: drevvyTheme(Brightness.light),
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(393, 852),
+            padding: EdgeInsets.only(top: 47, bottom: 34),
+          ),
+          child: const Scaffold(
+            body: SafeArea(
+              child: Column(
+                children: [
+                  OnboardingProgressHeader(
+                    stepIndex: 5,
+                    total: mattersV5StepCount,
+                    onBack: _noop,
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        mattersV5Margin,
+                        8,
+                        mattersV5Margin,
+                        20,
+                      ),
+                      child: MarketIntelStep(onContinue: _noop),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text(mattersMarketIntelHeadline), findsOneWidget);
+    expect(find.text(mattersMarketIntelLead), findsOneWidget);
+    expect(find.text(mattersMarketIntelSampleTitle), findsOneWidget);
+    expect(find.text(mattersMarketIntelSampleBadge), findsOneWidget);
+    expect(find.text(mattersMarketIntelAskingPrice), findsOneWidget);
+    expect(find.text(mattersMarketIntelGoodPrice), findsOneWidget);
+    expect(find.text(mattersMarketIntelFairLine), findsOneWidget);
+    expect(find.text(mattersMarketIntelInsight), findsOneWidget);
+    expect(find.text('Similar cars'), findsOneWidget);
+    expect(find.text('26 cars'), findsOneWidget);
+    expect(find.text('21 days'), findsOneWidget);
+    expect(find.text('1 drop'), findsOneWidget);
+    expect(find.text(mattersMarketIntelFooter), findsOneWidget);
+    expect(find.text(mattersMarketIntelCta), findsOneWidget);
+    expect(find.byType(ListView), findsNothing);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+  });
 }
+
+void _noop() {}
+

@@ -13,6 +13,65 @@ const mattersV5CardRadius = 14.0;
 
 const mattersV5StarterKeys = 3;
 
+/// Step 6 Fuller sample. Exact board copy.
+const mattersMarketIntelHeadline =
+    'Know what the asking price doesn’t tell you.';
+const mattersMarketIntelLead =
+    '1 key unlocks Marketplace Intelligence for a car and saves it. Here’s what you see:';
+const mattersMarketIntelSampleTitle = '2022 Toyota Camry SE · 31k mi';
+const mattersMarketIntelSampleBadge = '🔓 Sample';
+const mattersMarketIntelAskingLabel = 'Asking price';
+const mattersMarketIntelAskingPrice = r'$24,900';
+const mattersMarketIntelGoodPrice = '✓ Good price';
+const mattersMarketIntelFairLine =
+    r'Fair price $26,050 · Range $22,800–$29,300';
+const mattersMarketIntelBarThisCar = 'This car';
+const mattersMarketIntelBarLower = '← Lower';
+const mattersMarketIntelBarMiddle = 'Middle';
+const mattersMarketIntelBarHigher = 'Higher →';
+const mattersMarketIntelInsight =
+    r'$1,150 below the middle price for this car near you.';
+const mattersMarketIntelLikeLabel = 'Cars like this · Within 50 mi';
+const mattersMarketIntelFooter =
+    '🔓 Unlock fair price · Save this car · 1 key';
+const mattersMarketIntelCta = 'Next · Meet the dealer';
+
+class MattersLikeThisRow {
+  const MattersLikeThisRow({
+    required this.title,
+    required this.sub,
+    required this.value,
+  });
+
+  final String title;
+  final String sub;
+  final String value;
+}
+
+const mattersLikeThisRows = <MattersLikeThisRow>[
+  MattersLikeThisRow(
+    title: 'Similar cars',
+    sub: 'Within 50 miles',
+    value: '26 cars',
+  ),
+  MattersLikeThisRow(
+    title: 'Days listed',
+    sub: 'Most sell in 34 days',
+    value: '21 days',
+  ),
+  MattersLikeThisRow(
+    title: 'Price drops',
+    sub: 'Since listed',
+    value: '1 drop',
+  ),
+];
+
+/// Sample zero-state for the price-drop value.
+String mattersPriceDropValue(int drops) {
+  if (drops <= 0) return 'None yet';
+  return drops == 1 ? '1 drop' : '$drops drops';
+}
+
 /// Under the step-7 text CTA. Product lock, not board body copy.
 const mattersV5TalkPrivacyLine =
     'Your phone and email stay private. No calls.';
