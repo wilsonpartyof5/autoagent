@@ -7,7 +7,7 @@ import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 
-/// Off-network CTA: free analytics form for an out-the-door number.
+/// Off-network CTA: free request for the whole price.
 /// Not chat, no key, and copy never says "talk to dealer".
 class OtdRequestSheet extends StatefulWidget {
   const OtdRequestSheet({
@@ -166,7 +166,7 @@ class _OtdRequestSheetState extends State<OtdRequestSheet> {
                         const SizedBox(width: DrevvySpace.s2),
                         Expanded(
                           child: Text(
-                            'This rooftop is not on Drevvy, so there is no inbox thread and no conversation key.',
+                            'This rooftop is not on Drevvy, so there is no inbox thread and no key.',
                             style: text.callout.copyWith(color: colors.muted),
                           ),
                         ),

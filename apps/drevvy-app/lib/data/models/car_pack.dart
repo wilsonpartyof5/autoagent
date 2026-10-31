@@ -6,9 +6,10 @@ import 'money_format.dart';
 ///
 /// Key A: market intel + save on a VDP. Not refunded.
 /// Key B: conversation, only if the listing URL matches an onboarded rooftop.
-/// Off-network OTD request is free (analytics form, not chat, no key).
-/// Conversation-key refunds: 7-day no-reply (clock starts at confirmed
-/// delivery) or sold. Dealer inbox shows the shopper first name only.
+/// Off-network OTD request is free (not chat, no key).
+/// Backend refund policy (do not advertise in shopper UI): conversation-key
+/// refunds after 7-day no-reply (clock starts at confirmed delivery) or sold.
+/// Dealer inbox shows the shopper first name only — also not shopper copy.
 /// Dealer pays $300 on shopper-confirmed purchase — not a shopper charge.
 class KeySpend {
   static const marketIntelAndSave = 1;
@@ -28,35 +29,27 @@ class KeySpend {
   /// Shown after Key A spends and the listing is saved.
   static const marketIntelUnlockedConfirm = 'Fair price unlocked · Car saved.';
 
-  static const conversationCta = 'Ask this dealer anonymously';
-  static const conversationUse = 'Uses 1 conversation key';
+  static const conversationCta = 'Text the dealer · 1 key';
+  static const conversationUse = 'Uses 1 key';
   static const conversationNote =
-      'Only if this listing URL matches an onboarded rooftop. They see your '
-      'first name only. If they do not reply within 7 days of confirmed '
-      'delivery, or the car sells, this key comes back.';
-  static const dealerSeesFirstNameOnly =
-      'Dealer inbox shows your first name only — never last name, phone, or email.';
-  static const refundClockNote =
-      'The 7-day no-reply clock starts at confirmed delivery of your message.';
+      'Only when this dealer is on Drevvy. One key opens the chat.';
   static const dealerCloseNote =
       'If you confirm you bought it, the dealer pays Drevvy \$300. You are not charged that fee.';
 
-  static const otdRequestCta = 'Request the out-the-door number';
+  static const otdRequestCta = 'Ask for the whole price · free';
   static const otdRequestFreeBadge = 'Free · no key';
   static const otdRequestNote =
-      'Free analytics form. We capture the request. This is not a chat and does not use a key.';
+      'Free. We ask for the whole price. This is not a chat.';
 
   static const packHeadline = 'Pick a key pack.';
   static const packSubhead =
-      'Market intel + save uses 1 key. Asking an in-network dealer uses a '
-      'second key. Requesting an out-the-door number off-network is free. '
+      'Market intel + save uses 1 key. Texting an in-network dealer uses a '
+      'second key. Asking for the whole price off-network is free. '
       'Packs never expire.';
 
   static const unlockCopy =
-      'Market intel + save uses 1 key. Opening an in-network dealer chat uses '
-      'a second key. Off-network out-the-door requests are free. If the dealer '
-      'does not reply within 7 days of confirmed delivery, or the car sells, '
-      'the conversation key comes back.';
+      'Market intel + save uses 1 key. Texting an in-network dealer uses a '
+      'second key. Asking for the whole price off-network is free.';
 }
 
 /// One-time key pack purchase options.

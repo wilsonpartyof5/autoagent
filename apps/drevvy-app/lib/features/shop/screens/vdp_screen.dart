@@ -706,11 +706,11 @@ class _HowDrevvyWorks extends StatelessWidget {
           ),
           _Step(
             number: '3',
-            text: 'If this listing URL matches an onboarded rooftop, ask the dealer anonymously with a second key. They see your first name only.',
+            text: 'If this dealer is on Drevvy, text them. One key opens the chat.',
           ),
           _Step(
             number: '4',
-            text: 'If not, request the out-the-door number for free — analytics form, not chat, no key',
+            text: 'If not, ask for the whole price for free. This is not a chat.',
           ),
         ],
       ),

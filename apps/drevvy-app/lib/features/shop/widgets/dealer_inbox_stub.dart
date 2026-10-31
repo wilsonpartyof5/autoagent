@@ -56,11 +56,6 @@ class DealerInboxStub extends StatelessWidget {
               Icon(LucideIcons.user, size: 16, color: colors.muted),
               const SizedBox(width: DrevvySpace.s2),
               Text(name, style: text.bodyStrong),
-              const SizedBox(width: DrevvySpace.s2),
-              Text(
-                'first name only',
-                style: text.micro.copyWith(color: colors.muted),
-              ),
             ],
           ),
           const SizedBox(height: DrevvySpace.s1),
@@ -73,11 +68,6 @@ class DealerInboxStub extends StatelessWidget {
             Text(message!, style: text.body),
           ],
           const SizedBox(height: DrevvySpace.s3),
-          Text(
-            KeySpend.dealerSeesFirstNameOnly,
-            style: text.callout.copyWith(color: colors.muted),
-          ),
-          const SizedBox(height: DrevvySpace.s1),
           Text(
             'Close fee stub: dealer pays \$${KeySpend.dealerCloseFeeUsd} when the shopper confirms the purchase.',
             style: text.callout.copyWith(color: colors.muted),

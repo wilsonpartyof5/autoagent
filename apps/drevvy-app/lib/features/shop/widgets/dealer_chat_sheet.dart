@@ -264,14 +264,8 @@ class DealerChatSheetState extends State<DealerChatSheet> {
                       ),
                       const SizedBox(height: DrevvySpace.s2),
                       Text(
-                        KeySpend.dealerSeesFirstNameOnly,
+                        KeySpend.conversationNote,
                         style: text.body.copyWith(color: colors.muted),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: DrevvySpace.s2),
-                      Text(
-                        KeySpend.refundClockNote,
-                        style: text.callout.copyWith(color: colors.muted),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: DrevvySpace.s4),
@@ -312,11 +306,6 @@ class DealerChatSheetState extends State<DealerChatSheet> {
                           style: text.callout.copyWith(color: colors.muted),
                         ),
                       ],
-                      const SizedBox(height: DrevvySpace.s2),
-                      Text(
-                        KeySpend.refundClockNote,
-                        style: text.callout.copyWith(color: colors.muted),
-                      ),
                       const SizedBox(height: DrevvySpace.s4),
                       DealerInboxStub(
                         shopperFirstName: widget.shopperFirstName,

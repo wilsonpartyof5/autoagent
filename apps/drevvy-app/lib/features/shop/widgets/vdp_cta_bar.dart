@@ -127,7 +127,7 @@ class VdpCtaBar extends StatelessWidget {
             const SizedBox(height: DrevvySpace.s1),
             Text(
               conversationOpen
-                  ? 'Conversation key already spent. The dealer can see you in their inbox.'
+                  ? 'Chat is already open. The dealer can see you in their inbox.'
                   : KeySpend.conversationNote,
               style: text.callout.copyWith(color: colors.muted),
             ),
