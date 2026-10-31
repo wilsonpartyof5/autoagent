@@ -878,13 +878,12 @@ class CarTypeStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 8),
-        const OnboardingHeadline('What kind of car?'),
-        const SizedBox(height: 8),
-        const OnboardingLead('Quick picks. Change them anytime.'),
-        const SizedBox(height: 16),
+        const OnboardingHeadline('What kind of car?', size: 26),
+        const SizedBox(height: 6),
+        const OnboardingLead('Quick picks. Change them anytime.', size: 15),
+        const SizedBox(height: 12),
         const SectionLabel('Type'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         _ChipWrap(
           children: [
             for (final choice in mattersCarTypes)
@@ -895,9 +894,9 @@ class CarTypeStep extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         const SectionLabel('New or used'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         _ChipWrap(
           children: [
             for (final choice in mattersConditions)
@@ -908,9 +907,9 @@ class CarTypeStep extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         const SectionLabel('When'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         _ChipWrap(
           children: [
             for (final choice in mattersTimings)
@@ -936,8 +935,8 @@ class _ChipWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       children: children,
     );
   }

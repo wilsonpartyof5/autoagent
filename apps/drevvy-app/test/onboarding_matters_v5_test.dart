@@ -1,11 +1,14 @@
 import 'dart:io';
 
 import 'package:drevvy_app/core/providers/app_services.dart';
+import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/notifications/local_flags.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
 import 'package:drevvy_app/features/onboarding/matters_v5.dart';
 import 'package:drevvy_app/features/onboarding/onboarding_controller.dart';
+import 'package:drevvy_app/features/onboarding/widgets/onboarding_chrome.dart';
+import 'package:drevvy_app/features/onboarding/widgets/onboarding_steps.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -152,6 +155,100 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(find.text('What kind of car?'), findsOneWidget);
+  });
+
+  testWidgets('step 9 car type fits iPhone 16 without overflow', (tester) async {
+    const iphone16 = Size(393, 852);
+    tester.view.physicalSize = iphone16 * 3;
+    tester.view.devicePixelRatio = 3;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: drevvyTheme(Brightness.light),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              size: iphone16,
+              devicePixelRatio: 3,
+              padding: const EdgeInsets.only(top: 59, bottom: 34),
+              textScaler: TextScaler.noScaling,
+            ),
+            child: child!,
+          );
+        },
+        home: Scaffold(
+          body: Stack(
+            children: [
+              const OnboardingBackground(),
+              SafeArea(
+                child: Column(
+                  children: [
+                    OnboardingProgressHeader(
+                      stepIndex: 8,
+                      total: mattersV5StepCount,
+                      onBack: () {},
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          mattersV5Margin,
+                          8,
+                          mattersV5Margin,
+                          20,
+                        ),
+                        child: CarTypeStep(
+                          draft: const OnboardingDraft(),
+                          onSelectType: (_) {},
+                          onSelectCondition: (_) {},
+                          onSelectTiming: (_) {},
+                          onContinue: () {},
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('What kind of car?'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+
+    const labels = [
+      'SUV',
+      'Truck',
+      'Sedan',
+      'Other',
+      'Not sure',
+      'New',
+      'Used',
+      'Either',
+      'Soon',
+      'This month',
+      'Just looking',
+    ];
+    final step = tester.getRect(find.byType(CarTypeStep));
+    for (final label in labels) {
+      expect(find.text(label), findsOneWidget);
+      final rect = tester.getRect(find.text(label));
+      expect(rect.width, greaterThan(20), reason: '$label crushed');
+      expect(rect.height, greaterThan(10), reason: '$label crushed');
+      expect(rect.left, greaterThanOrEqualTo(step.left - 0.5));
+      expect(rect.right, lessThanOrEqualTo(step.right + 0.5));
+      expect(rect.bottom, lessThanOrEqualTo(iphone16.height + 0.5));
+    }
+
+    final continueRect = tester.getRect(find.text('Continue'));
+    expect(continueRect.bottom, lessThanOrEqualTo(iphone16.height + 0.5));
   });
 
   test('onboarding copy does not ship locked claims or pack prices', () {
