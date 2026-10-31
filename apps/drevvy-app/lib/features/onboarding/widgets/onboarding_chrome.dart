@@ -450,8 +450,9 @@ class FilterChipButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          constraints: const BoxConstraints(minHeight: 46),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          // Hug the label. Center/alignment expands to Wrap's max width,
+          // stacking every chip on its own row (iPhone 16 bottom overflow).
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: selected ? colors.lilacTint : Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -460,14 +461,12 @@ class FilterChipButton extends StatelessWidget {
               width: 2,
             ),
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: context.drevvyText.bodyStrong.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: selected ? colors.violet : colors.ink,
-              ),
+          child: Text(
+            label,
+            style: context.drevvyText.bodyStrong.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: selected ? colors.violet : colors.ink,
             ),
           ),
         ),
