@@ -115,7 +115,7 @@ lib/
 │   ├── models/          # User, Listing, Deal, Offer, MarketContext
 │   └── repositories/    # DemoRepository (swap with real API)
 └── features/
-    ├── onboarding/      # Welcome, How it works, Location, Preferences, Paywall
+    ├── onboarding/      # Matters v5 first-run (10 steps). Paywall is Superwall/in-context only.
     ├── shop/            # Ask/Shop chat, inventory results, VDP
     ├── deals/           # Deals list, Deal detail, Official offer, Done
     ├── profile/         # User profile + settings
@@ -158,7 +158,7 @@ final text = context.drevvyText;
 
 ### Fully Built
 - App shell + floating tab bar (01)
-- Onboarding: Welcome, How it works, Location, Preferences (02-05)
+- Onboarding: Matters v5 (Know the market → 3 free keys). Completing step 10 opens Shop.
 - Paywall (06)
 - Create account (15)
 - Shop: Empty, Ask answer, Typing, Results, Loading skeleton (07-11, 17)

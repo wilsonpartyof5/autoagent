@@ -1,4 +1,6 @@
+import 'package:drevvy_app/core/providers/app_services.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
+import 'package:drevvy_app/data/notifications/local_flags.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/models/listing.dart';
 import 'package:drevvy_app/data/models/money_format.dart';
@@ -105,55 +107,99 @@ void main() {
     },
   );
 
-  testWidgets('first run walks to the pack paywall and can shop free', (
+  testWidgets('first run is Matters v5 and lands in Shop, not the paywall', (
     tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: DrevvyApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [localFlagsProvider.overrideWithValue(MemoryFlags())],
+        child: const DrevvyApp(),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('Get started'), findsOneWidget);
-    expect(find.textContaining('transparency layer'), findsOneWidget);
-    expect(find.textContaining('negotiat'), findsNothing);
+    expect(find.textContaining('Know the market'), findsOneWidget);
+    expect(find.text('Discover'), findsOneWidget);
+    expect(find.text('Know'), findsOneWidget);
+    expect(find.text('Connect'), findsOneWidget);
+    expect(find.text('Free'), findsWidgets);
+    expect(find.text('1 key'), findsWidgets);
+    expect(find.textContaining(r'$4.99'), findsNothing);
+    expect(find.textContaining('first name only'), findsNothing);
+    expect(find.textContaining('7-day'), findsNothing);
+    expect(find.textContaining('unlimited follow'), findsNothing);
 
-    await tester.tap(find.text('Get started'));
+    await tester.tap(find.text('Let’s find your car'));
     await tester.pumpAndSettle();
-    expect(find.text('How Drevvy works'), findsOneWidget);
-    expect(find.text('Unlock market intel & save'), findsOneWidget);
-    expect(find.textContaining('Ask an in-network dealer'), findsWidgets);
-    expect(find.textContaining('first name only'), findsOneWidget);
-    expect(find.textContaining('confirmed delivery'), findsOneWidget);
-    expect(find.textContaining('analytics form'), findsOneWidget);
-    expect(find.textContaining('negotiat'), findsNothing);
+    expect(find.text('What would you most like to avoid?'), findsOneWidget);
 
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Where are you'), findsOneWidget);
-
-    await tester.tap(find.text('Allow location'));
-    await tester.pumpAndSettle();
-    expect(find.text('What are you looking for?'), findsOneWidget);
-
-    await tester.tap(find.text('Continue'));
+    await tester.tap(find.text('Surprise fees'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 600));
-    await tester.pump(const Duration(milliseconds: 600));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 420));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('What would you want to know before going?'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Whole price'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 420));
+    await tester.pumpAndSettle();
+    expect(find.text('How do you want to hear from dealers?'), findsOneWidget);
+
+    await tester.tap(find.text('Keep texts in Drevvy'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 420));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('A better way to shop'), findsOneWidget);
+    expect(find.text('Avoid surprise fees'), findsOneWidget);
+    expect(find.text('Understand the whole price'), findsOneWidget);
+    expect(find.text('Keep conversations private'), findsOneWidget);
+    expect(find.text('See how Drevvy helps'), findsOneWidget);
+
+    await tester.tap(find.text('See how Drevvy helps'));
+    await tester.pumpAndSettle();
+    expect(find.text('Know more than the asking price.'), findsOneWidget);
+    expect(find.text(r'$24,900'), findsOneWidget);
+    expect(find.textContaining('Good price'), findsOneWidget);
+    expect(find.text('Unlock once. Keep access to this car.'), findsOneWidget);
+
+    await tester.tap(find.text('Next · Meet the dealer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Real dealers'), findsOneWidget);
+    expect(find.text('Your phone and email stay private. No calls.'), findsOneWidget);
+
+    await tester.tap(find.text('Whole price'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Draft saved'), findsOneWidget);
+    await tester.tap(find.text('Save my question'));
+    await tester.pumpAndSettle();
+    expect(find.text('Where should we look?'), findsOneWidget);
+
+    await tester.tap(find.text('Share my location'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('What kind of car?'), findsOneWidget);
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Your 3 free keys. Your choice.'), findsOneWidget);
+    expect(find.text('3 free keys · No credit card'), findsOneWidget);
+    expect(find.textContaining('Sign in later'), findsOneWidget);
+
+    await tester.tap(find.text('Find my next car'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
-    expect(find.text('Market data, then a written price.'), findsOneWidget);
-    expect(find.text(r'$4.99'), findsOneWidget);
-    expect(find.text(r'$19.99'), findsOneWidget);
-    expect(find.text(r'$34.99'), findsOneWidget);
-    expect(find.text(r'$74.99'), findsOneWidget);
-    expect(find.text(r'$3.50/key'), findsOneWidget);
-    expect(find.text('RECOMMENDED'), findsOneWidget);
-    expect(find.text('Get 10 keys for \$34.99'), findsOneWidget);
-    expect(find.textContaining('free and unlimited'), findsOneWidget);
-    expect(find.textContaining('negotiat'), findsNothing);
-
-    await tester.tap(find.text('Start shopping free'));
-    await tester.pumpAndSettle();
-    expect(find.text('Create your account'), findsOneWidget);
+    expect(find.text('Your 3 free keys. Your choice.'), findsNothing);
+    expect(find.text('Deals'), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('Shop'), findsWidgets);
+    expect(find.text('Create your account'), findsNothing);
+    expect(find.textContaining(r'$4.99'), findsNothing);
   });
 
   testWidgets('paywall screen keeps dollar packs when store keys are absent', (

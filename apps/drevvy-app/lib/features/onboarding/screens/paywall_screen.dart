@@ -18,13 +18,11 @@ import '../../../data/services/purchase_config.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/superwall_placement.dart';
 import '../../shop/widgets/pack_option_card.dart';
-import '../onboarding_controller.dart';
-import '../widgets/progress_dots.dart';
 
-/// First-run and in-context key-pack paywall.
+/// In-context key-pack paywall. Not part of the live Matters v5 first-run.
 ///
-/// Superwall placement `onboarding_paywall` can replace this screen when a
-/// key exists. With no store keys, the four demo packs render here:
+/// Superwall placement `onboarding_paywall` is the v4 control only.
+/// With no store keys, the four demo packs render here:
 /// 1 key $4.99, 5 keys $19.99, 10 keys $34.99 (Recommended), 25 keys $74.99.
 /// Asking and shopping stay free; this screen can be skipped.
 class PaywallScreen extends ConsumerStatefulWidget {
@@ -195,11 +193,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         )
                       else
                         const SizedBox(width: 48),
-                      if (isOnboarding)
-                        const ProgressDots(
-                          current: 4,
-                          total: onboardingStepCount,
-                        ),
+                      if (isOnboarding) const SizedBox(width: 48),
                       if (!isOnboarding)
                         IconButton(
                           icon: Icon(LucideIcons.x, color: colors.ink),

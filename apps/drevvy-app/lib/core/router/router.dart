@@ -5,12 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/analytics/analytics_route_observer.dart';
 import '../../data/analytics/product_analytics.dart';
 import '../../features/onboarding/onboarding_controller.dart';
-import '../../features/onboarding/screens/welcome_screen.dart';
-import '../../features/onboarding/screens/how_it_works_screen.dart';
-import '../../features/onboarding/screens/location_screen.dart';
-import '../../features/onboarding/screens/preferences_screen.dart';
-import '../../features/onboarding/screens/paywall_screen.dart';
 import '../../features/onboarding/screens/create_account_screen.dart';
+import '../../features/onboarding/screens/onboarding_flow_screen.dart';
+import '../../features/onboarding/screens/paywall_screen.dart';
 import '../../features/shop/screens/shop_screen.dart';
 import '../../features/shop/screens/vdp_screen.dart';
 import '../../features/deals/screens/deals_screen.dart';
@@ -34,42 +31,29 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     refreshListenable: refresh,
-    initialLocation: '/onboarding/welcome',
+    initialLocation: '/onboarding',
     observers: [AnalyticsRouteObserver()],
     redirect: (context, state) {
       ProductAnalytics.instance.captureLocation(state.uri.toString());
       final done = ref.read(onboardingCompleteProvider);
       final location = state.matchedLocation;
       if (location == '/open' || location == '/') {
-        return done ? '/shop' : '/onboarding/welcome';
+        return done ? '/shop' : '/onboarding';
       }
-      final fromOnboarding = state.uri.queryParameters['from'] == 'onboarding';
-      final inFirstRun = location.startsWith('/onboarding') ||
-          location == '/account/create' ||
-          (location == '/paywall' && fromOnboarding);
-      if (!done && !inFirstRun) return '/onboarding/welcome';
-      if (done && (location.startsWith('/onboarding') || location == '/account/create')) {
+      // Retired v4 first-run paths. Live flow is Matters v5 at /onboarding.
+      if (location.startsWith('/onboarding/')) return '/onboarding';
+      final inFirstRun =
+          location == '/onboarding' || location == '/account/create';
+      if (!done && !inFirstRun) return '/onboarding';
+      if (done && (location == '/onboarding' || location == '/account/create')) {
         return '/shop';
       }
       return null;
     },
     routes: [
-      // Onboarding routes (outside shell)
       GoRoute(
-        path: '/onboarding/welcome',
-        builder: (context, state) => const WelcomeScreen(),
-      ),
-      GoRoute(
-        path: '/onboarding/how',
-        builder: (context, state) => const HowItWorksScreen(),
-      ),
-      GoRoute(
-        path: '/onboarding/location',
-        builder: (context, state) => const LocationScreen(),
-      ),
-      GoRoute(
-        path: '/onboarding/preferences',
-        builder: (context, state) => const PreferencesScreen(),
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingFlowScreen(),
       ),
       GoRoute(
         path: '/paywall',
