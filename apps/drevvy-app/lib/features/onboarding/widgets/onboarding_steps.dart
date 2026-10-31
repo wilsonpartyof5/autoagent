@@ -346,6 +346,7 @@ class _LookKnowTalkStrip extends StatelessWidget {
   }
 }
 
+/// Clear Fuller sample. Shoppers see the full MI preview — not blurred.
 class MarketIntelStep extends StatelessWidget {
   const MarketIntelStep({super.key, required this.onContinue});
 
@@ -353,45 +354,42 @@ class MarketIntelStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 8),
-        const OnboardingHeadline('Know more than the asking price.', size: 27),
-        const SizedBox(height: 8),
-        const OnboardingLead(
-          'See where a car’s asking price stands in the market. Marketplace Intelligence · 1 key.',
-        ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 4),
+        const OnboardingHeadline(mattersMarketIntelHeadline, size: 26),
+        const SizedBox(height: 6),
+        const OnboardingLead(mattersMarketIntelLead, size: 15),
+        const SizedBox(height: 10),
         Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              const _SampleIntelCard(),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(LucideIcons.shieldCheck, size: 16, color: colors.muted),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Unlock once. Keep access to this car.',
-                      style: text.body.copyWith(
-                        fontSize: 14,
-                        color: colors.muted,
-                      ),
-                    ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SampleIntelCard(),
+                      SizedBox(height: 10),
+                      SectionLabel(mattersMarketIntelLikeLabel),
+                      SizedBox(height: 6),
+                      _CarsLikeThisCard(),
+                      SizedBox(height: 8),
+                      _UnlockFooterPill(),
+                    ],
                   ),
-                ],
-              ),
-            ],
+                ),
+              );
+            },
           ),
         ),
-        OnboardingCta(label: 'Next · Meet the dealer', onPressed: onContinue),
+        const SizedBox(height: 10),
+        OnboardingCta(label: mattersMarketIntelCta, onPressed: onContinue),
       ],
     );
   }
@@ -405,10 +403,10 @@ class _SampleIntelCard extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: context.drevvy.elev1,
       ),
       child: Column(
@@ -418,7 +416,7 @@ class _SampleIntelCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '2022 Toyota Camry SE · 31k mi',
+                  mattersMarketIntelSampleTitle,
                   style: text.bodyStrong.copyWith(fontSize: 14),
                 ),
               ),
@@ -429,7 +427,7 @@ class _SampleIntelCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(DrevvyRadius.pill),
                 ),
                 child: Text(
-                  'Sample',
+                  mattersMarketIntelSampleBadge,
                   style: text.micro.copyWith(
                     color: colors.violet,
                     fontWeight: FontWeight.w800,
@@ -438,7 +436,7 @@ class _SampleIntelCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -447,17 +445,18 @@ class _SampleIntelCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Asking price',
+                      mattersMarketIntelAskingLabel,
                       style: text.label.copyWith(
                         color: colors.muted,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     Text(
-                      r'$24,900',
+                      mattersMarketIntelAskingPrice,
                       style: text.figureL.copyWith(
-                        fontSize: 38,
+                        fontSize: 34,
                         height: 1.05,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: -1,
                       ),
                     ),
@@ -465,49 +464,192 @@ class _SampleIntelCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE3F6EA),
                   borderRadius: BorderRadius.circular(DrevvyRadius.pill),
                 ),
                 child: Text(
-                  '✓ Good price',
+                  mattersMarketIntelGoodPrice,
                   style: text.bodyStrong.copyWith(
                     color: const Color(0xFF1A8A4A),
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 30),
-          const _MarketRangeBar(pin: 0.31, middle: 0.52),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
+          Text(
+            mattersMarketIntelFairLine,
+            style: text.callout.copyWith(
+              color: colors.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 40),
+          const _MarketRangeBar(pin: 0.32, middle: 0.50),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('← Lower', style: text.callout.copyWith(color: colors.muted, fontWeight: FontWeight.w800)),
-              Text('Middle', style: text.callout.copyWith(color: colors.muted, fontWeight: FontWeight.w800)),
-              Text('Higher →', style: text.callout.copyWith(color: colors.muted, fontWeight: FontWeight.w800)),
+              Text(
+                mattersMarketIntelBarLower,
+                style: text.callout.copyWith(
+                  color: colors.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                mattersMarketIntelBarMiddle,
+                style: text.callout.copyWith(
+                  color: colors.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                mattersMarketIntelBarHigher,
+                style: text.callout.copyWith(
+                  color: colors.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xFFE3F6EA),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
-              r'$1,150 below the middle price for this car near you.',
+              mattersMarketIntelInsight,
               style: text.cardTitle.copyWith(
                 color: const Color(0xFF14532D),
-                fontSize: 16,
+                fontSize: 14,
                 height: 1.35,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CarsLikeThisCard extends StatelessWidget {
+  const _CarsLikeThisCard();
+
+  static const _icons = <IconData>[
+    LucideIcons.car,
+    LucideIcons.calendar,
+    LucideIcons.chartColumn,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < mattersLikeThisRows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: colors.canvas),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: colors.lilacTint,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        _icons[i],
+                        size: 15,
+                        color: colors.violet,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            mattersLikeThisRows[i].title,
+                            style: text.bodyStrong.copyWith(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            mattersLikeThisRows[i].sub,
+                            style: text.callout.copyWith(
+                              color: colors.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      mattersLikeThisRows[i].value,
+                      style: text.bodyStrong.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UnlockFooterPill extends StatelessWidget {
+  const _UnlockFooterPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.lilacTint,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        mattersMarketIntelFooter,
+        textAlign: TextAlign.center,
+        style: text.bodyStrong.copyWith(
+          color: colors.violet,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -567,7 +709,7 @@ class _MarketRangeBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    'This car',
+                    mattersMarketIntelBarThisCar,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
