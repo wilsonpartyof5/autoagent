@@ -39,7 +39,7 @@ class KeySpend {
   static const otdRequestCta = 'Ask for the whole price · free';
   static const otdRequestFreeBadge = 'Free · no key';
   static const otdRequestNote =
-      'Free. We ask for the whole price. This is not a chat.';
+      'We ask for the whole price. This is not a chat.';
 
   static const packHeadline = 'Pick a key pack.';
   static const packSubhead =

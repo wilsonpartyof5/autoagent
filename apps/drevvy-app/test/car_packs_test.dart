@@ -113,10 +113,10 @@ void main() {
       expect(KeySpend.otdRequestFreeBadge, 'Free · no key');
       expect(
         KeySpend.otdRequestNote,
-        'Free. We ask for the whole price. This is not a chat.',
+        'We ask for the whole price. This is not a chat.',
       );
-      expect(KeySpend.otdRequestNote.toLowerCase(), contains('free'));
       expect(KeySpend.otdRequestNote.toLowerCase(), contains('not a chat'));
+      expect(KeySpend.otdRequestNote.toLowerCase(), isNot(contains('free')));
       expect(
         KeySpend.otdRequestNote.toLowerCase(),
         isNot(contains('talk to dealer')),
