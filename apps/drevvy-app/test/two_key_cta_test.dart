@@ -115,13 +115,14 @@ void main() {
 
     expect(find.text(KeySpend.otdRequestFreeBadge), findsOneWidget);
     expect(find.textContaining('not a chat'), findsOneWidget);
-    expect(find.textContaining('no conversation key'), findsOneWidget);
+    expect(find.textContaining('no inbox thread'), findsOneWidget);
+    expect(find.textContaining('no key'), findsWidgets);
     await tester.tap(find.text('Submit request'));
     await tester.pump();
     expect(submitted, isTrue);
   });
 
-  testWidgets('dealer inbox stub shows first name only and the close fee', (
+  testWidgets('dealer inbox stub shows first name and the close fee', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -135,12 +136,12 @@ void main() {
 
     expect(find.text('Dana'), findsOneWidget);
     expect(find.text('Dana Wilson'), findsNothing);
-    expect(find.textContaining('first name only'), findsWidgets);
+    expect(find.textContaining('first name only'), findsNothing);
     expect(find.textContaining(r'$300'), findsOneWidget);
     expect(find.textContaining('dealer pays'), findsOneWidget);
   });
 
-  testWidgets('in-network chat sheet states confirmed-delivery refund clock', (
+  testWidgets('in-network chat sheet uses soft talk-key copy', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -160,7 +161,10 @@ void main() {
     );
 
     expect(find.text(KeySpend.conversationCta), findsOneWidget);
-    expect(find.textContaining('confirmed delivery'), findsWidgets);
+    expect(find.text(KeySpend.conversationNote), findsOneWidget);
+    expect(find.textContaining('confirmed delivery'), findsNothing);
+    expect(find.textContaining('7-day'), findsNothing);
+    expect(find.textContaining('first name only'), findsNothing);
     expect(find.text('Itemized OTD'), findsOneWidget);
     expect(find.text('Still available?'), findsNothing);
     expect(find.textContaining('negotiat'), findsNothing);

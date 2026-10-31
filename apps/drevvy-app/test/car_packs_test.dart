@@ -102,17 +102,50 @@ void main() {
   });
 
   group('KeySpend', () {
-    test('locked product rules stay in shopper copy', () {
+    test('shopper CTAs stay third-grade and skip locked claims', () {
+      expect(KeySpend.conversationCta, 'Text the dealer · 1 key');
+      expect(KeySpend.conversationUse, 'Uses 1 key');
+      expect(
+        KeySpend.conversationNote,
+        'Only when this dealer is on Drevvy. One key opens the chat.',
+      );
+      expect(KeySpend.otdRequestCta, 'Ask for the whole price · free');
+      expect(KeySpend.otdRequestFreeBadge, 'Free · no key');
+      expect(
+        KeySpend.otdRequestNote,
+        'Free. We ask for the whole price. This is not a chat.',
+      );
       expect(KeySpend.otdRequestNote.toLowerCase(), contains('free'));
       expect(KeySpend.otdRequestNote.toLowerCase(), contains('not a chat'));
-      expect(KeySpend.otdRequestNote.toLowerCase(), isNot(contains('talk to dealer')));
-      expect(KeySpend.conversationNote.toLowerCase(), contains('onboarded rooftop'));
-      expect(KeySpend.conversationNote.toLowerCase(), contains('first name'));
-      expect(KeySpend.refundClockNote.toLowerCase(), contains('confirmed delivery'));
+      expect(
+        KeySpend.otdRequestNote.toLowerCase(),
+        isNot(contains('talk to dealer')),
+      );
+      expect(
+        KeySpend.otdRequestNote.toLowerCase(),
+        isNot(contains('analytics form')),
+      );
       expect(KeySpend.dealerCloseFeeUsd, 300);
       expect(KeySpend.dealerCloseNote, contains(r'$300'));
       expect(KeySpend.dealerCloseNote.toLowerCase(), contains('dealer pays'));
       expect(KeySpend.unlockCopy.toLowerCase(), isNot(contains('negotiat')));
+
+      for (final copy in [
+        KeySpend.conversationCta,
+        KeySpend.conversationUse,
+        KeySpend.conversationNote,
+        KeySpend.otdRequestCta,
+        KeySpend.otdRequestNote,
+        KeySpend.packSubhead,
+        KeySpend.unlockCopy,
+      ]) {
+        final lower = copy.toLowerCase();
+        expect(lower.contains('first name'), isFalse, reason: copy);
+        expect(lower.contains('7-day'), isFalse, reason: copy);
+        expect(lower.contains('7 days'), isFalse, reason: copy);
+        expect(lower.contains('refund'), isFalse, reason: copy);
+        expect(lower.contains('analytics form'), isFalse, reason: copy);
+      }
     });
   });
 

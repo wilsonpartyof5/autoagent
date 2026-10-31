@@ -145,10 +145,7 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                   text: 'Send a price brief to this onboarded rooftop',
                 ),
                 _BulletPoint(
-                  text: KeySpend.dealerSeesFirstNameOnly,
-                ),
-                _BulletPoint(
-                  text: KeySpend.refundClockNote,
+                  text: KeySpend.conversationNote,
                 ),
                 _BulletPoint(
                   text: KeySpend.dealerCloseNote,
