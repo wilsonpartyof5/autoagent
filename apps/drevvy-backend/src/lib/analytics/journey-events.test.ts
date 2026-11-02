@@ -85,6 +85,9 @@ test('the service_role wrapper draft is not a prod migration and grants only ser
   assert.match(DRAFT_SQL, /create or replace function public\.drevvy_emit_event/);
   assert.match(DRAFT_SQL, /grant execute on function public\.drevvy_user_hash\(uuid\) to service_role/);
   assert.match(DRAFT_SQL, /revoke all on function public\.drevvy_emit_event/);
+  assert.equal((DRAFT_SQL.match(/auth\.jwt\(\)->>'role'/g) ?? []).length, 2);
+  assert.equal((DRAFT_SQL.match(/session_user <> 'service_role'/g) ?? []).length, 2);
+  assert.doesNotMatch(DRAFT_SQL, /current_user\s*<>/);
   assert.doesNotMatch(DRAFT_SQL, /alter publication/);
   assert.doesNotMatch(DRAFT_SQL, /cron\./);
 });

@@ -14,6 +14,12 @@
 --
 -- Until this is applied, twin insert + journey emit soft-fail: the app table
 -- public.off_network_otd_requests still succeeds.
+--
+-- Caller gate: do NOT use current_user inside SECURITY DEFINER. current_user
+-- becomes the function owner (postgres), so that check always raises 42501
+-- even when service_role invokes the wrapper via PostgREST. Use the JWT role
+-- and session_user instead (PostgREST sets the JWT; a direct service_role
+-- session has session_user = service_role).
 
 create or replace function public.drevvy_user_hash(p_user uuid)
 returns text
@@ -23,7 +29,8 @@ security definer
 set search_path = ''
 as $$
 begin
-  if current_user <> 'service_role' then
+  if coalesce(auth.jwt()->>'role', '') <> 'service_role'
+     and session_user <> 'service_role' then
     raise exception 'service_role required' using errcode = '42501';
   end if;
   return private.drevvy_user_hash(p_user);
@@ -54,7 +61,8 @@ security definer
 set search_path = ''
 as $$
 begin
-  if current_user <> 'service_role' then
+  if coalesce(auth.jwt()->>'role', '') <> 'service_role'
+     and session_user <> 'service_role' then
     raise exception 'service_role required' using errcode = '42501';
   end if;
   return private.drevvy_emit_event(
