@@ -66,8 +66,11 @@ test('the network and conversation routes exist', () => {
   const network = readFileSync(join(HERE, '../../app/api/consumer/listings/network/route.ts'), 'utf8');
   const conversation = readFileSync(join(HERE, '../../app/api/consumer/keys/conversation/route.ts'), 'utf8');
   const otd = readFileSync(join(HERE, '../../app/api/consumer/otd-requests/route.ts'), 'utf8');
+  const http = readFileSync(join(HERE, 'otd-http.ts'), 'utf8');
   assert.match(network, /requireShopperAuth/);
   assert.match(network, /resolveVdpCtas/);
   assert.match(conversation, /startDealerConversation/);
-  assert.match(otd, /requestOffNetworkOtd/);
+  assert.match(otd, /postConsumerOtdRequest/);
+  assert.match(http, /requestOffNetworkOtd/);
+  assert.match(http, /supabaseOtdAnalytics/);
 });
