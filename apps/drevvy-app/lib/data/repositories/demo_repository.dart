@@ -215,6 +215,18 @@ class DemoRepository {
     return _delay(_creditBalance);
   }
 
+  /// Replaces the local balance with `GET /api/consumer/credits`.
+  /// The server grants the 3 starter keys when the profile is created.
+  /// A miss leaves the demo balance alone.
+  Future<bool> pullSignedInBalance() async {
+    final remote = await _credits.fetchBalance();
+    if (remote == null) return false;
+    _creditBalance = remote;
+    _starterGranted = true;
+    _bumpLists();
+    return true;
+  }
+
   /// Get credit ledger entries for this user.
   Future<List<CreditLedgerEntry>> getCreditLedger() async {
     return _delay(List.unmodifiable(_creditLedger));
@@ -380,11 +392,7 @@ class DemoRepository {
           'source': 'live',
         },
       );
-      if (remote.dealId != null) {
-        _conversationDealIds[listing.id] = remote.dealId!;
-        return getDealById(remote.dealId!);
-      }
-      final created = await addDeal(listing, spend: false);
+      final created = await addDeal(listing, spend: false, id: remote.dealId);
       _conversationDealIds[listing.id] = created.id;
       return created;
     }
@@ -882,15 +890,24 @@ class DemoRepository {
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing, {bool spend = true}) async {
+  Future<Deal> addDeal(Listing listing, {bool spend = true, String? id}) async {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
+        final next = id != null && id.isNotEmpty && deal.id != id
+            ? deal.copyWith(id: id)
+            : deal;
+        if (next.id != deal.id) {
+          _deals = [
+            for (final item in _deals)
+              if (item.id == deal.id) next else item,
+          ];
+        }
         _savedCars = _savedCars
             .where((car) => car.listingId != listing.id)
             .toList();
         _bumpLists();
-        return _delay(deal);
+        return _delay(next);
       }
     }
     if (spend && !_creditBalance.canUnlock) {
@@ -902,7 +919,9 @@ class DemoRepository {
     }
 
     final newDeal = Deal(
-      id: 'deal_${DateTime.now().millisecondsSinceEpoch}',
+      id: id != null && id.isNotEmpty
+          ? id
+          : 'deal_${DateTime.now().millisecondsSinceEpoch}',
       listingId: listing.id,
       letter: _getNextLetter(),
       status: DealStatus.reachingOut,

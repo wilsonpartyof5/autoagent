@@ -10,6 +10,7 @@ import 'core/theme/drevvy_theme.dart';
 import 'data/analytics/install_referrer.dart';
 import 'data/analytics/product_analytics.dart';
 import 'data/notifications/local_flags.dart';
+import 'data/repositories/demo_repository.dart';
 import 'data/services/purchase_bootstrap.dart';
 import 'data/services/purchase_config.dart';
 import 'features/onboarding/onboarding_controller.dart';
@@ -32,26 +33,30 @@ Future<void> main() async {
       installReferrer: referrer,
     );
     try {
-      final session = await container.read(sessionStoreProvider).read();
-      final userId = session?.consumerUserId;
-      if (userId != null && userId.isNotEmpty) {
-        ProductAnalytics.instance.identify(userId);
+      final session = await container
+          .read(authControllerProvider)
+          .currentSession();
+      if (session != null) {
+        await DemoRepository.instance.pullSignedInBalance();
       }
     } catch (_) {
       // A missing keychain in demo mode must not block launch.
     }
   }
-  runApp(UncontrolledProviderScope(
-    container: container,
-    child: const DrevvyApp(),
-  ));
+  runApp(
+    UncontrolledProviderScope(container: container, child: const DrevvyApp()),
+  );
   // Reattach push listeners for someone who already opted in.
   // This does not request notification permission.
   // Widget tests pump DrevvyApp and never call main(). The FLUTTER_TEST
   // guard also keeps this work out of a test that does call main().
   if (!isFlutterTest) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(container.read(pushNotificationServiceProvider).restoreWithoutPrompting());
+      unawaited(
+        container
+            .read(pushNotificationServiceProvider)
+            .restoreWithoutPrompting(),
+      );
     });
   }
 }

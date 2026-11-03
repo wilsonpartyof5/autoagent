@@ -18,8 +18,7 @@ class DrevvyConfig {
 
   /// Same public-session contract as [applePath]: `{ identityToken, nonce? }`
   /// in, `{ accessToken, refreshToken, expiresAt, consumerUserId }` out.
-  /// The backend slice that is checked in today exposes Apple, refresh, and
-  /// sign-out. A missing Google route fails the sign-in and leaves demo mode on.
+  /// Both routes call `ensure_consumer_profile`, which grants the starter keys.
   static const googlePath = '/api/consumer/auth/google';
 
   static const refreshPath = '/api/consumer/auth/refresh';
@@ -43,23 +42,37 @@ class DrevvyConfig {
     defaultValue: '802176042106-4crn4kfl0mf52k8rrsdb1k1ti5gpuhoa.apps.googleusercontent.com',
   );
 
-  /// TODO: Apple Services ID for Sign in with Apple on Android and web.
+  /// Apple Services ID for Sign in with Apple on Android.
+  /// iOS uses the bundle id and does not need this.
+  /// Override with `--dart-define=DREVVY_APPLE_SERVICE_ID=...`.
+  /// Leave empty until the Services ID exists. Do not invent one.
   static const appleServiceId = String.fromEnvironment(
     'DREVVY_APPLE_SERVICE_ID',
     defaultValue: '',
   );
 
-  /// TODO: HTTPS redirect registered on that Services ID. Not localhost.
+  /// HTTPS return URL registered on that Services ID.
+  /// The app route answers this URL and sends Android back into the app.
+  /// Override with `--dart-define=DREVVY_APPLE_REDIRECT_URI=...` for another host.
   static const appleRedirectUri = String.fromEnvironment(
     'DREVVY_APPLE_REDIRECT_URI',
-    defaultValue: '',
+    defaultValue: 'https://www.drevvy.com/api/consumer/auth/apple/callback',
   );
 
   /// TODO: Firebase project values from GoogleService-Info.plist / google-services.json.
   /// See ios/Runner/GoogleService-Info.plist.example and android/app/google-services.json.example.
-  static const firebaseProjectId = String.fromEnvironment('DREVVY_FIREBASE_PROJECT_ID', defaultValue: '');
-  static const firebaseApiKey = String.fromEnvironment('DREVVY_FIREBASE_API_KEY', defaultValue: '');
-  static const firebaseAppId = String.fromEnvironment('DREVVY_FIREBASE_APP_ID', defaultValue: '');
+  static const firebaseProjectId = String.fromEnvironment(
+    'DREVVY_FIREBASE_PROJECT_ID',
+    defaultValue: '',
+  );
+  static const firebaseApiKey = String.fromEnvironment(
+    'DREVVY_FIREBASE_API_KEY',
+    defaultValue: '',
+  );
+  static const firebaseAppId = String.fromEnvironment(
+    'DREVVY_FIREBASE_APP_ID',
+    defaultValue: '',
+  );
   static const firebaseMessagingSenderId = String.fromEnvironment(
     'DREVVY_FIREBASE_MESSAGING_SENDER_ID',
     defaultValue: '',

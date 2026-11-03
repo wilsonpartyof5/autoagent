@@ -17,7 +17,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Google's Android OAuth client must use this package name plus the
+        // app signing SHA-1. iOS uses com.drevvy.drevvyApp. See docs/drevvy/SHOPPER_SIGN_IN.md.
         applicationId = "com.drevvy.drevvy_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

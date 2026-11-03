@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/drevvy_theme.dart';
@@ -10,6 +11,7 @@ import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
 import '../../account/widgets/car_balance_card.dart';
+import '../../account/widgets/shopper_sign_in_actions.dart';
 import '../../account/widgets/memory_facts_sheet.dart';
 import '../../account/widgets/recent_searches_sheet.dart';
 import '../../shop/car_unlock.dart';
@@ -154,7 +156,7 @@ class _AccountSheetState extends State<AccountSheet> {
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Signed out (demo)')));
+        .showSnackBar(const SnackBar(content: Text('Signed out.')));
   }
 
   void _handleDeleteAccount() {
@@ -174,7 +176,9 @@ class _AccountSheetState extends State<AccountSheet> {
           actions: [
             TextButton(
               onPressed: () {
-                ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteCancelled);
+                ProductAnalytics.instance.track(
+                  AnalyticsEvents.accountDeleteCancelled,
+                );
                 Navigator.pop(dialogContext);
               },
               child: Text(
@@ -184,7 +188,9 @@ class _AccountSheetState extends State<AccountSheet> {
             ),
             TextButton(
               onPressed: () {
-                ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteConfirmed);
+                ProductAnalytics.instance.track(
+                  AnalyticsEvents.accountDeleteConfirmed,
+                );
                 Navigator.pop(dialogContext);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -372,7 +378,9 @@ class _AccountSheetState extends State<AccountSheet> {
                 style: text.title,
               ),
               Text(
-                '${user.email} · Apple',
+                ShopperSessionStore.instance.accessToken == null
+                    ? 'Not signed in'
+                    : 'Signed in',
                 style: text.callout.copyWith(color: colors.muted),
               ),
             ],
@@ -460,9 +468,10 @@ class _AccountSheetState extends State<AccountSheet> {
               color: colors.muted,
             ),
             onTap: () {
-              ProductAnalytics.instance.track(AnalyticsEvents.settingsRowTapped, {
-                'row': 'notifications',
-              });
+              ProductAnalytics.instance.track(
+                AnalyticsEvents.settingsRowTapped,
+                {'row': 'notifications'},
+              );
             },
           ),
           Divider(height: 1, color: colors.line),
@@ -476,9 +485,10 @@ class _AccountSheetState extends State<AccountSheet> {
               color: colors.muted,
             ),
             onTap: () {
-              ProductAnalytics.instance.track(AnalyticsEvents.settingsRowTapped, {
-                'row': 'location',
-              });
+              ProductAnalytics.instance.track(
+                AnalyticsEvents.settingsRowTapped,
+                {'row': 'location'},
+              );
             },
           ),
           Divider(height: 1, color: colors.line),
@@ -528,15 +538,42 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   Widget _buildDangerActions(DrevvyColors colors, DrevvyText text) {
+    final signedIn = ShopperSessionStore.instance.accessToken != null;
+    final canSignIn =
+        context.findAncestorWidgetOfExactType<UncontrolledProviderScope>() !=
+        null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () {
-            _handleSignOut();
-          },
-          child: Text('Sign out', style: text.body.copyWith(color: colors.ink)),
-        ),
+        if (!signedIn && canSignIn) ...[
+          Text(
+            'Sign in to message a dealer. Looking around stays free.',
+            style: text.body.copyWith(color: colors.ink),
+          ),
+          const SizedBox(height: DrevvySpace.s3),
+          ShopperSignInActions(
+            onSuccess: () async {
+              await _repo.pullSignedInBalance();
+              if (!mounted) return;
+              await _loadData();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('You are signed in.')),
+              );
+            },
+          ),
+          const SizedBox(height: DrevvySpace.s4),
+        ],
+        if (signedIn || !canSignIn)
+          GestureDetector(
+            onTap: () {
+              _handleSignOut();
+            },
+            child: Text(
+              'Sign out',
+              style: text.body.copyWith(color: colors.ink),
+            ),
+          ),
         const SizedBox(height: DrevvySpace.s4),
         GestureDetector(
           onTap: _handleDeleteAccount,
