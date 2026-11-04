@@ -20,7 +20,10 @@ import 'shopper_session_store.dart';
 abstract class CreditsEndpoint {
   const CreditsEndpoint();
 
-  static CreditsEndpoint fromConfig(PurchaseConfig config, {http.Client? client}) {
+  static CreditsEndpoint fromConfig(
+    PurchaseConfig config, {
+    http.Client? client,
+  }) {
     final baseUrl = config.apiBaseUrl.trim();
     if (baseUrl.isEmpty) return const MissingCreditsEndpoint();
     return HttpCreditsEndpoint(baseUrl: baseUrl, client: client);
@@ -34,6 +37,10 @@ abstract class CreditsEndpoint {
   Future<CarCreditBalance?> restorePurchases({
     List<String> transactionIds = const [],
   });
+
+  /// `GET /api/consumer/credits`. Null when signed out, or when the route
+  /// is missing, so demo mode keeps its local balance.
+  Future<CarCreditBalance?> fetchBalance();
 }
 
 class MissingCreditsEndpoint extends CreditsEndpoint {
@@ -51,6 +58,11 @@ class MissingCreditsEndpoint extends CreditsEndpoint {
   Future<CarCreditBalance?> restorePurchases({
     List<String> transactionIds = const [],
   }) async {
+    return null;
+  }
+
+  @override
+  Future<CarCreditBalance?> fetchBalance() async {
     return null;
   }
 }
@@ -91,14 +103,33 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     });
   }
 
-  Future<CarCreditBalance?> _post(String path, Map<String, Object?> body) async {
+  @override
+  Future<CarCreditBalance?> fetchBalance() async {
+    if (_sessionStore.accessToken == null) return null;
     try {
       final response = await _client
-          .post(
-            _uri(path),
-            headers: _headers(),
-            body: jsonEncode(body),
-          )
+          .get(_uri('/api/consumer/credits'), headers: _headers())
+          .timeout(timeout);
+      if (_endpointMissing(response.statusCode)) return null;
+      if (response.statusCode == 401 || response.statusCode == 403) return null;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _reportFailure('/api/consumer/credits', response.statusCode);
+        return null;
+      }
+      return _parseBalance(response.body);
+    } on Exception {
+      _reportFailure('/api/consumer/credits', 0);
+      return null;
+    }
+  }
+
+  Future<CarCreditBalance?> _post(
+    String path,
+    Map<String, Object?> body,
+  ) async {
+    try {
+      final response = await _client
+          .post(_uri(path), headers: _headers(), body: jsonEncode(body))
           .timeout(timeout);
       if (_purchasesNotConfigured(response.statusCode, response.body)) {
         _log(
@@ -138,7 +169,9 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
   }
 
   Uri _uri(String path) {
-    final root = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final root = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return Uri.parse('$root$path');
   }
 
@@ -152,7 +185,8 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
   }
 
   bool _purchasesNotConfigured(int statusCode, String body) {
-    return statusCode == 503 && body.toLowerCase().contains('purchases not configured');
+    return statusCode == 503 &&
+        body.toLowerCase().contains('purchases not configured');
   }
 
   bool _endpointMissing(int statusCode) {
@@ -164,14 +198,22 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     final decoded = jsonDecode(body);
     if (decoded is! Map) return null;
     final root = Map<String, dynamic>.from(decoded);
-    final payload = root['data'] is Map ? Map<String, dynamic>.from(root['data'] as Map) : root;
+    final payload = root['data'] is Map
+        ? Map<String, dynamic>.from(root['data'] as Map)
+        : root;
     final balance = payload['balance'];
     if (balance is! num) return null;
     return CarCreditBalance(
       balance: balance.toInt(),
-      totalPurchased: _intField(payload, const ['lifetimePurchased', 'totalPurchased'], balance.toInt()),
+      totalPurchased: _intField(payload, const [
+        'lifetimePurchased',
+        'totalPurchased',
+      ], balance.toInt()),
       totalSpent: _intField(payload, const ['lifetimeUsed', 'totalSpent'], 0),
-      totalRefunded: _intField(payload, const ['lifetimeRefunded', 'totalRefunded'], 0),
+      totalRefunded: _intField(payload, const [
+        'lifetimeRefunded',
+        'totalRefunded',
+      ], 0),
     );
   }
 

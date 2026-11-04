@@ -63,7 +63,10 @@ class AppleIdentityClient implements IdentityClient {
     } on AuthCancelledException {
       rethrow;
     } catch (_) {
-      throw const AuthException(code: 'apple_failed', message: 'Apple sign-in was rejected.');
+      throw const AuthException(
+        code: 'apple_failed',
+        message: 'Apple sign-in was rejected.',
+      );
     }
   }
 }
@@ -76,7 +79,8 @@ class GoogleIdentityClient implements IdentityClient {
     if (!DrevvyConfig.googleConfigured) {
       throw const AuthException(
         code: 'google_not_configured',
-        message: 'Google sign-in needs an OAuth client ID. Add it in DrevvyConfig.',
+        message:
+            'Google sign-in needs an OAuth client ID. Add it in DrevvyConfig.',
       );
     }
     if (!GoogleSignIn.instance.supportsAuthenticate()) {
@@ -88,10 +92,14 @@ class GoogleIdentityClient implements IdentityClient {
 
     try {
       if (!_initialized) {
+        final ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
         await GoogleSignIn.instance.initialize(
-          clientId: DrevvyConfig.googleIosClientId.isEmpty ? null : DrevvyConfig.googleIosClientId,
-          serverClientId:
-              DrevvyConfig.googleServerClientId.isEmpty ? null : DrevvyConfig.googleServerClientId,
+          clientId: ios && DrevvyConfig.googleIosClientId.isNotEmpty
+              ? DrevvyConfig.googleIosClientId
+              : null,
+          serverClientId: DrevvyConfig.googleServerClientId.isEmpty
+              ? null
+              : DrevvyConfig.googleServerClientId,
         );
         _initialized = true;
       }
@@ -117,7 +125,10 @@ class GoogleIdentityClient implements IdentityClient {
     } on AuthCancelledException {
       rethrow;
     } catch (_) {
-      throw const AuthException(code: 'google_failed', message: 'Google sign-in was rejected.');
+      throw const AuthException(
+        code: 'google_failed',
+        message: 'Google sign-in was rejected.',
+      );
     }
   }
 }

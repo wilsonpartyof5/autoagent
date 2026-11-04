@@ -42,6 +42,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Sign in with Apple on Android returns through this activity.
+             The Services ID return URL is /api/consumer/auth/apple/callback. -->
+        <activity
+            android:name="com.aboutyou.dart_packages.sign_in_with_apple.SignInWithAppleCallback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="signinwithapple" />
+                <data android:path="callback" />
+            </intent-filter>
+        </activity>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -52,6 +65,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 </manifest>

@@ -342,4 +342,9 @@ class _ScriptedCredits extends CreditsEndpoint {
   }) async {
     return null;
   }
+
+  @override
+  Future<CarCreditBalance?> fetchBalance() async {
+    return null;
+  }
 }

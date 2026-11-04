@@ -45,9 +45,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final inFirstRun =
           location == '/onboarding' || location == '/account/create';
       if (!done && !inFirstRun) return '/onboarding';
-      if (done && (location == '/onboarding' || location == '/account/create')) {
-        return '/shop';
-      }
+      if (done && location == '/onboarding') return '/shop';
       return null;
     },
     routes: [

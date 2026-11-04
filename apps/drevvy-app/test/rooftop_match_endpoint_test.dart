@@ -44,7 +44,10 @@ void main() {
 
   test('live rooftop match parses match boolean and rooftop id', () async {
     final client = MockClient((request) async {
-      expect(request.url.path, '/api/consumer/listings/listing_001/rooftop-match');
+      expect(
+        request.url.path,
+        '/api/consumer/listings/listing_001/rooftop-match',
+      );
       return http.Response(
         jsonEncode({
           'matched': true,
@@ -79,15 +82,24 @@ void main() {
 
   test('OTD request posts as a free analytics form, not a key spend', () async {
     late Map<String, dynamic> body;
+    final sessions = ShopperSessionStore()
+      ..session = const ShopperSession(
+        accessToken: 'shopper-token',
+        consumerUserId: 'user-1',
+      );
     final client = MockClient((request) async {
-      expect(request.url.path, '/api/consumer/listings/listing_002/otd-request');
+      expect(
+        request.url.path,
+        '/api/consumer/listings/listing_002/otd-request',
+      );
+      expect(request.headers['Authorization'], 'Bearer shopper-token');
       body = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response(jsonEncode({'ok': true}), 200);
     });
     final endpoint = HttpKeySpendEndpoint(
       baseUrl: 'https://api.drevvy.com',
       client: client,
-      sessionStore: ShopperSessionStore(),
+      sessionStore: sessions,
     );
     final result = await endpoint.requestOtdNumber(crv, note: 'need OTD');
     expect(result.ok, isTrue);
@@ -95,4 +107,67 @@ void main() {
     expect(body['usesKey'], isFalse);
     expect(body['note'], 'need OTD');
   });
+
+  test('a signed-out shopper does not call live dealer chat', () async {
+    var called = false;
+    final client = MockClient((request) async {
+      called = true;
+      return http.Response('{}', 500);
+    });
+    final endpoint = HttpKeySpendEndpoint(
+      baseUrl: 'https://api.drevvy.com',
+      client: client,
+      sessionStore: ShopperSessionStore(),
+    );
+    final result = await endpoint.startConversation(
+      listing: rav4,
+      match: const RooftopMatch(matched: true, rooftopId: 'roof-1'),
+    );
+    expect(called, isFalse);
+    expect(result.source, KeySpendSource.missing);
+  });
+
+  test(
+    'a signed-in shopper posts the vehicle and reads the live deal',
+    () async {
+      late Map<String, dynamic> body;
+      final sessions = ShopperSessionStore()
+        ..session = const ShopperSession(
+          accessToken: 'shopper-token',
+          consumerUserId: 'user-1',
+        );
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/consumer/deals');
+        expect(request.headers['Authorization'], 'Bearer shopper-token');
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'id': 'deal-live-1', 'listingId': 'listing_001'},
+            'credits': {'balance': 2, 'canAdd': true, 'reason': 'ok'},
+          }),
+          200,
+        );
+      });
+      final endpoint = HttpKeySpendEndpoint(
+        baseUrl: 'https://api.drevvy.com',
+        client: client,
+        sessionStore: sessions,
+      );
+      final result = await endpoint.startConversation(
+        listing: rav4,
+        match: const RooftopMatch(matched: true, rooftopId: 'roof-1'),
+      );
+      expect(result.ok, isTrue);
+      expect(result.source, KeySpendSource.live);
+      expect(result.dealId, 'deal-live-1');
+      expect(result.balance?.balance, 2);
+      expect(result.balance?.totalPurchased, 0);
+      final vehicle = body['vehicle'] as Map<String, dynamic>;
+      expect(vehicle['year'], 2024);
+      expect(vehicle['make'], 'Toyota');
+      expect(vehicle['model'], 'RAV4');
+      expect(vehicle['price'], 1);
+    },
+  );
 }

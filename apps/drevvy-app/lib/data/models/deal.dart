@@ -104,6 +104,7 @@ class Deal extends Equatable {
   List<Object?> get props => [id, status, offers, dealerTimelines];
 
   Deal copyWith({
+    String? id,
     DealStatus? status,
     List<Offer>? offers,
     DealComms? comms,
@@ -118,7 +119,7 @@ class Deal extends Equatable {
     List<DealerTimeline>? dealerTimelines,
   }) {
     return Deal(
-      id: id,
+      id: id ?? this.id,
       listingId: listingId,
       letter: letter,
       status: status ?? this.status,

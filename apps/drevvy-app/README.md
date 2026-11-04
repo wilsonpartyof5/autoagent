@@ -89,9 +89,17 @@ flutter build appbundle --release
 flutter build web
 ```
 
-## Google sign-in
+## Shopper sign-in
 
-The web and iOS OAuth client IDs are the compile-time defaults. Pass `--dart-define` to override them:
+Apple and Google sign-in are wired to `POST /api/consumer/auth/apple` and `POST /api/consumer/auth/google`. The first signed-in profile gets the existing 3 starter keys. Demo mode stays available from **Find my next car** and from **Continue with email**.
+
+The account sheet (avatar) has **Sign in to message a dealer**. That path does not open a paywall. Signed-out dealer chat stays on the device. Signed-in dealer chat calls `POST /api/consumer/deals`.
+
+Console steps that cannot be done in git (Apple Services ID, Google SHA-1, Supabase providers) are in [docs/drevvy/SHOPPER_SIGN_IN.md](../../docs/drevvy/SHOPPER_SIGN_IN.md).
+
+### Google sign-in
+
+The web and iOS OAuth client IDs are the compile-time defaults. They are public client IDs, not secrets. Pass `--dart-define` to override them:
 
 ```bash
 flutter run \
@@ -101,7 +109,19 @@ flutter run \
 
 `DREVVY_GOOGLE_SERVER_CLIENT_ID` is the web client ID. `DREVVY_GOOGLE_IOS_CLIENT_ID` is the iOS client ID.
 
-The backend `GOOGLE_OAUTH_CLIENT_IDS` must list the web and iOS client IDs. When that variable is unset, `POST /api/consumer/auth/google` responds 503.
+`DREVVY_GOOGLE_SERVER_CLIENT_ID` is the web client ID. Android uses it to request an ID token. The Android OAuth client is package `com.drevvy.drevvy_app` plus the signing SHA-1. It is not a value in the app.
+
+The backend `GOOGLE_OAUTH_CLIENT_IDS` must list the web client ID, then the iOS client ID. When that variable is unset, `POST /api/consumer/auth/google` responds 503.
+
+### Apple sign-in
+
+iOS uses the bundle id `com.drevvy.drevvyApp` and the Sign in with Apple entitlement already in `ios/Runner/Runner.entitlements`. Android needs a Services ID:
+
+```bash
+flutter run --dart-define=DREVVY_APPLE_SERVICE_ID=YOUR_SERVICES_ID
+```
+
+The return URL defaults to `https://www.drevvy.com/api/consumer/auth/apple/callback`.
 
 ## Architecture
 
@@ -149,7 +169,7 @@ final text = context.drevvyText;
 ## TODO Seams (Phase 2+)
 
 - **Backend API**: Replace `DemoRepository` calls with `https://api.drevvy.com`
-- **Supabase Auth**: Replace demo user with real authentication
+- **Supabase Auth**: Apple and Google sign-in are in the app. Demo mode remains until the shopper signs in. Provider setup is `docs/drevvy/SHOPPER_SIGN_IN.md`.
 - **RevenueCat/Superwall**: Offering `keys` (1 key $4.99, 5 keys $19.99, 10 keys $34.99 recommended, 25 keys $74.99, one-time, never expire). Store product ids: `drevvy_keys_1`, `drevvy_keys_5`, `drevvy_keys_10`, `drevvy_keys_25`. Package ids: `keys_1`, `keys_5`, `keys_10`, `keys_25`. The Flutter paywall is the demo fallback when SDK keys are absent. Ask and Shop stay free. VDP Key A (market intel + save) and in-network Key B (conversation) open the paywall when the balance is 0. Off-network out-the-door requests are a free analytics form.
 - **Push Notifications**: Pre-prompt UI exists, FCM not wired
 - **Geofencing**: Location permission UI exists, geofence logic not wired
