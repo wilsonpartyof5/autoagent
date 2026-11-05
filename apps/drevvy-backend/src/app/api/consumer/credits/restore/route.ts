@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
@@ -13,10 +14,22 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
+export type CreditRestoreDeps = {
+  requireAuth?: (request: Request) => Promise<{ userId: string }>;
+  supabase?: SupabaseClient;
+  fetchImpl?: typeof fetch;
+  apiKey?: string;
+};
+
 export async function POST(request: NextRequest) {
+  return handleCreditRestore(request);
+}
+
+export async function handleCreditRestore(request: NextRequest, deps: CreditRestoreDeps = {}) {
   try {
-    const auth = await requireConsumerAuth(request);
-    const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+    const requireAuth = deps.requireAuth ?? requireConsumerAuth;
+    const auth = await requireAuth(request);
+    const apiKey = deps.apiKey ?? process.env.REVENUECAT_SECRET_API_KEY;
     if (!apiKey || !purchasesConfigured(apiKey)) {
       return NextResponse.json(
         { success: false, error: { code: 'purchases_not_configured', message: 'purchases not configured' } },
@@ -29,13 +42,13 @@ export async function POST(request: NextRequest) {
       ? body.transactionIds.filter((id): id is string => typeof id === 'string' && id.trim() !== '').slice(0, 50)
       : [];
 
-    const admin = createAdminClient();
+    const admin = deps.supabase ?? createAdminClient();
     if (transactionIds.length === 0) {
       const credits = await getShopperCredits(admin, auth.userId);
       return NextResponse.json({ data: creditBalanceData(credits) });
     }
 
-    const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey);
+    const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey, deps.fetchImpl ?? fetch);
     if (!lookup.ok) {
       return NextResponse.json(
         { success: false, error: { code: 'verification_failed', message: 'Purchase could not be verified.' } },

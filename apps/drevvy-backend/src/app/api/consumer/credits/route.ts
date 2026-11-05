@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
@@ -12,6 +13,13 @@ import {
 } from '@/lib/shopper/credit-purchases';
 import { getShopperCredits } from '@/lib/shopper/credits';
 import { createAdminClient } from '@/lib/supabase/admin';
+
+export type CreditPurchaseDeps = {
+  requireAuth?: (request: Request) => Promise<{ userId: string }>;
+  supabase?: SupabaseClient;
+  fetchImpl?: typeof fetch;
+  apiKey?: string;
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -36,9 +44,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  return handleCreditPurchase(request);
+}
+
+export async function handleCreditPurchase(request: NextRequest, deps: CreditPurchaseDeps = {}) {
   try {
-    const auth = await requireConsumerAuth(request);
-    const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+    const requireAuth = deps.requireAuth ?? requireConsumerAuth;
+    const auth = await requireAuth(request);
+    const apiKey = deps.apiKey ?? process.env.REVENUECAT_SECRET_API_KEY;
     if (!apiKey || !purchasesConfigured(apiKey)) return notConfigured();
 
     const body = await request.json().catch(() => null) as { productId?: unknown; transactionId?: unknown } | null;
@@ -52,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey);
+    const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey, deps.fetchImpl ?? fetch);
     if (!lookup.ok) {
       return NextResponse.json(
         { success: false, error: { code: 'verification_failed', message: 'Purchase could not be verified.' } },
@@ -67,7 +80,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const granted = await grantVerifiedPurchase(createAdminClient(), auth.userId, verified);
+    const granted = await grantVerifiedPurchase(deps.supabase ?? createAdminClient(), auth.userId, verified);
     if (!granted.success) {
       return NextResponse.json(
         { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these keys.' } },
