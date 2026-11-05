@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
-import '../../../core/widgets/shell_scaffold.dart';
+import '../../../core/widgets/shop_bottom_chrome.dart';
 import '../../../data/models/listing.dart';
 import 'inventory_card.dart';
 
@@ -27,13 +28,17 @@ class ShopResults extends StatelessWidget {
 
   final List<Listing>? listings;
   final bool isLoading;
+
   /// v1.7: Whether user has keys (for future A/B testing).
   final bool hasCredits;
   final ValueChanged<Listing> onListingTap;
+
   /// v1.8: Set of listing IDs that are saved.
   final Set<String> savedListingIds;
+
   /// v1.8: Set of listing IDs that are in Deals.
   final Set<String> dealsListingIds;
+
   /// v1.8: Callback when heart is tapped on a listing.
   final void Function(Listing listing, bool isSaved)? onSaveToggle;
   final bool showEstimatedMarket;
@@ -67,10 +72,20 @@ class ShopResults extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
-              itemCount: 4,
-              itemBuilder: (context, index) => const _SkeletonCard(),
+            child: ShopChromeScrollListener(
+              child: ListView.builder(
+                key: ShopBottomChromeMetrics.listKey,
+                padding: EdgeInsets.fromLTRB(
+                  DrevvySpace.gutter,
+                  0,
+                  DrevvySpace.gutter,
+                  ShopBottomChromeMetrics.listBottomPadding(
+                    MediaQuery.of(context).padding.bottom,
+                  ),
+                ),
+                itemCount: 4,
+                itemBuilder: (context, index) => const _SkeletonCard(),
+              ),
             ),
           ),
         ],
@@ -98,21 +113,15 @@ class ShopResults extends StatelessWidget {
       );
     }
 
-    // v1.8: Wrap in NotificationListener for hide-on-scroll
-    return NotificationListener<ScrollUpdateNotification>(
-      onNotification: (notification) {
-        final hideOnScroll = HideOnScroll.of(context);
-        if (hideOnScroll != null && notification.scrollDelta != null) {
-          hideOnScroll.setFromScroll(notification.scrollDelta!);
-        }
-        return false;
-      },
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    return ShopChromeScrollListener(
       child: ListView.separated(
+        key: ShopBottomChromeMetrics.listKey,
         padding: EdgeInsets.fromLTRB(
           DrevvySpace.gutter,
           DrevvySpace.s4,
           DrevvySpace.gutter,
-          DrevvySpace.s4 + bottomInset,
+          ShopBottomChromeMetrics.listBottomPadding(safeBottom) + bottomInset,
         ),
         itemCount: listings!.length + (onLoadMore == null && !loadingMore ? 0 : 1),
         separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s3),
@@ -132,7 +141,7 @@ class ShopResults extends StatelessWidget {
           final listing = listings![index];
           final isSaved = savedListingIds.contains(listing.id);
           final isInDeals = dealsListingIds.contains(listing.id);
-          
+
           return InventoryCard(
             listing: listing,
             hasCredits: hasCredits,
@@ -140,9 +149,11 @@ class ShopResults extends StatelessWidget {
             onTap: () => onListingTap(listing),
             isSaved: isSaved,
             isAlreadyAdded: isInDeals,
-            onSaveToggle: isInDeals ? null : () {
-              onSaveToggle?.call(listing, isSaved);
-            },
+            onSaveToggle: isInDeals
+                ? null
+                : () {
+                    onSaveToggle?.call(listing, isSaved);
+                  },
           );
         },
       ),

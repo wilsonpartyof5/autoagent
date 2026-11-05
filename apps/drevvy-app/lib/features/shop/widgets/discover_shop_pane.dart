@@ -111,7 +111,6 @@ class DiscoverShopPane extends StatelessWidget {
           isLoading: false,
           onListingTap: onOpen,
           showEstimatedMarket: false,
-          bottomInset: 140,
           loadingMore: controller.loadingMore,
           onLoadMore: controller.hasNextPage
               ? () => controller.search(reset: false)

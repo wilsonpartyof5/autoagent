@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/drevvy_tokens.dart';
+import '../../../core/widgets/shop_bottom_chrome.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/analytics/search_analytics.dart';
 import '../../../data/discover/discover_catalog.dart';
@@ -20,7 +20,7 @@ import '../../../data/repositories/demo_repository.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/chat_empty.dart';
 import '../widgets/chat_messages.dart';
-import '../widgets/chat_composer.dart';
+import '../widgets/shop_composer_overlay.dart';
 import '../widgets/shop_results.dart';
 import '../widgets/discover_filter_sheet.dart';
 import '../widgets/discover_location_sheet.dart';
@@ -192,6 +192,7 @@ class _ShopScreenState extends State<ShopScreen> {
         properties,
       );
     }
+    ShopBottomChromeScope.read(context)?.show();
     setState(() {
       _mode = ChatMode.shop;
       _isSearching = true;
@@ -283,8 +284,11 @@ class _ShopScreenState extends State<ShopScreen> {
     ProductAnalytics.instance.track(AnalyticsEvents.modeSwitched, {
       'mode': mode == ChatMode.ask ? 'ask' : 'shop',
     });
-    ProductAnalytics.instance.screen(mode == ChatMode.ask ? 'ask_chat' : 'shop_results');
+    ProductAnalytics.instance.screen(
+      mode == ChatMode.ask ? 'ask_chat' : 'shop_results',
+    );
     setState(() => _mode = mode);
+    ShopBottomChromeScope.read(context)?.show(force: true);
     if (mode != ChatMode.shop) return;
     if (_liveDiscover) {
       _ensureDiscover();
@@ -433,14 +437,6 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final isEmpty = _thread?.isEmpty ?? true;
-    final safeBottom = MediaQuery.of(context).padding.bottom;
-
-    // Composer pinned 12pt above tab bar per spec §6.5a
-    final composerBottom =
-        DrevvySpace.tabBarBottomInset +
-        DrevvySpace.tabBarHeight +
-        DrevvySpace.composerTabBarGap +
-        safeBottom;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -475,8 +471,10 @@ class _ShopScreenState extends State<ShopScreen> {
                     ? isEmpty
                           ? ChatEmpty(
                               userName: _user?.firstName ?? 'there',
-                              onPromptTap: (prompt) => _sendMessage(prompt, source: 'starter'),
-                              onShopTap: (query) => _search(query, source: 'starter'),
+                              onPromptTap: (prompt) =>
+                                  _sendMessage(prompt, source: 'starter'),
+                              onShopTap: (query) =>
+                                  _search(query, source: 'starter'),
                               starters: _starters,
                               hasHistory:
                                   _searchProfile?.personalize == true &&
@@ -487,7 +485,8 @@ class _ShopScreenState extends State<ShopScreen> {
                           : ChatMessages(
                               thread: _thread!,
                               isLoading: _isLoading,
-                              onShopTap: (query) => _search(query, source: 'ask_handoff'),
+                              onShopTap: (query) =>
+                                  _search(query, source: 'ask_handoff'),
                               memoryItems: _searchProfile?.personalize == true
                                   ? _searchProfile?.items
                                   : null,
@@ -519,16 +518,10 @@ class _ShopScreenState extends State<ShopScreen> {
             ],
           ),
 
-          // Composer pinned 12pt above tab bar, never overlapping content
-          Positioned(
-            left: DrevvySpace.gutter,
-            right: DrevvySpace.gutter,
-            bottom: composerBottom,
-            child: ChatComposer(
-              mode: _mode,
-              onSend: _mode == ChatMode.ask ? _sendMessage : _search,
-              isLoading: _isLoading,
-            ),
+          ShopComposerOverlay(
+            mode: _mode,
+            onSend: _mode == ChatMode.ask ? _sendMessage : _search,
+            isLoading: _isLoading,
           ),
         ],
       ),
