@@ -266,7 +266,23 @@ export type ItemizedOtdLines = {
   registrationCents: number;
 };
 
+/** Sum of the five required lines. Null when a line or the sum is outside the allowed range. */
+export function itemizedTotalCents(lines: ItemizedOtdLines): number | null {
+  const values = [
+    lines.vehiclePriceCents,
+    lines.docFeeCents,
+    lines.taxCents,
+    lines.titleCents,
+    lines.registrationCents,
+  ];
+  if (values.some((value) => !validCents(value))) return null;
+  const sum = values.reduce((total, value) => total + value, 0);
+  if (!Number.isSafeInteger(sum) || sum > MAX_CENTS) return null;
+  return sum;
+}
+
 export function itemizedOtdShareBody(lines: ItemizedOtdLines, note: string): string {
+  const total = itemizedTotalCents(lines);
   const rows = [
     'Itemized out-the-door in this chat. Informational, not a binding offer.',
     `Vehicle price: ${formatMoney(lines.vehiclePriceCents)}`,
@@ -275,6 +291,7 @@ export function itemizedOtdShareBody(lines: ItemizedOtdLines, note: string): str
     `Title: ${formatMoney(lines.titleCents)}`,
     `Registration: ${formatMoney(lines.registrationCents)}`,
   ];
+  if (total != null) rows.push(`Itemized total: ${formatMoney(total)}`);
   const extra = note.trim();
   if (extra) rows.push(extra);
   return rows.join('\n');
@@ -293,6 +310,7 @@ export function readItemizedLines(
     if (typeof value !== 'number' || !validCents(value)) return 'invalid';
     parsed[key] = value;
   }
+  if (itemizedTotalCents(parsed) == null) return 'invalid';
   return parsed;
 }
 

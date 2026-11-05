@@ -110,6 +110,11 @@ export function ConversationPane({
         titleCents,
         registrationCents,
       };
+      const sum = statedPriceCents + docFeeCents + taxCents + titleCents + registrationCents;
+      if (written != null && written !== sum) {
+        setError('The out-the-door total has to equal vehicle price, doc fee, tax, title, and registration.');
+        return;
+      }
     }
     setPending(true);
     const result = await shareConversationNumbers(conversation.id, {

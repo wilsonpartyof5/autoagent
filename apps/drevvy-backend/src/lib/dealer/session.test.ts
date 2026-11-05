@@ -107,4 +107,17 @@ test('dealer API routes use requireDealerApi and never requireAdmin', () => {
     assert.equal(source.includes('requireAdmin'), false, file);
     assert.equal(source.includes('telnyx'), false, file);
   }
+
+  const sessionSource = readFileSync(join(HERE, 'session.ts'), 'utf8');
+  const apiStart = sessionSource.indexOf('export async function requireDealerApi');
+  const apiEnd = sessionSource.indexOf('export function dealerAuthErrorResponse');
+  const api = sessionSource.slice(apiStart, apiEnd);
+  assert.equal(api.includes('DEMO_DEALER_COOKIE'), false);
+  assert.equal(api.includes('openDemoDealerSession'), false);
+  assert.equal(api.includes('loadDemoDealerSession'), false);
+
+  const desk = readFileSync(join(HERE, 'desk-data.ts'), 'utf8');
+  const inbox = desk.slice(desk.indexOf('export async function loadDeskInbox'), desk.indexOf('export async function loadDeskConversation'));
+  assert.ok(inbox.indexOf('isLiveDealerSession') >= 0);
+  assert.ok(inbox.indexOf('isLiveDealerSession') < inbox.indexOf('threadFixtureEnabled'));
 });

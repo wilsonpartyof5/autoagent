@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import { POST as openFixture } from '../../app/api/consumer/fixture/threads/route';
 import { GET as readShopperMessages, POST as postShopperMessages } from '../../app/api/consumer/deals/[id]/messages/route';
 import { GET as dealerInbox } from '../../app/api/dealer/v1/inbox/route';
+import { GET as dealerLead } from '../../app/api/dealer/v1/leads/[leadId]/route';
 import { POST as dealerMessage } from '../../app/api/dealer/v1/leads/[leadId]/messages/route';
 import { POST as dealerNumbers } from '../../app/api/dealer/v1/leads/[leadId]/numbers/route';
+import { readItemizedLines } from './format';
 import { OTD_REMOVAL_NOTICE } from './otd-warnings';
 import {
   FIXTURE_LABEL,
+  deskWriteTarget,
+  isolatedBookPath,
   isolatedRooftopRemoved,
   isolatedWarningCount,
   openIsolatedThread,
@@ -16,7 +23,16 @@ import {
   postIsolatedShopperMessage,
   resetIsolatedThreads,
   shareIsolatedItemized,
+  threadFixtureEnabled,
 } from './isolated-thread';
+
+const bookDir = mkdtempSync(join(tmpdir(), 'drevvy-fixture-review-'));
+const bookFile = join(bookDir, 'book.json');
+process.env.DREVYY_FIXTURE_BOOK = bookFile;
+test.after(() => {
+  rmSync(bookDir, { recursive: true, force: true });
+  delete process.env.DREVYY_FIXTURE_BOOK;
+});
 
 const LINES = {
   vehiclePriceCents: 3_000_000,
@@ -121,13 +137,26 @@ test('isolated round trip, privacy, off-network fence, itemized OTD, and removal
   assert.equal(keyedAgain.ok, true);
   if (!keyedAgain.ok) return;
   assert.equal(keyedAgain.data.otdWarningCount, 2);
+  assert.equal(keyed.data.messages.some((message) => message.body === 'We can go over fees.'), true);
+  assert.equal(keyedAgain.data.messages.some((message) => message.body === 'Different words.'), false);
 
+  const mismatched = shareIsolatedItemized(financed.thread.id, LINES, '', new Date(), 100);
+  assert.equal(mismatched.ok, false);
+  if (mismatched.ok) return;
+  assert.equal(mismatched.error, 'invalid_price');
   const itemized = shareIsolatedItemized(financed.thread.id, LINES, '');
   assert.equal(itemized.ok, true);
   if (!itemized.ok) return;
   assert.equal(itemized.data.otdWarningCount ?? 0, 0);
   assert.equal(itemized.data.messages.some((message) => message.body.startsWith('Warning ')), false);
   assert.equal(itemized.data.stage, 'numbers_shared');
+  assert.equal(itemized.data.writtenOtdCents, 3_265_900);
+  assert.equal(itemized.data.messages.some((message) => message.body.includes('Itemized total: $32,659')), true);
+  const later = postIsolatedDealerMessage(financed.thread.id, 'The worksheet is the message above.', new Date(), 'after-itemized');
+  assert.equal(later.ok, true);
+  if (!later.ok) return;
+  assert.equal(later.data.messages.some((message) => message.body === 'The worksheet is the message above.'), true);
+  assert.equal(later.data.otdWarningCount ?? 0, 0);
 
   const thirdHome = openIsolatedThread({ firstName: 'Sam' });
   assert.equal(thirdHome.ok, true);
@@ -245,4 +274,84 @@ test('fixture HTTP routes label test-owned data and stay closed without the flag
     else env.DEALER_PREVIEW = previousPreview;
     resetIsolatedThreads();
   }
+});
+
+test('production flags cannot open, remove, or impersonate a fixture thread', { concurrency: false }, async () => {
+  assert.equal(threadFixtureEnabled({ NODE_ENV: 'production', DEALER_THREAD_FIXTURE: '1' }), false);
+  assert.equal(threadFixtureEnabled({ NODE_ENV: 'Production', DEALER_THREAD_FIXTURE: '1' }), false);
+  assert.equal(threadFixtureEnabled({ NODE_ENV: '', DEALER_THREAD_FIXTURE: '1' }), false);
+  assert.equal(threadFixtureEnabled({ NODE_ENV: 'development', DEALER_THREAD_FIXTURE: '1' }), true);
+  assert.equal(deskWriteTarget(true, '22222222-2222-4222-8222-222222222222', true), 'live');
+  assert.equal(deskWriteTarget(true, 'fixconv_0001', true), 'fixture');
+  assert.equal(deskWriteTarget(true, 'fixconv_0001', false), 'live');
+  assert.equal(deskWriteTarget(false, 'conv_tucson', true), 'mock');
+  assert.equal(readItemizedLines({ lines: { ...LINES, taxCents: 0 } }), 'invalid');
+  assert.equal(readItemizedLines({ lines: { ...LINES, docFeeCents: 49.9 } }), 'invalid');
+  assert.equal(readItemizedLines({ lines: { vehiclePriceCents: 3_000_000 } }), 'invalid');
+
+  const env = process.env as Record<string, string | undefined>;
+  const previousFixture = env.DEALER_THREAD_FIXTURE;
+  const previousNode = env.NODE_ENV;
+  const previousPreview = env.DEALER_PREVIEW;
+  const previousAdmin = env.ADMIN_PREVIEW;
+  env.NODE_ENV = 'production';
+  env.DEALER_THREAD_FIXTURE = '1';
+  env.DEALER_PREVIEW = '1';
+  env.ADMIN_PREVIEW = '1';
+  try {
+    const opened = await openFixture(new Request('http://desk.local/api/consumer/fixture/threads', {
+      method: 'POST',
+      body: JSON.stringify({ firstName: 'Dana', email: 'dana@example.com' }),
+    }));
+    assert.equal(opened.status, 404);
+    const shopper = await postShopperMessages(new Request('http://desk.local/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-drevvy-fixture': 'isolated' },
+      body: JSON.stringify({ body: 'Hello', email: 'dana@example.com' }),
+    }), { params: Promise.resolve({ id: 'fixconv_0001' }) });
+    assert.equal(shopper.status, 401);
+    const liveId = await postShopperMessages(new Request('http://desk.local/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-drevvy-fixture': 'isolated' },
+      body: JSON.stringify({ body: 'Hello', email: 'dana@example.com' }),
+    }), { params: Promise.resolve({ id: '22222222-2222-4222-8222-222222222222' }) });
+    assert.equal(liveId.status, 401);
+    const reply = await dealerMessage(new Request('http://desk.local/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'Come in for the best price.' }),
+    }), { params: Promise.resolve({ leadId: 'fixconv_0001' }) });
+    assert.equal(reply.status, 404);
+    const numbers = await dealerNumbers(new Request('http://desk.local/numbers', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lines: LINES }),
+    }), { params: Promise.resolve({ leadId: 'fixconv_0001' }) });
+    assert.equal(numbers.status, 404);
+    const lead = await dealerLead(new Request('http://desk.local/lead'), {
+      params: Promise.resolve({ leadId: 'fixconv_0001' }),
+    });
+    assert.equal(lead.status, 404);
+    const inbox = await dealerInbox(new Request('http://desk.local/api/dealer/v1/inbox?filter=all'));
+    assert.equal(inbox.status, 401);
+    assert.equal(isolatedRooftopRemoved(), false);
+    assert.equal(existsSync(`${bookFile}.lock`), false);
+  } finally {
+    if (previousFixture === undefined) delete env.DEALER_THREAD_FIXTURE;
+    else env.DEALER_THREAD_FIXTURE = previousFixture;
+    if (previousNode === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previousNode;
+    if (previousPreview === undefined) delete env.DEALER_PREVIEW;
+    else env.DEALER_PREVIEW = previousPreview;
+    if (previousAdmin === undefined) delete env.ADMIN_PREVIEW;
+    else env.ADMIN_PREVIEW = previousAdmin;
+  }
+});
+
+test('the fixture book stays private to this test and leaves no lock', { concurrency: false }, () => {
+  resetIsolatedThreads();
+  assert.equal(isolatedBookPath(), bookFile);
+  assert.equal(existsSync(`${bookFile}.lock`), false);
+  const mode = statSync(bookFile).mode & 0o777;
+  assert.equal(mode, 0o600);
 });

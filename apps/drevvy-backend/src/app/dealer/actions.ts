@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import {
-  isIsolatedThreadId,
+  deskWriteTarget,
   isolatedInboxItems,
   postIsolatedDealerMessage,
   shareIsolatedItemized,
@@ -57,7 +57,8 @@ export async function markConversationSold(
   leadId: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (isLiveDealerSession(session)) {
+  const fixtureOn = threadFixtureEnabled();
+  if (isLiveDealerSession(session) && deskWriteTarget(true, leadId, fixtureOn) === 'live') {
     const result = await markLiveSold(session, leadId);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -72,12 +73,13 @@ export async function postConversationMessage(
   body: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (threadFixtureEnabled() && isIsolatedThreadId(leadId)) {
+  const target = deskWriteTarget(isLiveDealerSession(session), leadId, threadFixtureEnabled());
+  if (target === 'fixture') {
     const result = postIsolatedDealerMessage(leadId, body);
     if (!result.ok) return result;
     return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
   }
-  if (isLiveDealerSession(session)) {
+  if (target === 'live' && isLiveDealerSession(session)) {
     const result = await postLiveMessage(session, leadId, body);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -97,12 +99,14 @@ export async function shareConversationNumbers(
   },
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (threadFixtureEnabled() && isIsolatedThreadId(leadId) && input.lines) {
-    const result = shareIsolatedItemized(leadId, input.lines, input.note);
+  const target = deskWriteTarget(isLiveDealerSession(session), leadId, threadFixtureEnabled());
+  if (target === 'fixture') {
+    if (!input.lines) return { ok: false, error: 'invalid_price' };
+    const result = shareIsolatedItemized(leadId, input.lines, input.note, new Date(), input.writtenOtdCents);
     if (!result.ok) return result;
     return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
   }
-  if (isLiveDealerSession(session)) {
+  if (target === 'live' && isLiveDealerSession(session)) {
     const result = await shareLiveNumbers(session, leadId, input);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);

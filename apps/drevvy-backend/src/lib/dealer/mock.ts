@@ -16,6 +16,7 @@ import {
   isInboxFilter,
   isOpenStage,
   itemizedOtdShareBody,
+  itemizedTotalCents,
   matchesInboxFilter,
   numbersShareBody,
   readItemizedLines,
@@ -500,9 +501,13 @@ export function shareNumbers(
   }
   const note = input.note.trim();
   if (note.length > NOTE_LIMIT) return fail('invalid_price');
+  const lineTotal = input.lines ? itemizedTotalCents(input.lines) : null;
+  if (input.lines && (lineTotal == null || (input.writtenOtdCents != null && input.writtenOtdCents !== lineTotal))) {
+    return fail('invalid_price');
+  }
 
   conversation.statedPriceCents = input.statedPriceCents;
-  conversation.writtenOtdCents = input.writtenOtdCents;
+  conversation.writtenOtdCents = lineTotal ?? input.writtenOtdCents;
   const numbersBody = input.lines
     ? itemizedOtdShareBody(input.lines, note)
     : numbersShareBody({

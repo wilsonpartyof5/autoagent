@@ -1,7 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-import { DEMO_ROOFTOPS } from './demo-org';
-import type { OnboardingFixtureRecord } from './onboarding-acceptance';
+import { DEMO_ROOFTOPS, TERMS_VERSION } from './demo-org';
+import {
+  knownDemoRooftopIds,
+  ONBOARDING_FIXTURE_LABEL,
+  type OnboardingFixtureRecord,
+} from './onboarding-acceptance';
 import type { DealerSession } from './session';
 
 export const DEMO_DEALER_COOKIE = 'drevvy_demo_desk';
@@ -108,10 +112,29 @@ export function readDemoAcceptance(
   const record = acceptance as Partial<OnboardingFixtureRecord>;
   if (record.fixture !== true || record.legalAcceptance !== false || record.liveWrite !== false) return null;
   if (record.persistence !== 'isolated-demo') return null;
-  if (!Array.isArray(record.rooftopIds) || record.rooftopIds.length === 0) return null;
-  if (!Array.isArray(record.commitments)) return null;
-  if (!record.commitments.includes('message-only') || !record.commitments.includes('itemized-otd')) return null;
-  return record as OnboardingFixtureRecord;
+  if (record.termsVersion !== TERMS_VERSION) return null;
+  if (record.acceptor !== 'demo-derek-patel') return null;
+  if (record.chargedCents !== 0) return null;
+  if (!Array.isArray(record.rooftopIds) || !Array.isArray(record.commitments)) return null;
+  const rooftopIds = knownDemoRooftopIds(
+    record.rooftopIds.filter((id): id is string => typeof id === 'string'),
+  );
+  if (!rooftopIds.includes('lakeside')) return null;
+  const commitments = record.commitments.filter((item): item is string => typeof item === 'string');
+  if (!commitments.includes('message-only') || !commitments.includes('itemized-otd')) return null;
+  return {
+    fixture: true,
+    persistence: 'isolated-demo',
+    label: ONBOARDING_FIXTURE_LABEL,
+    termsVersion: TERMS_VERSION,
+    rooftopIds,
+    commitments,
+    acceptedAt: typeof record.acceptedAt === 'string' ? record.acceptedAt : '',
+    acceptor: 'demo-derek-patel',
+    legalAcceptance: false,
+    chargedCents: 0,
+    liveWrite: false,
+  };
 }
 
 function sign(payload: string, secret: string): string {

@@ -9,13 +9,25 @@
  * only the fixture rooftop.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import {
   isInboxFilter,
   itemizedOtdShareBody,
+  itemizedTotalCents,
   matchesInboxFilter,
   type ItemizedOtdLines,
 } from './format';
@@ -75,7 +87,13 @@ const rooftop: RooftopState = {
 let threads: Conversation[] = [];
 let sequence = 1;
 const replyKeys = new Map<string, Set<string>>();
-const BOOK_PATH = join(tmpdir(), 'drevvy-isolated-preview-threads.json');
+const DEFAULT_BOOK_PATH = join(tmpdir(), 'drevvy-isolated-preview-threads.json');
+
+/** Test suites set this so they do not share the preview server's book. */
+export function isolatedBookPath(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.DREVYY_FIXTURE_BOOK?.trim();
+  return override && override.length > 0 ? override : DEFAULT_BOOK_PATH;
+}
 
 type Book = {
   sequence: number;
@@ -93,29 +111,107 @@ function persist(): void {
     threads,
     replyKeys: savedKeys,
   };
-  writeFileSync(BOOK_PATH, JSON.stringify(book));
+  const path = isolatedBookPath();
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(book), { mode: 0o600 });
+  renameSync(tmp, path);
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    // The rename already replaced the book. Mode is best-effort.
+  }
 }
 
 function hydrate(): void {
   try {
-    const book = JSON.parse(readFileSync(BOOK_PATH, 'utf8')) as Book;
+    const book = JSON.parse(readFileSync(isolatedBookPath(), 'utf8')) as Book;
     if (!book || !Array.isArray(book.threads)) return;
     threads = book.threads;
     sequence = typeof book.sequence === 'number' ? book.sequence : 1;
     rooftop.removedAt = typeof book.removedAt === 'string' ? book.removedAt : null;
     replyKeys.clear();
     for (const [id, keys] of Object.entries(book.replyKeys ?? {})) {
-      if (Array.isArray(keys)) replyKeys.set(id, new Set(keys));
+      if (Array.isArray(keys)) replyKeys.set(id, new Set(keys.filter((key) => typeof key === 'string')));
     }
   } catch {
     // No book yet. This bundle keeps its empty state until the first write.
   }
 }
 
+function withBookLock<T>(fn: () => T): T {
+  const path = isolatedBookPath();
+  const lockPath = `${path}.lock`;
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const started = Date.now();
+  let fd: number | undefined;
+  for (;;) {
+    try {
+      fd = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      break;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST') throw error;
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > 5_000) unlinkSync(lockPath);
+      } catch {
+        // The holder released the lock between the stat and the unlink.
+      }
+      if (Date.now() - started > 2_000) {
+        throw new Error('isolated fixture book is busy');
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // Another waiter may already have removed a stale lock.
+    }
+  }
+}
+
+function readBook<T>(fn: () => T): T {
+  return withBookLock(() => {
+    hydrate();
+    return fn();
+  });
+}
+
+function writeBook<T>(fn: () => T): T {
+  return withBookLock(() => {
+    hydrate();
+    const value = fn();
+    persist();
+    return value;
+  });
+}
+
 export function threadFixtureEnabled(
   env: { NODE_ENV?: string; DEALER_THREAD_FIXTURE?: string } = process.env,
 ): boolean {
-  return env.NODE_ENV !== 'production' && env.DEALER_THREAD_FIXTURE === '1';
+  const nodeEnv = (env.NODE_ENV ?? '').trim().toLowerCase();
+  return nodeEnv !== '' && nodeEnv !== 'production' && env.DEALER_THREAD_FIXTURE === '1';
+}
+
+/**
+ * Live membership wins for any id that is not a fixture thread.
+ * A fixture id never falls through to the live store while the flag is on.
+ * With the flag off, a live member stays on the live store.
+ */
+export function deskWriteTarget(
+  liveMembership: boolean,
+  leadId: string,
+  fixtureEnabled: boolean,
+): 'live' | 'fixture' | 'mock' {
+  if (liveMembership && !isIsolatedThreadId(leadId)) return 'live';
+  if (fixtureEnabled && isIsolatedThreadId(leadId)) return 'fixture';
+  if (liveMembership) return 'live';
+  return 'mock';
 }
 
 export function isIsolatedThreadId(id: string): boolean {
@@ -123,16 +219,16 @@ export function isIsolatedThreadId(id: string): boolean {
 }
 
 export function resetIsolatedThreads(): void {
-  threads = [];
-  sequence = 1;
-  replyKeys.clear();
-  rooftop.removedAt = null;
-  persist();
+  writeBook(() => {
+    threads = [];
+    sequence = 1;
+    replyKeys.clear();
+    rooftop.removedAt = null;
+  });
 }
 
 export function isolatedRooftopRemoved(): boolean {
-  hydrate();
-  return rooftop.removedAt != null;
+  return readBook(() => rooftop.removedAt != null);
 }
 
 function fail(error: DealerDemoError): DealerResult<never> {
@@ -171,7 +267,6 @@ export function openIsolatedThread(input: {
   network?: 'in_network' | 'off_network';
   now?: Date;
 }): { ok: true; thread: IsolatedThreadView } | IsolatedFailure {
-  hydrate();
   if (input.network === 'off_network') {
     return {
       ok: false,
@@ -182,6 +277,15 @@ export function openIsolatedThread(input: {
       },
     };
   }
+  return writeBook(() => openIsolatedThreadLocked(input));
+}
+
+function openIsolatedThreadLocked(input: {
+  firstName?: string | null;
+  zip?: string | null;
+  financing?: boolean | null;
+  now?: Date;
+}): { ok: true; thread: IsolatedThreadView } | IsolatedFailure {
   if (rooftop.removedAt) {
     return {
       ok: false,
@@ -226,14 +330,14 @@ export function openIsolatedThread(input: {
     }],
   };
   threads.unshift(conversation);
-  persist();
   return { ok: true, thread: view(conversation) };
 }
 
 export function isolatedShopperThread(id: string): IsolatedThreadView | null {
-  hydrate();
-  const conversation = find(id);
-  return conversation ? view(conversation) : null;
+  return readBook(() => {
+    const conversation = find(id);
+    return conversation ? view(conversation) : null;
+  });
 }
 
 export function postIsolatedShopperMessage(
@@ -241,7 +345,7 @@ export function postIsolatedShopperMessage(
   body: string,
   now = new Date(),
 ): { ok: true; thread: IsolatedThreadView } | IsolatedFailure {
-  hydrate();
+  return writeBook(() => {
   const conversation = find(id);
   if (!conversation) {
     return { ok: false, status: 404, error: { code: 'not_found', message: 'That fixture thread does not exist.' } };
@@ -260,8 +364,8 @@ export function postIsolatedShopperMessage(
     body: text,
     sentAt: now.toISOString(),
   });
-  persist();
   return { ok: true, thread: view(conversation) };
+  });
 }
 
 function planStrike(conversation: Conversation, dealerReply: string) {
@@ -312,7 +416,7 @@ export function postIsolatedDealerMessage(
   now = new Date(),
   idempotencyKey?: string | null,
 ): DealerResult<ConversationDetail> {
-  hydrate();
+  return writeBook(() => {
   const conversation = find(id);
   if (!conversation) return fail('not_found');
   const text = body.trim();
@@ -339,8 +443,8 @@ export function postIsolatedDealerMessage(
     bucket.add(key);
     replyKeys.set(id, bucket);
   }
-  persist();
   return { ok: true, data: presentFromConversation(conversation, now) };
+  });
 }
 
 export function shareIsolatedItemized(
@@ -348,8 +452,11 @@ export function shareIsolatedItemized(
   lines: ItemizedOtdLines,
   note: string,
   now = new Date(),
+  writtenOtdCents: number | null = null,
 ): DealerResult<ConversationDetail> {
-  hydrate();
+  const sum = itemizedTotalCents(lines);
+  if (sum == null || (writtenOtdCents != null && writtenOtdCents !== sum)) return fail('invalid_price');
+  return writeBook(() => {
   const conversation = find(id);
   if (!conversation) return fail('not_found');
   const numbersBody = itemizedOtdShareBody(lines, note);
@@ -363,31 +470,31 @@ export function shareIsolatedItemized(
     sentAt: now.toISOString(),
   });
   conversation.statedPriceCents = lines.vehiclePriceCents;
+  conversation.writtenOtdCents = sum;
   appendStrike(conversation, strike, now);
   if (!conversation.firstReplyAt) conversation.firstReplyAt = now.toISOString();
   if (conversation.stage === 'new_request' || conversation.stage === 'in_conversation') {
     conversation.stage = 'numbers_shared';
   }
-  persist();
   return { ok: true, data: presentFromConversation(conversation, now) };
+  });
 }
 
 export function isolatedInboxItems(filter: InboxFilter, now = new Date()): InboxItem[] {
-  hydrate();
-  return threads
+  return readBook(() => threads
     .map((conversation) => toInboxItem(conversation, now))
-    .filter((item) => matchesInboxFilter(item, filter));
+    .filter((item) => matchesInboxFilter(item, filter)));
 }
 
 export function isolatedConversation(id: string, now = new Date()): ConversationDetail | null {
-  hydrate();
-  const conversation = find(id);
-  return conversation ? presentFromConversation(conversation, now) : null;
+  return readBook(() => {
+    const conversation = find(id);
+    return conversation ? presentFromConversation(conversation, now) : null;
+  });
 }
 
 export function isolatedWarningCount(id: string): number {
-  hydrate();
-  return find(id)?.otdWarningCount ?? 0;
+  return readBook(() => find(id)?.otdWarningCount ?? 0);
 }
 
 export function isolatedStrikeLimit(): number {

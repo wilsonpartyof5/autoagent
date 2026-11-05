@@ -29,7 +29,11 @@ export async function POST(
       return NextResponse.json({ error: 'invalid_price' }, { status: 400 });
     }
     const note = typeof (payload as { note?: unknown }).note === 'string' ? (payload as { note: string }).note : '';
-    const result = shareIsolatedItemized(leadId, lines, note);
+    const written = (payload as { writtenOtdCents?: unknown }).writtenOtdCents;
+    if (written != null && typeof written !== 'number') {
+      return NextResponse.json({ error: 'invalid_price' }, { status: 400 });
+    }
+    const result = shareIsolatedItemized(leadId, lines, note, new Date(), written ?? null);
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: errorStatus(result.error) });
     return NextResponse.json({
       source: 'test-owned',

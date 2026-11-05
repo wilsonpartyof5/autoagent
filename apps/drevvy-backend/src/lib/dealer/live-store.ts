@@ -16,6 +16,7 @@ import {
   isInboxFilter,
   isOpenStage,
   itemizedOtdShareBody,
+  itemizedTotalCents,
   matchesInboxFilter,
   numbersShareBody,
   type ItemizedOtdLines,
@@ -681,6 +682,11 @@ export async function shareLiveNumbers(
   if (input.writtenOtdCents != null && !validCents(input.writtenOtdCents)) return fail('invalid_price');
   const note = input.note.trim();
   if (note.length > NOTE_LIMIT) return fail('invalid_price');
+  const lineTotal = input.lines ? itemizedTotalCents(input.lines) : null;
+  if (input.lines && (lineTotal == null || (input.writtenOtdCents != null && input.writtenOtdCents !== lineTotal))) {
+    return fail('invalid_price');
+  }
+  const writtenOtdCents = lineTotal ?? input.writtenOtdCents;
   return mutateLive(session, dealId, now, async (supabase, conversation) => {
     if (!isOpenStage(conversation.stage)) return fail('conversation_closed');
     const sentAt = now.toISOString();
@@ -689,7 +695,7 @@ export async function shareLiveNumbers(
       : numbersShareBody({
         advertisedPriceCents: conversation.advertisedPriceCents,
         statedPriceCents: input.statedPriceCents,
-        writtenOtdCents: input.writtenOtdCents,
+        writtenOtdCents,
         note,
       });
     await insertThreadMessage(supabase, conversation.id, {
@@ -700,7 +706,7 @@ export async function shareLiveNumbers(
     });
     const patch: Record<string, unknown> = {
       stated_price_cents: input.statedPriceCents,
-      written_otd_cents: input.writtenOtdCents,
+      written_otd_cents: writtenOtdCents,
     };
     if (!conversation.firstReplyAt) patch.first_reply_at = sentAt;
     await patchConversation(supabase, conversation.id, patch);

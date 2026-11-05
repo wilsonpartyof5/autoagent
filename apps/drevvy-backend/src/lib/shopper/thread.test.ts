@@ -83,3 +83,51 @@ test('shopper thread round-trips on the message table and hides contact fields',
   assert.equal(read.messages.some((message) => message.author === 'salesperson' && message.body === 'Yes, it is here.'), true);
   assert.equal(Object.keys(read).some((key) => /phone|email|address|last/i.test(key)), false);
 });
+
+test('another shopper and a non-chat channel cannot use the live thread', async () => {
+  function client(channel: string) {
+    return {
+      from(table: string) {
+        if (table !== 'shopper_dealer_conversations') {
+          throw new Error(`unexpected table ${table}`);
+        }
+        return {
+          select(columns: string) {
+            assert.equal(columns.includes('email'), false);
+            assert.equal(columns.includes('phone'), false);
+            assert.equal(columns.includes('last_name'), false);
+            return {
+              eq() {
+                return {
+                  async maybeSingle() {
+                    return {
+                      data: {
+                        deal_id: DEAL,
+                        consumer_user_id: USER,
+                        shopper_first_name: 'Dana Blake',
+                        opener: 'Dana wants your best itemized out-the-door',
+                        channel,
+                        email: 'dana@example.com',
+                        phone: '555-010-1212',
+                      },
+                      error: null,
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+  }
+
+  await assert.rejects(
+    () => readShopperThread(client('in_app_message') as unknown as SupabaseClient, 'someone-else', DEAL),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'not_found',
+  );
+  await assert.rejects(
+    () => readShopperThread(client('off_network') as unknown as SupabaseClient, USER, DEAL),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'not_chat',
+  );
+});

@@ -344,6 +344,16 @@ describe('dealer desk mock', { concurrency: false }, () => {
       registrationCents: 21_000,
     };
     assert.equal(messageHasItemizedOtd(itemizedOtdShareBody(lines, '')), true);
+    const mismatched = shareNumbers('conv_rav4', {
+      statedPriceCents: lines.vehiclePriceCents,
+      writtenOtdCents: 100,
+      note: '',
+      lines,
+    }, NOW);
+    assert.equal(mismatched.ok, false);
+    if (mismatched.ok) return;
+    assert.equal(mismatched.error, 'invalid_price');
+    assert.equal(again.data.messages.some((message) => message.body.includes('Itemized total')), false);
     const shared = shareNumbers('conv_rav4', {
       statedPriceCents: lines.vehiclePriceCents,
       writtenOtdCents: null,

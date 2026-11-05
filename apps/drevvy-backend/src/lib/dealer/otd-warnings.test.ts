@@ -118,6 +118,10 @@ test('retrying the same live reply does not add another strike or touch the roof
   assert.equal(second?.warningCount, 1);
   assert.equal(stored.row.otd_warning_count, 1);
   assert.equal(stored.warnings.length, 1);
+  const later = await recordLiveDealerReply(stored.client as unknown as SupabaseClient, 'deal-retry', 'A later distinct reply.');
+  assert.equal(later?.warningCount, 2);
+  assert.equal(later?.warning?.includes('Warning 2 of 3'), true);
+  assert.equal(stored.row.otd_warning_count, 2);
   assert.equal(stored.tables.includes('dealerships'), false);
 });
 
