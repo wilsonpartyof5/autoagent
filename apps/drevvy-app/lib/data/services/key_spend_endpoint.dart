@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/car_pack.dart';
 import '../models/listing.dart';
@@ -32,9 +33,17 @@ class KeySpendResult {
       dealId = null,
       source = KeySpendSource.missing,
       message = null;
+
+  /// Live mode refused a local spend. [ok] is false.
+  const KeySpendResult.blocked(String message)
+    : ok = false,
+      balance = null,
+      dealId = null,
+      source = KeySpendSource.blocked,
+      message = message;
 }
 
-enum KeySpendSource { live, stub, missing }
+enum KeySpendSource { live, stub, missing, blocked }
 
 /// Live spend routes from backend PRs, with a missing-route fallback.
 ///
@@ -49,6 +58,14 @@ abstract class KeySpendEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
+    if (config.isLive) {
+      if (baseUrl.isEmpty) return const UnconfiguredKeySpendEndpoint();
+      return HttpKeySpendEndpoint(
+        baseUrl: baseUrl,
+        client: client,
+        strict: true,
+      );
+    }
     if (baseUrl.isEmpty) return const MissingKeySpendEndpoint();
     return HttpKeySpendEndpoint(baseUrl: baseUrl, client: client);
   }
@@ -63,6 +80,40 @@ abstract class KeySpendEndpoint {
   });
 
   Future<KeySpendResult> requestOtdNumber(Listing listing, {String? note});
+}
+
+/// Live mode with no base URL. Does not report a local key spend as done.
+class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
+  const UnconfiguredKeySpendEndpoint();
+
+  @override
+  Future<KeySpendResult> spendMarketSave(Listing listing) async {
+    return const KeySpendResult.blocked(
+      apiNotConfiguredMessage,
+    );
+  }
+
+  @override
+  Future<KeySpendResult> startConversation({
+    required Listing listing,
+    required RooftopMatch match,
+    String? templateId,
+    String? message,
+  }) async {
+    return const KeySpendResult.blocked(
+      apiNotConfiguredMessage,
+    );
+  }
+
+  @override
+  Future<KeySpendResult> requestOtdNumber(
+    Listing listing, {
+    String? note,
+  }) async {
+    return const KeySpendResult.blocked(
+      apiNotConfiguredMessage,
+    );
+  }
 }
 
 class MissingKeySpendEndpoint extends KeySpendEndpoint {
@@ -98,11 +149,13 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     http.Client? client,
     ShopperSessionStore? sessionStore,
     this.log,
+    this.strict = false,
     this.timeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client(),
        _sessionStore = sessionStore ?? ShopperSessionStore.instance;
 
   final String baseUrl;
+  final bool strict;
   final Duration timeout;
   final http.Client _client;
   final ShopperSessionStore _sessionStore;
@@ -202,6 +255,9 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     bool conversation = false,
   }) async {
     if (requiresSignIn && _sessionStore.accessToken == null) {
+      if (strict) {
+        return const KeySpendResult.blocked('Sign in to use a key.');
+      }
       return const KeySpendResult.unavailable();
     }
     try {
@@ -209,6 +265,11 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
           .post(_uri(path), headers: _headers(), body: jsonEncode(body))
           .timeout(timeout);
       if (_endpointMissing(response.statusCode)) {
+        if (strict) {
+          return KeySpendResult.blocked(
+            'Key spend route $path is not available.',
+          );
+        }
         _log(
           'Key spend route $path missing (${response.statusCode}). Using stub.',
         );
@@ -231,7 +292,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
         'surface': surface,
         'status': 0,
       });
-      if (requiresSignIn && _sessionStore.accessToken != null) {
+      if (strict || (requiresSignIn && _sessionStore.accessToken != null)) {
         return const KeySpendResult(
           ok: false,
           source: KeySpendSource.live,

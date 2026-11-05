@@ -20,9 +20,19 @@ class RooftopMatch extends Equatable {
 
   bool get isInNetwork => matched && rooftopId != null && rooftopId!.isNotEmpty;
 
-  const RooftopMatch.offNetwork({this.vdpUrl, this.source = RooftopMatchSource.stub})
+  const RooftopMatch.offNetwork({
+    this.vdpUrl,
+    this.source = RooftopMatchSource.stub,
+  }) : matched = false,
+       rooftopId = null;
+
+  /// The live call failed or the build has no API origin. Not an in-network
+  /// guess and not an off-network confirmation.
+  const RooftopMatch.unavailable()
     : matched = false,
-      rooftopId = null;
+      rooftopId = null,
+      vdpUrl = null,
+      source = RooftopMatchSource.unavailable;
 
   RooftopMatch copyWith({
     bool? matched,
@@ -42,11 +52,7 @@ class RooftopMatch extends Equatable {
     final payload = json['data'] is Map
         ? Map<String, dynamic>.from(json['data'] as Map)
         : json;
-    final rooftopId = _string(payload, const [
-      'rooftopId',
-      'rooftop_id',
-      'id',
-    ]);
+    final rooftopId = _string(payload, const ['rooftopId', 'rooftop_id', 'id']);
     final matched =
         payload['matched'] == true ||
         payload['inNetwork'] == true ||
@@ -55,7 +61,12 @@ class RooftopMatch extends Equatable {
     return RooftopMatch(
       matched: matched,
       rooftopId: rooftopId,
-      vdpUrl: _string(payload, const ['vdpUrl', 'vdp_url', 'listingUrl', 'url']),
+      vdpUrl: _string(payload, const [
+        'vdpUrl',
+        'vdp_url',
+        'listingUrl',
+        'url',
+      ]),
       source: RooftopMatchSource.live,
     );
   }
@@ -72,4 +83,4 @@ class RooftopMatch extends Equatable {
   List<Object?> get props => [matched, rooftopId, vdpUrl, source];
 }
 
-enum RooftopMatchSource { live, stub }
+enum RooftopMatchSource { live, stub, unavailable }
