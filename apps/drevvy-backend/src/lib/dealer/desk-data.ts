@@ -1,5 +1,11 @@
 import { isOpenStage } from './format';
 import {
+  isolatedConversation,
+  isolatedInboxItems,
+  isIsolatedThreadId,
+  threadFixtureEnabled,
+} from './isolated-thread';
+import {
   listLiveInbox,
   liveAnalytics,
   liveBilling,
@@ -38,10 +44,11 @@ export async function loadDeskInbox(session: DealerSession | null): Promise<Desk
       return { source: 'live', items, preview };
     }
   }
+  const fixtures = threadFixtureEnabled() ? isolatedInboxItems('all') : [];
   return {
     source: 'mock',
-    items: allInboxItems(),
-    preview: presentConversation('conv_tucson'),
+    items: [...fixtures, ...allInboxItems()],
+    preview: fixtures[0] ? isolatedConversation(fixtures[0].id) : presentConversation('conv_tucson'),
   };
 }
 
@@ -55,6 +62,13 @@ export async function loadDeskConversation(
       listLiveInbox(session, 'all', null),
     ]);
     return { source: 'live', items: items ?? [], conversation };
+  }
+  if (threadFixtureEnabled() && isIsolatedThreadId(leadId)) {
+    return {
+      source: 'mock',
+      items: [...isolatedInboxItems('all'), ...allInboxItems()],
+      conversation: isolatedConversation(leadId),
+    };
   }
   return {
     source: 'mock',

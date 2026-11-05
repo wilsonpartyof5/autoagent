@@ -3,6 +3,13 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  isIsolatedThreadId,
+  isolatedInboxItems,
+  postIsolatedDealerMessage,
+  shareIsolatedItemized,
+  threadFixtureEnabled,
+} from '@/lib/dealer/isolated-thread';
+import {
   listLiveInbox,
   markLiveSold,
   postLiveMessage,
@@ -15,6 +22,7 @@ import {
   shareNumbers,
 } from '@/lib/dealer/mock';
 import { isLiveDealerSession, requireDealerPageSession } from '@/lib/dealer/session';
+import type { ItemizedOtdLines } from '@/lib/dealer/format';
 import type {
   ConversationDetail,
   DealerDemoError,
@@ -64,6 +72,11 @@ export async function postConversationMessage(
   body: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
+  if (threadFixtureEnabled() && isIsolatedThreadId(leadId)) {
+    const result = postIsolatedDealerMessage(leadId, body);
+    if (!result.ok) return result;
+    return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
+  }
   if (isLiveDealerSession(session)) {
     const result = await postLiveMessage(session, leadId, body);
     if (!result.ok) return result;
@@ -80,9 +93,15 @@ export async function shareConversationNumbers(
     statedPriceCents: number;
     writtenOtdCents: number | null;
     note: string;
+    lines?: ItemizedOtdLines | null;
   },
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
+  if (threadFixtureEnabled() && isIsolatedThreadId(leadId) && input.lines) {
+    const result = shareIsolatedItemized(leadId, input.lines, input.note);
+    if (!result.ok) return result;
+    return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
+  }
   if (isLiveDealerSession(session)) {
     const result = await shareLiveNumbers(session, leadId, input);
     if (!result.ok) return result;

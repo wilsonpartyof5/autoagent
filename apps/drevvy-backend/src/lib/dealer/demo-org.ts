@@ -121,8 +121,8 @@ export const TERMS_BOXES = [
   },
   {
     id: 'close-fee',
-    title: '$300 close fee when you mark sold to this shopper',
-    body: 'Day-to-day use is free.',
+    title: '$300 close fee only when the shopper confirms the purchase',
+    body: 'Day-to-day use is free. Marking sold on the desk does not charge this fee. Nothing is charged during onboarding.',
   },
 ] as const;
 

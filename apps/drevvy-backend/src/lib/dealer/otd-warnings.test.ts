@@ -9,6 +9,7 @@ import {
   messageHasItemizedOtd,
   otdWarningMessage,
   recordLiveDealerReply,
+  resetOtdStrikeMemory,
 } from './otd-warnings';
 
 const OPENER = 'Dana wants your best itemized out-the-door';
@@ -92,6 +93,7 @@ test('an itemized reply does not warn, and a demo opener is not an ask', () => {
 });
 
 test('a live reply persists the third warning and recommends removal without deleting the store', async () => {
+  resetOtdStrikeMemory();
   const stored = memoryRow();
   const result = await recordLiveDealerReply(stored.client as unknown as SupabaseClient, 'deal-1', 'It is here. Come on in.');
   assert.equal(result?.warningCount, 3);
@@ -101,6 +103,22 @@ test('a live reply persists the third warning and recommends removal without del
   assert.equal(stored.warnings[0]?.warning_number, 3);
   assert.equal(stored.warnings[0]?.removal_notice, OTD_REMOVAL_NOTICE);
   assert.equal(stored.deleted, false);
+  assert.equal(stored.tables.includes('dealerships'), false);
+});
+
+test('retrying the same live reply does not add another strike or touch the rooftop', async () => {
+  resetOtdStrikeMemory();
+  const stored = memoryRow();
+  stored.row.otd_warning_count = 0;
+  stored.row.come_in_count = 0;
+  const first = await recordLiveDealerReply(stored.client as unknown as SupabaseClient, 'deal-retry', 'Yes, it is still here.');
+  const second = await recordLiveDealerReply(stored.client as unknown as SupabaseClient, 'deal-retry', 'Yes, it is still here.');
+  assert.equal(first?.warningCount, 1);
+  assert.equal(second?.warning, null);
+  assert.equal(second?.warningCount, 1);
+  assert.equal(stored.row.otd_warning_count, 1);
+  assert.equal(stored.warnings.length, 1);
+  assert.equal(stored.tables.includes('dealerships'), false);
 });
 
 function memoryRow() {
@@ -114,8 +132,11 @@ function memoryRow() {
     come_in_admin_flag: false,
   };
   const warnings: Array<Record<string, unknown>> = [];
+  const tables: string[] = [];
   const client = {
     from(table: string) {
+      tables.push(table);
+      if (table === 'dealerships') throw new Error('live removal must not change dealerships');
       return {
         select() {
           return {
@@ -145,5 +166,5 @@ function memoryRow() {
       };
     },
   };
-  return { client, row, warnings, deleted: false };
+  return { client, row, warnings, tables, deleted: false };
 }

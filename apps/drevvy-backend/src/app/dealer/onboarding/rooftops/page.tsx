@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { saveDemoRooftops } from '@/app/dealer/demo-actions';
 import { OnboardingFrame, OnboardingNav } from '@/components/dealer/onboarding-frame';
 import { DEMO_ROOFTOPS } from '@/lib/dealer/demo-org';
 
@@ -58,12 +59,20 @@ export default function OnboardingRooftopsPage() {
             </div>
           </label>
         ))}
-        <p className="mut">DMS connection optional — add later in Settings.</p>
-        <OnboardingNav
-          backHref="/dealer/onboarding/org"
-          nextHref="/dealer/onboarding/team"
-          nextLabel="Continue"
-        />
+        <p className="mut">DMS connection optional — add later in Settings. TEST FIXTURE · these rooftops are not written to a live dealer account.</p>
+        <form action={saveDemoRooftops}>
+          <input type="hidden" name="rooftop" value="lakeside" />
+          {DEMO_ROOFTOPS.filter(item => item.id !== 'lakeside').map(rooftop => (
+            selected.includes(rooftop.id) ? (
+              <input key={`save-${rooftop.id}`} type="hidden" name="rooftop" value={rooftop.id} />
+            ) : null
+          ))}
+          <OnboardingNav
+            backHref="/dealer/onboarding/org"
+            nextLabel="Continue"
+            submit
+          />
+        </form>
       </div>
     </OnboardingFrame>
   );

@@ -41,6 +41,10 @@ export function ConversationPane({
 }) {
   const [draft, setDraft] = useState('');
   const [stated, setStated] = useState('');
+  const [docFee, setDocFee] = useState('');
+  const [tax, setTax] = useState('');
+  const [titleFee, setTitleFee] = useState('');
+  const [registration, setRegistration] = useState('');
   const [otd, setOtd] = useState('');
   const [note, setNote] = useState('');
   const [showNumbers, setShowNumbers] = useState(false);
@@ -77,11 +81,42 @@ export function ConversationPane({
       setError(ERROR_COPY.invalid_price);
       return;
     }
+    const anyLine = [docFee, tax, titleFee, registration].some(value => value.trim().length > 0);
+    let lines: {
+      vehiclePriceCents: number;
+      docFeeCents: number;
+      taxCents: number;
+      titleCents: number;
+      registrationCents: number;
+    } | null = null;
+    if (anyLine) {
+      const docFeeCents = dollarsToCents(docFee);
+      const taxCents = dollarsToCents(tax);
+      const titleCents = dollarsToCents(titleFee);
+      const registrationCents = dollarsToCents(registration);
+      if (
+        docFeeCents == null
+        || taxCents == null
+        || titleCents == null
+        || registrationCents == null
+      ) {
+        setError('Enter vehicle price, doc fee, tax, title, and registration.');
+        return;
+      }
+      lines = {
+        vehiclePriceCents: statedPriceCents,
+        docFeeCents,
+        taxCents,
+        titleCents,
+        registrationCents,
+      };
+    }
     setPending(true);
     const result = await shareConversationNumbers(conversation.id, {
       statedPriceCents,
       writtenOtdCents: written,
       note,
+      lines,
     });
     setPending(false);
     if (!result.ok) {
@@ -89,6 +124,10 @@ export function ConversationPane({
       return;
     }
     setStated('');
+    setDocFee('');
+    setTax('');
+    setTitleFee('');
+    setRegistration('');
     setOtd('');
     setNote('');
     setShowNumbers(false);
@@ -136,7 +175,7 @@ export function ConversationPane({
             }}
             className="btn2"
           >
-            Mark sold · $300
+            Mark sold
           </button>
         </div>
       </header>
@@ -149,9 +188,11 @@ export function ConversationPane({
       <div className="note">
         Message-only. Shopper first name is shown in-dashboard; contact details
         stay private. Live in-network chats open with the itemized out-the-door
-        ask. Shopper chips are suggestions the shopper taps. A missing itemized
-        price warns the salesperson on this thread. This desk does not text,
+        ask. Shopper chips are suggestions the shopper taps. Nothing is sent
+        until the shopper taps. A missing itemized price warns the salesperson
+        and the internet manager on this thread. This desk does not text,
         email, or call.
+        {conversation.fixtureLabel ? ` ${conversation.fixtureLabel}.` : ''}
       </div>
 
       <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto">
@@ -229,7 +270,7 @@ export function ConversationPane({
               Advertised {formatMoney(conversation.advertisedPriceCents)}
             </p>
             <label className="lab" htmlFor="stated-price">
-              Price you state
+              Vehicle price
             </label>
             <input
               id="stated-price"
@@ -238,6 +279,50 @@ export function ConversationPane({
               onChange={event => setStated(event.target.value)}
               inputMode="decimal"
               placeholder="35400"
+            />
+            <label className="lab" htmlFor="doc-fee">
+              Doc fee
+            </label>
+            <input
+              id="doc-fee"
+              className="inp"
+              value={docFee}
+              onChange={event => setDocFee(event.target.value)}
+              inputMode="decimal"
+              placeholder="499"
+            />
+            <label className="lab" htmlFor="tax-line">
+              Tax
+            </label>
+            <input
+              id="tax-line"
+              className="inp"
+              value={tax}
+              onChange={event => setTax(event.target.value)}
+              inputMode="decimal"
+              placeholder="1800"
+            />
+            <label className="lab" htmlFor="title-line">
+              Title
+            </label>
+            <input
+              id="title-line"
+              className="inp"
+              value={titleFee}
+              onChange={event => setTitleFee(event.target.value)}
+              inputMode="decimal"
+              placeholder="150"
+            />
+            <label className="lab" htmlFor="registration-line">
+              Registration
+            </label>
+            <input
+              id="registration-line"
+              className="inp"
+              value={registration}
+              onChange={event => setRegistration(event.target.value)}
+              inputMode="decimal"
+              placeholder="210"
             />
             <label className="lab" htmlFor="otd-price">
               Written out-the-door total (optional)

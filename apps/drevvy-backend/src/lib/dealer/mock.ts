@@ -15,8 +15,11 @@ import {
   CLOSE_FEE_COPY,
   isInboxFilter,
   isOpenStage,
+  itemizedOtdShareBody,
   matchesInboxFilter,
   numbersShareBody,
+  readItemizedLines,
+  type ItemizedOtdLines,
   validCents,
   vehicleTitle,
   RANGE_LABEL,
@@ -24,6 +27,7 @@ import {
 import { presentFromConversation, toInboxItem } from './present';
 import { inNetworkOpener, shopperFirstNameOnly } from './rooftop-match';
 import { evaluateOtdWithhold } from './otd-warnings';
+import { isDuplicateDealerReply } from './reply-guard';
 import type {
   AnalyticsRange,
   AnalyticsSummary,
@@ -42,6 +46,7 @@ const NOTE_LIMIT = 280;
 let conversations: Conversation[] | null = null;
 let closeCharges: CloseCharge[] | null = null;
 let sequence = 1;
+const replyKeys = new Map<string, Set<string>>();
 
 function at(now: Date, minutes: number): string {
   return new Date(now.getTime() + minutes * 60_000).toISOString();
@@ -329,6 +334,7 @@ export function resetDealerDemo(now = new Date()): void {
   conversations = buildSeed(now);
   closeCharges = seedCharges(now);
   sequence = 1;
+  replyKeys.clear();
 }
 
 function charges(now = new Date()): CloseCharge[] {
@@ -440,13 +446,18 @@ function appendOtdStrike(
 export function postMessage(
   id: string,
   body: string,
-  now = new Date()
+  now = new Date(),
+  options?: { idempotencyKey?: string | null },
 ): DealerResult<ConversationDetail> {
   const conversation = find(id);
   if (!conversation) return fail('not_found');
   const text = body.trim();
   if (!text) return fail('empty_message');
   if (text.length > MESSAGE_LIMIT) return fail('message_too_long');
+  const idempotencyKey = options?.idempotencyKey;
+  if (isDuplicateDealerReply(conversation.messages, text, idempotencyKey, replyKeys.get(id))) {
+    return { ok: true, data: presentConversation(id, now)! };
+  }
 
   const strike = planOtdStrike(conversation, text);
   conversation.messages.push({
@@ -461,6 +472,12 @@ export function postMessage(
   if (conversation.stage === 'new_request') {
     conversation.stage = 'in_conversation';
   }
+  const key = idempotencyKey?.trim();
+  if (key) {
+    const bucket = replyKeys.get(id) ?? new Set<string>();
+    bucket.add(key);
+    replyKeys.set(id, bucket);
+  }
   return { ok: true, data: presentConversation(id, now)! };
 }
 
@@ -470,6 +487,7 @@ export function shareNumbers(
     statedPriceCents: number;
     writtenOtdCents: number | null;
     note: string;
+    lines?: ItemizedOtdLines | null;
   },
   now = new Date()
 ): DealerResult<ConversationDetail> {
@@ -485,12 +503,14 @@ export function shareNumbers(
 
   conversation.statedPriceCents = input.statedPriceCents;
   conversation.writtenOtdCents = input.writtenOtdCents;
-  const numbersBody = numbersShareBody({
-    advertisedPriceCents: conversation.advertisedPriceCents,
-    statedPriceCents: input.statedPriceCents,
-    writtenOtdCents: input.writtenOtdCents,
-    note,
-  });
+  const numbersBody = input.lines
+    ? itemizedOtdShareBody(input.lines, note)
+    : numbersShareBody({
+      advertisedPriceCents: conversation.advertisedPriceCents,
+      statedPriceCents: input.statedPriceCents,
+      writtenOtdCents: input.writtenOtdCents,
+      note,
+    });
   const strike = planOtdStrike(conversation, numbersBody);
   conversation.messages.push({
     id: `local-${sequence++}`,
@@ -609,7 +629,13 @@ export function postMessageHttp(
     typeof (payload as { body: unknown }).body === 'string'
       ? (payload as { body: string }).body
       : '';
-  const result = postMessage(id, text, now);
+  const idempotencyKey =
+    payload &&
+    typeof payload === 'object' &&
+    typeof (payload as { idempotencyKey?: unknown }).idempotencyKey === 'string'
+      ? (payload as { idempotencyKey: string }).idempotencyKey
+      : null;
+  const result = postMessage(id, text, now, { idempotencyKey });
   if (!result.ok) {
     return { status: errorStatus(result.error), body: { error: result.error } };
   }
@@ -637,6 +663,8 @@ export function shareNumbersHttp(
   if (record.note != null && typeof record.note !== 'string') {
     return { status: 400, body: { error: 'invalid_price' } };
   }
+  const lines = readItemizedLines(record);
+  if (lines === 'invalid') return { status: 400, body: { error: 'invalid_price' } };
   const result = shareNumbers(
     id,
     {
@@ -646,6 +674,7 @@ export function shareNumbersHttp(
           ? record.writtenOtdCents
           : null,
       note: typeof record.note === 'string' ? record.note : '',
+      lines,
     },
     now
   );
