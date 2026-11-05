@@ -33,6 +33,7 @@ export type CommitmentQuery = {
         };
       };
     };
+    insert(row: Record<string, unknown>): PromiseLike<{ error: { message: string } | null }>;
   };
 };
 
@@ -79,6 +80,45 @@ function asRecorded(row: CommitmentRow): RecordedCommitment | null {
     commitments,
     recordedAt: typeof row.recorded_at === 'string' ? row.recorded_at : '',
   };
+}
+
+/**
+ * Insert the two required commitments once. A second call for the same user
+ * and rooftop returns the existing row and does not change recorded_at.
+ * This does not insert auth users, memberships, or dealerships.
+ */
+export async function recordSupabaseCommitment(
+  client: CommitmentQuery,
+  input: {
+    userId: string;
+    rooftopId: string;
+    commitments: readonly string[];
+    recordedAt?: string;
+  },
+): Promise<
+  | { ok: true; row: RecordedCommitment; created: boolean }
+  | { ok: false; code: 'unavailable' | 'rejected' }
+> {
+  if (!REQUIRED_ONBOARDING_COMMITMENTS.every((required) => input.commitments.includes(required))) {
+    return { ok: false, code: 'rejected' };
+  }
+  const existing = await readSupabaseCommitment(client, input.userId, input.rooftopId);
+  if (existing.status === 'unavailable') return { ok: false, code: 'unavailable' };
+  if (existing.status === 'recorded') return { ok: true, row: existing.row, created: false };
+
+  const inserted = await client.from(COMMITMENT_TABLE).insert({
+    user_id: input.userId,
+    dealership_id: input.rooftopId,
+    terms_version: ACTIVATION_TERMS_VERSION,
+    commitments: [...REQUIRED_ONBOARDING_COMMITMENTS],
+    recorded_at: input.recordedAt ?? new Date().toISOString(),
+  });
+  if (inserted.error && !/duplicate key|unique constraint/i.test(inserted.error.message)) {
+    return { ok: false, code: 'unavailable' };
+  }
+  const again = await readSupabaseCommitment(client, input.userId, input.rooftopId);
+  if (again.status !== 'recorded') return { ok: false, code: 'unavailable' };
+  return { ok: true, row: again.row, created: !inserted.error };
 }
 
 /** Select-only. A missing draft table is unavailable, which cannot activate a rooftop. */

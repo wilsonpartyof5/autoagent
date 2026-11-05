@@ -16,7 +16,9 @@ import {
   createFixtureCommitmentStore,
   membershipsForUser,
   readSupabaseCommitment,
+  recordSupabaseCommitment,
 } from './activation-store';
+import { localDealerDatabaseEnabled } from '@/lib/supabase/admin';
 import { readDemoAcceptance, sealDemoDealerSession } from './demo-session';
 import { recordOnboardingFixture, resetOnboardingFixtures } from './onboarding-acceptance';
 
@@ -181,6 +183,10 @@ test('the fixture commitment store is memory and the supabase reader does not wr
             },
           };
         },
+        async insert() {
+          inserts += 1;
+          return { error: null };
+        },
       };
     },
   }, USER, ROOF);
@@ -218,6 +224,10 @@ test('the fixture commitment store is memory and the supabase reader does not wr
             },
           };
         },
+        async insert() {
+          inserts += 1;
+          return { error: null };
+        },
       };
     },
   }, USER, ROOF);
@@ -251,7 +261,66 @@ test('shopper activation identity keeps first name and optional ZIP only', () =>
   assert.equal(JSON.stringify(financed).includes('@'), false);
 });
 
-test('the commitment draft stays out of migrations and off the live routes', () => {
+test('recording the same commitment does not write a second row', async () => {
+  const rows: Record<string, unknown>[] = [];
+  const client = {
+    from(table: string) {
+      assert.equal(table, COMMITMENT_TABLE);
+      return {
+        select() {
+          return {
+            eq(_column: string, value: string) {
+              return {
+                eq(column2: string, value2: string) {
+                  assert.equal(column2, 'dealership_id');
+                  return {
+                    async maybeSingle() {
+                      const found = rows.find((row) => row.user_id === value && row.dealership_id === value2) ?? null;
+                      return { data: found, error: null };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+        async insert(row: Record<string, unknown>) {
+          if (rows.some((item) => item.user_id === row.user_id && item.dealership_id === row.dealership_id)) {
+            return { error: { message: 'duplicate key value violates unique constraint' } };
+          }
+          rows.push(row);
+          return { error: null };
+        },
+      };
+    },
+  };
+  const first = await recordSupabaseCommitment(client, {
+    userId: USER,
+    rooftopId: ROOF,
+    commitments: ['message-only', 'itemized-otd'],
+    recordedAt: '2026-11-05T22:00:00.000Z',
+  });
+  const second = await recordSupabaseCommitment(client, {
+    userId: USER,
+    rooftopId: ROOF,
+    commitments: ['itemized-otd', 'message-only'],
+    recordedAt: '2026-11-05T23:00:00.000Z',
+  });
+  assert.equal(first.ok && first.created, true);
+  assert.equal(second.ok && second.created, false);
+  if (!first.ok || !second.ok) return;
+  assert.equal(second.row.recordedAt, first.row.recordedAt);
+  assert.equal(rows.length, 1);
+  const partial = await recordSupabaseCommitment(client, {
+    userId: USER,
+    rooftopId: ROOF,
+    commitments: ['message-only'],
+  });
+  assert.equal(partial.ok, false);
+  assert.equal(rows.length, 1);
+});
+
+test('the commitment draft stays out of migrations and the desk gate is wired', () => {
   const root = join(HERE, '../../../../..');
   const draft = readFileSync(join(root, 'supabase/drafts/dealer_onboarding_commitments.sql'), 'utf8');
   assert.match(draft, /NOT APPLIED/);
@@ -259,6 +328,15 @@ test('the commitment draft stays out of migrations and off the live routes', () 
   assert.match(draft, /itemized-otd/);
   assert.equal(/grant [^;]*insert[^;]*to authenticated/i.test(draft), false);
   assert.match(draft, /revoke all on public.dealer_onboarding_commitments from public, anon, authenticated/);
+
+  const deskApi = readFileSync(join(HERE, 'desk-api.ts'), 'utf8');
+  assert.match(deskApi, /gateLiveDealerSession/);
+  const gate = readFileSync(join(HERE, 'activation-gate.ts'), 'utf8');
+  assert.match(gate, /evaluateDealerActivation/);
+  const commitmentRoute = readFileSync(join(HERE, '../../app/api/dealer/v1/onboarding/commitments/route.ts'), 'utf8');
+  assert.match(commitmentRoute, /acceptDealerCommitments/);
+  assert.match(commitmentRoute, /requireDealerApi/);
+  assert.equal(commitmentRoute.includes('openDemoDealerSession'), false);
 
   const routes = [
     '../../app/api/dealer/v1/session/route.ts',
@@ -268,11 +346,14 @@ test('the commitment draft stays out of migrations and off the live routes', () 
   ];
   for (const file of routes) {
     const source = readFileSync(join(HERE, file), 'utf8');
-    assert.equal(source.includes('evaluateDealerActivation'), false, file);
-    assert.equal(source.includes('dealer_onboarding_commitments'), false, file);
+    assert.match(source, /withDealerApi/, file);
+    assert.equal(source.includes('openDemoDealerSession'), false, file);
   }
 
   const adapter = readFileSync(join(HERE, 'activation.ts'), 'utf8');
   assert.equal(adapter.includes('drevvy-isolated-preview'), false);
   assert.equal(adapter.includes('fixconv_'), false);
+  assert.equal(localDealerDatabaseEnabled({ NODE_ENV: 'production', DREVYY_LOCAL_PG: '1' }), false);
+  assert.equal(localDealerDatabaseEnabled({ NODE_ENV: '', DREVYY_LOCAL_PG: '1' }), false);
+  assert.equal(localDealerDatabaseEnabled({ NODE_ENV: 'test', DREVYY_LOCAL_PG: '1' }), true);
 });

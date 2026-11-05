@@ -49,6 +49,21 @@ export type ActivationDenial =
   | 'commitments_missing'
   | 'commitments_unavailable';
 
+const ACTIVATION_DENIAL_MESSAGE: Record<ActivationDenial, string> = {
+  unauthenticated: 'Sign in is required.',
+  email_mismatch: 'That work email does not match this sign-in.',
+  unknown_membership: 'This work email is not on that rooftop.',
+  membership_mismatch: 'That membership belongs to a different user.',
+  rooftop_not_onboarded: 'That rooftop is not onboarded.',
+  demo_cookie_rejected: 'A demo cookie does not record onboarding.',
+  commitments_missing: 'Record message-only and itemized out-the-door before opening the desk.',
+  commitments_unavailable: 'Onboarding commitments could not be read.',
+};
+
+export function activationDenialMessage(code: ActivationDenial): string {
+  return ACTIVATION_DENIAL_MESSAGE[code];
+}
+
 export type ActivationDecision =
   | {
     ok: true;

@@ -1,4 +1,5 @@
-import { isOpenStage } from './format';
+import { gateLiveDealerSession } from './activation-gate';
+import { CLOSE_FEE_CENTS, CLOSE_FEE_COPY, isOpenStage, RANGE_LABEL } from './format';
 import {
   isolatedConversation,
   isolatedInboxItems,
@@ -32,8 +33,13 @@ export type DeskInboxPayload = {
   preview: ConversationDetail | null;
 };
 
+async function liveActivated(session: DealerSession): Promise<boolean> {
+  return (await gateLiveDealerSession(session)).ok;
+}
+
 export async function loadDeskInbox(session: DealerSession | null): Promise<DeskInboxPayload> {
   if (isLiveDealerSession(session)) {
+    if (!await liveActivated(session)) return { source: 'live', items: [], preview: null };
     const items = await listLiveInbox(session, 'all', null);
     if (items) {
       const previewId = items.find((item) => item.stage === 'numbers_shared')?.id
@@ -57,6 +63,7 @@ export async function loadDeskConversation(
   leadId: string,
 ): Promise<{ source: 'live' | 'mock'; items: InboxItem[]; conversation: ConversationDetail | null }> {
   if (isLiveDealerSession(session)) {
+    if (!await liveActivated(session)) return { source: 'live', items: [], conversation: null };
     const [conversation, items] = await Promise.all([
       presentLiveConversation(session, leadId),
       listLiveInbox(session, 'all', null),
@@ -80,6 +87,18 @@ export async function loadDeskConversation(
 export async function loadDeskAnalytics(session: DealerSession | null): Promise<AnalyticsSummary[]> {
   const ranges: AnalyticsRange[] = ['7d', '30d', '90d'];
   if (isLiveDealerSession(session)) {
+    if (!await liveActivated(session)) {
+      return ranges.map((range) => ({
+        source: 'live' as const,
+        range,
+        rangeLabel: RANGE_LABEL[range],
+        replyRate: 0,
+        medianFirstReplyMinutes: 0,
+        conversationsStarted: 0,
+        conversationsClosed: 0,
+        numbersShared: 0,
+      }));
+    }
     const summaries = await Promise.all(ranges.map((range) => liveAnalytics(session, range, null)));
     if (summaries.every((summary) => summary != null)) return summaries as AnalyticsSummary[];
   }
@@ -88,6 +107,17 @@ export async function loadDeskAnalytics(session: DealerSession | null): Promise<
 
 export async function loadDeskBilling(session: DealerSession | null): Promise<BillingSnapshot> {
   if (isLiveDealerSession(session)) {
+    if (!await liveActivated(session)) {
+      return {
+        source: 'live',
+        role: session.role,
+        dayToDay: 'free',
+        closeFeeCents: CLOSE_FEE_CENTS,
+        closeFeeLabel: CLOSE_FEE_COPY,
+        paymentMethod: { brand: 'Visa', last4: '4242', placeholder: true },
+        charges: [],
+      };
+    }
     const live = await liveBilling(session);
     if (live) return live;
   }

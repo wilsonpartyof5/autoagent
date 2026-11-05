@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+import { localDealerDatabaseEnabled, readLocalAuthUser } from '@/lib/supabase/admin';
+
 /**
  * Shopper session gate for deal routes.
  * Matches the Sign in with Apple check: a Supabase user JWT, never the shared
@@ -46,6 +48,12 @@ export async function requireShopperAuth(request: Request): Promise<ShopperSessi
     process.env.INVENTORY_SEARCH_API_KEY,
   );
   if (sharedKeyError) throw sharedKeyError;
+
+  if (localDealerDatabaseEnabled()) {
+    const local = await readLocalAuthUser(request.headers.get('authorization'));
+    if (!local) throw new ShopperAuthError('Sign in is required.', 401, 'unauthorized');
+    return { userId: local.id };
+  }
 
   const token = parseBearerToken(request.headers.get('authorization'));
   if (!token) {

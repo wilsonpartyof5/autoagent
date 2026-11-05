@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { gateLiveDealerSession } from './activation-gate';
 import {
   DealerAuthError,
   dealerAuthErrorResponse,
@@ -15,6 +16,10 @@ export async function withDealerApi(
 ): Promise<NextResponse> {
   try {
     const session = await requireDealerApi(request);
+    const activation = await gateLiveDealerSession(session, request);
+    if (!activation.ok) {
+      throw new DealerAuthError(activation.message, 403, activation.code);
+    }
     return await live(session);
   } catch (error) {
     if (error instanceof DealerAuthError) {

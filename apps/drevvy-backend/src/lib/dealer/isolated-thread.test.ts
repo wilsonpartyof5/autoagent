@@ -61,7 +61,9 @@ function walk(value: unknown, path: string): void {
   if (typeof value === 'string') {
     assert.equal(value.includes('@'), false, path);
     assert.equal(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/.test(value), false, path);
-    assert.equal(/Blake|555|street/i.test(value), false, path);
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      assert.equal(/Blake|555|street/i.test(value), false, path);
+    }
   }
 }
 

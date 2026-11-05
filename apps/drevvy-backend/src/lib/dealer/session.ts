@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 
-import { createAdminClient } from '@/lib/supabase/admin';
+import { appAdminClient, localDealerDatabaseEnabled, readLocalAuthUser } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import {
   DEMO_DEALER_COOKIE,
@@ -99,7 +99,7 @@ function parseBearerToken(authorization: string | null): string | null {
 export async function loadDealerMemberships(
   userId: string,
 ): Promise<DealerRooftop[]> {
-  const admin = createAdminClient();
+  const admin = appAdminClient();
   const memberships = await admin
     .from('user_dealerships')
     .select('dealership_id, role')
@@ -186,6 +186,10 @@ export function pageSessionDecision(
 }
 
 async function userFromRequest(request?: Request): Promise<User | null> {
+  if (localDealerDatabaseEnabled()) {
+    const local = await readLocalAuthUser(request?.headers.get('authorization') ?? null);
+    return local ? { id: local.id, email: local.email } as User : null;
+  }
   const token = request ? parseBearerToken(request.headers.get('authorization')) : null;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -209,7 +213,7 @@ export async function loadDealerSession(request?: Request): Promise<DealerSessio
   try {
     const user = await userFromRequest(request);
     if (!user) return null;
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!localDealerDatabaseEnabled() && (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY)) {
       throw new DealerAuthError('Dealer desk is not configured.', 503, 'service_unavailable');
     }
     const rooftops = await loadDealerMemberships(user.id);

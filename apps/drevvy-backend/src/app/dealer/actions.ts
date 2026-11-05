@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { gateLiveDealerSession } from '@/lib/dealer/activation-gate';
 import {
   deskWriteTarget,
   isolatedInboxItems,
@@ -46,6 +47,10 @@ function publish(
   return { ok: true, conversation, items };
 }
 
+async function liveWriteAllowed(session: NonNullable<Awaited<ReturnType<typeof requireDealerPageSession>>>): Promise<boolean> {
+  return (await gateLiveDealerSession(session)).ok;
+}
+
 async function liveItems(leadId: string, conversation: ConversationDetail): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
   if (!isLiveDealerSession(session)) return publish(leadId, conversation, allInboxItems());
@@ -59,6 +64,7 @@ export async function markConversationSold(
   const session = await requireDealerPageSession();
   const fixtureOn = threadFixtureEnabled();
   if (isLiveDealerSession(session) && deskWriteTarget(true, leadId, fixtureOn) === 'live') {
+    if (!await liveWriteAllowed(session)) return { ok: false, error: 'not_found' };
     const result = await markLiveSold(session, leadId);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -80,6 +86,7 @@ export async function postConversationMessage(
     return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
   }
   if (target === 'live' && isLiveDealerSession(session)) {
+    if (!await liveWriteAllowed(session)) return { ok: false, error: 'not_found' };
     const result = await postLiveMessage(session, leadId, body);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -107,6 +114,7 @@ export async function shareConversationNumbers(
     return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
   }
   if (target === 'live' && isLiveDealerSession(session)) {
+    if (!await liveWriteAllowed(session)) return { ok: false, error: 'not_found' };
     const result = await shareLiveNumbers(session, leadId, input);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
