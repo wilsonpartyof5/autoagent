@@ -9,15 +9,48 @@ plugins {
     // google-services.json, apply id("com.google.gms.google-services").
 }
 
-// Play upload key. On a release machine, create gitignored android/key.properties
-// with storePassword, keyPassword, keyAlias, and storeFile (absolute path to the
-// upload keystore). Do not commit that file or the keystore.
+// Play upload key. Release builds (bundleRelease / assembleRelease) require
+// gitignored android/key.properties. Debug and profile builds do not.
 // See https://flutter.dev/to/reference-keystore
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-val hasReleaseKeystore = keystorePropertiesFile.exists()
-if (hasReleaseKeystore) {
+if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
+val releaseSigningPropertyNames = listOf("storePassword", "keyPassword", "keyAlias", "storeFile")
+
+fun collectReleaseSigningProblems(): List<String> {
+    if (!keystorePropertiesFile.exists()) {
+        return listOf("android/key.properties is missing")
+    }
+    val problems = mutableListOf<String>()
+    for (name in releaseSigningPropertyNames) {
+        if (keystoreProperties.getProperty(name).isNullOrBlank()) {
+            problems += "android/key.properties is missing $name"
+        }
+    }
+    val storePath = keystoreProperties.getProperty("storeFile")
+    if (!storePath.isNullOrBlank()) {
+        val store = file(storePath)
+        if (!store.isFile) {
+            problems += "upload keystore not found at ${store.absolutePath}"
+        }
+    }
+    return problems
+}
+
+val releaseSigningProblems = collectReleaseSigningProblems()
+val releaseSigningReady = releaseSigningProblems.isEmpty()
+
+fun releaseSigningError(): String = buildString {
+    appendLine("Cannot sign the Android release build.")
+    releaseSigningProblems.forEach { appendLine("- $it") }
+    appendLine(
+        "Create gitignored android/key.properties with storePassword, keyPassword, keyAlias, and storeFile.",
+    )
+    appendLine("Debug and profile builds do not read this file.")
+    append("See https://flutter.dev/to/reference-keystore")
 }
 
 android {
@@ -48,11 +81,13 @@ android {
     }
 
     signingConfigs {
-        if (hasReleaseKeystore) {
+        if (releaseSigningReady) {
+            val storePath = keystoreProperties.getProperty("storeFile")
+                ?: error("storeFile missing from android/key.properties")
             create("release") {
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
-                storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+                storeFile = file(storePath)
                 storePassword = keystoreProperties.getProperty("storePassword")
             }
         }
@@ -60,14 +95,12 @@ android {
 
     buildTypes {
         release {
-            signingConfig =
-                if (hasReleaseKeystore) {
-                    signingConfigs.getByName("release")
-                } else {
-                    // TODO: Add your own signing config for the release build.
-                    // Signing with the debug keys for now, so `flutter run --release` works.
-                    signingConfigs.getByName("debug")
-                }
+            // Unsigned unless android/key.properties is complete. checkReleaseSigning
+            // fails bundleRelease and assembleRelease in that case. Do not fall back
+            // to the debug keystore.
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
@@ -84,4 +117,22 @@ flutter {
 
 dependencies {
     implementation("com.android.installreferrer:installreferrer:2.2")
+}
+
+// Gate every release task so `flutter build appbundle --release` and
+// `flutter build apk --release` stop here instead of signing with the debug key.
+val checkReleaseSigning = tasks.register("checkReleaseSigning") {
+    group = "verification"
+    description = "Fails release builds when the Play upload keystore is missing or incomplete."
+    doLast {
+        if (releaseSigningProblems.isNotEmpty()) {
+            throw GradleException(releaseSigningError())
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name != "checkReleaseSigning" && "Release" in name) {
+        dependsOn(checkReleaseSigning)
+    }
 }
