@@ -182,6 +182,7 @@ export interface LiveVehicle {
     dealerCity?: string;
     dealerState?: string;
   };
+  daysOnMarket?: number;
 }
 
 export interface LiveSearchResult {
@@ -229,6 +230,7 @@ export interface DetailResponse {
     dealerName: string;
     dealerCity?: string;
     dealerState?: string;
+    dealerZip?: string;
     dealerPhone?: string;
     dealerWebsite?: string;
     dealerAddress?: string;
@@ -310,6 +312,7 @@ function normalizeListing(listing: MCListing): LiveVehicle | null {
     thumbnailUrl: clientPhoto(thumbnailPhoto),
     primaryPhotoUrl: clientPhoto(galleryPhotos[0] ?? thumbnailPhoto),
     photoUrls: galleryPhotos.length > 0 ? galleryPhotos.map(clientPhoto).filter((u): u is string => !!u) : undefined,
+    daysOnMarket: typeof listing.dom === 'number' && listing.dom >= 0 ? Math.round(listing.dom) : undefined,
     location: {
       latitude: lat,
       longitude: lng,
@@ -450,6 +453,12 @@ function normalizeOptions(
   if (!raw?.length) return undefined;
   if (typeof raw[0] === 'string') return (raw as string[]).map((s) => ({ name: s }));
   return raw as Array<{ name?: string; code?: string; description?: string }>;
+}
+
+function dealerPostalCode(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, '').slice(0, 5);
+  return digits.length === 5 ? digits : undefined;
 }
 
 function normalizeDealerWebsite(raw?: string): string | undefined {
@@ -630,6 +639,7 @@ export async function getVehicleDetailMcp(
       dealerName: dealerSource?.name ?? 'Unknown Dealer',
       dealerCity: dealerSource?.city,
       dealerState: dealerSource?.state,
+      dealerZip: dealerPostalCode(dealerSource?.zip),
       dealerPhone: dealerSource?.phone_formatted ?? dealerSource?.phone,
       dealerWebsite: normalizeDealerWebsite(dealerSource?.website),
       dealerAddress,

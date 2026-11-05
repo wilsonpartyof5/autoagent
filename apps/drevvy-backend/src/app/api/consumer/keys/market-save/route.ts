@@ -14,9 +14,11 @@ import { requireShopperAuth } from '@/lib/shopper/session';
 /**
  * POST /api/consumer/keys/market-save
  *
- * Spends one market+save key and saves the listing. The same listing does not
- * spend a second key. This key is never returned. A heart save on
- * POST /api/consumer/saved-cars does not spend a key and does not unlock this.
+ * Shopper JWT. Computes Marketplace Intelligence from MarketCheck, then spends
+ * one market+save key and stores the snapshot. The same listing does not spend
+ * a second key. No key is spent when MarketCheck has no real value or the
+ * lookup fails. A heart save on POST /api/consumer/saved-cars does not spend
+ * a key and does not unlock this.
  *
  * Body: { "listingId": "mc-listing-1", "vin": "1GNSKCKD5RR123456" }
  */
@@ -37,7 +39,17 @@ export async function POST(request: NextRequest) {
         supabase: createAdminClient(),
       }),
     );
-    const payload = { success: true, data: data.car, credits: data.credits, spent: data.spent };
+    const payload = {
+      success: true,
+      spent: data.spent,
+      available: data.available,
+      unlocked: data.unlocked,
+      reason: data.reason,
+      message: data.message,
+      credits: data.credits,
+      data: data.car,
+      market: data.market,
+    };
     if (payloadContainsSecret(payload)) {
       console.error(JSON.stringify({ event: 'marketcheck_secret_blocked', surface: 'market_save' }));
       return NextResponse.json(

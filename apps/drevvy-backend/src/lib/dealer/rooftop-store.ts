@@ -10,16 +10,35 @@ import {
   type RooftopMatch,
 } from './rooftop-match';
 
+/**
+ * MarketCheck identity for one listing.
+ * `unavailable` is an error, a timeout, or a missing listing. It is not
+ * evidence that the dealer is off-network.
+ */
+export type ListingIdentityLookup =
+  | { status: 'found'; identity: ListingDealerIdentity }
+  | { status: 'unavailable'; reason: 'not_found' | 'error' | 'timeout' };
+
 export type RooftopDirectory = {
   listOnboardedRooftops: () => Promise<OnboardedRooftop[]>;
   loadListingIdentity?: (listingId: string) => Promise<ListingDealerIdentity | null>;
+  lookupListingIdentity?: (listingId: string) => Promise<ListingIdentityLookup>;
 };
 
 export function supabaseRooftopDirectory(supabase: SupabaseClient): RooftopDirectory {
   return {
     listOnboardedRooftops: () => loadOnboardedRooftops(supabase),
     loadListingIdentity: (listingId) => fetchListingDealerIdentity(listingId),
+    lookupListingIdentity: (listingId) => lookupListingDealerIdentity(listingId),
   };
+}
+
+export function marketCheckFailureReason(error: unknown): 'timeout' | 'error' {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') return 'timeout';
+    if (/timeout|timedout|etimedout/i.test(error.message)) return 'timeout';
+  }
+  return 'error';
 }
 
 /**
@@ -89,10 +108,10 @@ export function identityFromMarketCheckListing(listing: RawListing | null | unde
   return { listingId, listingUrl, dealerWebsite, marketcheckDealerId };
 }
 
-export async function fetchListingDealerIdentity(
+export async function lookupListingDealerIdentity(
   listingId: string,
   vin?: string,
-): Promise<ListingDealerIdentity | null> {
+): Promise<ListingIdentityLookup> {
   const args: Record<string, unknown> = {
     rows: 1,
     start: 0,
@@ -105,17 +124,32 @@ export async function fetchListingDealerIdentity(
   try {
     const search = await callMcpTool<{ data?: { listings?: RawListing[] } }>('search_active_cars', args);
     const listing = search?.data?.listings?.[0];
+    if (!listing) return { status: 'unavailable', reason: 'not_found' };
     const identity = identityFromMarketCheckListing(listing);
-    if (!identity) return { listingId };
-    return { ...identity, listingId: identity.listingId ?? listingId };
+    if (!identity) return { status: 'unavailable', reason: 'not_found' };
+    return {
+      status: 'found',
+      identity: { ...identity, listingId: identity.listingId ?? listingId },
+    };
   } catch (error) {
-    console.error(JSON.stringify({
-      event: 'listing_identity_failed',
-      listingId,
-      message: error instanceof Error ? error.message : 'unknown',
-    }));
-    return { listingId };
+    const reason = marketCheckFailureReason(error);
+    console.error(JSON.stringify({ event: 'listing_identity_failed', reason }));
+    return { status: 'unavailable', reason };
   }
+}
+
+/**
+ * Older callers still receive a listing id when MarketCheck misses.
+ * Network classification must use [lookupListingDealerIdentity] instead,
+ * because this collapse is not an off-network result.
+ */
+export async function fetchListingDealerIdentity(
+  listingId: string,
+  vin?: string,
+): Promise<ListingDealerIdentity | null> {
+  const looked = await lookupListingDealerIdentity(listingId, vin);
+  if (looked.status === 'found') return looked.identity;
+  return { listingId };
 }
 
 export async function resolveRooftopMatch(
