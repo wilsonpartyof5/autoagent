@@ -84,6 +84,7 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Track saved and deals listing IDs
   Set<String> _savedListingIds = {};
   Set<String> _dealsListingIds = {};
+  int _heartGeneration = 0;
   bool _reportedShopEmpty = false;
 
   @override
@@ -128,9 +129,10 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _refreshSavedAndDeals() async {
+    final generation = ++_heartGeneration;
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
-    if (!mounted) return;
+    if (!mounted || generation != _heartGeneration) return;
     setState(() {
       _savedListingIds = savedCars.map((car) => car.listingId).toSet();
       _dealsListingIds = deals.map((deal) => deal.listingId).toSet();
@@ -145,6 +147,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final searchProfile = await _repo.getSearchProfile();
 
     // v1.8: Load saved and deals listing IDs for heart state
+    final heartGeneration = ++_heartGeneration;
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
     if (!mounted) return;
@@ -156,8 +159,10 @@ class _ShopScreenState extends State<ShopScreen> {
       _starters = starters;
       _searchProfile = searchProfile;
       _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
-      _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
-      _dealsListingIds = deals.map((d) => d.listingId).toSet();
+      if (heartGeneration == _heartGeneration) {
+        _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
+        _dealsListingIds = deals.map((d) => d.listingId).toSet();
+      }
     });
   }
 
@@ -423,6 +428,8 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
         );
       }
+    } on StaleAccountException {
+      return;
     } on SavedCarsException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

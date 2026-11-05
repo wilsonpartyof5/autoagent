@@ -153,6 +153,8 @@ class _SavedScreenState extends State<SavedScreen> {
 
     try {
       await _repo.removeSavedCar(savedCar.id);
+    } on StaleAccountException {
+      return;
     } on SavedCarsException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -181,6 +183,8 @@ class _SavedScreenState extends State<SavedScreen> {
                 setState(() {
                   _savedCars = [..._savedCars, restored];
                 });
+              } on StaleAccountException {
+                return;
               } on SavedCarsException catch (error) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context)
