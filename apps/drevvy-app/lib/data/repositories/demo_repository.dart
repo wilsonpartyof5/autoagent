@@ -649,7 +649,8 @@ class DemoRepository {
     if (!includes(filters.models, listing.build.model)) return false;
     if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
     if (!includes(filters.fuel, listing.build.powertrainType)) return false;
-    if (filters.priceMax != null && listing.price > filters.priceMax!) {
+    if (filters.priceMax != null &&
+        (listing.price ?? 0) > filters.priceMax!) {
       return false;
     }
     if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
@@ -681,15 +682,16 @@ class DemoRepository {
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
 
+    final price = listing.price ?? 0;
     if (isNew) {
-      final msrp = listing.msrp ?? listing.price + 2000;
-      final discount = msrp - listing.price;
+      final msrp = listing.msrp ?? price + 2000;
+      final discount = msrp - price;
       return _delay(
         MarketContext(
-          fairVehiclePrice: listing.price,
-          fairOtd: listing.price + 3500, // +fees/tax estimate
-          lowPrice: listing.price - 1500,
-          medianPrice: listing.price + 500,
+          fairVehiclePrice: price,
+          fairOtd: price + 3500, // +fees/tax estimate
+          lowPrice: price - 1500,
+          medianPrice: price + 500,
           highPrice: msrp + 1000,
           comparablesCount: 8,
           daysListedMedian: 25,
@@ -702,10 +704,10 @@ class DemoRepository {
 
     // Used car: ensure fairVehiclePrice is between low and high
     // Using consistent percentiles (p25/p50/p75)
-    final lowPrice = (listing.price * 0.92).round(); // p25
-    final medianPrice = (listing.price * 1.02).round(); // p50
-    final highPrice = (listing.price * 1.12).round(); // p75
-    final fairVehicle = (listing.price * 1.03)
+    final lowPrice = (price * 0.92).round(); // p25
+    final medianPrice = (price * 1.02).round(); // p50
+    final highPrice = (price * 1.12).round(); // p75
+    final fairVehicle = (price * 1.03)
         .round(); // MC Price between p50-p75
 
     return _delay(
@@ -925,7 +927,7 @@ class DemoRepository {
       listingId: listing.id,
       letter: _getNextLetter(),
       status: DealStatus.reachingOut,
-      listedAtStart: listing.price,
+      listedAtStart: listing.price ?? 0,
       addedAt: DateTime.now(),
       listing: listing,
       marketContext: await getMarketContext(listing),

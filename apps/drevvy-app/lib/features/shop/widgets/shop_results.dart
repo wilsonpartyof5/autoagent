@@ -19,6 +19,10 @@ class ShopResults extends StatelessWidget {
     this.savedListingIds = const {},
     this.dealsListingIds = const {},
     this.onSaveToggle,
+    this.showEstimatedMarket = true,
+    this.bottomInset = 0,
+    this.loadingMore = false,
+    this.onLoadMore,
   });
 
   final List<Listing>? listings;
@@ -32,6 +36,10 @@ class ShopResults extends StatelessWidget {
   final Set<String> dealsListingIds;
   /// v1.8: Callback when heart is tapped on a listing.
   final void Function(Listing listing, bool isSaved)? onSaveToggle;
+  final bool showEstimatedMarket;
+  final double bottomInset;
+  final bool loadingMore;
+  final VoidCallback? onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -100,13 +108,27 @@ class ShopResults extends StatelessWidget {
         return false;
       },
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(
-          horizontal: DrevvySpace.gutter,
-          vertical: DrevvySpace.s4,
+        padding: EdgeInsets.fromLTRB(
+          DrevvySpace.gutter,
+          DrevvySpace.s4,
+          DrevvySpace.gutter,
+          DrevvySpace.s4 + bottomInset,
         ),
-        itemCount: listings!.length,
+        itemCount: listings!.length + (onLoadMore == null && !loadingMore ? 0 : 1),
         separatorBuilder: (_, _) => const SizedBox(height: DrevvySpace.s3),
         itemBuilder: (context, index) {
+          if (index >= listings!.length) {
+            if (loadingMore) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            return TextButton(
+              onPressed: onLoadMore,
+              child: const Text('Load more'),
+            );
+          }
           final listing = listings![index];
           final isSaved = savedListingIds.contains(listing.id);
           final isInDeals = dealsListingIds.contains(listing.id);
@@ -114,6 +136,7 @@ class ShopResults extends StatelessWidget {
           return InventoryCard(
             listing: listing,
             hasCredits: hasCredits,
+            showEstimatedMarket: showEstimatedMarket,
             onTap: () => onListingTap(listing),
             isSaved: isSaved,
             isAlreadyAdded: isInDeals,
