@@ -11,6 +11,7 @@ import 'package:drevvy_app/data/services/cars_balance_placement.dart';
 import 'package:drevvy_app/data/services/purchase_service.dart';
 import 'package:drevvy_app/data/services/pack_offering.dart';
 import 'package:drevvy_app/data/services/superwall_placement.dart';
+import 'package:drevvy_app/features/onboarding/matters_v5.dart';
 import 'package:drevvy_app/features/onboarding/screens/paywall_screen.dart';
 import 'package:drevvy_app/features/shop/widgets/unlock_paywall.dart';
 import 'package:drevvy_app/main.dart';
@@ -160,10 +161,10 @@ void main() {
 
     await tester.tap(find.text('See how Drevvy helps'));
     await tester.pumpAndSettle();
-    expect(find.text('Know more than the asking price.'), findsOneWidget);
+    expect(find.text(mattersMarketIntelHeadline), findsOneWidget);
     expect(find.text(r'$24,900'), findsOneWidget);
     expect(find.textContaining('Good price'), findsOneWidget);
-    expect(find.text('Unlock once. Keep access to this car.'), findsOneWidget);
+    expect(find.text(mattersMarketIntelLead), findsOneWidget);
 
     await tester.tap(find.text('Next · Meet the dealer'));
     await tester.pumpAndSettle();

@@ -26,8 +26,8 @@ class NewCarMarketCard extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
 
-    final msrp = market.msrp ?? listing.msrp ?? listing.price + 2000;
-    final listedPrice = listing.price;
+    final listedPrice = listing.price ?? 0;
+    final msrp = market.msrp ?? listing.msrp ?? listedPrice + 2000;
     final discount = msrp - listedPrice;
     final isBelow = discount > 0;
 
