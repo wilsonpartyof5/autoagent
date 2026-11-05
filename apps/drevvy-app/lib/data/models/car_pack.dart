@@ -146,19 +146,20 @@ enum CarPackType {
   /// Alias for [keysLabel].
   String get carsLabel => keysLabel;
 
-  /// Percent saved per key versus the 1-key price, rounded by [savingsText].
+  /// Percent saved per key versus the 1-key price.
   /// The 1-key pack is the baseline, so it has no savings chip.
+  /// [savingsText] rounds this to a whole percent.
   double? get savingsPercentVsSingle {
     final baseline = CarPackType.single.perKeyCost;
     if (perKeyCost >= baseline) return null;
     return ((baseline - perKeyCost) / baseline) * 100;
   }
 
-  /// Chip copy: "Save 19.9%/key". Null on the 1-key pack.
+  /// Chip copy: "Save 20%". Null on the 1-key pack.
   String? get savingsText {
     final pct = savingsPercentVsSingle;
     if (pct == null) return null;
-    return 'Save ${pct.toStringAsFixed(1)}%/key';
+    return 'Save ${pct.round()}%';
   }
 
   /// CTA button text: "Get 1 key for $4.99" or "Get 10 keys for $34.99".

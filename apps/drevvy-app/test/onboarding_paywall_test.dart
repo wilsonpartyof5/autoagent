@@ -229,9 +229,9 @@ void main() {
     expect(find.text(r'$3.50/key'), findsOneWidget);
     expect(find.text(r'$3.00/key'), findsOneWidget);
     expect(find.text('One-time · never expires'), findsOneWidget);
-    expect(find.text('Save 19.9%/key'), findsOneWidget);
-    expect(find.text('Save 29.9%/key'), findsOneWidget);
-    expect(find.text('Save 39.9%/key'), findsOneWidget);
+    expect(find.text('Save 20%'), findsOneWidget);
+    expect(find.text('Save 30%'), findsOneWidget);
+    expect(find.text('Save 40%'), findsOneWidget);
     expect(find.textContaining('negotiat'), findsNothing);
   });
 

@@ -64,9 +64,9 @@ void main() {
       expect(find.text('5 keys · Starter'), findsOneWidget);
       expect(find.text('10 keys · Recommended'), findsOneWidget);
       expect(find.text('25 keys · Plus'), findsOneWidget);
-      expect(find.text('Save 19.9%/key'), findsOneWidget);
-      expect(find.text('Save 29.9%/key'), findsOneWidget);
-      expect(find.text('Save 39.9%/key'), findsOneWidget);
+      expect(find.text('Save 20%'), findsOneWidget);
+      expect(find.text('Save 30%'), findsOneWidget);
+      expect(find.text('Save 40%'), findsOneWidget);
       expect(find.text('One-time · never expires'), findsOneWidget);
       expect(find.text(PackPickerColumn.footnote), findsOneWidget);
       expect(find.text('RECOMMENDED'), findsOneWidget);
@@ -108,8 +108,8 @@ void main() {
       expect(find.text(r'$4.99/key'), findsOneWidget);
       expect(find.text(r'$4.00/key'), findsOneWidget);
       expect(find.text(r'$3.50/key'), findsOneWidget);
-      expect(find.text('Save 19.9%/key'), findsOneWidget);
-      expect(find.text('Save 39.9%/key'), findsOneWidget);
+      expect(find.text('Save 20%'), findsOneWidget);
+      expect(find.text('Save 40%'), findsOneWidget);
       expect(find.text('One-time · never expires'), findsOneWidget);
       expect(find.text(PackPickerColumn.footnote), findsOneWidget);
       expect(find.text('Get 10 keys for \$34.99'), findsOneWidget);

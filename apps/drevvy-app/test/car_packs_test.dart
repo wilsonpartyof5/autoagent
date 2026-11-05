@@ -43,7 +43,7 @@ void main() {
       expect(CarPackType.plus.perKeyFormatted, r'$3.00');
     });
 
-    test('savings vs the 1-key price round to one decimal', () {
+    test('savings vs the 1-key price round to a whole percent', () {
       expect(CarPackType.single.savingsPercentVsSingle, isNull);
       expect(CarPackType.single.savingsText, isNull);
 
@@ -51,16 +51,16 @@ void main() {
         CarPackType.starter.savingsPercentVsSingle,
         closeTo(19.88, 0.05),
       );
-      expect(CarPackType.starter.savingsText, 'Save 19.9%/key');
+      expect(CarPackType.starter.savingsText, 'Save 20%');
 
       expect(
         CarPackType.bestValue.savingsPercentVsSingle,
         closeTo(29.88, 0.05),
       );
-      expect(CarPackType.bestValue.savingsText, 'Save 29.9%/key');
+      expect(CarPackType.bestValue.savingsText, 'Save 30%');
 
       expect(CarPackType.plus.savingsPercentVsSingle, closeTo(39.89, 0.05));
-      expect(CarPackType.plus.savingsText, 'Save 39.9%/key');
+      expect(CarPackType.plus.savingsText, 'Save 40%');
     });
 
     test('prices use dollar format', () {
