@@ -31,6 +31,26 @@ flutter pub get
 dart run build_runner build
 ```
 
+## Demo and live data
+
+Auth, credits, key spend, rooftop match, and deal chips share one origin.
+There is no `www.drevvy.com` default.
+
+```bash
+# Demo (default). Labeled samples stay, including Matters step 6 Sample.
+flutter run
+
+# Live. A missing URL or a failed credits/key-spend/rooftop call is an error.
+# It does not keep the seeded 6 keys, grant keys locally, or stub listing_001.
+flutter run \
+  --dart-define=DREVVY_DATA_MODE=live \
+  --dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com
+```
+
+`DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
+Shop inventory on this build is still the demo catalog until the Discover client lands.
+Live mode does not turn that into a silent success for keys or rooftops.
+
 ## Two-key VDP review (simulators)
 
 Demo listings:
