@@ -115,6 +115,13 @@ export function evaluateOtdWithhold(input: {
   };
 }
 
+const appliedReplies = new Map<string, string>();
+
+/** Test hook. Production retries are also skipped when the last reply matches. */
+export function resetOtdStrikeMemory(): void {
+  appliedReplies.clear();
+}
+
 type ConversationWarningRow = {
   opener: string | null;
   shopper_first_name: string | null;
@@ -141,6 +148,21 @@ export async function recordLiveDealerReply(
   }
   const data = loaded.data as ConversationWarningRow | null;
   if (!data) return null;
+
+  const text = dealerReply.trim();
+  if (appliedReplies.get(dealId) === text) {
+    return {
+      asked: threadAskedForItemizedOtd([{ body: data.opener ?? '' }]),
+      itemized: data.otd_itemized_at != null,
+      replyItemized: false,
+      warningCount: data.otd_warning_count ?? 0,
+      warning: null,
+      removalNotice: null,
+      recommendRemoval: data.otd_removal_recommended_at != null || (data.otd_warning_count ?? 0) >= OTD_WARNING_LIMIT,
+      comeInAdminFlag: data.come_in_admin_flag === true,
+      comeInCount: data.come_in_count ?? 0,
+    };
+  }
 
   const result = evaluateOtdWithhold({
     shopperFirstName: data.shopper_first_name,
@@ -170,6 +192,7 @@ export async function recordLiveDealerReply(
     console.error(JSON.stringify({ event: 'otd_warning_save_failed', dealId, message: updated.error.message }));
     return null;
   }
+  appliedReplies.set(dealId, text);
   if (result.warning) {
     const saved = await supabase.from('dealer_otd_warnings').upsert({
       deal_id: dealId,

@@ -3,6 +3,13 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  deskWriteTarget,
+  isolatedInboxItems,
+  postIsolatedDealerMessage,
+  shareIsolatedItemized,
+  threadFixtureEnabled,
+} from '@/lib/dealer/isolated-thread';
+import {
   listLiveInbox,
   markLiveSold,
   postLiveMessage,
@@ -15,6 +22,7 @@ import {
   shareNumbers,
 } from '@/lib/dealer/mock';
 import { isLiveDealerSession, requireDealerPageSession } from '@/lib/dealer/session';
+import type { ItemizedOtdLines } from '@/lib/dealer/format';
 import type {
   ConversationDetail,
   DealerDemoError,
@@ -49,7 +57,8 @@ export async function markConversationSold(
   leadId: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (isLiveDealerSession(session)) {
+  const fixtureOn = threadFixtureEnabled();
+  if (isLiveDealerSession(session) && deskWriteTarget(true, leadId, fixtureOn) === 'live') {
     const result = await markLiveSold(session, leadId);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -64,7 +73,13 @@ export async function postConversationMessage(
   body: string,
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (isLiveDealerSession(session)) {
+  const target = deskWriteTarget(isLiveDealerSession(session), leadId, threadFixtureEnabled());
+  if (target === 'fixture') {
+    const result = postIsolatedDealerMessage(leadId, body);
+    if (!result.ok) return result;
+    return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
+  }
+  if (target === 'live' && isLiveDealerSession(session)) {
     const result = await postLiveMessage(session, leadId, body);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);
@@ -80,10 +95,18 @@ export async function shareConversationNumbers(
     statedPriceCents: number;
     writtenOtdCents: number | null;
     note: string;
+    lines?: ItemizedOtdLines | null;
   },
 ): Promise<DeskMutation> {
   const session = await requireDealerPageSession();
-  if (isLiveDealerSession(session)) {
+  const target = deskWriteTarget(isLiveDealerSession(session), leadId, threadFixtureEnabled());
+  if (target === 'fixture') {
+    if (!input.lines) return { ok: false, error: 'invalid_price' };
+    const result = shareIsolatedItemized(leadId, input.lines, input.note, new Date(), input.writtenOtdCents);
+    if (!result.ok) return result;
+    return publish(leadId, result.data, [...isolatedInboxItems('all'), ...allInboxItems()]);
+  }
+  if (target === 'live' && isLiveDealerSession(session)) {
     const result = await shareLiveNumbers(session, leadId, input);
     if (!result.ok) return result;
     return liveItems(leadId, result.data);

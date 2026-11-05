@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { dollarsToCents, CLOSE_FEE_CENTS } from './format';
+import { dollarsToCents, CLOSE_FEE_CENTS, itemizedOtdShareBody } from './format';
+import { messageHasItemizedOtd } from './otd-warnings';
 import {
   allInboxItems,
   analyticsHttp,
@@ -180,7 +181,7 @@ describe('dealer desk mock', { concurrency: false }, () => {
     assert.equal(before.role, 'owner_gm');
     assert.equal(before.dayToDay, 'free');
     assert.equal(before.closeFeeCents, CLOSE_FEE_CENTS);
-    assert.equal(before.closeFeeLabel, '$300 per closed deal');
+    assert.equal(before.closeFeeLabel, '$300 when the shopper confirms a purchase');
     assert.equal(before.paymentMethod.placeholder, true);
     assert.equal(before.charges[0]?.conversationId, 'conv_sportage');
     assert.equal(before.charges[0]?.amountCents, 30_000);
@@ -310,6 +311,60 @@ describe('dealer desk mock', { concurrency: false }, () => {
     assert.equal(itemized.data.otdWarningCount ?? 0, 0);
     assert.equal(itemized.data.messages.some((message) => message.body.startsWith('Warning ')), false);
     assert.equal(/negotiat/i.test(JSON.stringify(itemized.data)), false);
+  });
+
+  test('a retried reply does not add a strike, and itemized lines stop warnings', () => {
+    resetDealerDemo(NOW);
+    assert.equal(useInNetworkShopper('conv_rav4', 'Dana Blake'), true);
+    const first = postMessage('conv_rav4', 'Yes, it is here.', NOW);
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.equal(first.data.otdWarningCount, 1);
+    const retry = postMessage('conv_rav4', 'Yes, it is here.', NOW);
+    assert.equal(retry.ok, true);
+    if (!retry.ok) return;
+    assert.equal(retry.data.otdWarningCount, 1);
+    assert.equal(retry.data.messages.filter((message) => message.body.startsWith('Warning ')).length, 1);
+
+    const keyed = postMessage('conv_rav4', 'Still on the lot.', NOW, { idempotencyKey: 'retry-1' });
+    assert.equal(keyed.ok, true);
+    if (!keyed.ok) return;
+    assert.equal(keyed.data.otdWarningCount, 2);
+    const again = postMessage('conv_rav4', 'Please come by the desk.', NOW, { idempotencyKey: 'retry-1' });
+    assert.equal(again.ok, true);
+    if (!again.ok) return;
+    assert.equal(again.data.otdWarningCount, 2);
+    assert.equal(again.data.messages.length, keyed.data.messages.length);
+
+    const lines = {
+      vehiclePriceCents: 3_000_000,
+      docFeeCents: 49_900,
+      taxCents: 180_000,
+      titleCents: 15_000,
+      registrationCents: 21_000,
+    };
+    assert.equal(messageHasItemizedOtd(itemizedOtdShareBody(lines, '')), true);
+    const mismatched = shareNumbers('conv_rav4', {
+      statedPriceCents: lines.vehiclePriceCents,
+      writtenOtdCents: 100,
+      note: '',
+      lines,
+    }, NOW);
+    assert.equal(mismatched.ok, false);
+    if (mismatched.ok) return;
+    assert.equal(mismatched.error, 'invalid_price');
+    assert.equal(again.data.messages.some((message) => message.body.includes('Itemized total')), false);
+    const shared = shareNumbers('conv_rav4', {
+      statedPriceCents: lines.vehiclePriceCents,
+      writtenOtdCents: null,
+      note: '',
+      lines,
+    }, NOW);
+    assert.equal(shared.ok, true);
+    if (!shared.ok) return;
+    assert.equal(shared.data.otdWarningCount, 2);
+    assert.equal(shared.data.messages.filter((message) => message.body.startsWith('Warning ')).length, 2);
+    assert.equal(shared.data.stage, 'numbers_shared');
   });
 
   test('dealer routes stay outside the admin guard', () => {

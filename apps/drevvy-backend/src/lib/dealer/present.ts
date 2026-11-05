@@ -30,6 +30,7 @@ export function toInboxItem(conversation: Conversation, now: Date): InboxItem {
     openedAt: conversation.openedAt,
     replyDueAt: conversation.replyDueAt,
     sla: slaChip(conversation, now),
+    fixtureLabel: conversation.fixtureLabel,
   };
 }
 

@@ -67,6 +67,10 @@ export interface Conversation {
   otdRemovalRecommended?: boolean;
   /** Separate from the OTD ladder. Dealer pushed come-in more than once. */
   comeInAdminFlag?: boolean;
+  /** Isolated preview threads only. Live and demo seed rows omit this. */
+  fixtureLabel?: string;
+  /** True only after the isolated fixture book removes that test rooftop. */
+  networkRemoved?: boolean;
 }
 
 export interface SlaChip {
@@ -97,6 +101,7 @@ export interface InboxItem {
   openedAt: string;
   replyDueAt: string;
   sla: SlaChip;
+  fixtureLabel?: string;
 }
 
 export interface ConversationDetail extends Conversation {

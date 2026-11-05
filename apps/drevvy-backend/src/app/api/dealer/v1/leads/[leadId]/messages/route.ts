@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withDealerApi } from '@/lib/dealer/desk-api';
+import { tryIsolatedDealerMessage } from '@/lib/dealer/isolated-thread';
 import { errorStatus, postMessageHttp } from '@/lib/dealer/mock';
 import { postLiveMessage } from '@/lib/dealer/live-store';
 
@@ -18,10 +19,15 @@ export async function POST(
 ) {
   const { leadId } = await params;
   const payload = await request.json().catch(() => null);
+  const fixture = tryIsolatedDealerMessage(leadId, payload);
+  if (fixture) return NextResponse.json(fixture.body, { status: fixture.status });
+  const idempotencyKey = payload && typeof payload === 'object' && typeof (payload as { idempotencyKey?: unknown }).idempotencyKey === 'string'
+    ? (payload as { idempotencyKey: string }).idempotencyKey
+    : null;
   return withDealerApi(
     request,
     async (session) => {
-      const result = await postLiveMessage(session, leadId, readBody(payload));
+      const result = await postLiveMessage(session, leadId, readBody(payload), new Date(), idempotencyKey);
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: errorStatus(result.error) });
       }

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { withDealerApi } from '@/lib/dealer/desk-api';
+import { mergeIsolatedInbox } from '@/lib/dealer/isolated-thread';
 import { listLiveInbox, parseInboxFilter, parseRooftopQuery } from '@/lib/dealer/live-store';
 import { inboxHttp } from '@/lib/dealer/mock';
+import type { InboxItem } from '@/lib/dealer/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,12 @@ export async function GET(request: Request) {
     },
     () => {
       const result = inboxHttp(request.url);
+      if (result.status === 200 && result.body && typeof result.body === 'object') {
+        const body = result.body as { filter?: string; items?: InboxItem[] };
+        if (typeof body.filter === 'string' && Array.isArray(body.items)) {
+          body.items = mergeIsolatedInbox(body.items, body.filter);
+        }
+      }
       return NextResponse.json(result.body, { status: result.status });
     },
   );

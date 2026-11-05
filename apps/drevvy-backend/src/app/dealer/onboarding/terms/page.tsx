@@ -1,70 +1,20 @@
-'use client';
+import { cookies } from 'next/headers';
 
-import { useEffect, useMemo, useState } from 'react';
+import { DEMO_ROOFTOPS_COOKIE } from '@/lib/dealer/demo-session';
+import { knownDemoRooftopIds } from '@/lib/dealer/onboarding-acceptance';
+import { TermsForm } from './terms-form';
 
-import { OnboardingFrame, OnboardingNav } from '@/components/dealer/onboarding-frame';
-import { acceptDemoOnboarding } from '@/app/dealer/demo-actions';
-import { TERMS_BOXES, TERMS_VERSION } from '@/lib/dealer/demo-org';
+export const metadata = { title: 'In-network messaging terms' };
 
-export default function OnboardingTermsPage() {
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<string | null>(null);
-  const allChecked = useMemo(
-    () => TERMS_BOXES.every(box => checked[box.id]),
-    [checked]
+export default async function OnboardingTermsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const jar = await cookies();
+  const rooftopIds = knownDemoRooftopIds(
+    (jar.get(DEMO_ROOFTOPS_COOKIE)?.value ?? '').split(',').filter(Boolean),
   );
-
-  useEffect(() => {
-    const flag = new URLSearchParams(window.location.search).get('error');
-    if (flag === 'session') {
-      setError('Drevvy could not start the demo desk session.');
-    }
-  }, []);
-
-  return (
-    <OnboardingFrame step="terms">
-      <div className="g card" style={{ padding: 28 }}>
-        <div className="h1">In-network messaging terms</div>
-        <p className="mut" style={{ margin: '6px 0 14px' }}>
-          Terms version <b>{TERMS_VERSION}</b> · applies to Lakeside Honda,
-          Midtown Toyota, Airport Kia. Check all to continue.
-        </p>
-        {TERMS_BOXES.map(box => (
-          <label key={box.id} className="chk">
-            <input
-              type="checkbox"
-              checked={Boolean(checked[box.id])}
-              onChange={event =>
-                setChecked(current => ({
-                  ...current,
-                  [box.id]: event.target.checked,
-                }))
-              }
-            />
-            <div>
-              <b>{box.title}</b>
-              <div className="mut">{box.body}</div>
-            </div>
-          </label>
-        ))}
-        <p className="mut" style={{ marginTop: 6 }}>
-          Accepting as Derek Patel · Owner/GM · will record Oct 27, 2026 12:41 PM
-          ET
-        </p>
-        {error ? (
-          <p className="dn" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <form action={acceptDemoOnboarding}>
-          <OnboardingNav
-            backHref="/dealer/onboarding/routing"
-            nextLabel={`Accept terms ${TERMS_VERSION}`}
-            nextDisabled={!allChecked}
-            submit
-          />
-        </form>
-      </div>
-    </OnboardingFrame>
-  );
+  return <TermsForm rooftopIds={rooftopIds} errorFlag={params.error ?? null} />;
 }
