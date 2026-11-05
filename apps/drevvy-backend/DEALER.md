@@ -90,6 +90,8 @@ A rooftop is onboarded when:
 
 `loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads that set. A `dealerships` row with no membership is not in-network. The mock desk settings rooftop is not this registry.
 
+`evaluateDealerActivation` is the next check: the signed-in work email, a `user_dealerships` row for that user and rooftop, the onboarded set, and a recorded `message-only` plus `itemized-otd` commitment. The demo desk cookie cannot satisfy it. Desk routes do not call it yet. The commitment table is `supabase/drafts/dealer_onboarding_commitments.sql` and is not applied.
+
 ## `matchOnboardedRooftop`
 
 Pure function in `src/lib/dealer/rooftop-match.ts`. Inputs are listing identity (server-fetched MarketCheck dealer id / website / VDP URL, plus an optional client listing URL) and the onboarded rooftop list.
