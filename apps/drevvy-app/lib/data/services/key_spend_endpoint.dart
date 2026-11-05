@@ -49,7 +49,8 @@ enum KeySpendSource { live, stub, missing, blocked }
 ///
 /// - Key A: `POST /api/consumer/keys/market-save` `{listingId, vin}`
 /// - Key B: `POST /api/consumer/deals` `{listingId, rooftopId, templateId?}`
-/// - Off-network OTD: `POST /api/consumer/listings/:id/otd-request`
+/// - Off-network OTD is `POST /api/consumer/otd-requests`. This client does
+///   not send it. Submission stays unavailable until that hold is cleared.
 abstract class KeySpendEndpoint {
   const KeySpendEndpoint();
 
@@ -88,9 +89,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
 
   @override
   Future<KeySpendResult> spendMarketSave(Listing listing) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 
   @override
@@ -100,9 +99,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
     String? templateId,
     String? message,
   }) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 
   @override
@@ -110,9 +107,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
     Listing listing, {
     String? note,
   }) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 }
 
@@ -200,18 +195,12 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
   }
 
   @override
-  Future<KeySpendResult> requestOtdNumber(Listing listing, {String? note}) {
-    return _post(
-      '/api/consumer/listings/${listing.id}/otd-request',
-      {
-        'listingId': listing.id,
-        if (listing.vdpUrl != null) 'url': listing.vdpUrl,
-        if (note != null && note.isNotEmpty) 'note': note,
-        'free': true,
-        'usesKey': false,
-      },
-      surface: 'otd_request',
-      requiresSignIn: true,
+  Future<KeySpendResult> requestOtdNumber(
+    Listing listing, {
+    String? note,
+  }) async {
+    return const KeySpendResult.blocked(
+      'An out-the-door request is not available yet.',
     );
   }
 

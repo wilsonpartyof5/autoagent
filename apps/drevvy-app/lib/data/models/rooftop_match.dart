@@ -1,10 +1,12 @@
 import 'package:equatable/equatable.dart';
 
-/// Whether a listing URL maps to an onboarded dealer-dashboard rooftop.
+import 'json_values.dart';
+
+/// Whether an onboarded rooftop matches a listing.
 ///
-/// Live API: `GET /api/consumer/listings/:id/rooftop-match`.
-/// Until that route lands, [source] is `stub` and demo listings 001 / 007
-/// are treated as in-network.
+/// Live classification is `POST /api/consumer/listings/network`. Demo mode
+/// keeps the labeled stub: listings 001 and 007 are in-network. A live miss
+/// is [RooftopMatch.unavailable], which is neither in-network nor off-network.
 class RooftopMatch extends Equatable {
   const RooftopMatch({
     required this.matched,
@@ -69,6 +71,48 @@ class RooftopMatch extends Equatable {
       ]),
       source: RooftopMatchSource.live,
     );
+  }
+
+  /// Reads `POST /api/consumer/listings/network`.
+  ///
+  /// [suppliedListingUrl] is a URL already present on the listing. This parser
+  /// does not invent one. `in_network` requires `data.match.rooftopId`.
+  /// `off_network` is trusted only when that URL was sent. A listing-id-only
+  /// `off_network` body uses the same `match: null` shape as a failed
+  /// MarketCheck identity lookup, so it stays [RooftopMatch.unavailable].
+  static RooftopMatch parseNetworkResponse(
+    Map<String, dynamic> root, {
+    required bool suppliedListingUrl,
+    String? listingUrl,
+  }) {
+    if (root['success'] == false) return const RooftopMatch.unavailable();
+    final data = root['data'] is Map
+        ? Map<String, dynamic>.from(root['data'] as Map)
+        : root;
+    final network = data['network'];
+    if (network == 'in_network') {
+      final match = data['match'];
+      final rooftopId = match is Map
+          ? jsonString(Map<String, dynamic>.from(match)['rooftopId'])
+          : null;
+      if (rooftopId == null || rooftopId.isEmpty) {
+        return const RooftopMatch.unavailable();
+      }
+      return RooftopMatch(
+        matched: true,
+        rooftopId: rooftopId,
+        vdpUrl: suppliedListingUrl ? listingUrl : null,
+        source: RooftopMatchSource.live,
+      );
+    }
+    if (network == 'off_network') {
+      if (!suppliedListingUrl) return const RooftopMatch.unavailable();
+      return RooftopMatch.offNetwork(
+        vdpUrl: listingUrl,
+        source: RooftopMatchSource.live,
+      );
+    }
+    return const RooftopMatch.unavailable();
   }
 
   static String? _string(Map<String, dynamic> json, List<String> keys) {

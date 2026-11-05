@@ -6,8 +6,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
-import '../../../core/widgets/drevvy_buttons.dart';
-import '../../../data/analytics/product_analytics.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../account/widgets/shopper_sign_in_actions.dart';
 import '../onboarding_controller.dart';
@@ -22,8 +20,8 @@ class CreateAccountScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
-  final _firstNameController = TextEditingController();
-  final _emailController = TextEditingController();
+  static const emailSignInUnavailableMessage =
+      'Email sign-in is not available.';
 
   Future<void> _afterSignIn() async {
     await DemoRepository.instance.pullSignedInBalance();
@@ -31,17 +29,6 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     if (!mounted) return;
     context.go('/shop');
   }
-
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  bool get _canContinue =>
-      _firstNameController.text.isNotEmpty &&
-      _emailController.text.contains('@');
 
   @override
   Widget build(BuildContext context) {
@@ -82,110 +69,16 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     style: text.body.copyWith(color: colors.muted),
                   ),
 
-                  const SizedBox(height: DrevvySpace.s8),
+                  const SizedBox(height: DrevvySpace.s4),
 
-                  // First name field
-                  Text('First name', style: text.bodyStrong),
-                  const SizedBox(height: DrevvySpace.s2),
-                  GlassCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DrevvySpace.s4,
-                      vertical: DrevvySpace.s1,
-                    ),
-                    child: TextField(
-                      controller: _firstNameController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: InputDecoration(
-                        hintText: 'Dana',
-                        hintStyle: text.body.copyWith(
-                          color: colors.placeholder,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                      style: text.body,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
                   Text(
-                    'This is the only thing dealers see.',
-                    style: text.callout.copyWith(color: colors.muted),
-                  ),
-
-                  const SizedBox(height: DrevvySpace.s6),
-
-                  // Email field
-                  Text('Email', style: text.bodyStrong),
-                  const SizedBox(height: DrevvySpace.s2),
-                  GlassCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DrevvySpace.s4,
-                      vertical: DrevvySpace.s1,
-                    ),
-                    child: TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      decoration: InputDecoration(
-                        hintText: 'dana@example.com',
-                        hintStyle: text.body.copyWith(
-                          color: colors.placeholder,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                      style: text.body,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  Text(
-                    'Official offers are forwarded here. Never shared with dealers.',
-                    style: text.callout.copyWith(color: colors.muted),
+                    emailSignInUnavailableMessage,
+                    style: text.body.copyWith(color: colors.ink),
                   ),
 
                   const Spacer(),
 
                   ShopperSignInActions(onSuccess: _afterSignIn),
-
-                  const SizedBox(height: DrevvySpace.s4),
-
-                  Row(
-                    children: [
-                      Expanded(child: Divider(color: colors.line)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: DrevvySpace.s3,
-                        ),
-                        child: Text(
-                          'or',
-                          style: text.callout.copyWith(color: colors.muted),
-                        ),
-                      ),
-                      Expanded(child: Divider(color: colors.line)),
-                    ],
-                  ),
-
-                  const SizedBox(height: DrevvySpace.s4),
-
-                  DrevvyButton(
-                    label: 'Continue with email',
-                    onPressed: _canContinue
-                        ? () async {
-                            // Email OTP is not a consumer auth route. Continue in demo mode.
-                            ProductAnalytics.instance.track(
-                              AnalyticsEvents.signInStarted,
-                              {'provider': 'email'},
-                            );
-                            ProductAnalytics.instance.track(
-                              AnalyticsEvents.signInCompleted,
-                              {'provider': 'email', 'identified': false},
-                            );
-                            await completeFirstRun(ref);
-                            if (!context.mounted) return;
-                            context.go('/shop');
-                          }
-                        : null,
-                    isLoading: false,
-                    isFullWidth: true,
-                  ),
 
                   SizedBox(height: DrevvySpace.s6 + bottomPadding),
                 ],

@@ -64,6 +64,16 @@ A failed save or load shows an error and retry. Sign-out clears that account.
 Market intel has no price payload and no unlock read, so live mode shows it
 as unavailable and does not spend a key.
 
+Live dealer network is `POST /api/consumer/listings/network` with the listing
+id and a listing URL only when Discover already returned one. The public
+Discover payload does not include `vdp_url`. A listing-id-only `off_network`
+response uses the same shape as a failed identity lookup, so the app shows
+network as unavailable instead of inventing a URL or rooftop. An in-network
+match still does not open chat. `POST /api/consumer/otd-requests` is
+implemented for tests and is not called from the live screen. Email sign-in,
+Ask, and account deletion say they are unavailable. Demo keeps Dana, the
+labeled stubs, and Matters step 6 Sample.
+
 ## Two-key VDP review (simulators)
 
 Demo listings:
