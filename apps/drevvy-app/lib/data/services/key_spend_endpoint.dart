@@ -58,16 +58,10 @@ abstract class KeySpendEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
-    if (config.isLive) {
-      if (baseUrl.isEmpty) return const UnconfiguredKeySpendEndpoint();
-      return HttpKeySpendEndpoint(
-        baseUrl: baseUrl,
-        client: client,
-        strict: true,
-      );
-    }
-    if (baseUrl.isEmpty) return const MissingKeySpendEndpoint();
-    return HttpKeySpendEndpoint(baseUrl: baseUrl, client: client);
+    // Demo keeps the local ledger and never posts a spend, even with a URL.
+    if (!config.isLive) return const MissingKeySpendEndpoint();
+    if (baseUrl.isEmpty) return const UnconfiguredKeySpendEndpoint();
+    return HttpKeySpendEndpoint(baseUrl: baseUrl, client: client, strict: true);
   }
 
   Future<KeySpendResult> spendMarketSave(Listing listing);
@@ -88,9 +82,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
 
   @override
   Future<KeySpendResult> spendMarketSave(Listing listing) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 
   @override
@@ -100,9 +92,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
     String? templateId,
     String? message,
   }) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 
   @override
@@ -110,9 +100,7 @@ class UnconfiguredKeySpendEndpoint extends KeySpendEndpoint {
     Listing listing, {
     String? note,
   }) async {
-    return const KeySpendResult.blocked(
-      apiNotConfiguredMessage,
-    );
+    return const KeySpendResult.blocked(apiNotConfiguredMessage);
   }
 }
 

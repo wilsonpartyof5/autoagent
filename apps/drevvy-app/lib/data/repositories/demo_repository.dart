@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
@@ -31,16 +32,22 @@ class DemoRepository {
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
     DealChipsEndpoint? dealChips,
+    http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
     _live = resolved.isLive;
-    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _credits =
+        credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
-    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
-    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
-    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
+    _rooftopMatch =
+        rooftopMatch ??
+        RooftopMatchEndpoint.fromConfig(resolved, client: httpClient);
+    _keySpend =
+        keySpend ?? KeySpendEndpoint.fromConfig(resolved, client: httpClient);
+    _dealChips =
+        dealChips ?? DealChipsEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     } else if (_live) {
@@ -52,6 +59,9 @@ class DemoRepository {
   }
 
   late final bool _live;
+
+  /// Live mode, including a live build whose API origin is still empty.
+  bool get isLive => _live;
 
   /// Shown when live mode cannot confirm a key balance. Null in demo mode.
   String? _creditNotice;
@@ -404,7 +414,7 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!match.isInNetwork) return null;
+    if (!_mayStartConversation(match)) return null;
     final remote = await _keySpend.startConversation(
       listing: listing,
       match: match,
@@ -458,6 +468,40 @@ class DemoRepository {
     }
     _otdRequested.add(listing.id);
     return true;
+  }
+
+  /// In-network is not enough in live mode. A stub match and an unavailable
+  /// match must not post a conversation or fall through to the local ledger.
+  bool _mayStartConversation(RooftopMatch match) {
+    if (!match.isInNetwork) return false;
+    if (_live && match.source != RooftopMatchSource.live) return false;
+    return true;
+  }
+
+  /// Seeded demo deals already carry the fair-price formula. Live must not
+  /// keep that valuation on a deal it just attached to a real conversation.
+  Deal _dropSyntheticMarket(Deal deal) {
+    if (!_live || deal.marketContext == null) return deal;
+    return Deal(
+      id: deal.id,
+      listingId: deal.listingId,
+      letter: deal.letter,
+      status: deal.status,
+      listedAtStart: deal.listedAtStart,
+      addedAt: deal.addedAt,
+      firstContactAt: deal.firstContactAt,
+      listing: deal.listing,
+      offers: deal.offers,
+      comms: deal.comms,
+      events: deal.events,
+      dealer: deal.dealer,
+      officialOffer: deal.officialOffer,
+      outcome: deal.outcome,
+      acceptedOffer: deal.acceptedOffer,
+      changedOffer: deal.changedOffer,
+      tryOnceMoreUsed: deal.tryOnceMoreUsed,
+      dealerTimelines: deal.dealerTimelines,
+    );
   }
 
   bool _refusesLocalKeySpend(KeySpendResult remote) {
@@ -699,8 +743,7 @@ class DemoRepository {
     if (!includes(filters.models, listing.build.model)) return false;
     if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
     if (!includes(filters.fuel, listing.build.powertrainType)) return false;
-    if (filters.priceMax != null &&
-        (listing.price ?? 0) > filters.priceMax!) {
+    if (filters.priceMax != null && (listing.price ?? 0) > filters.priceMax!) {
       return false;
     }
     if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
@@ -728,6 +771,9 @@ class DemoRepository {
   }
 
   Future<MarketContext> getMarketContext(Listing listing) async {
+    if (_live) {
+      throw StateError('Live mode does not invent a market valuation.');
+    }
     // Mock market context with consistent math per audit
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
@@ -757,8 +803,7 @@ class DemoRepository {
     final lowPrice = (price * 0.92).round(); // p25
     final medianPrice = (price * 1.02).round(); // p50
     final highPrice = (price * 1.12).round(); // p75
-    final fairVehicle = (price * 1.03)
-        .round(); // MC Price between p50-p75
+    final fairVehicle = (price * 1.03).round(); // MC Price between p50-p75
 
     return _delay(
       MarketContext(
@@ -946,10 +991,11 @@ class DemoRepository {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
-        final next = id != null && id.isNotEmpty && deal.id != id
+        final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        if (next.id != deal.id) {
+        final next = _dropSyntheticMarket(renamed);
+        if (next.id != deal.id || next.marketContext != deal.marketContext) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -980,7 +1026,7 @@ class DemoRepository {
       listedAtStart: listing.price ?? 0,
       addedAt: DateTime.now(),
       listing: listing,
-      marketContext: await getMarketContext(listing),
+      marketContext: _live ? null : await getMarketContext(listing),
     );
     _deals = [..._deals, newDeal];
     _savedCars = _savedCars

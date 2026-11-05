@@ -20,12 +20,16 @@ import 'shopper_session_store.dart';
 abstract class DealChipsEndpoint {
   const DealChipsEndpoint();
 
+  /// Live with an origin posts chip intel. Demo never calls this route,
+  /// even when a base URL is set. Live with an empty origin does not post.
   static DealChipsEndpoint fromConfig(
     PurchaseConfig config, {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
-    if (baseUrl.isEmpty) return const MissingDealChipsEndpoint();
+    if (!config.isLive || baseUrl.isEmpty) {
+      return const MissingDealChipsEndpoint();
+    }
     return HttpDealChipsEndpoint(baseUrl: baseUrl, client: client);
   }
 

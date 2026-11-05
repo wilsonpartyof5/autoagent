@@ -35,13 +35,6 @@ class VdpCtaBar extends StatelessWidget {
   final VoidCallback onConversation;
   final VoidCallback onOtdRequest;
 
-  String _formatNumber(int n) {
-    return n.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
@@ -74,10 +67,7 @@ class VdpCtaBar extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '\$${_formatNumber(listing.price ?? 0)}',
-                    style: text.figureS,
-                  ),
+                  Text(listing.priceFormatted, style: text.figureS),
                   Text(
                     'Listed price',
                     style: text.callout.copyWith(color: colors.muted),
