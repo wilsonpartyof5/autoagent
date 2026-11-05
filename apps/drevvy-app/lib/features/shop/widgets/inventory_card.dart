@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/listing.dart';
+import 'listing_photo.dart';
 
 /// Shop result card per spec §6.7 (v1.6.1): no fixed height, full-width CTA on own row.
 /// Fixed overflow issue where badge + CTA in a Row exceeded width by 14-24pt.
@@ -20,6 +21,7 @@ class InventoryCard extends StatelessWidget {
     this.isAlreadyAdded = false,
     this.isSaved = false,
     this.onSaveToggle,
+    this.showEstimatedMarket = true,
   });
 
   final Listing listing;
@@ -35,6 +37,7 @@ class InventoryCard extends StatelessWidget {
 
   /// v1.8: Callback when heart is tapped. If null, heart is not shown.
   final VoidCallback? onSaveToggle;
+  final bool showEstimatedMarket;
 
   String _formatNumber(int n) {
     return n.toString().replaceAllMapped(
@@ -49,9 +52,14 @@ class InventoryCard extends StatelessWidget {
     final text = context.drevvyText;
 
     // Per audit: badges use "vs similar listings nearby"
-    final delta = marketDelta ?? ((listing.price * 0.035).round());
-    final isBelow = delta > 0;
-    final badgeText = isBelow
+    final int? delta = marketDelta ??
+        (showEstimatedMarket && listing.price != null
+            ? (listing.price! * 0.035).round()
+            : null);
+    final isBelow = (delta ?? 0) > 0;
+    final badgeText = delta == null
+        ? ''
+        : isBelow
         ? '\$${_formatNumber(delta)} below similar'
         : delta < 0
         ? '\$${_formatNumber(-delta)} above similar'
@@ -77,13 +85,7 @@ class InventoryCard extends StatelessWidget {
                       child: SizedBox(
                         width: 96,
                         height: 70,
-                        child: listing.media.primaryPhoto != null
-                            ? Image.asset(
-                                listing.media.primaryPhoto!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => _BrokenImage(),
-                              )
-                            : _BrokenImage(),
+                        child: ListingPhoto(url: listing.media.primaryPhoto),
                       ),
                     ),
                     // v1.8: Heart button (only show if not already in Deals)
@@ -143,12 +145,13 @@ class InventoryCard extends StatelessWidget {
               ],
             ),
 
-            // Row 2: Market badge (left-aligned, can wrap to 2 lines)
-            const SizedBox(height: DrevvySpace.s2),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _MarketBadge(text: badgeText, isBelow: isBelow),
-            ),
+            if (delta != null) ...[
+              const SizedBox(height: DrevvySpace.s2),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _MarketBadge(text: badgeText, isBelow: isBelow),
+              ),
+            ],
 
             // Row 3: Full-width CTA button
             const SizedBox(height: DrevvySpace.s2),
@@ -197,33 +200,6 @@ class _MarketBadge extends StatelessWidget {
               softWrap: true,
               maxLines: 2,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BrokenImage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-
-    return Container(
-      width: 96,
-      height: 70,
-      decoration: BoxDecoration(
-        color: colors.glassSolid,
-        borderRadius: BorderRadius.circular(DrevvyRadius.sm),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(LucideIcons.imageOff, color: colors.muted, size: 20),
-          const SizedBox(height: 2),
-          Text(
-            'Image didn\'t load',
-            style: TextStyle(fontSize: 8, color: colors.muted),
           ),
         ],
       ),

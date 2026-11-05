@@ -8,6 +8,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/providers/app_services.dart';
 import '../../../data/analytics/product_analytics.dart';
+import '../../../core/config/api_config_exception.dart';
+import '../../../data/discover/discover_catalog.dart';
+import '../../../data/discover/discover_client.dart';
+import '../../../data/discover/discover_config.dart';
+import '../../../data/discover/discover_exception.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
@@ -25,13 +30,23 @@ import '../widgets/new_car_market_card.dart';
 import '../widgets/otd_request_sheet.dart';
 import '../widgets/unlock_paywall.dart';
 import '../widgets/vdp_cta_bar.dart';
+import '../widgets/live_discover_vdp.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
 /// v1.7: Uses key balance instead of a monthly subscription.
 class VdpScreen extends ConsumerStatefulWidget {
-  const VdpScreen({super.key, required this.listingId});
+  const VdpScreen({
+    super.key,
+    required this.listingId,
+    this.discoverConfig,
+    this.discoverCatalog,
+  });
 
   final String listingId;
+
+  /// Overrides the dart-define. Tests pass a live config with a fake catalog.
+  final DiscoverConfig? discoverConfig;
+  final DiscoverCatalog? discoverCatalog;
 
   @override
   ConsumerState<VdpScreen> createState() => _VdpScreenState();
@@ -59,6 +74,22 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   bool _conversationOpen = false;
   bool _otdRequested = false;
   String _shopperFirstName = 'Dana';
+  String? _liveError;
+
+  DiscoverConfig get _discoverConfig =>
+      widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
+
+  bool get _liveDiscover => _discoverConfig.isLive;
+
+  bool get _discoverUnconfigured => _discoverConfig.needsConfiguration;
+
+  DiscoverCatalog get _catalog =>
+      widget.discoverCatalog ??
+      HttpDiscoverCatalog(
+        client: DiscoverClient(
+          config: widget.discoverConfig ?? DiscoverConfig.fromEnvironment(),
+        ),
+      );
 
   @override
   void initState() {
@@ -67,6 +98,20 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_discoverUnconfigured) {
+      if (!mounted) return;
+      setState(() {
+        _listing = null;
+        _market = null;
+        _isLoading = false;
+        _liveError = apiNotConfiguredMessage;
+      });
+      return;
+    }
+    if (_liveDiscover) {
+      await _loadDiscover();
+      return;
+    }
     final listing = await _repo.getListingById(widget.listingId);
     final market = await _repo.getMarketContext(listing);
     final balance = await _repo.getCreditBalance();
@@ -98,6 +143,33 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       'listing_id': listing.id,
       'inventory_type': listing.inventoryType,
     });
+  }
+
+  Future<void> _loadDiscover() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _liveError = null;
+      });
+    }
+    try {
+      final listing = await _catalog.listing(widget.listingId);
+      if (!mounted) return;
+      setState(() {
+        _listing = listing;
+        _market = null;
+        _isLoading = false;
+        _liveError = null;
+      });
+    } on DiscoverException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _listing = null;
+        _market = null;
+        _isLoading = false;
+        _liveError = error.message;
+      });
+    }
   }
 
   /// v1.8: Handle heart tap on VDP
@@ -308,6 +380,14 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_liveDiscover || _discoverUnconfigured) {
+      return LiveDiscoverVdp(
+        isLoading: _isLoading,
+        listing: _listing,
+        errorMessage: _liveError,
+        onRetry: _loadData,
+      );
+    }
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -455,15 +535,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (listing.isNew)
-                              NewCarMarketCard(
-                                listing: listing,
-                                market: market,
-                              )
+                              NewCarMarketCard(listing: listing, market: market)
                             else
-                              MarketPriceBar(
-                                listing: listing,
-                                market: market,
-                              ),
+                              MarketPriceBar(listing: listing, market: market),
                             if (!listing.isNew) ...[
                               const SizedBox(height: DrevvySpace.s6),
                               _MarketTiles(listing: listing, market: market),
@@ -710,7 +784,8 @@ class _HowDrevvyWorks extends StatelessWidget {
           ),
           _Step(
             number: '4',
-            text: 'If not, ask for the whole price for free. This is not a chat.',
+            text:
+                'If not, ask for the whole price for free. This is not a chat.',
           ),
         ],
       ),

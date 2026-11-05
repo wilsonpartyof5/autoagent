@@ -314,6 +314,7 @@ class _AccountSheetState extends State<AccountSheet> {
 
                         CarBalanceCard(
                           balance: _creditBalance!,
+                          notice: _repo.creditNotice,
                           onBuy: _showPackPicker,
                         ),
                         const SizedBox(height: DrevvySpace.s6),
