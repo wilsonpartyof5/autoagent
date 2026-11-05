@@ -136,6 +136,16 @@ export function normalizeMarketcheckDealerId(
   return text.length > 0 ? text : null;
 }
 
+/**
+ * True only when MarketCheck itself returned a dealer id, dealer website,
+ * or listing URL. A client-supplied URL is not verified identity.
+ */
+export function dealerIdentityVerified(identity: ListingDealerIdentity): boolean {
+  return normalizeMarketcheckDealerId(identity.marketcheckDealerId) != null
+    || normalizeHost(identity.dealerWebsite) != null
+    || normalizeHost(identity.listingUrl) != null;
+}
+
 export function matchOnboardedRooftop(
   identity: ListingDealerIdentity,
   rooftops: readonly OnboardedRooftop[],
