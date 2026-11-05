@@ -189,6 +189,30 @@ test('detail does not require a shared inventory key and strips dealer fields', 
   assert.equal(response.headers.get('x-api-key'), null);
 });
 
+test('a missing MarketCheck envelope is 502, not an empty demo page', async () => {
+  const store = new MemoryRateLimitStore();
+  const response = await handleDiscoverSearch(
+    searchRequest({ latitude: 35.2271, longitude: -80.8431 }),
+    {
+      rateLimitStore: store,
+      search: async () => ({
+        vehicles: [],
+        numFound: 0,
+        returned: 0,
+        start: 0,
+        rows: 10,
+        fromCache: false,
+        latencyMs: 8,
+        upstreamFailed: true,
+      }),
+    },
+  );
+  const { status, body } = await readJson(response);
+  assert.equal(status, 502);
+  assert.equal((body.error as { code: string }).code, 'UPSTREAM_ERROR');
+  assert.equal('data' in body, false);
+});
+
 test('MarketCheck quota becomes 502 UPSTREAM_ERROR with no demo rows', async () => {
   const store = new MemoryRateLimitStore();
   const response = await handleDiscoverSearch(

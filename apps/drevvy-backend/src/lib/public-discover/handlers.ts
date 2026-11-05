@@ -152,6 +152,10 @@ export async function handleDiscoverSearch(request: Request, deps: DiscoverHandl
       }),
     );
 
+    if (result.upstreamFailed) {
+      throw new DiscoverApiError('UPSTREAM_ERROR', 'Inventory is temporarily unavailable. Please try again later.');
+    }
+
     const listings = result.vehicles
       .map((vehicle) => publicListingFromSearchVehicle(vehicle, body))
       .filter((listing): listing is NonNullable<typeof listing> => listing != null)

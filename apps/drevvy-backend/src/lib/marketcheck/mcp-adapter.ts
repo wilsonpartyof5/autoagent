@@ -192,6 +192,8 @@ export interface LiveSearchResult {
   rows: number;
   fromCache: boolean;
   latencyMs: number;
+  /** True when MarketCheck returned no search envelope (HTTP/MCP failure), not a real zero-hit page. */
+  upstreamFailed?: boolean;
 }
 
 export interface DetailResponse {
@@ -386,8 +388,15 @@ async function searchOnePage(params: LiveSearchParams, rows: number, start: numb
   const raw = await callMcpTool<MCSearchResponse>('search_active_cars', buildSearchArgs(params, rows, start));
   const latencyMs = Date.now() - t0;
 
-  if (!raw) {
-    return { vehicles: [], numFound: 0, returned: 0, start, rows, fromCache: false, latencyMs };
+  if (!raw || raw.data == null) {
+    console.error(JSON.stringify({
+      event: 'mc_mcp_search_empty_envelope',
+      lat: params.latitude.toFixed(4),
+      lng: params.longitude.toFixed(4),
+      radiusMiles: params.radiusMiles,
+      latencyMs,
+    }));
+    return { vehicles: [], numFound: 0, returned: 0, start, rows, fromCache: false, latencyMs, upstreamFailed: true };
   }
 
   // MCP wraps MarketCheck REST response in a `data` envelope
