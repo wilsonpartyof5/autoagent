@@ -186,12 +186,22 @@ class FakePurchaseService implements PurchaseService {
   }
 }
 
-/// Live mode without a store SDK key. Purchases fail in the open instead of
-/// granting local keys.
-class UnavailablePurchaseService implements PurchaseService {
-  const UnavailablePurchaseService();
+const purchasesNotConfiguredMessage =
+    'Purchases are not configured for this build.';
 
-  static const _message = 'Purchases are not configured for this build.';
+/// A platform SDK key is present, but it is not a RevenueCat Test Store key.
+/// `appl_` and `goog_` keys can charge a production store account.
+const platformKeyNotSandboxMessage =
+    'Key purchases are off. A platform SDK key is not a verified sandbox.';
+
+/// Live mode without a verified sandbox store. Purchases fail in the open
+/// instead of granting local keys.
+class UnavailablePurchaseService implements PurchaseService {
+  const UnavailablePurchaseService({
+    this.message = purchasesNotConfiguredMessage,
+  });
+
+  final String message;
 
   @override
   Future<void> initialize() async {}
@@ -201,12 +211,12 @@ class UnavailablePurchaseService implements PurchaseService {
 
   @override
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
-    return const PurchaseError(message: _message, code: 'not_configured');
+    return PurchaseError(message: message, code: 'not_configured');
   }
 
   @override
   Future<RestoreResult> restorePurchases() async {
-    return const RestoreError(message: _message);
+    return RestoreError(message: message);
   }
 
   @override

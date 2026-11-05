@@ -51,6 +51,19 @@ flutter run \
 ```
 
 `DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
+
+Key purchases stay on the labeled demo service unless the build is live, the
+API origin is set, and the current platform RevenueCat key is a Test Store key
+(`REVENUECAT_IOS_API_KEY` or `REVENUECAT_ANDROID_API_KEY` starting with
+`test_`). Public `appl_` and `goog_` keys are not treated as sandbox: the same
+key is used for store sandbox testers and for production, and the app cannot
+see the store account. Those builds leave purchases off. A Test Store purchase
+posts `{productId, transactionId}` to `POST /api/consumer/credits` and keeps
+the balance the server returns. Cancellation, a pending payment, a store
+error, and a failed grant do not add keys locally. Restore posts transaction
+ids to `POST /api/consumer/credits/restore` and uses that balance. The server
+does not check a sandbox flag, so this client does not send a purchase from a
+platform SDK key.
 Discover, auth, credits, key spend, rooftop match, deal chips, profile, and
 saved cars read that same mode and the same origin. Live with an empty origin
 says it is not configured. Demo keeps the labeled catalog even when a URL is

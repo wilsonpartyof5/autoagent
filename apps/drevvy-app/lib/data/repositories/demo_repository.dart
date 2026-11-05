@@ -380,19 +380,45 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
 
-  /// Purchase a key pack. Grants server credits when that endpoint exists.
+  bool _purchaseBusy = false;
+
+  /// Purchase a key pack. A live purchase is success only after the credits
+  /// route returns a balance. Cancellation, a pending payment, a store error,
+  /// and a failed grant leave the previous balance in place.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
-    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
-      'pack_id': packType.productId,
-      'pack_size': packType.cars,
-      'pack_mix': CarPackType.packMix,
-      'price': packType.priceUsd,
-      'currency': 'USD',
-      'stage': 'purchase',
-    });
-    await _purchaseService.initialize();
-    final result = await _purchaseService.purchasePack(packType);
-    if (result is PurchaseSuccess) {
+    if (_purchaseBusy) {
+      return const PurchaseError(
+        message: 'A purchase is already in progress.',
+        code: 'in_flight',
+      );
+    }
+    _purchaseBusy = true;
+    try {
+      ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+        'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
+        'price': packType.priceUsd,
+        'currency': 'USD',
+        'stage': 'purchase',
+      });
+      await _purchaseService.initialize();
+      final result = await _purchaseService.purchasePack(packType);
+      if (result is! PurchaseSuccess) {
+        _trackPurchaseFailed(packType, result);
+        return result;
+      }
+      final confirmed = await _recordPurchase(result);
+      if (confirmed == null) {
+        _trackPurchaseFailed(
+          packType,
+          const PurchaseError(message: '', code: 'credits_unconfirmed'),
+        );
+        return PurchaseError(
+          message: _creditNotice ?? 'Drevvy could not add these keys.',
+          code: 'credits_unconfirmed',
+        );
+      }
       ProductAnalytics.instance.track(AnalyticsEvents.purchaseCompleted, {
         'pack_id': packType.productId,
         'pack_size': packType.cars,
@@ -400,21 +426,24 @@ class DemoRepository {
         'price': packType.priceUsd,
         'currency': 'USD',
       });
-      await _recordPurchase(result);
-    } else {
-      ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
-        'pack_id': packType.productId,
-        'pack_size': packType.cars,
-        'pack_mix': CarPackType.packMix,
-        'reason': switch (result) {
-          PurchaseCancelled() => 'cancelled',
-          PurchasePending() => 'pending',
-          PurchaseError() => 'store_error',
-          PurchaseSuccess() => 'store_error',
-        },
-      });
+      return confirmed;
+    } finally {
+      _purchaseBusy = false;
     }
-    return result;
+  }
+
+  void _trackPurchaseFailed(CarPackType packType, PurchaseResult result) {
+    ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
+      'pack_id': packType.productId,
+      'pack_size': packType.cars,
+      'pack_mix': CarPackType.packMix,
+      'reason': switch (result) {
+        PurchaseCancelled() => 'cancelled',
+        PurchasePending() => 'pending',
+        PurchaseError(:final code) => code ?? 'store_error',
+        PurchaseSuccess() => 'store_error',
+      },
+    });
   }
 
   /// Spend the market-intelligence + save key (Key A).
@@ -605,32 +634,49 @@ class DemoRepository {
   }
 
   /// Record a store purchase. Server balance wins when the credits route exists.
-  Future<void> _recordPurchase(PurchaseSuccess result) async {
-    if (_hasTransaction(result.transactionId)) return;
+  /// Returns null when live mode cannot confirm the grant. Demo mode still
+  /// records a local balance when that route is absent.
+  Future<PurchaseSuccess?> _recordPurchase(PurchaseSuccess result) async {
+    final transactionId = result.transactionId.trim();
+    if (transactionId.isEmpty) return null;
+    if (_hasTransaction(transactionId)) {
+      return PurchaseSuccess(
+        packType: result.packType,
+        creditsAdded: 0,
+        transactionId: transactionId,
+      );
+    }
 
+    final before = _creditBalance.balance;
     final remote = await _readCredits(
       () => _credits.grantPurchase(
         productId: result.packType.productId,
-        transactionId: result.transactionId,
+        transactionId: transactionId,
       ),
     );
     if (remote != null) {
+      final added = remote.balance - before;
       _rememberTransaction(
-        result.transactionId,
-        result.creditsAdded,
+        transactionId,
+        added < 0 ? 0 : added,
         result.packType,
       );
       _creditBalance = remote;
-      _reportBalance('purchase', result.creditsAdded);
-      return;
+      _reportBalance('purchase', added);
+      return PurchaseSuccess(
+        packType: result.packType,
+        creditsAdded: added < 0 ? 0 : added,
+        transactionId: transactionId,
+      );
     }
-    if (_live) return;
+    if (_live) return null;
     _addCredits(
       result.creditsAdded,
       CreditReason.purchase,
       packType: result.packType,
-      rcEventId: result.transactionId,
+      rcEventId: transactionId,
     );
+    return result;
   }
 
   bool _hasTransaction(String transactionId) {
@@ -732,18 +778,17 @@ class DemoRepository {
     );
     if (remote != null) {
       for (final transaction in transactions) {
+        final transactionId = transaction.transactionId.trim();
+        if (transactionId.isEmpty) continue;
         _rememberTransaction(
-          transaction.transactionId,
+          transactionId,
           transaction.packType.cars,
           transaction.packType,
         );
       }
       _creditBalance = remote;
       if (transactions.isEmpty) return const RestoreNoPurchases();
-      return RestoreSuccess(
-        creditsRestored: remote.balance,
-        transactions: transactions,
-      );
+      return RestoreSuccess(creditsRestored: 0, transactions: transactions);
     }
 
     if (_live) {

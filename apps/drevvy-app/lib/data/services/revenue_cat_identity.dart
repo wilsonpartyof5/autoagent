@@ -6,17 +6,17 @@ import 'store_gateway.dart';
 
 /// Keeps the RevenueCat app user id equal to the Supabase user id.
 class RevenueCatIdentity {
-  RevenueCatIdentity({
-    required this.config,
-    StoreGateway? gateway,
-  }) : _gateway = gateway ?? PurchasesFlutterStore(config);
+  RevenueCatIdentity({required this.config, StoreGateway? gateway})
+    : _gateway = gateway ?? PurchasesFlutterStore(config);
 
   final PurchaseConfig config;
   final StoreGateway _gateway;
 
   /// Called after the shopper signs in. [supabaseUserId] becomes `Purchases.logIn`.
+  ///
+  /// Identity login configures the SDK, so it runs only for a Test Store key.
   Future<void> onSignedIn(String supabaseUserId) async {
-    if (!config.usesRevenueCat) return;
+    if (!config.sandboxPurchasesEnabled) return;
     final appUserId = supabaseUserId.trim();
     if (appUserId.isEmpty) return;
     try {
@@ -29,7 +29,7 @@ class RevenueCatIdentity {
 
   /// Called when the shopper signs out.
   Future<void> onSignedOut() async {
-    if (!config.usesRevenueCat) return;
+    if (!config.sandboxPurchasesEnabled) return;
     try {
       await _gateway.logOut();
     } on Exception catch (error) {

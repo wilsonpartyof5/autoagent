@@ -178,14 +178,16 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
         _log(
           strict ? 'Credits server is not ready (purchases not configured).' : 'Credits server is not ready (purchases not configured). Keeping the local demo balance.',
         );
-        return _miss();
+        return _miss(response.body);
       }
       if (_endpointMissing(response.statusCode)) return _miss();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _reportFailure(path, response.statusCode);
-        return _miss();
+        return _miss(response.body);
       }
-      return _parseBalance(response.body);
+      final parsed = _parseBalance(response.body);
+      if (parsed == null) return _miss();
+      return parsed;
     } on ApiConfigException {
       rethrow;
     } on Exception {
@@ -194,9 +196,29 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     }
   }
 
-  CarCreditBalance? _miss() {
-    if (strict) throw ApiConfigException.creditsUnavailable;
+  CarCreditBalance? _miss([String body = '']) {
+    if (strict) {
+      throw ApiConfigException(
+        _serverMessage(body) ?? creditsUnavailableMessage,
+      );
+    }
     return null;
+  }
+
+  String? _serverMessage(String body) {
+    if (body.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final error = decoded['error'];
+      if (error is! Map) return null;
+      final message = error['message'];
+      if (message is! String) return null;
+      final trimmed = message.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    } on FormatException {
+      return null;
+    }
   }
 
   void _reportFailure(String path, int status) {

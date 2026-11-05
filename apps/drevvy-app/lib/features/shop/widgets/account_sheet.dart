@@ -118,9 +118,12 @@ class _AccountSheetState extends State<AccountSheet> {
     if (!host.mounted) return;
     if (result is PurchaseSuccess) {
       if (sheetContext.mounted) Navigator.pop(sheetContext);
+      final added = result.creditsAdded;
       _showPurchaseMessage(
         host,
-        'Added ${result.creditsAdded == 1 ? '1 key' : '${result.creditsAdded} keys'}. Packs never expire.',
+        added <= 0
+            ? 'Purchase confirmed. Packs never expire.'
+            : 'Added ${added == 1 ? '1 key' : '$added keys'}. Packs never expire.',
       );
       return;
     }

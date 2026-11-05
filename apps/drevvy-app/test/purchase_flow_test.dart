@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:drevvy_app/core/config/api_config_exception.dart';
+import 'package:drevvy_app/core/config/drevvy_api_config.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
 import 'package:drevvy_app/data/services/cars_balance_placement.dart';
@@ -11,6 +16,14 @@ import 'package:drevvy_app/data/services/shopper_session_store.dart';
 import 'package:drevvy_app/data/services/store_gateway.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+const _liveOrigin = PurchaseConfig(
+  mode: DrevvyDataMode.live,
+  apiBaseUrl: 'https://api.drevvy.com',
+  revenueCatIosApiKey: 'test_store_key',
+);
 
 void main() {
   group('PurchaseConfig', () {
@@ -22,26 +35,75 @@ void main() {
       expect(PurchaseConfig.fromEnvironment().usesRevenueCat, isFalse);
     });
 
-    test('selects RevenueCat only for the platform that has a public key', () {
+    test('a public platform key does not select the store service', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
-      const ios = PurchaseConfig(revenueCatIosApiKey: 'appl_test');
+      const ios = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        apiBaseUrl: 'https://api.drevvy.com',
+        revenueCatIosApiKey: 'appl_public',
+      );
       expect(ios.usesRevenueCat, isTrue);
-      expect(ios.usesSuperwall, isFalse);
+      expect(ios.hasTestStoreKey, isFalse);
+      expect(ios.sandboxPurchasesEnabled, isFalse);
+      final service = buildPurchaseService(ios, gateway: _FakeStore());
+      expect(service, isA<UnavailablePurchaseService>());
       expect(
-        buildPurchaseService(ios, gateway: _FakeStore()),
-        isA<RevenueCatPurchaseService>(),
+        (service as UnavailablePurchaseService).message,
+        platformKeyNotSandboxMessage,
       );
 
-      const androidOnly = PurchaseConfig(revenueCatAndroidApiKey: 'goog_test');
+      const androidOnly = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        apiBaseUrl: 'https://api.drevvy.com',
+        revenueCatAndroidApiKey: 'goog_public',
+      );
       expect(androidOnly.usesRevenueCat, isFalse);
+      expect(androidOnly.sandboxPurchasesEnabled, isFalse);
 
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       expect(androidOnly.usesRevenueCat, isTrue);
+      expect(androidOnly.sandboxPurchasesEnabled, isFalse);
       expect(
         PurchaseConfig(superwallAndroidApiKey: 'pk_test').usesSuperwall,
         isTrue,
+      );
+    });
+
+    test(
+      'demo stays on the local service when a Test Store key is present',
+      () {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+        const demo = PurchaseConfig(revenueCatIosApiKey: 'test_store_key');
+        expect(demo.hasTestStoreKey, isTrue);
+        expect(demo.sandboxPurchasesEnabled, isFalse);
+        expect(buildPurchaseService(demo), isA<FakePurchaseService>());
+      },
+    );
+
+    test('live Test Store purchases require the API origin', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      const missingOrigin = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        revenueCatIosApiKey: 'test_store_key',
+      );
+      expect(missingOrigin.sandboxPurchasesEnabled, isFalse);
+      final blocked = buildPurchaseService(missingOrigin);
+      expect(blocked, isA<UnavailablePurchaseService>());
+      expect(
+        (blocked as UnavailablePurchaseService).message,
+        apiNotConfiguredMessage,
+      );
+
+      expect(_liveOrigin.sandboxPurchasesEnabled, isTrue);
+      expect(
+        buildPurchaseService(_liveOrigin, gateway: _FakeStore()),
+        isA<RevenueCatPurchaseService>(),
       );
     });
   });
@@ -77,22 +139,34 @@ void main() {
       );
     });
 
-    test('restore sums non-subscription pack transactions', () async {
-      final store = _FakeStore()
-        ..restored = const [
-          RestoredTransaction(
-            transactionId: 'a',
-            packType: CarPackType.starter,
-          ),
-          RestoredTransaction(transactionId: 'b', packType: CarPackType.plus),
-        ];
-      final service = RevenueCatPurchaseService(gateway: store);
-      final result = await service.restorePurchases();
+    test(
+      'restore returns consumable transactions without a local total',
+      () async {
+        final store = _FakeStore()
+          ..restored = const [
+            RestoredTransaction(
+              transactionId: 'a',
+              packType: CarPackType.starter,
+            ),
+            RestoredTransaction(transactionId: 'b', packType: CarPackType.plus),
+          ];
+        final service = RevenueCatPurchaseService(gateway: store);
+        final result = await service.restorePurchases();
 
-      expect(result, isA<RestoreSuccess>());
-      final success = result as RestoreSuccess;
-      expect(success.creditsRestored, 30);
-      expect(success.transactions, hasLength(2));
+        expect(result, isA<RestoreSuccess>());
+        final success = result as RestoreSuccess;
+        expect(success.creditsRestored, 0);
+        expect(success.transactions, hasLength(2));
+      },
+    );
+
+    test('a blank transaction id is not a completed purchase', () async {
+      final store = _FakeStore()
+        ..outcome = const StorePurchaseSucceeded(transactionId: '  ');
+      final service = RevenueCatPurchaseService(gateway: store);
+      final result = await service.purchasePack(CarPackType.starter);
+      expect(result, isA<PurchaseError>());
+      expect((result as PurchaseError).code, 'missing_transaction');
     });
 
     test('restore with no consumable transactions reports none', () async {
@@ -203,10 +277,7 @@ void main() {
 
         final store = _FakeStore();
         final session = ShopperSessionStore()
-          ..identity = RevenueCatIdentity(
-            config: const PurchaseConfig(revenueCatIosApiKey: 'appl_test'),
-            gateway: store,
-          );
+          ..identity = RevenueCatIdentity(config: _liveOrigin, gateway: store);
 
         await session.save(
           const ShopperSession(
@@ -220,6 +291,33 @@ void main() {
         expect(store.loggedOut, isTrue);
       },
     );
+
+    test('a platform SDK key does not log in to RevenueCat', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore();
+      final session = ShopperSessionStore()
+        ..identity = RevenueCatIdentity(
+          config: const PurchaseConfig(
+            mode: DrevvyDataMode.live,
+            apiBaseUrl: 'https://api.drevvy.com',
+            revenueCatIosApiKey: 'appl_public',
+          ),
+          gateway: store,
+        );
+
+      await session.save(
+        const ShopperSession(
+          accessToken: 'shopper-jwt',
+          consumerUserId: 'supabase-user-1',
+        ),
+      );
+      await session.clear();
+
+      expect(store.loggedInUserId, isNull);
+      expect(store.loggedOut, isFalse);
+    });
 
     test('demo mode does not call RevenueCat identity', () async {
       final store = _FakeStore();
@@ -239,6 +337,202 @@ void main() {
 
       expect(store.loggedInUserId, isNull);
       expect(store.loggedOut, isFalse);
+    });
+  });
+
+  group('sandbox credit confirmation', () {
+    test('a Test Store purchase keeps the server balance', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore()
+        ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_5');
+      final credits = _ScriptedCredits(
+        grantResult: const CarCreditBalance(
+          balance: 8,
+          totalPurchased: 8,
+          totalSpent: 0,
+          totalRefunded: 0,
+        ),
+      );
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: credits,
+      );
+
+      final result = await repo.purchasePack(CarPackType.starter);
+      expect(result, isA<PurchaseSuccess>());
+      expect((result as PurchaseSuccess).creditsAdded, 8);
+      expect(credits.grantCalls, 1);
+      expect(credits.lastProductId, 'drevvy_keys_5');
+      expect(credits.lastTransactionId, 'txn_5');
+      expect((await repo.getCreditBalance()).balance, 8);
+
+      store.outcome = const StorePurchaseSucceeded(transactionId: 'txn_5');
+      final repeat = await repo.purchasePack(CarPackType.starter);
+      expect(repeat, isA<PurchaseSuccess>());
+      expect((repeat as PurchaseSuccess).creditsAdded, 0);
+      expect(credits.grantCalls, 1);
+      expect((await repo.getCreditBalance()).balance, 8);
+    });
+
+    test('cancellation, pending, and a failed grant do not add keys', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore()..outcome = const StorePurchaseCancelled();
+      final credits = _ScriptedCredits(
+        grantResult: const CarCreditBalance(
+          balance: 5,
+          totalPurchased: 5,
+          totalSpent: 0,
+          totalRefunded: 0,
+        ),
+      );
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: credits,
+        initialBalance: const CarCreditBalance.withBalance(2),
+      );
+
+      expect(
+        await repo.purchasePack(CarPackType.starter),
+        isA<PurchaseCancelled>(),
+      );
+      store.outcome = const StorePurchasePending();
+      expect(
+        await repo.purchasePack(CarPackType.starter),
+        isA<PurchasePending>(),
+      );
+      expect(credits.grantCalls, 0);
+      expect((await repo.getCreditBalance()).balance, 2);
+
+      store.outcome = const StorePurchaseSucceeded(
+        transactionId: 'txn_unverified',
+      );
+      credits.grantError = const ApiConfigException(
+        'Purchase could not be verified.',
+      );
+      final failed = await repo.purchasePack(CarPackType.starter);
+      expect(failed, isA<PurchaseError>());
+      expect(
+        (failed as PurchaseError).message,
+        'Purchase could not be verified.',
+      );
+      expect((await repo.getCreditBalance()).balance, 2);
+    });
+
+    test('a live credits error body is not a local grant', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore()
+        ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_402');
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: HttpCreditsEndpoint(
+          baseUrl: 'https://api.drevvy.com',
+          strict: true,
+          sessionStore: ShopperSessionStore(),
+          client: MockClient(
+            (request) async => http.Response(
+              jsonEncode({
+                'success': false,
+                'error': {
+                  'code': 'unverified_purchase',
+                  'message': 'Purchase could not be verified.',
+                },
+              }),
+              402,
+            ),
+          ),
+        ),
+        initialBalance: const CarCreditBalance.withBalance(1),
+      );
+
+      final result = await repo.purchasePack(CarPackType.single);
+      expect(result, isA<PurchaseError>());
+      expect(
+        (result as PurchaseError).message,
+        'Purchase could not be verified.',
+      );
+      expect((await repo.getCreditBalance()).balance, 1);
+    });
+
+    test('restore uses the server balance', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore()
+        ..restored = const [
+          RestoredTransaction(
+            transactionId: 'txn_5',
+            packType: CarPackType.starter,
+          ),
+          RestoredTransaction(
+            transactionId: 'txn_25',
+            packType: CarPackType.plus,
+          ),
+        ];
+      final credits = _ScriptedCredits(
+        restoreResult: const CarCreditBalance(
+          balance: 4,
+          totalPurchased: 4,
+          totalSpent: 0,
+          totalRefunded: 0,
+        ),
+      );
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: credits,
+        initialBalance: const CarCreditBalance.withBalance(1),
+      );
+
+      final result = await repo.restorePurchases();
+      expect(result, isA<RestoreSuccess>());
+      expect((result as RestoreSuccess).creditsRestored, 0);
+      expect(credits.lastRestoreIds, ['txn_5', 'txn_25']);
+      expect((await repo.getCreditBalance()).balance, 4);
+    });
+
+    test('a second tap is rejected while a purchase is open', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final gate = Completer<void>();
+      final store = _FakeStore()
+        ..hold = gate.future
+        ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_hold');
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: _ScriptedCredits(
+          grantResult: const CarCreditBalance(
+            balance: 1,
+            totalPurchased: 1,
+            totalSpent: 0,
+            totalRefunded: 0,
+          ),
+        ),
+      );
+
+      final first = repo.purchasePack(CarPackType.single);
+      await store.started.future;
+      final second = await repo.purchasePack(CarPackType.single);
+      expect(second, isA<PurchaseError>());
+      expect((second as PurchaseError).code, 'in_flight');
+      gate.complete();
+      expect(await first, isA<PurchaseSuccess>());
+      expect((await repo.getCreditBalance()).balance, 1);
     });
   });
 
@@ -262,6 +556,8 @@ class _FakeStore implements StoreGateway {
   CarPackType? purchased;
   String? loggedInUserId;
   bool loggedOut = false;
+  Future<void>? hold;
+  final Completer<void> started = Completer<void>();
 
   @override
   Future<void> configure() async {}
@@ -299,6 +595,9 @@ class _FakeStore implements StoreGateway {
   @override
   Future<StorePurchaseOutcome> purchase(CarPackType packType) async {
     purchased = packType;
+    if (!started.isCompleted) started.complete();
+    final pending = hold;
+    if (pending != null) await pending;
     return outcome;
   }
 
@@ -322,17 +621,26 @@ class _FakeStore implements StoreGateway {
 }
 
 class _ScriptedCredits extends CreditsEndpoint {
-  _ScriptedCredits({this.grantResult});
+  _ScriptedCredits({this.grantResult, this.restoreResult});
 
   final CarCreditBalance? grantResult;
+  final CarCreditBalance? restoreResult;
+  ApiConfigException? grantError;
   String? lastProductId;
+  String? lastTransactionId;
+  List<String>? lastRestoreIds;
+  int grantCalls = 0;
 
   @override
   Future<CarCreditBalance?> grantPurchase({
     required String productId,
     required String transactionId,
   }) async {
+    grantCalls += 1;
     lastProductId = productId;
+    lastTransactionId = transactionId;
+    final error = grantError;
+    if (error != null) throw error;
     return grantResult;
   }
 
@@ -340,7 +648,8 @@ class _ScriptedCredits extends CreditsEndpoint {
   Future<CarCreditBalance?> restorePurchases({
     List<String> transactionIds = const [],
   }) async {
-    return null;
+    lastRestoreIds = transactionIds;
+    return restoreResult;
   }
 
   @override

@@ -34,11 +34,17 @@ class RevenueCatPurchaseService implements PurchaseService {
     await initialize();
     final outcome = await gateway.purchase(packType);
     return switch (outcome) {
-      StorePurchaseSucceeded(:final transactionId) => PurchaseSuccess(
-        packType: packType,
-        creditsAdded: packType.cars,
-        transactionId: transactionId,
-      ),
+      StorePurchaseSucceeded(:final transactionId) =>
+        transactionId.trim().isEmpty
+            ? const PurchaseError(
+                message: 'The store did not return a transaction id.',
+                code: 'missing_transaction',
+              )
+            : PurchaseSuccess(
+                packType: packType,
+                creditsAdded: packType.cars,
+                transactionId: transactionId,
+              ),
       StorePurchaseCancelled() => const PurchaseCancelled(),
       StorePurchasePending() => const PurchasePending(),
       StorePurchaseFailed(:final message, :final code) => PurchaseError(
@@ -53,11 +59,7 @@ class RevenueCatPurchaseService implements PurchaseService {
     await initialize();
     final transactions = await gateway.restore();
     if (transactions.isEmpty) return const RestoreNoPurchases();
-    final credits = transactions.fold<int>(
-      0,
-      (sum, transaction) => sum + transaction.packType.cars,
-    );
-    return RestoreSuccess(creditsRestored: credits, transactions: transactions);
+    return RestoreSuccess(creditsRestored: 0, transactions: transactions);
   }
 
   @override
