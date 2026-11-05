@@ -42,6 +42,7 @@ class ShopScreen extends StatefulWidget {
     this.deviceLocation,
     this.placeSearch,
     this.locationFlags,
+    this.repository,
   });
 
   /// Overrides the dart-define. Tests pass a live config with a fake catalog.
@@ -51,12 +52,15 @@ class ShopScreen extends StatefulWidget {
   final PlaceSearch? placeSearch;
   final LocalFlags? locationFlags;
 
+  /// Overrides [DemoRepository.instance]. Tests use this to watch searches.
+  final DemoRepository? repository;
+
   @override
   State<ShopScreen> createState() => _ShopScreenState();
 }
 
 class _ShopScreenState extends State<ShopScreen> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final bool _liveDiscover;
   late final bool _discoverUnconfigured;
@@ -85,6 +89,7 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   void initState() {
     super.initState();
+    _repo = widget.repository ?? DemoRepository.instance;
     final config = widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
     _liveDiscover = config.isLive;
     _discoverUnconfigured = config.needsConfiguration;
@@ -183,6 +188,15 @@ class _ShopScreenState extends State<ShopScreen> {
     String source = 'composer',
     bool userInitiated = true,
   }) async {
+    // Live with an empty origin is not the demo catalog. Ask-to-shop,
+    // shop starters, and the shop composer all enter through here.
+    if (_discoverUnconfigured) {
+      setState(() {
+        _mode = ChatMode.shop;
+        _isSearching = false;
+      });
+      return;
+    }
     if (userInitiated && (query.trim().isNotEmpty || filters != null)) {
       final properties = searchEventProperties(
         surface: 'shop',

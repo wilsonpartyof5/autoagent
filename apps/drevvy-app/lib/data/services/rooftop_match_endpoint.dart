@@ -11,10 +11,12 @@ import 'shopper_session_store.dart';
 
 /// Resolves whether a listing URL matches an onboarded dealer rooftop.
 ///
-/// Tries `GET /api/consumer/listings/:id/rooftop-match`. In demo mode, a
-/// missing route (404/405/501), empty base URL, or network failure falls
-/// back to the demo stub. Live mode returns [RooftopMatch.unavailable]
-/// instead of treating listing_001 / listing_007 as in-network.
+/// Tries `GET /api/consumer/listings/:id/rooftop-match` only in live mode
+/// with an origin. Demo always uses the stub and does not call the route,
+/// even when a base URL is set. Live with an empty origin returns
+/// [RooftopMatch.unavailable] instead of treating listing_001 / listing_007
+/// as in-network. A live HTTP miss does the same; the stub fallback stays
+/// on the HTTP client for tests that construct it directly.
 abstract class RooftopMatchEndpoint {
   const RooftopMatchEndpoint();
 
@@ -23,16 +25,13 @@ abstract class RooftopMatchEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
-    if (config.isLive) {
-      if (baseUrl.isEmpty) return const UnconfiguredRooftopMatchEndpoint();
-      return HttpRooftopMatchEndpoint(
-        baseUrl: baseUrl,
-        client: client,
-        strict: true,
-      );
-    }
-    if (baseUrl.isEmpty) return const StubRooftopMatchEndpoint();
-    return HttpRooftopMatchEndpoint(baseUrl: baseUrl, client: client);
+    if (!config.isLive) return const StubRooftopMatchEndpoint();
+    if (baseUrl.isEmpty) return const UnconfiguredRooftopMatchEndpoint();
+    return HttpRooftopMatchEndpoint(
+      baseUrl: baseUrl,
+      client: client,
+      strict: true,
+    );
   }
 
   Future<RooftopMatch> match(Listing listing);

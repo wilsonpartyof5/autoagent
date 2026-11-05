@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
@@ -36,18 +37,25 @@ class DemoRepository {
     DealChipsEndpoint? dealChips,
     SavedCarsEndpoint? savedCars,
     ShopperProfileEndpoint? profile,
+    http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
     _live = resolved.isLive;
-    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _credits = credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
-    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
-    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
-    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
-    _savedCarsEndpoint = savedCars ?? SavedCarsEndpoint.fromConfig(resolved);
-    _profile = profile ?? ShopperProfileEndpoint.fromConfig(resolved);
+    _rooftopMatch =
+        rooftopMatch ??
+        RooftopMatchEndpoint.fromConfig(resolved, client: httpClient);
+    _keySpend =
+        keySpend ?? KeySpendEndpoint.fromConfig(resolved, client: httpClient);
+    _dealChips =
+        dealChips ?? DealChipsEndpoint.fromConfig(resolved, client: httpClient);
+    _savedCarsEndpoint =
+        savedCars ?? SavedCarsEndpoint.fromConfig(resolved, client: httpClient);
+    _profile =
+        profile ?? ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     } else if (_live) {
@@ -62,7 +70,7 @@ class DemoRepository {
 
   late final bool _live;
 
-  /// Live builds read the server. Demo builds keep the labeled samples.
+  /// Live mode, including a live build whose API origin is still empty.
   bool get isLive => _live;
 
   /// Market intel has no shopper payload and no unlock read, so live mode
@@ -512,7 +520,7 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!match.isInNetwork) return null;
+    if (!_mayStartConversation(match)) return null;
     final remote = await _keySpend.startConversation(
       listing: listing,
       match: match,
@@ -566,6 +574,40 @@ class DemoRepository {
     }
     _otdRequested.add(listing.id);
     return true;
+  }
+
+  /// In-network is not enough in live mode. A stub match and an unavailable
+  /// match must not post a conversation or fall through to the local ledger.
+  bool _mayStartConversation(RooftopMatch match) {
+    if (!match.isInNetwork) return false;
+    if (_live && match.source != RooftopMatchSource.live) return false;
+    return true;
+  }
+
+  /// Seeded demo deals already carry the fair-price formula. Live must not
+  /// keep that valuation on a deal it just attached to a real conversation.
+  Deal _dropSyntheticMarket(Deal deal) {
+    if (!_live || deal.marketContext == null) return deal;
+    return Deal(
+      id: deal.id,
+      listingId: deal.listingId,
+      letter: deal.letter,
+      status: deal.status,
+      listedAtStart: deal.listedAtStart,
+      addedAt: deal.addedAt,
+      firstContactAt: deal.firstContactAt,
+      listing: deal.listing,
+      offers: deal.offers,
+      comms: deal.comms,
+      events: deal.events,
+      dealer: deal.dealer,
+      officialOffer: deal.officialOffer,
+      outcome: deal.outcome,
+      acceptedOffer: deal.acceptedOffer,
+      changedOffer: deal.changedOffer,
+      tryOnceMoreUsed: deal.tryOnceMoreUsed,
+      dealerTimelines: deal.dealerTimelines,
+    );
   }
 
   bool _refusesLocalKeySpend(KeySpendResult remote) {
@@ -1123,10 +1165,11 @@ class DemoRepository {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
-        final next = id != null && id.isNotEmpty && deal.id != id
+        final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        if (next.id != deal.id) {
+        final next = _dropSyntheticMarket(renamed);
+        if (next.id != deal.id || next.marketContext != deal.marketContext) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,

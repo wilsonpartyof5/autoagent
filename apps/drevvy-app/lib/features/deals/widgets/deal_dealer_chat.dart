@@ -26,7 +26,10 @@ Future<bool> openDealDealerChat({
 
   final balance = creditBalance ?? await repo.getCreditBalance();
   final firstName = shopperFirstName ?? await _knownFirstName(repo);
-  final resolvedMarket = repo.isLive
+  // Live must not forward the demo fair-price formula or a market context
+  // that was stored from it. An explicit market argument is the same
+  // client-side valuation on this path.
+  final MarketContext? resolvedMarket = repo.isLive
       ? null
       : market ?? deal.marketContext ?? await repo.getMarketContext(listing);
   if (!context.mounted) return false;
