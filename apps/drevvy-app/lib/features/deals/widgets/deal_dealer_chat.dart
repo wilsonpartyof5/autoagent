@@ -25,9 +25,10 @@ Future<bool> openDealDealerChat({
   if (!resolvedMatch.isInNetwork) return false;
 
   final balance = creditBalance ?? await repo.getCreditBalance();
-  final firstName = shopperFirstName ?? (await repo.getCurrentUser()).firstName;
-  final resolvedMarket =
-      market ?? deal.marketContext ?? await repo.getMarketContext(listing);
+  final firstName = shopperFirstName ?? await _knownFirstName(repo);
+  final resolvedMarket = repo.isLive
+      ? null
+      : market ?? deal.marketContext ?? await repo.getMarketContext(listing);
   if (!context.mounted) return false;
 
   // Return once the sheet is presented. Dismissal is the shopper's.
@@ -40,7 +41,7 @@ Future<bool> openDealDealerChat({
       match: resolvedMatch,
       creditBalance: balance,
       alreadyOpen: true,
-      shopperFirstName: firstName,
+      shopperFirstName: firstName ?? '',
       dealId: deal.id,
       chipInputs: _chipInputsFor(
         repo,
@@ -65,6 +66,11 @@ Future<bool> openDealDealerChat({
     ),
   );
   return true;
+}
+
+Future<String?> _knownFirstName(DemoRepository repo) async {
+  final user = await repo.getCurrentUser();
+  return user.nameIsKnown ? user.firstName : null;
 }
 
 /// Thread, market intel, feature, and visit time for an existing deal.

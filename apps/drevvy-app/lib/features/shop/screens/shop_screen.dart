@@ -11,6 +11,7 @@ import '../../../data/discover/discover_client.dart';
 import '../../../data/discover/discover_config.dart';
 import '../../../data/discover/discover_filters.dart';
 import '../../../data/discover/discover_shop_controller.dart';
+import '../../../data/services/saved_cars_endpoint.dart';
 import '../../../data/location/device_location.dart';
 import '../../../data/location/location_sources.dart';
 import '../../../data/location/place_search.dart';
@@ -382,32 +383,36 @@ class _ShopScreenState extends State<ShopScreen> {
   Future<void> _handleSaveToggle(Listing listing, bool isSaved) async {
     HapticFeedback.lightImpact();
 
-    if (isSaved) {
-      // Unsave the car
-      await _repo.unsaveByListingId(listing.id, source: 'shop');
+    try {
+      if (isSaved) {
+        await _repo.unsaveByListingId(listing.id, source: 'shop');
+        if (!mounted) return;
+        setState(() {
+          _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Removed from Saved'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        await _repo.saveCar(listing, source: 'shop');
+        if (!mounted) return;
+        setState(() {
+          _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved for later'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } on SavedCarsException catch (error) {
       if (!mounted) return;
-      setState(() {
-        _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Removed from Saved'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      // Save the car
-      await _repo.saveCar(listing, source: 'shop');
-      if (!mounted) return;
-      setState(() {
-        _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved for later'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -474,7 +479,9 @@ class _ShopScreenState extends State<ShopScreen> {
                 child: _mode == ChatMode.ask
                     ? isEmpty
                           ? ChatEmpty(
-                              userName: _user?.firstName ?? 'there',
+                              userName: _user?.nameIsKnown == true
+                                  ? _user!.firstName
+                                  : 'there',
                               onPromptTap: (prompt) =>
                                   _sendMessage(prompt, source: 'starter'),
                               onShopTap: (query) =>

@@ -41,13 +41,24 @@ class ShopperSessionStore {
   LocalFlags deviceFlags = SharedPreferencesFlags();
 
   /// Device registry. A missing route does not block sign-out.
-  DeviceRegistrar devices = DeviceRegistrar();
+  /// Created on first use so reading the store during test setup does not
+  /// open an HTTP client outside a test.
+  DeviceRegistrar? _devices;
+  DeviceRegistrar get devices => _devices ??= DeviceRegistrar();
+  set devices(DeviceRegistrar value) => _devices = value;
 
   String Function() devicePlatform = pushPlatformLabel;
 
   SessionStore secureSessions = SecureSessionStore();
 
-  AuthApi authApi = AuthApi();
+  /// Created on first use for the same reason as [devices].
+  AuthApi? _authApi;
+  AuthApi get authApi => _authApi ??= AuthApi();
+  set authApi(AuthApi value) => _authApi = value;
+
+  /// Live account state to drop after the session is gone. Demo builds use
+  /// this to restore the labeled sample shopper instead of the signed-in one.
+  void Function()? onSessionCleared;
 
   /// Trimmed access token, or null when the shopper is signed out.
   String? get accessToken {
@@ -97,6 +108,7 @@ class ShopperSessionStore {
       // Secure storage can be absent in demo mode.
     }
     session = null;
+    onSessionCleared?.call();
     ProductAnalytics.instance.signOut();
     await identity?.onSignedOut();
   }

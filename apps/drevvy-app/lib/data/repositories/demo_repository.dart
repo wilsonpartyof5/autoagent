@@ -10,6 +10,9 @@ import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
 import '../services/purchase_service_factory.dart';
 import '../services/rooftop_match_endpoint.dart';
+import '../services/saved_cars_endpoint.dart';
+import '../services/shopper_profile_endpoint.dart';
+import '../services/shopper_session_store.dart';
 import '../../core/theme/drevvy_tokens.dart';
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
@@ -31,6 +34,8 @@ class DemoRepository {
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
     DealChipsEndpoint? dealChips,
+    SavedCarsEndpoint? savedCars,
+    ShopperProfileEndpoint? profile,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
@@ -41,10 +46,14 @@ class DemoRepository {
     _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
     _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
     _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
+    _savedCarsEndpoint = savedCars ?? SavedCarsEndpoint.fromConfig(resolved);
+    _profile = profile ?? ShopperProfileEndpoint.fromConfig(resolved);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     } else if (_live) {
       _creditBalance = const CarCreditBalance.withBalance(0);
+      _savedCarsInitialized = true;
+      _currentUser = _signedOutLiveUser;
       if (!resolved.apiBaseUrl.trim().isNotEmpty) {
         _creditNotice = apiNotConfiguredMessage;
       }
@@ -53,11 +62,24 @@ class DemoRepository {
 
   late final bool _live;
 
+  /// Live builds read the server. Demo builds keep the labeled samples.
+  bool get isLive => _live;
+
+  /// Market intel has no shopper payload and no unlock read, so live mode
+  /// does not spend a key for it.
+  bool get marketIntelSpendEnabled => !_live;
+
   /// Shown when live mode cannot confirm a key balance. Null in demo mode.
   String? _creditNotice;
   String? get creditNotice => _creditNotice;
 
-  static final instance = DemoRepository();
+  static final DemoRepository instance = _createInstance();
+
+  static DemoRepository _createInstance() {
+    final repo = DemoRepository();
+    ShopperSessionStore.instance.onSessionCleared = repo.clearSignedInState;
+    return repo;
+  }
 
   final Duration _networkDelay;
   late final CreditsEndpoint _credits;
@@ -65,6 +87,8 @@ class DemoRepository {
   late final RooftopMatchEndpoint _rooftopMatch;
   late final KeySpendEndpoint _keySpend;
   late final DealChipsEndpoint _dealChips;
+  late final SavedCarsEndpoint _savedCarsEndpoint;
+  late final ShopperProfileEndpoint _profile;
 
   /// Chips route for an in-network deal. Missing base URL keeps the opener pair.
   DealChipsEndpoint get dealChips => _dealChips;
@@ -135,8 +159,65 @@ class DemoRepository {
   User? _currentUser;
 
   Future<User> getCurrentUser() async {
+    if (_live) {
+      _currentUser ??= _signedOutLiveUser;
+      return _delay(_currentUser!);
+    }
     _currentUser ??= _demoUser;
     return _delay(_currentUser!);
+  }
+
+  /// Loads the profile id and the server balance and saved cars.
+  /// A profile miss keeps the neutral signed-in label. It never becomes Dana.
+  Future<User> refreshLiveAccount() async {
+    if (!_live) return getCurrentUser();
+    final token = ShopperSessionStore.instance.accessToken;
+    if (token == null) {
+      _currentUser = _signedOutLiveUser;
+      return _currentUser!;
+    }
+    var userId = ShopperSessionStore.instance.session?.consumerUserId ?? '';
+    try {
+      final profile = await _profile.fetch();
+      userId = profile.consumerUserId;
+    } on ApiConfigException {
+      // The session id is enough to stay signed in without a personal name.
+    }
+    _currentUser = _signedInLiveUser(userId);
+    await pullSignedInBalance();
+    try {
+      await getSavedCars();
+    } on SavedCarsException {
+      // The saved tab shows the error and a retry.
+    }
+    return _currentUser!;
+  }
+
+  /// Drops the signed-in account. Live mode does not fall back to Dana or
+  /// the seeded key balance. Demo mode restores the labeled sample shopper.
+  void clearSignedInState() {
+    _marketIntelUnlocked.clear();
+    _conversationStarted.clear();
+    _otdRequested.clear();
+    _savedListings.clear();
+    _savedCarsError = null;
+    _creditLedger.clear();
+    if (_live) {
+      _currentUser = _signedOutLiveUser;
+      _creditBalance = const CarCreditBalance.withBalance(0);
+      _creditNotice = null;
+      _starterGranted = true;
+      _savedCars = [];
+      _savedCarsInitialized = true;
+    } else {
+      _currentUser = null;
+      _starterGranted = false;
+      _creditBalance = const CarCreditBalance.withBalance(6);
+      _creditNotice = null;
+      _savedCars = [];
+      _savedCarsInitialized = false;
+    }
+    _bumpLists();
   }
 
   Future<User> updateUser(User user) async {
@@ -175,6 +256,32 @@ class DemoRepository {
     );
     _reportBalance('starter_grant', needed);
     return true;
+  }
+
+  static const signedInShopperLabel = 'Signed in';
+  static const signedOutShopperLabel = 'Not signed in';
+
+  static final _signedOutLiveUser = User(
+    id: 'signed_out',
+    firstName: signedOutShopperLabel,
+    email: '',
+    nameIsKnown: false,
+    entitlement: Entitlement.free,
+    usage: Usage(used: 0, cap: 0, resetsOn: DateTime.utc(2026)),
+  );
+
+  static User _signedInLiveUser(String consumerUserId) {
+    final id = consumerUserId.trim().isEmpty
+        ? 'signed_in'
+        : consumerUserId.trim();
+    return User(
+      id: id,
+      firstName: signedInShopperLabel,
+      email: '',
+      nameIsKnown: false,
+      entitlement: Entitlement.free,
+      usage: Usage(used: 0, cap: 0, resetsOn: DateTime.utc(2026)),
+    );
   }
 
   static final _demoUser = User(
@@ -357,7 +464,7 @@ class DemoRepository {
   }
 
   bool hasUnlockedMarketIntel(String listingId) =>
-      _marketIntelUnlocked.contains(listingId);
+      !_live && _marketIntelUnlocked.contains(listingId);
 
   bool hasStartedConversation(String listingId) =>
       _conversationStarted.contains(listingId);
@@ -376,6 +483,7 @@ class DemoRepository {
   }
 
   Future<bool> unlockMarketIntel(Listing listing) async {
+    if (_live) return false;
     final remote = await _keySpend.spendMarketSave(listing);
     if (_refusesLocalKeySpend(remote)) {
       if (remote.ok) {
@@ -699,8 +807,7 @@ class DemoRepository {
     if (!includes(filters.models, listing.build.model)) return false;
     if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
     if (!includes(filters.fuel, listing.build.powertrainType)) return false;
-    if (filters.priceMax != null &&
-        (listing.price ?? 0) > filters.priceMax!) {
+    if (filters.priceMax != null && (listing.price ?? 0) > filters.priceMax!) {
       return false;
     }
     if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
@@ -728,6 +835,9 @@ class DemoRepository {
   }
 
   Future<MarketContext> getMarketContext(Listing listing) async {
+    if (_live) {
+      throw StateError('Market intel is unavailable.');
+    }
     // Mock market context with consistent math per audit
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
@@ -757,8 +867,7 @@ class DemoRepository {
     final lowPrice = (price * 0.92).round(); // p25
     final medianPrice = (price * 1.02).round(); // p50
     final highPrice = (price * 1.12).round(); // p75
-    final fairVehicle = (price * 1.03)
-        .round(); // MC Price between p50-p75
+    final fairVehicle = (price * 1.03).round(); // MC Price between p50-p75
 
     return _delay(
       MarketContext(
@@ -782,13 +891,48 @@ class DemoRepository {
   List<SavedCar> _savedCars = [];
   bool _savedCarsInitialized = false;
 
+  /// Last live saved-cars failure. Null after a successful read.
+  String? _savedCarsError;
+  String? get savedCarsError => _savedCarsError;
+
+  final Map<String, Listing> _savedListings = {};
+
+  /// Listing shell returned with a saved car. Null in demo, where the catalog
+  /// lookup is used instead.
+  Listing? listingForSavedCar(String listingId) => _savedListings[listingId];
+
   /// Get all saved cars for the current user.
   Future<List<SavedCar>> getSavedCars() async {
+    if (_live) return _loadLiveSavedCars();
     if (!_savedCarsInitialized) {
       _savedCars = _demoSavedCars;
       _savedCarsInitialized = true;
     }
     return _delay(List.unmodifiable(_savedCars));
+  }
+
+  Future<List<SavedCar>> _loadLiveSavedCars() async {
+    try {
+      final records = await _savedCarsEndpoint.list();
+      _replaceSavedRecords(records);
+      _savedCarsError = null;
+      _savedCarsInitialized = true;
+      return List.unmodifiable(_savedCars);
+    } on SavedCarsException catch (error) {
+      _savedCarsError = error.message;
+      rethrow;
+    }
+  }
+
+  void _replaceSavedRecords(List<SavedCarRecord> records) {
+    _savedCars = [for (final record in records) record.car];
+    _savedListings
+      ..clear()
+      ..addEntries(
+        records
+            .where((record) => record.listing != null)
+            .map((record) => MapEntry(record.car.listingId, record.listing!)),
+      );
   }
 
   /// Check if a listing is saved.
@@ -804,6 +948,28 @@ class DemoRepository {
 
   /// Save a car (heart tap). No credit spent, no dealer contact.
   Future<SavedCar> saveCar(Listing listing, {String source = 'unknown'}) async {
+    if (_live) {
+      final record = await _savedCarsEndpoint.save(
+        listingId: listing.id,
+        vin: listing.vin,
+      );
+      _savedCars = [
+        for (final car in _savedCars)
+          if (car.listingId != record.car.listingId) car,
+        record.car,
+      ];
+      if (record.listing != null) {
+        _savedListings[record.car.listingId] = record.listing!;
+      }
+      _savedCarsError = null;
+      _bumpLists();
+      ProductAnalytics.instance.track(AnalyticsEvents.carSaved, {
+        'listing_id': listing.id,
+        'inventory_type': listing.inventoryType,
+        'source': source,
+      });
+      return record.car;
+    }
     final savedCar = SavedCar(
       id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -832,6 +998,13 @@ class DemoRepository {
         .where((car) => car.id == savedCarId)
         .map((car) => car.listingId)
         .firstOrNull;
+    if (_live) {
+      if (listingId == null) {
+        throw const SavedCarsException('Saved car not found.');
+      }
+      await _savedCarsEndpoint.delete(listingId);
+      _savedListings.remove(listingId);
+    }
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
     _bumpLists();
     if (listingId != null) {
@@ -848,6 +1021,10 @@ class DemoRepository {
     String listingId, {
     String source = 'unknown',
   }) async {
+    if (_live) {
+      await _savedCarsEndpoint.delete(listingId);
+      _savedListings.remove(listingId);
+    }
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
     ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
@@ -980,7 +1157,7 @@ class DemoRepository {
       listedAtStart: listing.price ?? 0,
       addedAt: DateTime.now(),
       listing: listing,
-      marketContext: await getMarketContext(listing),
+      marketContext: _live ? null : await getMarketContext(listing),
     );
     _deals = [..._deals, newDeal];
     _savedCars = _savedCars

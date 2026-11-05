@@ -363,10 +363,12 @@ class _AccountSheetState extends State<AccountSheet> {
             shape: BoxShape.circle,
           ),
           child: Center(
-            child: Text(
-              user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U',
-              style: text.headline.copyWith(color: DrevvyColors.onBrand),
-            ),
+            child: user.nameIsKnown && user.firstName.isNotEmpty
+                ? Text(
+                    user.firstName[0].toUpperCase(),
+                    style: text.headline.copyWith(color: DrevvyColors.onBrand),
+                  )
+                : const Icon(LucideIcons.user, color: DrevvyColors.onBrand),
           ),
         ),
         const SizedBox(width: DrevvySpace.s3),
@@ -374,10 +376,7 @@ class _AccountSheetState extends State<AccountSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${user.firstName.split(' ').first} ${user.firstName.split(' ').length > 1 ? user.firstName.split(' ').last[0] : 'W'}.',
-                style: text.title,
-              ),
+              Text(user.accountLabel, style: text.title),
               Text(
                 ShopperSessionStore.instance.accessToken == null
                     ? 'Not signed in'
