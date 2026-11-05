@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/widgets/shop_bottom_chrome.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/analytics/search_analytics.dart';
+import '../../../core/config/api_config_exception.dart';
 import '../../../data/discover/discover_catalog.dart';
 import '../../../data/discover/discover_client.dart';
 import '../../../data/discover/discover_config.dart';
@@ -57,6 +58,7 @@ class _ShopScreenState extends State<ShopScreen> {
   final _repo = DemoRepository.instance;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final bool _liveDiscover;
+  late final bool _discoverUnconfigured;
   DiscoverShopController? _discover;
   late final DeviceLocationSource _deviceLocation;
   late final PlaceSearch _placeSearch;
@@ -84,11 +86,13 @@ class _ShopScreenState extends State<ShopScreen> {
     super.initState();
     final config = widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
     _liveDiscover = config.isLive;
+    _discoverUnconfigured = config.needsConfiguration;
     _deviceLocation = widget.deviceLocation ?? GeolocatorDeviceLocation();
     _placeSearch = widget.placeSearch ?? GeocodingPlaceSearch();
     if (_liveDiscover) {
       _discover = DiscoverShopController(
-        catalog: widget.discoverCatalog ??
+        catalog:
+            widget.discoverCatalog ??
             HttpDiscoverCatalog(client: DiscoverClient(config: config)),
         locations: ShopLocationStore(
           widget.locationFlags ?? SharedPreferencesFlags(),
@@ -289,7 +293,7 @@ class _ShopScreenState extends State<ShopScreen> {
     );
     setState(() => _mode = mode);
     ShopBottomChromeScope.read(context)?.show(force: true);
-    if (mode != ChatMode.shop) return;
+    if (mode != ChatMode.shop || _discoverUnconfigured) return;
     if (_liveDiscover) {
       _ensureDiscover();
     } else if (_listings == null) {
@@ -493,6 +497,10 @@ class _ShopScreenState extends State<ShopScreen> {
                               enabledMemoryIds: _enabledMemoryIds,
                               onMemoryItemsChanged: _onMemoryItemsChanged,
                             )
+                    : _discoverUnconfigured
+                    ? const DiscoverUnavailable(
+                        message: apiNotConfiguredMessage,
+                      )
                     : _liveDiscover
                     ? DiscoverShopPane(
                         controller: _discover!,

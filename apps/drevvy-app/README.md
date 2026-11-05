@@ -38,18 +38,22 @@ There is no `www.drevvy.com` default.
 
 ```bash
 # Demo (default). Labeled samples stay, including Matters step 6 Sample.
+# A base URL by itself does not turn Shop into live inventory.
 flutter run
 
-# Live. A missing URL or a failed credits/key-spend/rooftop call is an error.
-# It does not keep the seeded 6 keys, grant keys locally, or stub listing_001.
+# Live inventory, credits, and rooftop. Both defines are required.
+# A missing URL or a failed credits/key-spend/rooftop call is an error.
+# It does not keep the seeded 6 keys, grant keys locally, stub listing_001,
+# or fill Shop with the demo catalog.
 flutter run \
   --dart-define=DREVVY_DATA_MODE=live \
   --dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com
 ```
 
 `DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
-Shop inventory on this build is still the demo catalog until the Discover client lands.
-Live mode does not turn that into a silent success for keys or rooftops.
+Discover, auth, credits, key spend, rooftop match, and deal chips read that
+same mode and the same origin. Live with an empty origin says it is not
+configured. Demo keeps the labeled catalog even when a URL is present.
 
 ## Two-key VDP review (simulators)
 

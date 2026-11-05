@@ -11,6 +11,8 @@
 /// `DREVVY_DATA_MODE` is `demo` (default) or `live`. Any other value stays demo.
 /// Demo keeps the demo repository and labeled samples. Live does not turn a
 /// missing URL or a failed credits/key-spend/rooftop call into a local success.
+/// Discover inventory uses this same mode and origin: a URL alone stays demo,
+/// and live with an empty origin does not show the demo catalog.
 enum DrevvyDataMode { demo, live }
 
 class DrevvyApiConfig {

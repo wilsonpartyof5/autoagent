@@ -6,6 +6,40 @@ import '../../../data/discover/discover_shop_controller.dart';
 import '../../../data/models/listing.dart';
 import 'shop_results.dart';
 
+/// Shown when live mode has no API origin. This is not the demo catalog.
+class DiscoverUnavailable extends StatelessWidget {
+  const DiscoverUnavailable({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = context.drevvyText;
+    final colors = context.drevvy;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(DrevvySpace.gutter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Live inventory is not configured',
+              style: text.title,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: DrevvySpace.s2),
+            Text(
+              message,
+              style: text.body.copyWith(color: colors.muted),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Live Shop results. Empty and error states do not render demo cars.
 class DiscoverShopPane extends StatelessWidget {
   const DiscoverShopPane({
@@ -51,15 +85,23 @@ class DiscoverShopPane extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  TextButton(onPressed: onLocation, child: const Text('Location')),
-                  TextButton(onPressed: onFilters, child: const Text('Filters')),
+                  TextButton(
+                    onPressed: onLocation,
+                    child: const Text('Location'),
+                  ),
+                  TextButton(
+                    onPressed: onFilters,
+                    child: const Text('Filters'),
+                  ),
                 ],
               ),
             ),
             if (controller.errorMessage != null &&
                 controller.phase == DiscoverShopPhase.results)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: DrevvySpace.gutter,
+                ),
                 child: Text(
                   controller.errorMessage!,
                   style: text.callout.copyWith(color: colors.danger),
@@ -134,9 +176,17 @@ class DiscoverShopPane extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: text.title.copyWith(color: colors.ink), textAlign: TextAlign.center),
+            Text(
+              title,
+              style: text.title.copyWith(color: colors.ink),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: DrevvySpace.s2),
-            Text(body, style: text.body.copyWith(color: colors.muted), textAlign: TextAlign.center),
+            Text(
+              body,
+              style: text.body.copyWith(color: colors.muted),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: DrevvySpace.s4),
             TextButton(onPressed: onPressed, child: Text(action)),
           ],

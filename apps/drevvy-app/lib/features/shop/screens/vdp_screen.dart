@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/providers/app_services.dart';
 import '../../../data/analytics/product_analytics.dart';
+import '../../../core/config/api_config_exception.dart';
 import '../../../data/discover/discover_catalog.dart';
 import '../../../data/discover/discover_client.dart';
 import '../../../data/discover/discover_config.dart';
@@ -75,8 +76,12 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   String _shopperFirstName = 'Dana';
   String? _liveError;
 
-  bool get _liveDiscover =>
-      widget.discoverConfig?.isLive ?? DiscoverConfig.fromEnvironment().isLive;
+  DiscoverConfig get _discoverConfig =>
+      widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
+
+  bool get _liveDiscover => _discoverConfig.isLive;
+
+  bool get _discoverUnconfigured => _discoverConfig.needsConfiguration;
 
   DiscoverCatalog get _catalog =>
       widget.discoverCatalog ??
@@ -93,6 +98,16 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_discoverUnconfigured) {
+      if (!mounted) return;
+      setState(() {
+        _listing = null;
+        _market = null;
+        _isLoading = false;
+        _liveError = apiNotConfiguredMessage;
+      });
+      return;
+    }
     if (_liveDiscover) {
       await _loadDiscover();
       return;
@@ -365,12 +380,12 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_liveDiscover) {
+    if (_liveDiscover || _discoverUnconfigured) {
       return LiveDiscoverVdp(
         isLoading: _isLoading,
         listing: _listing,
         errorMessage: _liveError,
-        onRetry: _loadDiscover,
+        onRetry: _loadData,
       );
     }
     final colors = context.drevvy;
@@ -520,15 +535,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (listing.isNew)
-                              NewCarMarketCard(
-                                listing: listing,
-                                market: market,
-                              )
+                              NewCarMarketCard(listing: listing, market: market)
                             else
-                              MarketPriceBar(
-                                listing: listing,
-                                market: market,
-                              ),
+                              MarketPriceBar(listing: listing, market: market),
                             if (!listing.isNew) ...[
                               const SizedBox(height: DrevvySpace.s6),
                               _MarketTiles(listing: listing, market: market),
@@ -775,7 +784,8 @@ class _HowDrevvyWorks extends StatelessWidget {
           ),
           _Step(
             number: '4',
-            text: 'If not, ask for the whole price for free. This is not a chat.',
+            text:
+                'If not, ask for the whole price for free. This is not a chat.',
           ),
         ],
       ),
