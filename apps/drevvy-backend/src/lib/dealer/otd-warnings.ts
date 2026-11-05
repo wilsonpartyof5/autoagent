@@ -209,10 +209,10 @@ export async function recordLiveDealerReply(
 
 export async function persistLiveOtdReply(dealId: string, dealerReply: string): Promise<OtdStrikeResult | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dealId)) return null;
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  const { appAdminClient, localDealerDatabaseEnabled } = await import('@/lib/supabase/admin');
+  if (!localDealerDatabaseEnabled() && (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY)) return null;
   try {
-    const { createAdminClient } = await import('@/lib/supabase/admin');
-    return await recordLiveDealerReply(createAdminClient(), dealId, dealerReply);
+    return await recordLiveDealerReply(appAdminClient(), dealId, dealerReply);
   } catch (error) {
     console.error(JSON.stringify({
       event: 'otd_warning_persist_failed',

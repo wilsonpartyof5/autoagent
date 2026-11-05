@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { createAdminClient } from '@/lib/supabase/admin';
+import { appAdminClient, localDealerDatabaseEnabled } from '@/lib/supabase/admin';
 import { shopperFirstNameOnly } from './rooftop-match';
 import { presentFromConversation, toInboxItem } from './present';
 import { evaluateOtdWithhold, recordLiveDealerReply } from './otd-warnings';
@@ -360,9 +360,9 @@ function fail(error: DealerDemoError): DealerResult<never> {
 }
 
 function adminOrNull(): SupabaseClient | null {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  if (!localDealerDatabaseEnabled() && (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY)) return null;
   try {
-    return createAdminClient();
+    return appAdminClient();
   } catch {
     return null;
   }
@@ -631,6 +631,10 @@ async function mutateLive(
 }
 
 const liveReplyKeys = new Map<string, Set<string>>();
+
+export function resetLiveReplyMemory(): void {
+  liveReplyKeys.clear();
+}
 
 export async function postLiveMessage(
   session: DealerSession,

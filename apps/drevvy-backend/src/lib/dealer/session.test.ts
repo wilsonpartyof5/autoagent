@@ -100,6 +100,7 @@ test('dealer API routes use requireDealerApi and never requireAdmin', () => {
     '../../app/api/dealer/v1/leads/[leadId]/messages/route.ts',
     '../../app/api/dealer/v1/leads/[leadId]/numbers/route.ts',
     '../../app/api/dealer/v1/leads/[leadId]/sold/route.ts',
+    '../../app/api/dealer/v1/onboarding/commitments/route.ts',
   ];
   for (const file of routeFiles) {
     const source = readFileSync(join(HERE, file), 'utf8');

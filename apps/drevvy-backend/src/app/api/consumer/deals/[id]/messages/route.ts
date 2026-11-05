@@ -9,7 +9,7 @@ import {
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
 import { requireShopperAuth } from '@/lib/shopper/session';
 import { postShopperThreadMessage, readShopperThread } from '@/lib/shopper/thread';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { appAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +47,7 @@ export async function GET(
   }
   try {
     const auth = await requireShopperAuth(request);
-    const data = await readShopperThread(createAdminClient(), auth.userId, id);
+    const data = await readShopperThread(appAdminClient(), auth.userId, id);
     return NextResponse.json({ success: true, source: 'live', data });
   } catch (error) {
     return shopperDealErrorResponse(error);
@@ -72,7 +72,7 @@ export async function POST(
   }
   try {
     const auth = await requireShopperAuth(request);
-    const data = await postShopperThreadMessage(createAdminClient(), auth.userId, id, readBody(payload));
+    const data = await postShopperThreadMessage(appAdminClient(), auth.userId, id, readBody(payload));
     return NextResponse.json({ success: true, source: 'live', data });
   } catch (error) {
     return shopperDealErrorResponse(error);
