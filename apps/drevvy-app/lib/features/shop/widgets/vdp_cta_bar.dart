@@ -35,19 +35,13 @@ class VdpCtaBar extends StatelessWidget {
   final VoidCallback onConversation;
   final VoidCallback onOtdRequest;
 
-  String _formatNumber(int n) {
-    return n.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final inNetwork = match?.isInNetwork == true;
+    final networkUnknown = match?.source == RooftopMatchSource.unavailable;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -73,7 +67,7 @@ class VdpCtaBar extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('\$${_formatNumber(listing.price)}', style: text.figureS),
+                  Text(listing.priceFormatted, style: text.figureS),
                   Text(
                     'Listed price',
                     style: text.callout.copyWith(color: colors.muted),
@@ -82,7 +76,10 @@ class VdpCtaBar extends StatelessWidget {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: colors.lilacTint,
                   borderRadius: BorderRadius.circular(DrevvyRadius.sm),
@@ -102,7 +99,9 @@ class VdpCtaBar extends StatelessWidget {
             label: marketIntelUnlocked
                 ? 'Market intel saved'
                 : KeySpend.marketIntelCta,
-            icon: marketIntelUnlocked ? LucideIcons.check : LucideIcons.sparkles,
+            icon: marketIntelUnlocked
+                ? LucideIcons.check
+                : LucideIcons.sparkles,
             onPressed: marketIntelUnlocked ? null : onMarketIntel,
             isFullWidth: true,
           ),
@@ -129,6 +128,11 @@ class VdpCtaBar extends StatelessWidget {
               conversationOpen
                   ? 'Chat is already open. The dealer can see you in their inbox.'
                   : KeySpend.conversationNote,
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+          ] else if (networkUnknown) ...[
+            Text(
+              'Dealer network is unavailable. Drevvy is not guessing in-network or off-network.',
               style: text.callout.copyWith(color: colors.muted),
             ),
           ] else ...[

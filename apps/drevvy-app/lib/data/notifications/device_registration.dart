@@ -22,8 +22,8 @@ class DeviceRegistrationResult {
 /// is missing (404 / 405). Demo mode never depends on this call succeeding.
 class DeviceRegistrar {
   DeviceRegistrar({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? DrevvyConfig.apiBaseUrl;
+    : _client = client ?? http.Client(),
+      _baseUrl = baseUrl ?? DrevvyConfig.apiBaseUrl;
 
   final http.Client _client;
   final String _baseUrl;
@@ -35,6 +35,9 @@ class DeviceRegistrar {
   }) async {
     if (session == null || token == null || token.isEmpty) {
       return const DeviceRegistrationResult(DeviceRegistrationStatus.skipped);
+    }
+    if (_baseUrl.trim().isEmpty) {
+      return const DeviceRegistrationResult(DeviceRegistrationStatus.failed);
     }
 
     try {
@@ -52,15 +55,27 @@ class DeviceRegistrar {
         }),
       );
       if (response.statusCode == 404 || response.statusCode == 405) {
-        return DeviceRegistrationResult(DeviceRegistrationStatus.skipped, statusCode: response.statusCode);
+        return DeviceRegistrationResult(
+          DeviceRegistrationStatus.skipped,
+          statusCode: response.statusCode,
+        );
       }
       if (response.statusCode == 401) {
-        return DeviceRegistrationResult(DeviceRegistrationStatus.skipped, statusCode: response.statusCode);
+        return DeviceRegistrationResult(
+          DeviceRegistrationStatus.skipped,
+          statusCode: response.statusCode,
+        );
       }
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return DeviceRegistrationResult(DeviceRegistrationStatus.registered, statusCode: response.statusCode);
+        return DeviceRegistrationResult(
+          DeviceRegistrationStatus.registered,
+          statusCode: response.statusCode,
+        );
       }
-      return DeviceRegistrationResult(DeviceRegistrationStatus.failed, statusCode: response.statusCode);
+      return DeviceRegistrationResult(
+        DeviceRegistrationStatus.failed,
+        statusCode: response.statusCode,
+      );
     } catch (_) {
       return const DeviceRegistrationResult(DeviceRegistrationStatus.failed);
     }
@@ -72,8 +87,14 @@ class DeviceRegistrar {
     required String? token,
     required String platform,
   }) async {
-    if (accessToken == null || accessToken.isEmpty || token == null || token.isEmpty) {
+    if (accessToken == null ||
+        accessToken.isEmpty ||
+        token == null ||
+        token.isEmpty) {
       return const DeviceRegistrationResult(DeviceRegistrationStatus.skipped);
+    }
+    if (_baseUrl.trim().isEmpty) {
+      return const DeviceRegistrationResult(DeviceRegistrationStatus.failed);
     }
 
     try {
@@ -90,13 +111,24 @@ class DeviceRegistrar {
           'provider': 'fcm',
         }),
       );
-      if (response.statusCode == 404 || response.statusCode == 405 || response.statusCode == 401) {
-        return DeviceRegistrationResult(DeviceRegistrationStatus.skipped, statusCode: response.statusCode);
+      if (response.statusCode == 404 ||
+          response.statusCode == 405 ||
+          response.statusCode == 401) {
+        return DeviceRegistrationResult(
+          DeviceRegistrationStatus.skipped,
+          statusCode: response.statusCode,
+        );
       }
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return DeviceRegistrationResult(DeviceRegistrationStatus.registered, statusCode: response.statusCode);
+        return DeviceRegistrationResult(
+          DeviceRegistrationStatus.registered,
+          statusCode: response.statusCode,
+        );
       }
-      return DeviceRegistrationResult(DeviceRegistrationStatus.failed, statusCode: response.statusCode);
+      return DeviceRegistrationResult(
+        DeviceRegistrationStatus.failed,
+        statusCode: response.statusCode,
+      );
     } catch (_) {
       return const DeviceRegistrationResult(DeviceRegistrationStatus.failed);
     }

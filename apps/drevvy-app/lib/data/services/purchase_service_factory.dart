@@ -10,6 +10,7 @@ PurchaseService buildPurchaseService(
   StoreGateway? gateway,
 }) {
   if (!config.usesRevenueCat) {
+    if (config.isLive) return const UnavailablePurchaseService();
     return FakePurchaseService();
   }
   return RevenueCatPurchaseService(

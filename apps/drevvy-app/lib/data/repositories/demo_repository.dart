@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
@@ -30,19 +32,40 @@ class DemoRepository {
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
     DealChipsEndpoint? dealChips,
+    http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
-    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _live = resolved.isLive;
+    _credits =
+        credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
-    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
-    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
-    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
+    _rooftopMatch =
+        rooftopMatch ??
+        RooftopMatchEndpoint.fromConfig(resolved, client: httpClient);
+    _keySpend =
+        keySpend ?? KeySpendEndpoint.fromConfig(resolved, client: httpClient);
+    _dealChips =
+        dealChips ?? DealChipsEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
+    } else if (_live) {
+      _creditBalance = const CarCreditBalance.withBalance(0);
+      if (!resolved.apiBaseUrl.trim().isNotEmpty) {
+        _creditNotice = apiNotConfiguredMessage;
+      }
     }
   }
+
+  late final bool _live;
+
+  /// Live mode, including a live build whose API origin is still empty.
+  bool get isLive => _live;
+
+  /// Shown when live mode cannot confirm a key balance. Null in demo mode.
+  String? _creditNotice;
+  String? get creditNotice => _creditNotice;
 
   static final instance = DemoRepository();
 
@@ -140,6 +163,7 @@ class DemoRepository {
   /// Grants [starterFreeKeys] once. If the demo balance already covers that
   /// amount, this only records the grant so first-run does not stack keys.
   Future<bool> grantStarterKeys() async {
+    if (_live) return false;
     if (_starterGranted) return false;
     _starterGranted = true;
     if (_creditBalance.balance >= starterFreeKeys) {
@@ -219,12 +243,30 @@ class DemoRepository {
   /// The server grants the 3 starter keys when the profile is created.
   /// A miss leaves the demo balance alone.
   Future<bool> pullSignedInBalance() async {
-    final remote = await _credits.fetchBalance();
-    if (remote == null) return false;
+    final remote = await _readCredits(_credits.fetchBalance);
+    if (remote == null) {
+      if (_live) {
+        _creditNotice ??= 'Key balance is unavailable.';
+        _creditBalance = const CarCreditBalance.withBalance(0);
+      }
+      return false;
+    }
+    _creditNotice = null;
     _creditBalance = remote;
     _starterGranted = true;
     _bumpLists();
     return true;
+  }
+
+  Future<CarCreditBalance?> _readCredits(
+    Future<CarCreditBalance?> Function() read,
+  ) async {
+    try {
+      return await read();
+    } on ApiConfigException catch (error) {
+      _creditNotice = error.message;
+      return null;
+    }
   }
 
   /// Get credit ledger entries for this user.
@@ -345,7 +387,7 @@ class DemoRepository {
 
   Future<bool> unlockMarketIntel(Listing listing) async {
     final remote = await _keySpend.spendMarketSave(listing);
-    if (remote.source == KeySpendSource.live) {
+    if (_refusesLocalKeySpend(remote)) {
       if (remote.ok) {
         _marketIntelUnlocked.add(listing.id);
         if (remote.balance != null) _creditBalance = remote.balance!;
@@ -372,14 +414,14 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!match.isInNetwork) return null;
+    if (!_mayStartConversation(match)) return null;
     final remote = await _keySpend.startConversation(
       listing: listing,
       match: match,
       templateId: templateId,
       message: message,
     );
-    if (remote.source == KeySpendSource.live) {
+    if (_refusesLocalKeySpend(remote)) {
       if (!remote.ok) return null;
       _conversationStarted.add(listing.id);
       if (remote.balance != null) _creditBalance = remote.balance!;
@@ -412,7 +454,6 @@ class DemoRepository {
   }
 
   Future<bool> requestOtdNumber(Listing listing, {String? note}) async {
-    _otdRequested.add(listing.id);
     ProductAnalytics.instance.track(AnalyticsEvents.otdNumberRequested, {
       'listing_id': listing.id,
       'free': true,
@@ -421,8 +462,51 @@ class DemoRepository {
       if (listing.vdpUrl != null) 'has_vdp_url': true,
     });
     final remote = await _keySpend.requestOtdNumber(listing, note: note);
-    if (remote.source == KeySpendSource.live) return remote.ok;
+    if (_refusesLocalKeySpend(remote)) {
+      if (remote.ok) _otdRequested.add(listing.id);
+      return remote.ok;
+    }
+    _otdRequested.add(listing.id);
     return true;
+  }
+
+  /// In-network is not enough in live mode. A stub match and an unavailable
+  /// match must not post a conversation or fall through to the local ledger.
+  bool _mayStartConversation(RooftopMatch match) {
+    if (!match.isInNetwork) return false;
+    if (_live && match.source != RooftopMatchSource.live) return false;
+    return true;
+  }
+
+  /// Seeded demo deals already carry the fair-price formula. Live must not
+  /// keep that valuation on a deal it just attached to a real conversation.
+  Deal _dropSyntheticMarket(Deal deal) {
+    if (!_live || deal.marketContext == null) return deal;
+    return Deal(
+      id: deal.id,
+      listingId: deal.listingId,
+      letter: deal.letter,
+      status: deal.status,
+      listedAtStart: deal.listedAtStart,
+      addedAt: deal.addedAt,
+      firstContactAt: deal.firstContactAt,
+      listing: deal.listing,
+      offers: deal.offers,
+      comms: deal.comms,
+      events: deal.events,
+      dealer: deal.dealer,
+      officialOffer: deal.officialOffer,
+      outcome: deal.outcome,
+      acceptedOffer: deal.acceptedOffer,
+      changedOffer: deal.changedOffer,
+      tryOnceMoreUsed: deal.tryOnceMoreUsed,
+      dealerTimelines: deal.dealerTimelines,
+    );
+  }
+
+  bool _refusesLocalKeySpend(KeySpendResult remote) {
+    return remote.source == KeySpendSource.live ||
+        remote.source == KeySpendSource.blocked;
   }
 
   /// Refund 1 credit for a deal. Returns true if successful.
@@ -458,9 +542,11 @@ class DemoRepository {
   Future<void> _recordPurchase(PurchaseSuccess result) async {
     if (_hasTransaction(result.transactionId)) return;
 
-    final remote = await _credits.grantPurchase(
-      productId: result.packType.productId,
-      transactionId: result.transactionId,
+    final remote = await _readCredits(
+      () => _credits.grantPurchase(
+        productId: result.packType.productId,
+        transactionId: result.transactionId,
+      ),
     );
     if (remote != null) {
       _rememberTransaction(
@@ -472,6 +558,7 @@ class DemoRepository {
       _reportBalance('purchase', result.creditsAdded);
       return;
     }
+    if (_live) return;
     _addCredits(
       result.creditsAdded,
       CreditReason.purchase,
@@ -570,10 +657,12 @@ class DemoRepository {
       RestoreSuccess(:final transactions) => transactions,
       _ => const <RestoredTransaction>[],
     };
-    final remote = await _credits.restorePurchases(
-      transactionIds: [
-        for (final transaction in transactions) transaction.transactionId,
-      ],
+    final remote = await _readCredits(
+      () => _credits.restorePurchases(
+        transactionIds: [
+          for (final transaction in transactions) transaction.transactionId,
+        ],
+      ),
     );
     if (remote != null) {
       for (final transaction in transactions) {
@@ -591,6 +680,11 @@ class DemoRepository {
       );
     }
 
+    if (_live) {
+      return RestoreError(
+        message: _creditNotice ?? 'Purchases were not restored. The credits service did not confirm them.',
+      );
+    }
     if (transactions.isEmpty) return const RestoreNoPurchases();
 
     var added = 0;
@@ -649,7 +743,7 @@ class DemoRepository {
     if (!includes(filters.models, listing.build.model)) return false;
     if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
     if (!includes(filters.fuel, listing.build.powertrainType)) return false;
-    if (filters.priceMax != null && listing.price > filters.priceMax!) {
+    if (filters.priceMax != null && (listing.price ?? 0) > filters.priceMax!) {
       return false;
     }
     if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
@@ -677,19 +771,23 @@ class DemoRepository {
   }
 
   Future<MarketContext> getMarketContext(Listing listing) async {
+    if (_live) {
+      throw StateError('Live mode does not invent a market valuation.');
+    }
     // Mock market context with consistent math per audit
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
 
+    final price = listing.price ?? 0;
     if (isNew) {
-      final msrp = listing.msrp ?? listing.price + 2000;
-      final discount = msrp - listing.price;
+      final msrp = listing.msrp ?? price + 2000;
+      final discount = msrp - price;
       return _delay(
         MarketContext(
-          fairVehiclePrice: listing.price,
-          fairOtd: listing.price + 3500, // +fees/tax estimate
-          lowPrice: listing.price - 1500,
-          medianPrice: listing.price + 500,
+          fairVehiclePrice: price,
+          fairOtd: price + 3500, // +fees/tax estimate
+          lowPrice: price - 1500,
+          medianPrice: price + 500,
           highPrice: msrp + 1000,
           comparablesCount: 8,
           daysListedMedian: 25,
@@ -702,11 +800,10 @@ class DemoRepository {
 
     // Used car: ensure fairVehiclePrice is between low and high
     // Using consistent percentiles (p25/p50/p75)
-    final lowPrice = (listing.price * 0.92).round(); // p25
-    final medianPrice = (listing.price * 1.02).round(); // p50
-    final highPrice = (listing.price * 1.12).round(); // p75
-    final fairVehicle = (listing.price * 1.03)
-        .round(); // MC Price between p50-p75
+    final lowPrice = (price * 0.92).round(); // p25
+    final medianPrice = (price * 1.02).round(); // p50
+    final highPrice = (price * 1.12).round(); // p75
+    final fairVehicle = (price * 1.03).round(); // MC Price between p50-p75
 
     return _delay(
       MarketContext(
@@ -894,10 +991,11 @@ class DemoRepository {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
-        final next = id != null && id.isNotEmpty && deal.id != id
+        final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        if (next.id != deal.id) {
+        final next = _dropSyntheticMarket(renamed);
+        if (next.id != deal.id || next.marketContext != deal.marketContext) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -925,10 +1023,10 @@ class DemoRepository {
       listingId: listing.id,
       letter: _getNextLetter(),
       status: DealStatus.reachingOut,
-      listedAtStart: listing.price,
+      listedAtStart: listing.price ?? 0,
       addedAt: DateTime.now(),
       listing: listing,
-      marketContext: await getMarketContext(listing),
+      marketContext: _live ? null : await getMarketContext(listing),
     );
     _deals = [..._deals, newDeal];
     _savedCars = _savedCars
