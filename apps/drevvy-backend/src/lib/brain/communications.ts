@@ -8,9 +8,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { outboundSmsHoldReason } from '../dealer/contact-phone';
 import { insertBrainVendorEvent, type BrainVendorEvent } from './repository';
+import { COURTESY_CALL_REFUSED, guardCourtesyCall, resolveCourtesyVariables } from './courtesy-call';
 import { selectSender, voiceNumberLeaks, type ConversationIdentity } from './identity';
 import type { IdentityRouter } from './identity-store';
-import { resolveLiveIdentity, type LiveAssignment } from './live-send';
+import { loadCourtesyContext, resolveLiveIdentity, type LiveAssignment } from './live-send';
 import {
   createOutboundSms,
   createOutboundEmail,
@@ -386,11 +387,17 @@ export async function placeTexmlAiCall(
     testMode?: boolean;
     assignment?: LiveAssignment | null;
     script?: string | null;
+    shopperFirstName?: string | null;
+    stock?: string | null;
+    vin?: string | null;
+    env?: Record<string, string | undefined>;
+    callerNumbers?: readonly string[];
   },
 ): Promise<{ callSid: string | null } | { error: string; held?: boolean; purchaseFlag?: boolean }> {
+  const testMode = input.testMode === true;
   const resolved = await resolveLiveIdentity({
     channel: 'voice',
-    testMode: input.testMode === true,
+    testMode,
     identity: input.identity,
     assignment: input.assignment,
     dealId: input.link.dealId,
@@ -400,15 +407,47 @@ export async function placeTexmlAiCall(
   const sender = selectSender({
     channel: 'voice',
     identity: resolved.identity,
-    testMode: input.testMode === true,
-    fallback: { voice: input.from, sms: input.from },
+    testMode,
+    fallback: { voice: input.from },
   });
   if ('error' in sender) return sender;
-  if (input.script && voiceNumberLeaks(input.script, sender.from)) {
-    return { error: 'The voice agent must not give its caller ID out.' };
-  }
+  const facts = await readCourtesyFacts(input.assignment, input.link.dealId);
+  const variables = resolveCourtesyVariables({
+    testMode,
+    identity: resolved.identity,
+    shopperFirstName: input.shopperFirstName,
+    profileFirstName: facts.shopperFirstName,
+    stock: input.stock ?? facts.stock,
+    vin: input.vin ?? facts.vin,
+    env: input.env,
+  });
+  const callerNumbers = [
+    ...(input.callerNumbers ?? []),
+    resolved.identity?.voiceNumberE164 ?? '',
+    ...(input.assignment ? await loadVoiceCallerNumbers(input.assignment.supabase) : []),
+  ];
+  const guarded = guardCourtesyCall({ from: sender.from, callerNumbers, variables });
   const link = withConversation(input.link, sender.conversationId);
-  const created = await createTexmlAiCall({ ...input, from: sender.from, link }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
+  if (!guarded.ok) {
+    return refuseCourtesyCall(store, { from: sender.from, to: input.to, link, reason: guarded.error });
+  }
+  if (input.script && voiceNumberLeaks(input.script, sender.from)) {
+    return refuseCourtesyCall(store, {
+      from: sender.from,
+      to: input.to,
+      link,
+      reason: 'The voice agent must not give its caller ID out.',
+    });
+  }
+  const created = await createTexmlAiCall({
+    connectionId: input.connectionId,
+    from: sender.from,
+    to: input.to,
+    assistantId: input.assistantId,
+    webhookUrl: input.webhookUrl,
+    link,
+    dynamicVariables: guarded.variables,
+  }, { apiKey: input.apiKey, fetchImpl: input.fetchImpl });
   if ('error' in created) return created;
   await rememberCall(store, {
     callControlId: created.callSid,
@@ -448,7 +487,7 @@ export async function placeOutboundCall(
     channel: 'voice',
     identity: resolved.identity,
     testMode: input.testMode === true,
-    fallback: { voice: input.from, sms: input.from },
+    fallback: { voice: input.from },
   });
   if ('error' in sender) return sender;
   const link = withConversation(input.link, sender.conversationId);
@@ -649,6 +688,51 @@ export async function storeOutboundEmail(
   });
 }
 
+async function refuseCourtesyCall(
+  store: CommunicationsStore,
+  input: { from: string; to: string; link: CallLink; reason: string },
+): Promise<{ error: string }> {
+  console.error(`[courtesy call] refused ${input.link.dealId} ${input.link.touchpointId}: ${input.reason}`);
+  await rememberCall(store, {
+    callControlId: null,
+    from: input.from,
+    to: input.to,
+    link: input.link,
+    eventType: 'call.failed',
+    status: 'failed',
+    errorCode: COURTESY_CALL_REFUSED,
+    errorDetail: input.reason,
+  });
+  return { error: input.reason };
+}
+
+async function readCourtesyFacts(
+  assignment: LiveAssignment | null | undefined,
+  dealId: string,
+): Promise<{ shopperFirstName: string | null; stock: string | null; vin: string | null }> {
+  if (!assignment) return { shopperFirstName: null, stock: null, vin: null };
+  try {
+    return await loadCourtesyContext(assignment.supabase, dealId);
+  } catch {
+    console.error(`[courtesy call] could not read deal ${dealId}`);
+    return { shopperFirstName: null, stock: null, vin: null };
+  }
+}
+
+async function loadVoiceCallerNumbers(supabase: LiveAssignment['supabase']): Promise<string[]> {
+  try {
+    const { data } = await supabase.from('voice_numbers').select('phone_e164');
+    if (!Array.isArray(data)) return [];
+    return data.flatMap((row) => {
+      if (!row || typeof row !== 'object' || !('phone_e164' in row)) return [];
+      const phone = row.phone_e164;
+      return typeof phone === 'string' && phone ? [phone] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function rememberCall(
   store: CommunicationsStore,
   input: {
@@ -657,10 +741,14 @@ async function rememberCall(
     to: string;
     link: CallLink;
     eventType: string;
+    status?: string;
+    errorCode?: string | null;
+    errorDetail?: string | null;
   },
 ): Promise<void> {
   const numbers = await store.testNumbers();
   const flag = flagTestParties(input.from, input.to, numbers);
+  const failed = input.status === 'failed';
   await store.save({
     vendor: 'telnyx',
     vendor_event_id: input.callControlId ?? `${input.link.dealId}:${input.link.touchpointId}:${input.from}:${input.to}`,
@@ -671,15 +759,15 @@ async function rememberCall(
     dealer_id: input.link.dealerId,
     touchpoint: input.link.touchpointId,
     variant: input.link.variant ?? null,
-    status: 'queued',
-    error_code: null,
-    error_detail: null,
+    status: input.status ?? 'queued',
+    error_code: input.errorCode ?? null,
+    error_detail: input.errorDetail ?? null,
     duration_s: null,
     transcript: null,
     summary: null,
     occurred_at: new Date().toISOString(),
     signature_verified: false,
-    payload: { stored: 'outbound_call' },
+    payload: { stored: failed ? 'courtesy_call_refused' : 'outbound_call' },
     from_address: input.from,
     to_address: input.to,
     body: null,
