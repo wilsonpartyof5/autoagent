@@ -11,6 +11,10 @@ import {
   normalizeMarketcheckDealerId,
   type ListingDealerIdentity,
 } from '@/lib/dealer/rooftop-match';
+import {
+  recordSubmittedAnalyticsSafely,
+  type OtdAnalytics,
+} from './otd-analytics';
 import { readListingIdentityBody } from './vdp-ctas';
 
 export type OffNetworkOtdRequest = {
@@ -90,6 +94,23 @@ export function supabaseOtdRequestRepository(supabase: SupabaseClient): OtdReque
   };
 }
 
+/**
+ * Accept the canonical body plus the live iOS alias:
+ * `{ listingId, listingUrl? }` or `{ listingId, url? }` and a path listing id.
+ */
+export function otdRequestBodyFromHttp(body: unknown, listingIdFromPath?: string): unknown {
+  const record: Record<string, unknown> = (
+    body && typeof body === 'object' && !Array.isArray(body)
+  )
+    ? { ...(body as Record<string, unknown>) }
+    : {};
+  if (listingIdFromPath && record.listingId == null) record.listingId = listingIdFromPath;
+  if (record.listingUrl == null && typeof record.url === 'string') {
+    record.listingUrl = record.url;
+  }
+  return record;
+}
+
 export async function requestOffNetworkOtd(
   userId: string,
   body: unknown,
@@ -97,6 +118,7 @@ export async function requestOffNetworkOtd(
     now: Date;
     repo: OtdRequestRepository;
     rooftops: RooftopDirectory;
+    analytics?: OtdAnalytics;
   },
 ): Promise<OtdRequestResult> {
   const identity = readListingIdentityBody(body);
@@ -137,7 +159,19 @@ export async function requestOffNetworkOtd(
     marketcheckDealerId: normalizeMarketcheckDealerId(merged.marketcheckDealerId),
     createdAt: deps.now.toISOString(),
   });
-  return { request: saved, created: saved.id === id };
+  const created = saved.id === id;
+  if (created) {
+    // Twin + JE are additive. Soft-fail so a shopper OTD still succeeds if
+    // analytics writes fail (including before the service_role wrappers exist).
+    await recordSubmittedAnalyticsSafely(deps.analytics, {
+      userId,
+      request: saved,
+      vdpMatchId: null,
+      drevvyDealerId: null,
+      region: null,
+    });
+  }
+  return { request: saved, created };
 }
 
 function fromRow(row: {
