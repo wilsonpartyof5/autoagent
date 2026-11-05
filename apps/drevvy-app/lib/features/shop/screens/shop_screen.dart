@@ -5,13 +5,26 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/analytics/search_analytics.dart';
+import '../../../data/discover/discover_catalog.dart';
+import '../../../data/discover/discover_client.dart';
+import '../../../data/discover/discover_config.dart';
+import '../../../data/discover/discover_filters.dart';
+import '../../../data/discover/discover_shop_controller.dart';
+import '../../../data/location/device_location.dart';
+import '../../../data/location/location_sources.dart';
+import '../../../data/location/place_search.dart';
+import '../../../data/location/shop_location_store.dart';
 import '../../../data/models/models.dart';
+import '../../../data/notifications/local_flags.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/chat_empty.dart';
 import '../widgets/chat_messages.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/shop_results.dart';
+import '../widgets/discover_filter_sheet.dart';
+import '../widgets/discover_location_sheet.dart';
+import '../widgets/discover_shop_pane.dart';
 import '../widgets/chat_history_drawer.dart';
 import '../widgets/account_sheet.dart';
 import '../../account/widgets/recent_searches_sheet.dart';
@@ -20,7 +33,21 @@ import '../../account/widgets/recent_searches_sheet.dart';
 /// v1.8: Added save/heart support on inventory cards.
 /// App always launches here on a new, unsaved Ask chat per spec §1.1
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key});
+  const ShopScreen({
+    super.key,
+    this.discoverConfig,
+    this.discoverCatalog,
+    this.deviceLocation,
+    this.placeSearch,
+    this.locationFlags,
+  });
+
+  /// Overrides the dart-define. Tests pass a live config with a fake catalog.
+  final DiscoverConfig? discoverConfig;
+  final DiscoverCatalog? discoverCatalog;
+  final DeviceLocationSource? deviceLocation;
+  final PlaceSearch? placeSearch;
+  final LocalFlags? locationFlags;
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
@@ -29,6 +56,11 @@ class ShopScreen extends StatefulWidget {
 class _ShopScreenState extends State<ShopScreen> {
   final _repo = DemoRepository.instance;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  late final bool _liveDiscover;
+  DiscoverShopController? _discover;
+  late final DeviceLocationSource _deviceLocation;
+  late final PlaceSearch _placeSearch;
+  bool _discoverBooted = false;
 
   ChatMode _mode = ChatMode.ask;
   ChatThread? _thread;
@@ -50,10 +82,28 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   void initState() {
     super.initState();
+    final config = widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
+    _liveDiscover = config.isLive;
+    _deviceLocation = widget.deviceLocation ?? GeolocatorDeviceLocation();
+    _placeSearch = widget.placeSearch ?? GeocodingPlaceSearch();
+    if (_liveDiscover) {
+      _discover = DiscoverShopController(
+        catalog: widget.discoverCatalog ??
+            HttpDiscoverCatalog(client: DiscoverClient(config: config)),
+        locations: ShopLocationStore(
+          widget.locationFlags ?? SharedPreferencesFlags(),
+        ),
+      );
+      _discover!.addListener(_onDiscoverChanged);
+    }
     ProductAnalytics.instance.screen('ask_chat');
     _repo.onSavedSearchRun = _handleSavedSearchRun;
     _repo.savedDealsTick.addListener(_refreshSavedAndDeals);
     _loadData();
+  }
+
+  void _onDiscoverChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -62,6 +112,8 @@ class _ShopScreenState extends State<ShopScreen> {
       _repo.onSavedSearchRun = null;
     }
     _repo.savedDealsTick.removeListener(_refreshSavedAndDeals);
+    _discover?.removeListener(_onDiscoverChanged);
+    _discover?.dispose();
     super.dispose();
   }
 
@@ -145,6 +197,17 @@ class _ShopScreenState extends State<ShopScreen> {
       _isSearching = true;
     });
 
+    if (_liveDiscover) {
+      final discover = _discover!;
+      if (filters != null) {
+        discover.setFilters(DiscoverFilters.fromSearchFilters(filters));
+      }
+      await discover.search(query: query, reset: true);
+      if (!mounted) return;
+      setState(() => _isSearching = false);
+      return;
+    }
+
     final listings = await _repo.searchListings(query: query, filters: filters);
     if (!mounted) return;
 
@@ -222,9 +285,46 @@ class _ShopScreenState extends State<ShopScreen> {
     });
     ProductAnalytics.instance.screen(mode == ChatMode.ask ? 'ask_chat' : 'shop_results');
     setState(() => _mode = mode);
-    if (mode == ChatMode.shop && _listings == null) {
+    if (mode != ChatMode.shop) return;
+    if (_liveDiscover) {
+      _ensureDiscover();
+    } else if (_listings == null) {
       _search('', userInitiated: false);
     }
+  }
+
+  Future<void> _ensureDiscover() async {
+    final discover = _discover;
+    if (discover == null || _discoverBooted) return;
+    _discoverBooted = true;
+    await discover.restore();
+    if (!mounted) return;
+    if (discover.location?.isUsable == true &&
+        discover.phase == DiscoverShopPhase.needsLocation) {
+      await discover.search(reset: true);
+    }
+  }
+
+  Future<void> _pickLocation() async {
+    final picked = await DiscoverLocationSheet.show(
+      context,
+      device: _deviceLocation,
+      places: _placeSearch,
+    );
+    if (picked == null || !mounted) return;
+    await _discover?.setLocation(picked);
+  }
+
+  Future<void> _pickFilters() async {
+    final discover = _discover;
+    if (discover == null) return;
+    final next = await DiscoverFilterSheet.show(
+      context,
+      initial: discover.filters,
+    );
+    if (next == null || !mounted) return;
+    discover.setFilters(next);
+    await discover.search(query: discover.queryText, reset: true);
   }
 
   void _openHistoryDrawer() {
@@ -394,6 +494,15 @@ class _ShopScreenState extends State<ShopScreen> {
                               enabledMemoryIds: _enabledMemoryIds,
                               onMemoryItemsChanged: _onMemoryItemsChanged,
                             )
+                    : _liveDiscover
+                    ? DiscoverShopPane(
+                        controller: _discover!,
+                        onOpen: (listing) {
+                          context.push('/vdp/${listing.id}');
+                        },
+                        onLocation: _pickLocation,
+                        onFilters: _pickFilters,
+                      )
                     : ShopResults(
                         listings: _listings,
                         isLoading: _isSearching,

@@ -75,7 +75,7 @@ class VdpCtaBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '\$${_formatNumber(listing.price)}',
+                    '\$${_formatNumber(listing.price ?? 0)}',
                     style: text.figureS,
                   ),
                   Text(
