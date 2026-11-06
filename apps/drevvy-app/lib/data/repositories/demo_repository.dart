@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
@@ -14,6 +15,15 @@ import '../services/saved_cars_endpoint.dart';
 import '../services/shopper_profile_endpoint.dart';
 import '../services/shopper_session_store.dart';
 import '../../core/theme/drevvy_tokens.dart';
+
+/// A profile, credit, saved-car, or deal request finished after sign-out or
+/// an account switch. Callers leave the current account unchanged.
+class StaleAccountException implements Exception {
+  const StaleAccountException();
+
+  @override
+  String toString() => 'The account changed before this request finished.';
+}
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
@@ -36,18 +46,27 @@ class DemoRepository {
     DealChipsEndpoint? dealChips,
     SavedCarsEndpoint? savedCars,
     ShopperProfileEndpoint? profile,
+    http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
     _live = resolved.isLive;
-    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _credits =
+        credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
-    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
-    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
-    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
-    _savedCarsEndpoint = savedCars ?? SavedCarsEndpoint.fromConfig(resolved);
-    _profile = profile ?? ShopperProfileEndpoint.fromConfig(resolved);
+    _rooftopMatch =
+        rooftopMatch ??
+        RooftopMatchEndpoint.fromConfig(resolved, client: httpClient);
+    _keySpend =
+        keySpend ?? KeySpendEndpoint.fromConfig(resolved, client: httpClient);
+    _dealChips =
+        dealChips ?? DealChipsEndpoint.fromConfig(resolved, client: httpClient);
+    _savedCarsEndpoint =
+        savedCars ?? SavedCarsEndpoint.fromConfig(resolved, client: httpClient);
+    _profile =
+        profile ??
+        ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
     } else if (_live) {
@@ -62,7 +81,7 @@ class DemoRepository {
 
   late final bool _live;
 
-  /// Live builds read the server. Demo builds keep the labeled samples.
+  /// Live mode, including a live build whose API origin is still empty.
   bool get isLive => _live;
 
   /// Market intel has no shopper payload and no unlock read, so live mode
@@ -78,6 +97,7 @@ class DemoRepository {
   static DemoRepository _createInstance() {
     final repo = DemoRepository();
     ShopperSessionStore.instance.onSessionCleared = repo.clearSignedInState;
+    ShopperSessionStore.instance.onIdentityChanged = repo.noteSignedInIdentity;
     return repo;
   }
 
@@ -138,6 +158,41 @@ class DemoRepository {
   /// Off-network OTD requests captured for analytics review.
   final Set<String> _otdRequested = {};
 
+  int _accountGeneration = 0;
+
+  _AccountEpoch _captureAccount() {
+    return _AccountEpoch(
+      generation: _accountGeneration,
+      userId: _sessionUserId(
+        ShopperSessionStore.instance.session?.consumerUserId,
+      ),
+      token: ShopperSessionStore.instance.accessToken,
+    );
+  }
+
+  bool _accountStill(_AccountEpoch epoch) {
+    final current = _captureAccount();
+    return epoch.generation == current.generation &&
+        epoch.userId == current.userId &&
+        epoch.token == current.token;
+  }
+
+  /// Purchase and restore writes follow the same generation as the rest of
+  /// the account. Demo ignores the shared session token so an unrelated
+  /// sign-in does not drop a sample purchase. Live also requires the same
+  /// user and access token.
+  bool _billingStill(_AccountEpoch epoch) {
+    if (_accountGeneration != epoch.generation) return false;
+    if (!_live) return true;
+    return _accountStill(epoch);
+  }
+
+  static String? _sessionUserId(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   /// Shop listens so "Run again" from the menu or account sheet opens results.
   void Function(SavedSearch search)? onSavedSearchRun;
 
@@ -161,54 +216,78 @@ class DemoRepository {
   Future<User> getCurrentUser() async {
     if (_live) {
       _currentUser ??= _signedOutLiveUser;
-      return _delay(_currentUser!);
+    } else {
+      _currentUser ??= _demoUser;
     }
+    await _delay(null);
+    if (_live) _currentUser ??= _signedOutLiveUser;
     _currentUser ??= _demoUser;
-    return _delay(_currentUser!);
+    return _currentUser!;
   }
 
   /// Loads the profile id and the server balance and saved cars.
   /// A profile miss keeps the neutral signed-in label. It never becomes Dana.
+  /// A sign-out or account switch before the responses return keeps the
+  /// account those responses no longer belong to.
   Future<User> refreshLiveAccount() async {
     if (!_live) return getCurrentUser();
-    final token = ShopperSessionStore.instance.accessToken;
-    if (token == null) {
-      _currentUser = _signedOutLiveUser;
-      return _currentUser!;
+    final epoch = _captureAccount();
+    if (epoch.token == null) {
+      if (_accountStill(epoch)) _currentUser = _signedOutLiveUser;
+      return _currentUser ?? _signedOutLiveUser;
     }
-    var userId = ShopperSessionStore.instance.session?.consumerUserId ?? '';
+    var userId = epoch.userId ?? '';
     try {
       final profile = await _profile.fetch();
+      if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
       userId = profile.consumerUserId;
     } on ApiConfigException {
-      // The session id is enough to stay signed in without a personal name.
+      if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
     }
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
     _currentUser = _signedInLiveUser(userId);
     await pullSignedInBalance();
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
     try {
       await getSavedCars();
     } on SavedCarsException {
-      // The saved tab shows the error and a retry.
+      // The saved tab shows the error and a retry for this same account.
+    } on StaleAccountException {
+      return _currentUser ?? _signedOutLiveUser;
     }
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
     return _currentUser!;
+  }
+
+  /// The signed-in shopper changed. Live mode drops the previous account
+  /// immediately, including deals, so a late response cannot restore it.
+  void noteSignedInIdentity() {
+    if (!_live) return;
+    _accountGeneration++;
+    final userId = _sessionUserId(
+      ShopperSessionStore.instance.session?.consumerUserId,
+    );
+    _clearLiveAccount();
+    if (userId != null && ShopperSessionStore.instance.accessToken != null) {
+      _currentUser = _signedInLiveUser(userId);
+    }
+    _bumpLists();
   }
 
   /// Drops the signed-in account. Live mode does not fall back to Dana or
   /// the seeded key balance. Demo mode restores the labeled sample shopper.
   void clearSignedInState() {
+    _accountGeneration++;
     _marketIntelUnlocked.clear();
     _conversationStarted.clear();
     _otdRequested.clear();
     _savedListings.clear();
     _savedCarsError = null;
     _creditLedger.clear();
+    _conversationDealIds.clear();
+    _dealThreads.clear();
     if (_live) {
-      _currentUser = _signedOutLiveUser;
-      _creditBalance = const CarCreditBalance.withBalance(0);
-      _creditNotice = null;
-      _starterGranted = true;
-      _savedCars = [];
-      _savedCarsInitialized = true;
+      _clearLiveAccount();
     } else {
       _currentUser = null;
       _starterGranted = false;
@@ -218,6 +297,25 @@ class DemoRepository {
       _savedCarsInitialized = false;
     }
     _bumpLists();
+  }
+
+  void _clearLiveAccount() {
+    _currentUser = _signedOutLiveUser;
+    _creditBalance = const CarCreditBalance.withBalance(0);
+    _creditNotice = null;
+    _starterGranted = true;
+    _savedCars = [];
+    _savedCarsInitialized = true;
+    _savedCarsError = null;
+    _savedListings.clear();
+    _marketIntelUnlocked.clear();
+    _conversationStarted.clear();
+    _otdRequested.clear();
+    _creditLedger.clear();
+    _conversationDealIds.clear();
+    _dealThreads.clear();
+    _deals = [];
+    _dealsSeeded = true;
   }
 
   Future<User> updateUser(User user) async {
@@ -334,14 +432,17 @@ class DemoRepository {
 
   /// Get current key balance.
   Future<CarCreditBalance> getCreditBalance() async {
-    return _delay(_creditBalance);
+    await _delay(null);
+    return _creditBalance;
   }
 
   /// Replaces the local balance with `GET /api/consumer/credits`.
   /// The server grants the 3 starter keys when the profile is created.
   /// A miss leaves the demo balance alone.
   Future<bool> pullSignedInBalance() async {
-    final remote = await _readCredits(_credits.fetchBalance);
+    final epoch = _captureAccount();
+    final remote = await _readCredits(_credits.fetchBalance, epoch);
+    if (!_accountStill(epoch)) return false;
     if (remote == null) {
       if (_live) {
         _creditNotice ??= 'Key balance is unavailable.';
@@ -358,11 +459,14 @@ class DemoRepository {
 
   Future<CarCreditBalance?> _readCredits(
     Future<CarCreditBalance?> Function() read,
+    _AccountEpoch epoch,
   ) async {
     try {
-      return await read();
+      final balance = await read();
+      if (!_accountStill(epoch)) return null;
+      return balance;
     } on ApiConfigException catch (error) {
-      _creditNotice = error.message;
+      if (_accountStill(epoch)) _creditNotice = error.message;
       return null;
     }
   }
@@ -393,6 +497,7 @@ class DemoRepository {
       );
     }
     _purchaseBusy = true;
+    final epoch = _captureAccount();
     try {
       ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
         'pack_id': packType.productId,
@@ -404,11 +509,23 @@ class DemoRepository {
       });
       await _purchaseService.initialize();
       final result = await _purchaseService.purchasePack(packType);
+      if (!_billingStill(epoch)) {
+        return const PurchaseError(
+          message: 'The account changed before this purchase finished.',
+          code: 'stale_account',
+        );
+      }
       if (result is! PurchaseSuccess) {
         _trackPurchaseFailed(packType, result);
         return result;
       }
-      final confirmed = await _recordPurchase(result);
+      final confirmed = await _recordPurchase(result, epoch);
+      if (!_billingStill(epoch)) {
+        return const PurchaseError(
+          message: 'The account changed before this purchase finished.',
+          code: 'stale_account',
+        );
+      }
       if (confirmed == null) {
         _trackPurchaseFailed(
           packType,
@@ -502,14 +619,22 @@ class DemoRepository {
   bool hasRequestedOtd(String listingId) => _otdRequested.contains(listingId);
 
   Future<RooftopMatch> getRooftopMatch(Listing listing) async {
+    final epoch = _live ? _captureAccount() : null;
     final match = await _rooftopMatch.match(listing);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
     ProductAnalytics.instance.track(AnalyticsEvents.rooftopMatchResolved, {
       'listing_id': listing.id,
       'matched': match.matched,
       if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
       'source': match.source.name,
     });
-    return _delay(match);
+    await _delay(null);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
+    return match;
   }
 
   Future<bool> unlockMarketIntel(Listing listing) async {
@@ -542,13 +667,15 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!match.isInNetwork) return null;
+    if (!_mayStartConversation(match)) return null;
+    final epoch = _captureAccount();
     final remote = await _keySpend.startConversation(
       listing: listing,
       match: match,
       templateId: templateId,
       message: message,
     );
+    if (!_accountStill(epoch)) return null;
     if (_refusesLocalKeySpend(remote)) {
       if (!remote.ok) return null;
       _conversationStarted.add(listing.id);
@@ -562,7 +689,13 @@ class DemoRepository {
           'source': 'live',
         },
       );
-      final created = await addDeal(listing, spend: false, id: remote.dealId);
+      final Deal created;
+      try {
+        created = await addDeal(listing, spend: false, id: remote.dealId);
+      } on StaleAccountException {
+        return null;
+      }
+      if (!_accountStill(epoch)) return null;
       _conversationDealIds[listing.id] = created.id;
       return created;
     }
@@ -576,7 +709,13 @@ class DemoRepository {
       if (templateId != null) 'template_id': templateId,
       'source': 'stub',
     });
-    final created = await addDeal(listing, spend: false);
+    final Deal created;
+    try {
+      created = await addDeal(listing, spend: false);
+    } on StaleAccountException {
+      return null;
+    }
+    if (!_accountStill(epoch)) return null;
     _conversationDealIds[listing.id] = created.id;
     return created;
   }
@@ -597,6 +736,40 @@ class DemoRepository {
     }
     _otdRequested.add(listing.id);
     return true;
+  }
+
+  /// In-network is not enough in live mode. A stub match and an unavailable
+  /// match must not post a conversation or fall through to the local ledger.
+  bool _mayStartConversation(RooftopMatch match) {
+    if (!match.isInNetwork) return false;
+    if (_live && match.source != RooftopMatchSource.live) return false;
+    return true;
+  }
+
+  /// Seeded demo deals already carry the fair-price formula. Live must not
+  /// keep that valuation on a deal it just attached to a real conversation.
+  Deal _dropSyntheticMarket(Deal deal) {
+    if (!_live || deal.marketContext == null) return deal;
+    return Deal(
+      id: deal.id,
+      listingId: deal.listingId,
+      letter: deal.letter,
+      status: deal.status,
+      listedAtStart: deal.listedAtStart,
+      addedAt: deal.addedAt,
+      firstContactAt: deal.firstContactAt,
+      listing: deal.listing,
+      offers: deal.offers,
+      comms: deal.comms,
+      events: deal.events,
+      dealer: deal.dealer,
+      officialOffer: deal.officialOffer,
+      outcome: deal.outcome,
+      acceptedOffer: deal.acceptedOffer,
+      changedOffer: deal.changedOffer,
+      tryOnceMoreUsed: deal.tryOnceMoreUsed,
+      dealerTimelines: deal.dealerTimelines,
+    );
   }
 
   bool _refusesLocalKeySpend(KeySpendResult remote) {
@@ -635,8 +808,13 @@ class DemoRepository {
 
   /// Record a store purchase. Server balance wins when the credits route exists.
   /// Returns null when live mode cannot confirm the grant. Demo mode still
-  /// records a local balance when that route is absent.
-  Future<PurchaseSuccess?> _recordPurchase(PurchaseSuccess result) async {
+  /// records a local balance when that route is absent. A sign-out or account
+  /// switch before the grant returns leaves the current balance alone.
+  Future<PurchaseSuccess?> _recordPurchase(
+    PurchaseSuccess result,
+    _AccountEpoch epoch,
+  ) async {
+    if (!_billingStill(epoch)) return null;
     final transactionId = result.transactionId.trim();
     if (transactionId.isEmpty) return null;
     if (_hasTransaction(transactionId)) {
@@ -653,7 +831,9 @@ class DemoRepository {
         productId: result.packType.productId,
         transactionId: transactionId,
       ),
+      epoch,
     );
+    if (!_billingStill(epoch)) return null;
     if (remote != null) {
       final added = remote.balance - before;
       _rememberTransaction(
@@ -670,6 +850,7 @@ class DemoRepository {
       );
     }
     if (_live) return null;
+    if (!_billingStill(epoch)) return null;
     _addCredits(
       result.creditsAdded,
       CreditReason.purchase,
@@ -747,9 +928,11 @@ class DemoRepository {
 
   /// Restore purchases, then sync credits from the backend when that route exists.
   Future<RestoreResult> restorePurchases() async {
+    final epoch = _captureAccount();
     ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestoreStarted);
     await _purchaseService.initialize();
     final result = await _purchaseService.restorePurchases();
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
     ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, {
       'result': switch (result) {
         RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
@@ -775,7 +958,9 @@ class DemoRepository {
           for (final transaction in transactions) transaction.transactionId,
         ],
       ),
+      epoch,
     );
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
     if (remote != null) {
       for (final transaction in transactions) {
         final transactionId = transaction.transactionId.trim();
@@ -791,6 +976,7 @@ class DemoRepository {
       return RestoreSuccess(creditsRestored: 0, transactions: transactions);
     }
 
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
     if (_live) {
       return RestoreError(
         message: _creditNotice ?? 'Purchases were not restored. The credits service did not confirm them.',
@@ -955,17 +1141,21 @@ class DemoRepository {
       _savedCars = _demoSavedCars;
       _savedCarsInitialized = true;
     }
-    return _delay(List.unmodifiable(_savedCars));
+    await _delay(null);
+    return List.unmodifiable(_savedCars);
   }
 
   Future<List<SavedCar>> _loadLiveSavedCars() async {
+    final epoch = _captureAccount();
     try {
       final records = await _savedCarsEndpoint.list();
+      if (!_accountStill(epoch)) return List.unmodifiable(_savedCars);
       _replaceSavedRecords(records);
       _savedCarsError = null;
       _savedCarsInitialized = true;
       return List.unmodifiable(_savedCars);
     } on SavedCarsException catch (error) {
+      if (!_accountStill(epoch)) return List.unmodifiable(_savedCars);
       _savedCarsError = error.message;
       rethrow;
     }
@@ -996,10 +1186,12 @@ class DemoRepository {
   /// Save a car (heart tap). No credit spent, no dealer contact.
   Future<SavedCar> saveCar(Listing listing, {String source = 'unknown'}) async {
     if (_live) {
+      final epoch = _captureAccount();
       final record = await _savedCarsEndpoint.save(
         listingId: listing.id,
         vin: listing.vin,
       );
+      if (!_accountStill(epoch)) throw const StaleAccountException();
       _savedCars = [
         for (final car in _savedCars)
           if (car.listingId != record.car.listingId) car,
@@ -1045,13 +1237,16 @@ class DemoRepository {
         .where((car) => car.id == savedCarId)
         .map((car) => car.listingId)
         .firstOrNull;
+    final epoch = _captureAccount();
     if (_live) {
       if (listingId == null) {
         throw const SavedCarsException('Saved car not found.');
       }
       await _savedCarsEndpoint.delete(listingId);
+      if (!_accountStill(epoch)) throw const StaleAccountException();
       _savedListings.remove(listingId);
     }
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
     _bumpLists();
     if (listingId != null) {
@@ -1068,10 +1263,13 @@ class DemoRepository {
     String listingId, {
     String source = 'unknown',
   }) async {
+    final epoch = _captureAccount();
     if (_live) {
       await _savedCarsEndpoint.delete(listingId);
+      if (!_accountStill(epoch)) throw const StaleAccountException();
       _savedListings.remove(listingId);
     }
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
     ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
@@ -1152,13 +1350,21 @@ class DemoRepository {
 
   void _ensureDealsLoaded() {
     if (_dealsSeeded) return;
+    if (_live) {
+      _deals = [];
+      _dealsSeeded = true;
+      return;
+    }
     _deals = List<Deal>.from(_demoDealsList);
     _dealsSeeded = true;
   }
 
   Future<List<Deal>> getDeals() async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
-    return _delay(_deals);
+    await _delay(null);
+    if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+    return List<Deal>.unmodifiable(_deals);
   }
 
   Future<Deal> getDealById(String id) async {
@@ -1167,13 +1373,16 @@ class DemoRepository {
   }
 
   Future<Deal> addDeal(Listing listing, {bool spend = true, String? id}) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
-        final next = id != null && id.isNotEmpty && deal.id != id
+        final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        if (next.id != deal.id) {
+        final next = _dropSyntheticMarket(renamed);
+        if (next.id != deal.id || next.marketContext != deal.marketContext) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -1206,6 +1415,7 @@ class DemoRepository {
       listing: listing,
       marketContext: _live ? null : await getMarketContext(listing),
     );
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _deals = [..._deals, newDeal];
     _savedCars = _savedCars
         .where((car) => car.listingId != listing.id)
@@ -1224,8 +1434,10 @@ class DemoRepository {
   }
 
   Future<void> removeDeal(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final refunded = canGetEarlyRemovalRefund(deal);
     _deals = _deals.where((d) => d.id != dealId).toList();
 
@@ -1244,8 +1456,10 @@ class DemoRepository {
   }
 
   Future<Deal> acceptOffer(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final updated = deal.copyWith(
       status: DealStatus.accepted,
       acceptedOffer: deal.latestOffer,
@@ -1260,8 +1474,10 @@ class DemoRepository {
   }
 
   Future<Deal> keepGoing(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final updated = deal.copyWith(status: DealStatus.findingBestPrice);
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
@@ -2639,4 +2855,16 @@ extension DemoRepositorySearchProfile on DemoRepository {
       action: StarterAction(mode: 'shop', prompt: 'EVs under \$35k'),
     ),
   ];
+}
+
+class _AccountEpoch {
+  const _AccountEpoch({
+    required this.generation,
+    required this.userId,
+    required this.token,
+  });
+
+  final int generation;
+  final String? userId;
+  final String? token;
 }

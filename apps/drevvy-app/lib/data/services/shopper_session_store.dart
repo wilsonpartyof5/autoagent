@@ -32,7 +32,26 @@ class ShopperSessionStore {
 
   static final ShopperSessionStore instance = ShopperSessionStore();
 
-  ShopperSession? session;
+  ShopperSession? _session;
+
+  /// Replacing the signed-in shopper notifies [onIdentityChanged] so an
+  /// in-flight account request cannot finish against the new session.
+  ShopperSession? get session => _session;
+
+  set session(ShopperSession? value) {
+    final previousUser = _userId(_session?.consumerUserId);
+    final previousToken = accessToken;
+    _session = value;
+    final nextUser = _userId(value?.consumerUserId);
+    if (previousUser == nextUser && previousToken == accessToken) return;
+    onIdentityChanged?.call();
+  }
+
+  static String? _userId(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
 
   /// Set at startup. Sign-in and sign-out sync the RevenueCat app user id.
   RevenueCatIdentity? identity;
@@ -59,6 +78,10 @@ class ShopperSessionStore {
   /// Live account state to drop after the session is gone. Demo builds use
   /// this to restore the labeled sample shopper instead of the signed-in one.
   void Function()? onSessionCleared;
+
+  /// Fired when [session] changes user id or access token, including sign-in
+  /// and account switch. Sign-out also calls [onSessionCleared].
+  void Function()? onIdentityChanged;
 
   /// Trimmed access token, or null when the shopper is signed out.
   String? get accessToken {

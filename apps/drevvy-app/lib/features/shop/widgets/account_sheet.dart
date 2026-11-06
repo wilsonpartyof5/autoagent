@@ -118,12 +118,9 @@ class _AccountSheetState extends State<AccountSheet> {
     if (!host.mounted) return;
     if (result is PurchaseSuccess) {
       if (sheetContext.mounted) Navigator.pop(sheetContext);
-      final added = result.creditsAdded;
       _showPurchaseMessage(
         host,
-        added <= 0
-            ? 'Purchase confirmed. Packs never expire.'
-            : 'Added ${added == 1 ? '1 key' : '$added keys'}. Packs never expire.',
+        keysAddedMessage(added: result.creditsAdded, demo: !_repo.isLive),
       );
       return;
     }
@@ -140,15 +137,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   String _restoreMessage(RestoreResult result) {
-    return switch (result) {
-      RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-        creditsRestored == 1
-            ? 'Restored 1 key.'
-            : 'Restored $creditsRestored keys.',
-      RestoreSuccess() => 'Purchases restored.',
-      RestoreNoPurchases() => 'No purchases to restore.',
-      RestoreError(:final message) => message,
-    };
+    return restoreResultMessage(result, demo: !_repo.isLive);
   }
 
   void _showPurchaseMessage(BuildContext host, String message) {
@@ -488,10 +477,14 @@ class _AccountSheetState extends State<AccountSheet> {
               color: colors.muted,
             ),
             onTap: () async {
-              await _repo.restorePurchases();
+              final result = await _repo.restorePurchases();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Purchases restored')),
+                  SnackBar(
+                    content: Text(
+                      restoreResultMessage(result, demo: !_repo.isLive),
+                    ),
+                  ),
                 );
               }
             },

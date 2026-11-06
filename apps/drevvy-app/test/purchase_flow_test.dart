@@ -534,6 +534,212 @@ void main() {
       expect(await first, isA<PurchaseSuccess>());
       expect((await repo.getCreditBalance()).balance, 1);
     });
+
+    test('demo added keys are labeled as samples', () {
+      expect(
+        keysAddedMessage(added: 5, demo: true),
+        'Added 5 sample keys in this demo.',
+      );
+      expect(
+        keysAddedMessage(added: 1, demo: true),
+        'Added 1 sample key in this demo.',
+      );
+      expect(
+        keysAddedMessage(added: 5, demo: false),
+        'Added 5 keys. Packs never expire.',
+      );
+      expect(
+        keysAddedMessage(added: 0, demo: true),
+        'Purchase confirmed. No new keys were added.',
+      );
+    });
+
+    test('a restore with no added keys does not say keys were added', () {
+      expect(
+        restoreResultMessage(
+          const RestoreSuccess(creditsRestored: 0),
+          demo: false,
+        ),
+        'No new keys were added.',
+      );
+      expect(
+        restoreResultMessage(
+          const RestoreSuccess(creditsRestored: 15),
+          demo: true,
+        ),
+        'Restored 15 sample keys in this demo.',
+      );
+      expect(
+        restoreResultMessage(const RestoreNoPurchases(), demo: true),
+        'No purchases to restore.',
+      );
+      expect(
+        restoreResultMessage(
+          const RestoreError(message: 'Purchases were not restored.'),
+          demo: false,
+        ),
+        'Purchases were not restored.',
+      );
+    });
+
+    test('a purchase that finishes after sign-out does not add keys', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final sessions = _bindSession();
+      final gate = Completer<void>();
+      final store = _FakeStore()
+        ..hold = gate.future
+        ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_late');
+      final credits = _ScriptedCredits(
+        grantResult: const CarCreditBalance(
+          balance: 9,
+          totalPurchased: 9,
+          totalSpent: 0,
+          totalRefunded: 0,
+        ),
+      );
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: credits,
+        initialBalance: const CarCreditBalance.withBalance(2),
+      );
+      sessions.bind(repo);
+      sessions.store.session = const ShopperSession(
+        accessToken: 'jwt-a',
+        consumerUserId: 'user-a',
+      );
+
+      final pending = repo.purchasePack(CarPackType.single);
+      await store.started.future;
+      sessions.store.session = null;
+      gate.complete();
+      final result = await pending;
+
+      expect(result, isA<PurchaseError>());
+      expect((result as PurchaseError).code, 'stale_account');
+      expect(credits.grantCalls, 0);
+      expect((await repo.getCreditBalance()).balance, 0);
+    });
+
+    test(
+      'a purchase that finishes after an account switch does not add keys',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final sessions = _bindSession();
+        final gate = Completer<void>();
+        final store = _FakeStore()
+          ..hold = gate.future
+          ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_switch');
+        final credits = _ScriptedCredits(
+          grantResult: const CarCreditBalance(
+            balance: 9,
+            totalPurchased: 9,
+            totalSpent: 0,
+            totalRefunded: 0,
+          ),
+        );
+        final repo = DemoRepository(
+          config: _liveOrigin,
+          networkDelay: Duration.zero,
+          purchaseService: RevenueCatPurchaseService(gateway: store),
+          credits: credits,
+          initialBalance: const CarCreditBalance.withBalance(2),
+        );
+        sessions.bind(repo);
+        sessions.store.session = const ShopperSession(
+          accessToken: 'jwt-a',
+          consumerUserId: 'user-a',
+        );
+
+        final pending = repo.purchasePack(CarPackType.starter);
+        await store.started.future;
+        sessions.store.session = const ShopperSession(
+          accessToken: 'jwt-b',
+          consumerUserId: 'user-b',
+        );
+        gate.complete();
+        final result = await pending;
+
+        expect((result as PurchaseError).code, 'stale_account');
+        expect(credits.grantCalls, 0);
+        expect((await repo.getCreditBalance()).balance, 0);
+      },
+    );
+
+    test(
+      'a restore that finishes after sign-out does not replace the balance',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final sessions = _bindSession();
+        final gate = Completer<void>();
+        final store = _FakeStore()
+          ..restoreHold = gate.future
+          ..restored = const [
+            RestoredTransaction(
+              transactionId: 'txn_old',
+              packType: CarPackType.plus,
+            ),
+          ];
+        final credits = _ScriptedCredits(
+          restoreResult: const CarCreditBalance(
+            balance: 25,
+            totalPurchased: 25,
+            totalSpent: 0,
+            totalRefunded: 0,
+          ),
+        );
+        final repo = DemoRepository(
+          config: _liveOrigin,
+          networkDelay: Duration.zero,
+          purchaseService: RevenueCatPurchaseService(gateway: store),
+          credits: credits,
+          initialBalance: const CarCreditBalance.withBalance(3),
+        );
+        sessions.bind(repo);
+        sessions.store.session = const ShopperSession(
+          accessToken: 'jwt-a',
+          consumerUserId: 'user-a',
+        );
+
+        final pending = repo.restorePurchases();
+        await store.restoreStarted.future;
+        sessions.store.session = null;
+        gate.complete();
+        final result = await pending;
+
+        expect(result, isA<RestoreNoPurchases>());
+        expect(credits.lastRestoreIds, isNull);
+        expect((await repo.getCreditBalance()).balance, 0);
+      },
+    );
+
+    test('a demo purchase after sign-out does not add sample keys', () async {
+      final sessions = _bindSession();
+      final gate = Completer<void>();
+      final store = _FakeStore()
+        ..hold = gate.future
+        ..outcome = const StorePurchaseSucceeded(transactionId: 'txn_demo');
+      final repo = DemoRepository(
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: const MissingCreditsEndpoint(),
+        initialBalance: const CarCreditBalance.withBalance(1),
+      );
+      sessions.bind(repo);
+
+      final pending = repo.purchasePack(CarPackType.single);
+      await store.started.future;
+      repo.clearSignedInState();
+      gate.complete();
+      final result = await pending;
+
+      expect((result as PurchaseError).code, 'stale_account');
+      expect((await repo.getCreditBalance()).balance, 6);
+    });
   });
 
   group('cars_balance_empty', () {
@@ -548,6 +754,35 @@ void main() {
   });
 }
 
+class _BoundSession {
+  _BoundSession(this.store, this.previousIdentity, this.previousCleared);
+
+  final ShopperSessionStore store;
+  final void Function()? previousIdentity;
+  final void Function()? previousCleared;
+
+  void bind(DemoRepository repo) {
+    store.onIdentityChanged = repo.noteSignedInIdentity;
+    store.onSessionCleared = repo.clearSignedInState;
+  }
+}
+
+_BoundSession _bindSession() {
+  final store = ShopperSessionStore.instance;
+  final bound = _BoundSession(
+    store,
+    store.onIdentityChanged,
+    store.onSessionCleared,
+  );
+  store.session = null;
+  addTearDown(() {
+    store.onIdentityChanged = bound.previousIdentity;
+    store.onSessionCleared = bound.previousCleared;
+    store.session = null;
+  });
+  return bound;
+}
+
 class _FakeStore implements StoreGateway {
   StorePurchaseOutcome outcome = const StorePurchaseSucceeded(
     transactionId: 'txn',
@@ -557,7 +792,9 @@ class _FakeStore implements StoreGateway {
   String? loggedInUserId;
   bool loggedOut = false;
   Future<void>? hold;
+  Future<void>? restoreHold;
   final Completer<void> started = Completer<void>();
+  final Completer<void> restoreStarted = Completer<void>();
 
   @override
   Future<void> configure() async {}
@@ -602,7 +839,12 @@ class _FakeStore implements StoreGateway {
   }
 
   @override
-  Future<List<RestoredTransaction>> restore() async => restored;
+  Future<List<RestoredTransaction>> restore() async {
+    if (!restoreStarted.isCompleted) restoreStarted.complete();
+    final pending = restoreHold;
+    if (pending != null) await pending;
+    return restored;
+  }
 
   @override
   Future<bool> isAvailable(String productId) async {

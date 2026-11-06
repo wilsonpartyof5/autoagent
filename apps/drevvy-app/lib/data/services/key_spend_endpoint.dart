@@ -59,16 +59,10 @@ abstract class KeySpendEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
-    if (config.isLive) {
-      if (baseUrl.isEmpty) return const UnconfiguredKeySpendEndpoint();
-      return HttpKeySpendEndpoint(
-        baseUrl: baseUrl,
-        client: client,
-        strict: true,
-      );
-    }
-    if (baseUrl.isEmpty) return const MissingKeySpendEndpoint();
-    return HttpKeySpendEndpoint(baseUrl: baseUrl, client: client);
+    // Demo keeps the local ledger and never posts a spend, even with a URL.
+    if (!config.isLive) return const MissingKeySpendEndpoint();
+    if (baseUrl.isEmpty) return const UnconfiguredKeySpendEndpoint();
+    return HttpKeySpendEndpoint(baseUrl: baseUrl, client: client, strict: true);
   }
 
   Future<KeySpendResult> spendMarketSave(Listing listing);

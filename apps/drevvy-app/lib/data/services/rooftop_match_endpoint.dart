@@ -10,10 +10,11 @@ import 'shopper_session_store.dart';
 
 /// Classifies a listing against onboarded rooftops.
 ///
-/// Live mode posts `POST /api/consumer/listings/network` with the listing id
-/// and, only when the listing already has one, its URL. It does not invent a
-/// URL or a rooftop id. A failed call is [RooftopMatch.unavailable]. Demo mode
-/// with no origin keeps [StubRooftopMatchEndpoint].
+/// Live mode posts `POST /api/consumer/listings/network` with the listing id.
+/// A client listing URL is not dealer identity and is not sent. Demo always
+/// uses the stub and does not call the route, even when a base URL is set.
+/// Live with an empty origin, a failed call, or a changed session returns
+/// [RooftopMatch.unavailable].
 abstract class RooftopMatchEndpoint {
   const RooftopMatchEndpoint();
 
@@ -22,11 +23,8 @@ abstract class RooftopMatchEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
-    if (config.isLive) {
-      if (baseUrl.isEmpty) return const UnconfiguredRooftopMatchEndpoint();
-      return HttpRooftopMatchEndpoint(baseUrl: baseUrl, client: client);
-    }
-    if (baseUrl.isEmpty) return const StubRooftopMatchEndpoint();
+    if (!config.isLive) return const StubRooftopMatchEndpoint();
+    if (baseUrl.isEmpty) return const UnconfiguredRooftopMatchEndpoint();
     return HttpRooftopMatchEndpoint(baseUrl: baseUrl, client: client);
   }
 
@@ -94,20 +92,23 @@ class HttpRooftopMatchEndpoint extends RooftopMatchEndpoint {
   Future<RooftopMatch> match(Listing listing) async {
     const path = '/api/consumer/listings/network';
     final listingId = _listingId.hasMatch(listing.id) ? listing.id : null;
-    final listingUrl = _httpUrl(listing.vdpUrl);
-    if (listingId == null && listingUrl == null) {
-      return const RooftopMatch.unavailable();
-    }
-    if (_sessionStore.accessToken == null) {
+    final token = _sessionStore.accessToken;
+    final userId = _sessionStore.session?.consumerUserId;
+    if (listingId == null || token == null) {
       return const RooftopMatch.unavailable();
     }
     try {
-      final payload = <String, String>{};
-      if (listingId != null) payload['listingId'] = listingId;
-      if (listingUrl != null) payload['listingUrl'] = listingUrl;
       final response = await _client
-          .post(_uri(path), headers: _headers(), body: jsonEncode(payload))
+          .post(
+            _uri(path),
+            headers: _headers(),
+            body: jsonEncode({'listingId': listingId}),
+          )
           .timeout(timeout);
+      if (token != _sessionStore.accessToken ||
+          userId != _sessionStore.session?.consumerUserId) {
+        return const RooftopMatch.unavailable();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _reportFailure(path, response.statusCode);
         return const RooftopMatch.unavailable();
@@ -116,20 +117,11 @@ class HttpRooftopMatchEndpoint extends RooftopMatchEndpoint {
       if (decoded is! Map) return const RooftopMatch.unavailable();
       return RooftopMatch.parseNetworkResponse(
         Map<String, dynamic>.from(decoded),
-        suppliedListingUrl: listingUrl != null,
-        listingUrl: listingUrl,
       );
     } on Exception {
       _reportFailure(path, 0);
       return const RooftopMatch.unavailable();
     }
-  }
-
-  static String? _httpUrl(String? raw) {
-    final url = raw?.trim();
-    if (url == null || url.isEmpty) return null;
-    if (url.startsWith('https://') || url.startsWith('http://')) return url;
-    return null;
   }
 
   void _reportFailure(String path, int status) {

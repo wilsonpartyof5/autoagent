@@ -194,6 +194,39 @@ const purchasesNotConfiguredMessage =
 const platformKeyNotSandboxMessage =
     'Key purchases are off. A platform SDK key is not a verified sandbox.';
 
+/// Copy for a finished pack purchase. Demo keys are labeled as samples.
+/// A zero credit count does not say that keys were added.
+String keysAddedMessage({required int added, required bool demo}) {
+  if (added <= 0) {
+    return 'Purchase confirmed. No new keys were added.';
+  }
+  if (demo) {
+    return added == 1
+        ? 'Added 1 sample key in this demo.'
+        : 'Added $added sample keys in this demo.';
+  }
+  return added == 1
+      ? 'Added 1 key. Packs never expire.'
+      : 'Added $added keys. Packs never expire.';
+}
+
+/// Copy for restore. A result with no added keys does not say keys were added.
+String restoreResultMessage(RestoreResult result, {required bool demo}) {
+  return switch (result) {
+    RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+      demo
+          ? (creditsRestored == 1
+                ? 'Restored 1 sample key in this demo.'
+                : 'Restored $creditsRestored sample keys in this demo.')
+          : (creditsRestored == 1
+                ? 'Restored 1 key.'
+                : 'Restored $creditsRestored keys.'),
+    RestoreSuccess() => 'No new keys were added.',
+    RestoreNoPurchases() => 'No purchases to restore.',
+    RestoreError(:final message) => message,
+  };
+}
+
 /// Live mode without a verified sandbox store. Purchases fail in the open
 /// instead of granting local keys.
 class UnavailablePurchaseService implements PurchaseService {
