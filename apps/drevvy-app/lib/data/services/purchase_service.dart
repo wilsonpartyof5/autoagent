@@ -103,10 +103,15 @@ class RestoreSuccess extends RestoreResult {
   const RestoreSuccess({
     required this.creditsRestored,
     this.transactions = const [],
+    this.countKnown = true,
   });
 
   final int creditsRestored;
   final List<RestoredTransaction> transactions;
+
+  /// False when the client cannot compare this account's loaded balance with
+  /// the balance the server just confirmed. The count is then not shown.
+  final bool countKnown;
 }
 
 class RestoreNoPurchases extends RestoreResult {
@@ -210,9 +215,12 @@ String keysAddedMessage({required int added, required bool demo}) {
       : 'Added $added keys. Packs never expire.';
 }
 
-/// Copy for restore. A result with no added keys does not say keys were added.
+/// Copy for restore. A known zero does not say keys were added. An unknown
+/// count does not say zero keys were added either.
 String restoreResultMessage(RestoreResult result, {required bool demo}) {
   return switch (result) {
+    RestoreSuccess(:final countKnown) when !countKnown =>
+      'Purchases restored. Your key balance is updated.',
     RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
       demo
           ? (creditsRestored == 1

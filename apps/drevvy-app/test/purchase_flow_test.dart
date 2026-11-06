@@ -498,10 +498,95 @@ void main() {
 
       final result = await repo.restorePurchases();
       expect(result, isA<RestoreSuccess>());
-      expect((result as RestoreSuccess).creditsRestored, 0);
+      final success = result as RestoreSuccess;
+      expect(success.countKnown, isTrue);
+      expect(success.creditsRestored, 3);
+      expect(restoreResultMessage(success, demo: false), 'Restored 3 keys.');
       expect(credits.lastRestoreIds, ['txn_5', 'txn_25']);
       expect((await repo.getCreditBalance()).balance, 4);
     });
+
+    test('an unchanged server balance does not say keys were added', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore()
+        ..restored = const [
+          RestoredTransaction(
+            transactionId: 'txn_same',
+            packType: CarPackType.single,
+          ),
+        ];
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: _ScriptedCredits(
+          restoreResult: const CarCreditBalance(
+            balance: 4,
+            totalPurchased: 4,
+            totalSpent: 0,
+            totalRefunded: 0,
+          ),
+        ),
+        initialBalance: const CarCreditBalance.withBalance(4),
+      );
+
+      final result = await repo.restorePurchases();
+      expect(result, isA<RestoreSuccess>());
+      final success = result as RestoreSuccess;
+      expect(success.countKnown, isTrue);
+      expect(success.creditsRestored, 0);
+      expect(
+        restoreResultMessage(success, demo: false),
+        'No new keys were added.',
+      );
+      expect((await repo.getCreditBalance()).balance, 4);
+    });
+
+    test(
+      'a restore without a loaded balance does not say zero keys were added',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+        final store = _FakeStore()
+          ..restored = const [
+            RestoredTransaction(
+              transactionId: 'txn_unloaded',
+              packType: CarPackType.starter,
+            ),
+          ];
+        final repo = DemoRepository(
+          config: _liveOrigin,
+          networkDelay: Duration.zero,
+          purchaseService: RevenueCatPurchaseService(gateway: store),
+          credits: _ScriptedCredits(
+            restoreResult: const CarCreditBalance(
+              balance: 8,
+              totalPurchased: 8,
+              totalSpent: 0,
+              totalRefunded: 0,
+            ),
+          ),
+        );
+
+        final result = await repo.restorePurchases();
+        expect(result, isA<RestoreSuccess>());
+        final success = result as RestoreSuccess;
+        expect(success.countKnown, isFalse);
+        expect(success.creditsRestored, 0);
+        expect(
+          restoreResultMessage(success, demo: false),
+          'Purchases restored. Your key balance is updated.',
+        );
+        expect(
+          restoreResultMessage(success, demo: false),
+          isNot('No new keys were added.'),
+        );
+        expect((await repo.getCreditBalance()).balance, 8);
+      },
+    );
 
     test('a second tap is rejected while a purchase is open', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -712,10 +797,66 @@ void main() {
         final result = await pending;
 
         expect(result, isA<RestoreNoPurchases>());
+        expect(
+          restoreResultMessage(result, demo: false),
+          'No purchases to restore.',
+        );
         expect(credits.lastRestoreIds, isNull);
         expect((await repo.getCreditBalance()).balance, 0);
       },
     );
+
+    test('a restore that finishes after an account switch does not replace the balance', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final sessions = _bindSession();
+      final gate = Completer<void>();
+      final store = _FakeStore()
+        ..restoreHold = gate.future
+        ..restored = const [
+          RestoredTransaction(
+            transactionId: 'txn_switch',
+            packType: CarPackType.plus,
+          ),
+        ];
+      final credits = _ScriptedCredits(
+        restoreResult: const CarCreditBalance(
+          balance: 25,
+          totalPurchased: 25,
+          totalSpent: 0,
+          totalRefunded: 0,
+        ),
+      );
+      final repo = DemoRepository(
+        config: _liveOrigin,
+        networkDelay: Duration.zero,
+        purchaseService: RevenueCatPurchaseService(gateway: store),
+        credits: credits,
+        initialBalance: const CarCreditBalance.withBalance(3),
+      );
+      sessions.bind(repo);
+      sessions.store.session = const ShopperSession(
+        accessToken: 'jwt-a',
+        consumerUserId: 'user-a',
+      );
+
+      final pending = repo.restorePurchases();
+      await store.restoreStarted.future;
+      sessions.store.session = const ShopperSession(
+        accessToken: 'jwt-b',
+        consumerUserId: 'user-b',
+      );
+      gate.complete();
+      final result = await pending;
+
+      expect(result, isA<RestoreNoPurchases>());
+      expect(
+        restoreResultMessage(result, demo: false),
+        'No purchases to restore.',
+      );
+      expect(credits.lastRestoreIds, isNull);
+      expect((await repo.getCreditBalance()).balance, 0);
+    });
 
     test('a demo purchase after sign-out does not add sample keys', () async {
       final sessions = _bindSession();
