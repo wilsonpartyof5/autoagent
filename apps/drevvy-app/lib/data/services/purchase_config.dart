@@ -56,10 +56,28 @@ class PurchaseConfig {
 
   bool get isLive => mode == DrevvyDataMode.live;
 
+  /// A public SDK key is present for this platform. `appl_` and `goog_` keys
+  /// are used for sandbox testers and for production, so this is not proof
+  /// that a purchase is a sandbox transaction.
   bool get usesRevenueCat =>
       _present(revenueCatApiKeyFor(defaultTargetPlatform));
 
   bool get usesSuperwall => _present(superwallApiKeyFor(defaultTargetPlatform));
+
+  /// RevenueCat Test Store keys start with `test_`. The SDK does not call
+  /// Apple or Google for those keys. That is the only store channel this
+  /// client can tell apart from a production-capable key.
+  bool get hasTestStoreKey {
+    final key = revenueCatApiKeyFor(defaultTargetPlatform);
+    return key != null && key.startsWith('test_');
+  }
+
+  /// Live purchases run only when this platform has a Test Store key and the
+  /// shopper API origin is set, so a completed purchase can be confirmed by
+  /// `POST /api/consumer/credits`. Demo mode stays on the labeled local
+  /// service even if a Test Store key is compiled in.
+  bool get sandboxPurchasesEnabled =>
+      isLive && apiBaseUrl.trim().isNotEmpty && hasTestStoreKey;
 
   String? revenueCatApiKeyFor(TargetPlatform platform) {
     return switch (platform) {

@@ -96,9 +96,14 @@ class PurchasesFlutterStore implements StoreGateway {
           rc.PurchaseParams.storeProduct(products.first),
         );
       }
-      return StorePurchaseSucceeded(
-        transactionId: _transactionId(result.storeTransaction, packType),
-      );
+      final transactionId = _transactionId(result.storeTransaction);
+      if (transactionId == null) {
+        return const StorePurchaseFailed(
+          message: 'The store did not return a transaction id.',
+          code: 'missing_transaction',
+        );
+      }
+      return StorePurchaseSucceeded(transactionId: transactionId);
     } on PlatformException catch (error) {
       final code = rc.PurchasesErrorHelper.getErrorCode(error);
       if (code == rc.PurchasesErrorCode.purchaseCancelledError) {
@@ -120,12 +125,10 @@ class PurchasesFlutterStore implements StoreGateway {
     final restored = <RestoredTransaction>[];
     for (final transaction in info.nonSubscriptionTransactions) {
       final pack = CarPackType.fromProductId(transaction.productIdentifier);
-      if (pack == null) continue;
+      final transactionId = _transactionId(transaction);
+      if (pack == null || transactionId == null) continue;
       restored.add(
-        RestoredTransaction(
-          transactionId: _transactionId(transaction, pack),
-          packType: pack,
-        ),
+        RestoredTransaction(transactionId: transactionId, packType: pack),
       );
     }
     return restored;
@@ -193,10 +196,11 @@ class PurchasesFlutterStore implements StoreGateway {
     );
   }
 
-  String _transactionId(rc.StoreTransaction transaction, CarPackType pack) {
-    if (transaction.transactionIdentifier.isNotEmpty) {
-      return transaction.transactionIdentifier;
-    }
-    return '${pack.productId}_${transaction.purchaseDate}';
+  /// Store transaction id only. A synthesized id is not something the credits
+  /// route can verify, so a missing identifier is left unset.
+  String? _transactionId(rc.StoreTransaction transaction) {
+    final id = transaction.transactionIdentifier.trim();
+    if (id.isEmpty) return null;
+    return id;
   }
 }

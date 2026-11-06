@@ -486,6 +486,7 @@ void main() {
     final repo = _ActionRepo()..stallPurchase = true;
     bind(repo);
     useTallView(tester);
+    await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
     await openPackSheet(tester, repo);
     await tapVisible(tester, find.textContaining('Get '));
@@ -509,6 +510,7 @@ void main() {
       ..purchaseResult = const PurchaseError(message: _purchaseError);
     bind(repo);
     useTallView(tester);
+    await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
     await openPackSheet(tester, repo);
     await tapVisible(tester, find.textContaining('Get '));
@@ -534,6 +536,7 @@ void main() {
       ..restoreError = const ApiConfigException(_restoreError);
     bind(repo);
     useTallView(tester);
+    await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
     await openPackSheet(tester, repo);
     await tapVisible(tester, find.text('Restore purchases'));
