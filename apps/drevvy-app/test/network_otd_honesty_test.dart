@@ -61,6 +61,33 @@ void main() {
   });
 
   test(
+    'in_network with dealer_conversation plus an unknown cta stays unavailable',
+    () {
+      final match = RooftopMatch.parseNetworkResponse(
+        stateBody(
+          'in_network',
+          ctas: const [
+            {
+              'kind': 'dealer_conversation',
+              'keyCost': 1,
+              'endpoint': '/api/consumer/keys/conversation',
+            },
+            {
+              'kind': 'open_chat',
+              'keyCost': 0,
+              'endpoint': '/api/consumer/chat',
+            },
+          ],
+        ),
+      );
+      expect(match.source, RooftopMatchSource.unavailable);
+      expect(match.classifiedInNetwork, isFalse);
+      expect(match.isInNetwork, isFalse);
+      expect(match.rooftopId, isNull);
+    },
+  );
+
+  test(
     'in_network without the verified conversation cta stays unavailable',
     () {
       final match = RooftopMatch.parseNetworkResponse(stateBody('in_network'));
