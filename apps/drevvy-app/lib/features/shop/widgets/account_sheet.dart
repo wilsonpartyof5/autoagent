@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/config/api_config_exception.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/analytics/product_analytics.dart';
@@ -21,41 +22,79 @@ import 'pack_picker_sheet.dart';
 /// Account sheet per spec §6.16 (v1.8).
 /// Replaces Profile tab - shown from avatar button tap.
 class AccountSheet extends StatefulWidget {
-  const AccountSheet({super.key});
+  const AccountSheet({super.key, this.repository});
+
+  /// Overrides [DemoRepository.instance]. Tests pass the account under load.
+  final DemoRepository? repository;
 
   @override
   State<AccountSheet> createState() => _AccountSheetState();
 }
 
 class _AccountSheetState extends State<AccountSheet> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo;
+  late final ShopperAccountWatch _accountWatch;
   User? _user;
   SearchProfile? _searchProfile;
   CarCreditBalance? _creditBalance;
+  String? _accountError;
   bool _isLoading = true;
   bool _analyticsOn = true;
 
   @override
   void initState() {
     super.initState();
+    _repo = widget.repository ?? DemoRepository.instance;
     _analyticsOn = ProductAnalytics.instance.optedIn;
     ProductAnalytics.instance.screen('profile');
     ProductAnalytics.instance.screen('settings');
+    _accountWatch = ShopperAccountWatch(_onAccountSessionChanged)..bind();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _accountWatch.dispose();
+    super.dispose();
+  }
+
+  bool _sessionStill(int account) => _accountWatch.same(account);
+
+  void _onAccountSessionChanged() {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _user = null;
+      _creditBalance = null;
+      _accountError = null;
+    });
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final user = await _repo.getCurrentUser();
-    final searchProfile = await _repo.getSearchProfile();
-    final balance = await _repo.getCreditBalance();
-    if (!mounted) return;
+    final account = _accountWatch.capture();
+    try {
+      final user = await _repo.getCurrentUser();
+      final searchProfile = await _repo.getSearchProfile();
+      final balance = await _repo.getCreditBalance();
+      if (!mounted || !_accountWatch.same(account)) return;
 
-    setState(() {
-      _user = user;
-      _searchProfile = searchProfile;
-      _creditBalance = balance;
-      _isLoading = false;
-    });
+      setState(() {
+        _user = user;
+        _searchProfile = searchProfile;
+        _creditBalance = balance;
+        _accountError = null;
+        _isLoading = false;
+      });
+    } on ApiConfigException catch (error) {
+      if (!mounted || !_accountWatch.same(account)) return;
+      setState(() {
+        _accountError = error.message;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || !_accountWatch.same(account)) return;
+    }
   }
 
   void _togglePersonalize(bool value) {
@@ -96,10 +135,16 @@ class _AccountSheetState extends State<AccountSheet> {
           placement: 'account',
           onPurchase: (packType) => _buyPack(sheetContext, host, packType),
           onRestore: () async {
-            final result = await _repo.restorePurchases();
-            if (!sheetContext.mounted || !host.mounted) return;
-            Navigator.pop(sheetContext);
-            _showPurchaseMessage(host, _restoreMessage(result));
+            final account = _accountWatch.capture();
+            try {
+              final result = await _repo.restorePurchases();
+              if (!host.mounted || !_sessionStill(account)) return;
+              if (sheetContext.mounted) Navigator.pop(sheetContext);
+              _showPurchaseMessage(host, _restoreMessage(result));
+            } catch (error) {
+              if (!host.mounted || !_sessionStill(account)) return;
+              _showPurchaseMessage(host, _restoreFailureMessage(error));
+            }
           },
           onKeepShopping: () => Navigator.pop(sheetContext),
         );
@@ -112,26 +157,39 @@ class _AccountSheetState extends State<AccountSheet> {
     BuildContext host,
     CarPackType packType,
   ) async {
-    final result = await _repo.purchasePack(packType);
-    if (!host.mounted) return;
-    if (result is PurchaseSuccess) {
-      if (sheetContext.mounted) Navigator.pop(sheetContext);
-      _showPurchaseMessage(
-        host,
-        'Added ${result.creditsAdded == 1 ? '1 key' : '${result.creditsAdded} keys'}. Packs never expire.',
-      );
-      return;
+    final account = _accountWatch.capture();
+    try {
+      final result = await _repo.purchasePack(packType);
+      if (!host.mounted || !_sessionStill(account)) return;
+      if (result is PurchaseSuccess) {
+        if (sheetContext.mounted) Navigator.pop(sheetContext);
+        _showPurchaseMessage(
+          host,
+          'Added ${result.creditsAdded == 1 ? '1 key' : '${result.creditsAdded} keys'}. Packs never expire.',
+        );
+        return;
+      }
+      if (result is PurchasePending) {
+        _showPurchaseMessage(
+          host,
+          'Payment is pending. Keys are added when it completes.',
+        );
+        return;
+      }
+      if (result is PurchaseError) {
+        _showPurchaseMessage(host, result.message);
+      }
+    } on ApiConfigException catch (error) {
+      if (!host.mounted || !_sessionStill(account)) return;
+      _showPurchaseMessage(host, error.message);
+    } catch (_) {
+      if (!host.mounted || !_sessionStill(account)) return;
     }
-    if (result is PurchasePending) {
-      _showPurchaseMessage(
-        host,
-        'Payment is pending. Keys are added when it completes.',
-      );
-      return;
-    }
-    if (result is PurchaseError) {
-      _showPurchaseMessage(host, result.message);
-    }
+  }
+
+  String _restoreFailureMessage(Object error) {
+    if (error is ApiConfigException) return error.message;
+    return 'Purchases were not restored.';
   }
 
   String _restoreMessage(RestoreResult result) {
@@ -224,6 +282,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   Future<void> _openRecentSearches() async {
+    final account = _accountWatch.capture();
     final searches = List<SavedSearch>.from(
       _searchProfile?.searches ?? const [],
     );
@@ -241,13 +300,13 @@ class _AccountSheetState extends State<AccountSheet> {
       },
       onClearAll: _repo.clearSavedSearches,
     );
-    if (!mounted) return;
+    if (!mounted || !_sessionStill(account)) return;
     if (ran) {
       Navigator.pop(context);
       return;
     }
     final profile = await _repo.getSearchProfile();
-    if (!mounted) return;
+    if (!mounted || !_sessionStill(account)) return;
     setState(() => _searchProfile = profile);
   }
 
@@ -267,8 +326,14 @@ class _AccountSheetState extends State<AccountSheet> {
           top: Radius.circular(DrevvyRadius.sheetTop),
         ),
       ),
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      child:
+          _isLoading ||
+              _user == null ||
+              _creditBalance == null ||
+              _searchProfile == null
+          ? _accountError == null
+                ? const Center(child: CircularProgressIndicator())
+                : Center(child: Text(_accountError!))
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -315,6 +380,7 @@ class _AccountSheetState extends State<AccountSheet> {
                         CarBalanceCard(
                           balance: _creditBalance!,
                           notice: _repo.creditNotice,
+                          showCount: !_repo.isLive || _repo.balanceKnown,
                           onBuy: _showPackPicker,
                         ),
                         const SizedBox(height: DrevvySpace.s6),
@@ -363,10 +429,12 @@ class _AccountSheetState extends State<AccountSheet> {
             shape: BoxShape.circle,
           ),
           child: Center(
-            child: Text(
-              user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U',
-              style: text.headline.copyWith(color: DrevvyColors.onBrand),
-            ),
+            child: user.nameIsKnown && user.firstName.isNotEmpty
+                ? Text(
+                    user.firstName[0].toUpperCase(),
+                    style: text.headline.copyWith(color: DrevvyColors.onBrand),
+                  )
+                : const Icon(LucideIcons.user, color: DrevvyColors.onBrand),
           ),
         ),
         const SizedBox(width: DrevvySpace.s3),
@@ -374,10 +442,7 @@ class _AccountSheetState extends State<AccountSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${user.firstName.split(' ').first} ${user.firstName.split(' ').length > 1 ? user.firstName.split(' ').last[0] : 'W'}.',
-                style: text.title,
-              ),
+              Text(user.accountLabel, style: text.title),
               Text(
                 ShopperSessionStore.instance.accessToken == null
                     ? 'Not signed in'
@@ -514,11 +579,14 @@ class _AccountSheetState extends State<AccountSheet> {
               color: colors.muted,
             ),
             onTap: () async {
-              await _repo.restorePurchases();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Purchases restored')),
-                );
+              final account = _accountWatch.capture();
+              try {
+                final result = await _repo.restorePurchases();
+                if (!mounted || !_sessionStill(account)) return;
+                _showPurchaseMessage(context, _restoreMessage(result));
+              } catch (error) {
+                if (!mounted || !_sessionStill(account)) return;
+                _showPurchaseMessage(context, _restoreFailureMessage(error));
               }
             },
           ),
@@ -554,10 +622,11 @@ class _AccountSheetState extends State<AccountSheet> {
           const SizedBox(height: DrevvySpace.s3),
           ShopperSignInActions(
             onSuccess: () async {
+              final account = _accountWatch.capture();
               await _repo.pullSignedInBalance();
-              if (!mounted) return;
+              if (!mounted || !_sessionStill(account)) return;
               await _loadData();
-              if (!mounted) return;
+              if (!mounted || !_sessionStill(account)) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('You are signed in.')),
               );

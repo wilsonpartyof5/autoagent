@@ -13,6 +13,7 @@ class CarBalanceCard extends StatelessWidget {
     required this.balance,
     required this.onBuy,
     this.notice,
+    this.showCount = true,
   });
 
   final CarCreditBalance balance;
@@ -22,11 +23,16 @@ class CarBalanceCard extends StatelessWidget {
   /// silent demo wallet.
   final String? notice;
 
+  /// False while a live balance has not been loaded from the server. The
+  /// card then does not present 0 as the balance.
+  final bool showCount;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
     final text = context.drevvyText;
     final outOfCars = balance.isEmpty;
+    final countVisible = showCount;
 
     return Container(
       padding: const EdgeInsets.all(DrevvySpace.s4),
@@ -40,15 +46,18 @@ class CarBalanceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (countVisible)
+                  Text(
+                    '${balance.balance}',
+                    style: text.figureM.copyWith(color: Colors.white),
+                  ),
                 Text(
-                  '${balance.balance}',
-                  style: text.figureM.copyWith(color: Colors.white),
-                ),
-                Text(
-                  notice ??
-                      (outOfCars
-                          ? 'Out of keys'
-                          : 'keys left · packs never expire'),
+                  countVisible
+                      ? (notice ??
+                            (outOfCars
+                                ? 'Out of keys'
+                                : 'keys left · packs never expire'))
+                      : (notice ?? 'Loading key balance'),
                   style: text.callout.copyWith(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontWeight: outOfCars || notice != null
@@ -56,7 +65,7 @@ class CarBalanceCard extends StatelessWidget {
                         : FontWeight.w500,
                   ),
                 ),
-                if (notice == null && outOfCars) ...[
+                if (countVisible && notice == null && outOfCars) ...[
                   const SizedBox(height: DrevvySpace.s1),
                   Text(
                     'Packs never expire. Add a pack to unlock market intel or ask an in-network dealer. Off-network out-the-door requests stay free.',
@@ -68,7 +77,7 @@ class CarBalanceCard extends StatelessWidget {
               ],
             ),
           ),
-          if (notice == null) ...[
+          if (countVisible && notice == null) ...[
             const SizedBox(width: DrevvySpace.s3),
             GestureDetector(
               onTap: onBuy,

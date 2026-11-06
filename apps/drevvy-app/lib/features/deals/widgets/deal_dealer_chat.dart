@@ -25,7 +25,7 @@ Future<bool> openDealDealerChat({
   if (!resolvedMatch.isInNetwork) return false;
 
   final balance = creditBalance ?? await repo.getCreditBalance();
-  final firstName = shopperFirstName ?? (await repo.getCurrentUser()).firstName;
+  final firstName = shopperFirstName ?? await _knownFirstName(repo);
   // Live must not forward the demo fair-price formula or a market context
   // that was stored from it. An explicit market argument is the same
   // client-side valuation on this path.
@@ -44,7 +44,7 @@ Future<bool> openDealDealerChat({
       match: resolvedMatch,
       creditBalance: balance,
       alreadyOpen: true,
-      shopperFirstName: firstName,
+      shopperFirstName: firstName ?? '',
       dealId: deal.id,
       chipInputs: _chipInputsFor(
         repo,
@@ -69,6 +69,11 @@ Future<bool> openDealDealerChat({
     ),
   );
   return true;
+}
+
+Future<String?> _knownFirstName(DemoRepository repo) async {
+  final user = await repo.getCurrentUser();
+  return user.nameIsKnown ? user.firstName : null;
 }
 
 /// Thread, market intel, feature, and visit time for an existing deal.

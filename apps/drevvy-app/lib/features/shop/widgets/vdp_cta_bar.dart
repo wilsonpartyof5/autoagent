@@ -18,6 +18,7 @@ class VdpCtaBar extends StatelessWidget {
     required this.creditBalance,
     required this.match,
     required this.marketIntelUnlocked,
+    this.marketIntelAvailable = true,
     required this.conversationOpen,
     required this.otdRequested,
     required this.onMarketIntel,
@@ -29,6 +30,10 @@ class VdpCtaBar extends StatelessWidget {
   final CarCreditBalance creditBalance;
   final RooftopMatch? match;
   final bool marketIntelUnlocked;
+
+  /// False when the server cannot return a real price brief. The button
+  /// stays disabled so a key is not spent.
+  final bool marketIntelAvailable;
   final bool conversationOpen;
   final bool otdRequested;
   final VoidCallback onMarketIntel;
@@ -96,18 +101,24 @@ class VdpCtaBar extends StatelessWidget {
           ),
           const SizedBox(height: DrevvySpace.s3),
           DrevvyButton(
-            label: marketIntelUnlocked
+            label: !marketIntelAvailable
+                ? 'Market intel is unavailable'
+                : marketIntelUnlocked
                 ? 'Market intel saved'
                 : KeySpend.marketIntelCta,
             icon: marketIntelUnlocked
                 ? LucideIcons.check
                 : LucideIcons.sparkles,
-            onPressed: marketIntelUnlocked ? null : onMarketIntel,
+            onPressed: !marketIntelAvailable || marketIntelUnlocked
+                ? null
+                : onMarketIntel,
             isFullWidth: true,
           ),
           const SizedBox(height: DrevvySpace.s1),
           Text(
-            marketIntelUnlocked
+            !marketIntelAvailable
+                ? 'Drevvy has no real price brief for this car, so a key is not used.'
+                : marketIntelUnlocked
                 ? 'Price brief is unlocked for this listing.'
                 : KeySpend.marketIntelNote,
             style: text.callout.copyWith(color: colors.muted),

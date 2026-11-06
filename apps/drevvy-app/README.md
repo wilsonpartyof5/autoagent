@@ -51,9 +51,18 @@ flutter run \
 ```
 
 `DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
-Discover, auth, credits, key spend, rooftop match, and deal chips read that
-same mode and the same origin. Live with an empty origin says it is not
-configured. Demo keeps the labeled catalog even when a URL is present.
+Discover, auth, credits, key spend, rooftop match, deal chips, profile, and
+saved cars read that same mode and the same origin. Live with an empty origin
+says it is not configured. Demo keeps the labeled catalog even when a URL is
+present.
+
+A live account uses `GET /api/consumer/profile` and `GET /api/consumer/credits`.
+The profile has no given name, so the account says "Signed in" and does not
+invent one. The key balance is the server number, including a starter grant
+the server already made. Saved cars are `GET`/`POST`/`DELETE /api/consumer/saved-cars`.
+A failed save or load shows an error and retry. Sign-out clears that account.
+Market intel has no price payload and no unlock read, so live mode shows it
+as unavailable and does not spend a key.
 
 ## Two-key VDP review (simulators)
 

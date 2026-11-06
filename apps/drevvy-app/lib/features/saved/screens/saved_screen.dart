@@ -9,6 +9,7 @@ import '../../../core/widgets/shell_scaffold.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/saved_cars_endpoint.dart';
 import '../../shop/widgets/account_sheet.dart';
 import '../widgets/saved_car_card.dart';
 
@@ -16,17 +17,22 @@ enum SavedSortOption { recentlySaved, price, distance }
 
 /// Saved tab screen per spec §6.15-6.16 (v1.8).
 class SavedScreen extends StatefulWidget {
-  const SavedScreen({super.key});
+  const SavedScreen({super.key, this.repository});
+
+  /// Tests pass a repository. The app uses the shared one.
+  final DemoRepository? repository;
 
   @override
   State<SavedScreen> createState() => _SavedScreenState();
 }
 
 class _SavedScreenState extends State<SavedScreen> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo =
+      widget.repository ?? DemoRepository.instance;
   List<SavedCar> _savedCars = [];
   Map<String, Listing> _listings = {};
   bool _isLoading = true;
+  String? _error;
   SavedSortOption _sortOption = SavedSortOption.recentlySaved;
   int _loadGeneration = 0;
 
@@ -45,23 +51,43 @@ class _SavedScreenState extends State<SavedScreen> {
 
   Future<void> _loadData() async {
     final generation = ++_loadGeneration;
-    final savedCars = await _repo.getSavedCars();
-    final listings = <String, Listing>{};
-
-    for (final sc in savedCars) {
-      try {
-        final listing = await _repo.getListingById(sc.listingId);
-        listings[sc.listingId] = listing;
-      } catch (_) {
-        // Listing not found - the card shows the sold state.
-      }
+    if (mounted) {
+      setState(() => _isLoading = true);
     }
-    if (!mounted || generation != _loadGeneration) return;
-    setState(() {
-      _savedCars = savedCars;
-      _listings = listings;
-      _isLoading = false;
-    });
+    try {
+      final savedCars = await _repo.getSavedCars();
+      final listings = <String, Listing>{};
+
+      for (final sc in savedCars) {
+        final known = _repo.listingForSavedCar(sc.listingId);
+        if (known != null) {
+          listings[sc.listingId] = known;
+          continue;
+        }
+        if (_repo.isLive) continue;
+        try {
+          final listing = await _repo.getListingById(sc.listingId);
+          listings[sc.listingId] = listing;
+        } catch (_) {
+          // Listing not found - the card shows the sold state.
+        }
+      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _savedCars = savedCars;
+        _listings = listings;
+        _error = null;
+        _isLoading = false;
+      });
+    } on SavedCarsException catch (error) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _error = error.message;
+        _isLoading = false;
+      });
+      return;
+    }
+    final savedCars = _savedCars;
     if (savedCars.isEmpty) {
       ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
         'surface': 'saved',
@@ -125,11 +151,21 @@ class _SavedScreenState extends State<SavedScreen> {
   Future<void> _handleRemove(SavedCar savedCar) async {
     final listing = _listings[savedCar.listingId];
 
+    try {
+      await _repo.removeSavedCar(savedCar.id);
+    } on StaleAccountException {
+      return;
+    } on SavedCarsException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+    if (!mounted) return;
+
     setState(() {
       _savedCars = _savedCars.where((sc) => sc.id != savedCar.id).toList();
     });
-
-    await _repo.removeSavedCar(savedCar.id);
 
     if (!mounted) return;
 
@@ -141,10 +177,19 @@ class _SavedScreenState extends State<SavedScreen> {
           label: 'Undo',
           onPressed: () async {
             if (listing != null) {
-              final restored = await _repo.saveCar(listing, source: 'undo');
-              setState(() {
-                _savedCars = [..._savedCars, restored];
-              });
+              try {
+                final restored = await _repo.saveCar(listing, source: 'undo');
+                if (!mounted) return;
+                setState(() {
+                  _savedCars = [..._savedCars, restored];
+                });
+              } on StaleAccountException {
+                return;
+              } on SavedCarsException catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(error.message)));
+              }
             }
           },
         ),
@@ -185,7 +230,7 @@ class _SavedScreenState extends State<SavedScreen> {
     final colors = context.drevvy;
     final text = context.drevvyText;
 
-    if (_isLoading) {
+    if (_isLoading && _savedCars.isEmpty && _error == null) {
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: const Center(child: CircularProgressIndicator()),
@@ -196,9 +241,48 @@ class _SavedScreenState extends State<SavedScreen> {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
-        child: _savedCars.isEmpty
+        child: _error != null && _savedCars.isEmpty
+            ? _buildErrorState(context, colors, text)
+            : _savedCars.isEmpty
             ? _buildEmptyState(context, colors, text)
             : _buildList(context, colors, text),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(
+    BuildContext context,
+    DrevvyColors colors,
+    DrevvyText text,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.all(DrevvySpace.gutter),
+      child: Column(
+        children: [
+          _buildHeader(context, colors, text),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Saved cars are unavailable',
+                    style: text.headline,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: DrevvySpace.s3),
+                  Text(
+                    _error ?? 'Drevvy could not load saved cars.',
+                    style: text.body.copyWith(color: colors.muted),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: DrevvySpace.s6),
+                  DrevvyButton(label: 'Retry', onPressed: _loadData),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

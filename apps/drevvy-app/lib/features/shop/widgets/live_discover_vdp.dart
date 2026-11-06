@@ -36,7 +36,10 @@ class LiveDiscoverVdp extends StatelessWidget {
           if (isLoading)
             const Center(child: CircularProgressIndicator())
           else if (listing == null)
-            _Error(message: errorMessage ?? 'This listing is not available.', onRetry: onRetry)
+            _Error(
+              message: errorMessage ?? 'This listing is not available.',
+              onRetry: onRetry,
+            )
           else
             _Body(listing: listing!),
           Positioned(
@@ -46,7 +49,10 @@ class LiveDiscoverVdp extends StatelessWidget {
               icon: Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(color: colors.glassSolid, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: colors.glassSolid,
+                  shape: BoxShape.circle,
+                ),
                 child: Icon(LucideIcons.chevronLeft, color: colors.ink),
               ),
               onPressed: () => context.pop(),
@@ -74,9 +80,17 @@ class _Error extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Couldn’t open this car', style: text.title, textAlign: TextAlign.center),
+            Text(
+              'Couldn’t open this car',
+              style: text.title,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: DrevvySpace.s2),
-            Text(message, style: text.body.copyWith(color: colors.muted), textAlign: TextAlign.center),
+            Text(
+              message,
+              style: text.body.copyWith(color: colors.muted),
+              textAlign: TextAlign.center,
+            ),
             TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
@@ -121,7 +135,10 @@ class _Body extends StatelessWidget {
         const SizedBox(height: DrevvySpace.s4),
         Text(listing.title, style: text.headline),
         if (listing.subtitle.isNotEmpty)
-          Text(listing.subtitle, style: text.callout.copyWith(color: colors.muted)),
+          Text(
+            listing.subtitle,
+            style: text.callout.copyWith(color: colors.muted),
+          ),
         const SizedBox(height: DrevvySpace.s3),
         Text(listing.priceFormatted, style: text.figureM),
         Text(
@@ -129,19 +146,23 @@ class _Body extends StatelessWidget {
             listing.milesFormatted,
             if (listing.distanceFormatted.isNotEmpty) listing.distanceFormatted,
             if (place.isNotEmpty) place,
-            if (listing.daysListedFormatted.isNotEmpty) listing.daysListedFormatted,
+            if (listing.daysListedFormatted.isNotEmpty)
+              listing.daysListedFormatted,
           ].join(' · '),
           style: text.body.copyWith(color: colors.muted),
         ),
         if (listing.vin.isNotEmpty) ...[
           const SizedBox(height: DrevvySpace.s2),
-          Text('VIN ${listing.vin}', style: text.callout.copyWith(color: colors.muted)),
+          Text(
+            'VIN ${listing.vin}',
+            style: text.callout.copyWith(color: colors.muted),
+          ),
         ],
         const SizedBox(height: DrevvySpace.s6),
         Text('Marketplace Intelligence', style: text.title),
         const SizedBox(height: DrevvySpace.s2),
         Text(
-          'Fair price is not part of this listing. Drevvy is not estimating one.',
+          'Fair price is not part of this listing. Drevvy is not estimating one. No key is spent.',
           style: text.body.copyWith(color: colors.muted),
         ),
         const SizedBox(height: DrevvySpace.s6),
@@ -181,7 +202,13 @@ class _Body extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          SizedBox(width: 120, child: Text(label, style: text.callout.copyWith(color: colors.muted))),
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+          ),
           Expanded(child: Text(value, style: text.body)),
         ],
       ),

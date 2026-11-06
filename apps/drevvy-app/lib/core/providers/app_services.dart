@@ -11,14 +11,21 @@ import '../../data/notifications/notification_prompt.dart';
 import '../../data/notifications/push_deep_link.dart';
 import '../../data/notifications/push_messaging.dart';
 import '../../data/notifications/push_notification_service.dart';
+import '../../data/repositories/demo_repository.dart';
 
-final sessionStoreProvider = Provider<SessionStore>((ref) => SecureSessionStore());
+final sessionStoreProvider = Provider<SessionStore>(
+  (ref) => SecureSessionStore(),
+);
 
-final localFlagsProvider = Provider<LocalFlags>((ref) => SharedPreferencesFlags());
+final localFlagsProvider = Provider<LocalFlags>(
+  (ref) => SharedPreferencesFlags(),
+);
 
 final authApiProvider = Provider<AuthApi>((ref) => AuthApi());
 
-final deviceRegistrarProvider = Provider<DeviceRegistrar>((ref) => DeviceRegistrar());
+final deviceRegistrarProvider = Provider<DeviceRegistrar>(
+  (ref) => DeviceRegistrar(),
+);
 
 final deepLinkBusProvider = Provider<DeepLinkBus>((ref) => DeepLinkBus());
 
@@ -28,18 +35,30 @@ final deepLinkLocationsProvider = StreamProvider<String>((ref) {
 
 final pushMessagingProvider = Provider<PushMessaging>((ref) {
   final bus = ref.watch(deepLinkBusProvider);
-  return FirebasePushMessaging(onOpened: (data) {
-    final type = (data['type'] ?? data['notificationType'] ?? '').toString().trim().toLowerCase();
-    ProductAnalytics.instance.track(AnalyticsEvents.pushOpened, {
-      'notification_type': RegExp(r'^[a-z0-9_]{1,40}$').hasMatch(type) ? type : 'unknown',
-      'has_deal': (data['dealId'] ?? data['deal_id'] ?? '').toString().trim().isNotEmpty,
-    });
-    final location = locationForPush(data);
-    if (location != null) bus.open(location);
-  });
+  return FirebasePushMessaging(
+    onOpened: (data) {
+      final type = (data['type'] ?? data['notificationType'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      ProductAnalytics.instance.track(AnalyticsEvents.pushOpened, {
+        'notification_type': RegExp(r'^[a-z0-9_]{1,40}$').hasMatch(type)
+            ? type
+            : 'unknown',
+        'has_deal': (data['dealId'] ?? data['deal_id'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty,
+      });
+      final location = locationForPush(data);
+      if (location != null) bus.open(location);
+    },
+  );
 });
 
-final pushNotificationServiceProvider = Provider<PushNotificationService>((ref) {
+final pushNotificationServiceProvider = Provider<PushNotificationService>((
+  ref,
+) {
   return PushNotificationService(
     messaging: ref.watch(pushMessagingProvider),
     devices: ref.watch(deviceRegistrarProvider),
@@ -53,9 +72,13 @@ final notificationPromptProvider = Provider<NotificationPromptGate>((ref) {
   return NotificationPromptGate(flags: ref.watch(localFlagsProvider));
 });
 
-final appleIdentityProvider = Provider<IdentityClient>((ref) => AppleIdentityClient());
+final appleIdentityProvider = Provider<IdentityClient>(
+  (ref) => AppleIdentityClient(),
+);
 
-final googleIdentityProvider = Provider<IdentityClient>((ref) => GoogleIdentityClient());
+final googleIdentityProvider = Provider<IdentityClient>(
+  (ref) => GoogleIdentityClient(),
+);
 
 final authControllerProvider = Provider<AuthController>((ref) {
   return AuthController(
@@ -63,7 +86,8 @@ final authControllerProvider = Provider<AuthController>((ref) {
     store: ref.watch(sessionStoreProvider),
     apple: ref.watch(appleIdentityProvider),
     google: ref.watch(googleIdentityProvider),
-    onSignedIn: (_) {
+    onSignedIn: (_) async {
+      await DemoRepository.instance.refreshLiveAccount();
       return ref.read(pushNotificationServiceProvider).registerCurrentToken();
     },
   );

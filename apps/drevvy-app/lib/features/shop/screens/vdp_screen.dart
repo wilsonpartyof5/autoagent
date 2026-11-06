@@ -13,6 +13,7 @@ import '../../../data/discover/discover_catalog.dart';
 import '../../../data/discover/discover_client.dart';
 import '../../../data/discover/discover_config.dart';
 import '../../../data/discover/discover_exception.dart';
+import '../../../data/services/saved_cars_endpoint.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
@@ -73,7 +74,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   bool _marketIntelUnlocked = false;
   bool _conversationOpen = false;
   bool _otdRequested = false;
-  String _shopperFirstName = 'Dana';
+  String _shopperFirstName = '';
   String? _liveError;
 
   DiscoverConfig get _discoverConfig =>
@@ -136,7 +137,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       _marketIntelUnlocked = _repo.hasUnlockedMarketIntel(listing.id);
       _conversationOpen = _repo.hasStartedConversation(listing.id);
       _otdRequested = _repo.hasRequestedOtd(listing.id);
-      _shopperFirstName = user.firstName;
+      _shopperFirstName = user.nameIsKnown ? user.firstName : '';
       _isLoading = false;
     });
     ProductAnalytics.instance.track(AnalyticsEvents.carViewed, {
@@ -178,26 +179,35 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
 
     HapticFeedback.lightImpact();
 
-    if (_isSaved) {
-      await _repo.unsaveByListingId(_listing!.id, source: 'car_detail');
+    try {
+      if (_isSaved) {
+        await _repo.unsaveByListingId(_listing!.id, source: 'car_detail');
+        if (!mounted) return;
+        setState(() => _isSaved = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Removed from Saved'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        await _repo.saveCar(_listing!, source: 'car_detail');
+        if (!mounted) return;
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved for later'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } on StaleAccountException {
+      if (!mounted || _listing == null) return;
+      setState(() => _isSaved = _repo.isListingSaved(_listing!.id));
+    } on SavedCarsException catch (error) {
       if (!mounted) return;
-      setState(() => _isSaved = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Removed from Saved'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      await _repo.saveCar(_listing!, source: 'car_detail');
-      if (!mounted) return;
-      setState(() => _isSaved = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved for later'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -229,7 +239,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   }
 
   /// Key A: market intel + save. Paywall only when the key balance is 0.
+  /// Live mode does not spend a key, because no real brief can be shown.
   void _handleMarketIntelTap() {
+    if (!_repo.marketIntelSpendEnabled) return;
     final listing = _listing;
     final balance = _creditBalance;
     if (listing == null || balance == null) return;
@@ -352,7 +364,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       stockNumber: listing.stockNo,
       listedPrice: listing.price,
       dom: listing.domActive,
-      shopperFirst: _shopperFirstName,
+      shopperFirst: _shopperFirstName.isEmpty ? null : _shopperFirstName,
     );
   }
 
@@ -612,6 +624,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
               creditBalance: creditBalance,
               match: _rooftopMatch,
               marketIntelUnlocked: _marketIntelUnlocked,
+              marketIntelAvailable: _repo.marketIntelSpendEnabled,
               conversationOpen: _conversationOpen,
               otdRequested: _otdRequested,
               onMarketIntel: _handleMarketIntelTap,
