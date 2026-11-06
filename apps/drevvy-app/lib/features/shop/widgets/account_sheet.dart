@@ -21,6 +21,8 @@ import 'pack_picker_sheet.dart';
 
 /// Account sheet per spec §6.16 (v1.8).
 /// Replaces Profile tab - shown from avatar button tap.
+const accountDeletionUnavailableMessage = 'Account deletion is not available.';
+
 class AccountSheet extends StatefulWidget {
   const AccountSheet({super.key, this.repository});
 
@@ -218,47 +220,17 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   void _handleDeleteAccount() {
-    ProductAnalytics.instance.track(AnalyticsEvents.accountDeleteStarted);
-    showDialog(
+    final text = context.drevvyText;
+    showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        final colors = context.drevvy;
-        final text = context.drevvyText;
-
         return AlertDialog(
-          title: Text('Delete account?', style: text.title),
-          content: Text(
-            'This will permanently delete your account, saved cars, and deals. This cannot be undone.',
-            style: text.body,
-          ),
+          title: Text('Delete account', style: text.title),
+          content: Text(accountDeletionUnavailableMessage, style: text.body),
           actions: [
             TextButton(
-              onPressed: () {
-                ProductAnalytics.instance.track(
-                  AnalyticsEvents.accountDeleteCancelled,
-                );
-                Navigator.pop(dialogContext);
-              },
-              child: Text(
-                'Cancel',
-                style: text.body.copyWith(color: colors.muted),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                ProductAnalytics.instance.track(
-                  AnalyticsEvents.accountDeleteConfirmed,
-                );
-                Navigator.pop(dialogContext);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Account deleted (demo)')),
-                );
-              },
-              child: Text(
-                'Delete',
-                style: text.body.copyWith(color: colors.danger),
-              ),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
             ),
           ],
         );

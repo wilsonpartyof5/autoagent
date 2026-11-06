@@ -64,6 +64,18 @@ A failed save or load shows an error and retry. Sign-out clears that account.
 Market intel has no price payload and no unlock read, so live mode shows it
 as unavailable and does not spend a key.
 
+Live dealer network is `POST /api/consumer/listings/network` with
+`{listingId}` only. `data.state` is `in_network`, `off_network`,
+`identity_unavailable`, or `unknown`. The response has no rooftop id and no
+dealer URL. `in_network` is accepted only when every CTA kind is
+`market_intel`, `dealer_conversation`, or `off_network_otd_request` and
+`dealer_conversation` is present. An unknown kind stays unavailable, and that
+classification does not open chat. Explicit `off_network` is the resolved
+miss. A missing `state`, including a legacy `match: null` body, stays
+unavailable. The screen does not submit `POST /api/consumer/otd-requests`.
+Email sign-in, Ask, and account deletion say they are unavailable. Demo keeps
+Dana, the labeled stubs, and Matters step 6 Sample.
+
 ## Two-key VDP review (simulators)
 
 Demo listings:

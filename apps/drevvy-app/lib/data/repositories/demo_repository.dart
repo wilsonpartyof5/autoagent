@@ -359,6 +359,7 @@ class DemoRepository {
 
   static const signedInShopperLabel = 'Signed in';
   static const signedOutShopperLabel = 'Not signed in';
+  static const askUnavailableMessage = 'Ask is not available yet.';
 
   static final _signedOutLiveUser = User(
     id: 'signed_out',
@@ -579,14 +580,22 @@ class DemoRepository {
   bool hasRequestedOtd(String listingId) => _otdRequested.contains(listingId);
 
   Future<RooftopMatch> getRooftopMatch(Listing listing) async {
+    final epoch = _live ? _captureAccount() : null;
     final match = await _rooftopMatch.match(listing);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
     ProductAnalytics.instance.track(AnalyticsEvents.rooftopMatchResolved, {
       'listing_id': listing.id,
       'matched': match.matched,
       if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
       'source': match.source.name,
     });
-    return _delay(match);
+    await _delay(null);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
+    return match;
   }
 
   Future<bool> unlockMarketIntel(Listing listing) async {
@@ -673,6 +682,7 @@ class DemoRepository {
   }
 
   Future<bool> requestOtdNumber(Listing listing, {String? note}) async {
+    if (_live) return false;
     ProductAnalytics.instance.track(AnalyticsEvents.otdNumberRequested, {
       'listing_id': listing.id,
       'free': true,
@@ -1440,6 +1450,7 @@ class DemoRepository {
   /// Get chat history for the drawer (v1.6.1)
   /// Deal-scoped chats are excluded per spec §6.13
   Future<List<ChatThread>> getChatHistory() async {
+    if (_live) return _delay(List.unmodifiable(_chatHistory));
     if (_chatHistory.isEmpty) {
       _chatHistory = _demoChatHistory;
     }
@@ -1521,6 +1532,20 @@ class DemoRepository {
       messages: [..._chatThread.messages, userMsg],
     );
 
+    if (_live) {
+      final unavailable = ChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}_agent',
+        role: MessageRole.agent,
+        contentType: MessageContentType.error,
+        text: askUnavailableMessage,
+        timestamp: DateTime.now(),
+      );
+      _chatThread = _chatThread.copyWith(
+        messages: [..._chatThread.messages, unavailable],
+      );
+      return _chatThread;
+    }
+
     // Simulate agent response
     await Future.delayed(const Duration(milliseconds: 1500));
 
@@ -1544,6 +1569,7 @@ class DemoRepository {
 
   /// Rewrites the latest answer so toggles in the memory sheet apply to this chat only.
   Future<ChatThread> applyChatMemory(Set<String> enabledIds) async {
+    if (_live) return _chatThread;
     final messages = List<ChatMessage>.from(_chatThread.messages);
     final agentIndex = messages.lastIndexWhere((message) => message.isAgent);
     if (agentIndex < 0) return _chatThread;

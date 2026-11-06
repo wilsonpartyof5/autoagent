@@ -6,6 +6,7 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/listing.dart';
+import '../../../data/models/rooftop_match.dart';
 import 'listing_photo.dart';
 
 /// Vehicle detail for a Discover listing shell.
@@ -19,12 +20,16 @@ class LiveDiscoverVdp extends StatelessWidget {
     required this.listing,
     required this.errorMessage,
     required this.onRetry,
+    this.network,
   });
 
   final bool isLoading;
   final Listing? listing;
   final String? errorMessage;
   final VoidCallback onRetry;
+
+  /// Server classification. Null means the lookup was not made or failed.
+  final RooftopMatch? network;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +46,7 @@ class LiveDiscoverVdp extends StatelessWidget {
               onRetry: onRetry,
             )
           else
-            _Body(listing: listing!),
+            _Body(listing: listing!, network: network),
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 12,
@@ -100,9 +105,17 @@ class _Error extends StatelessWidget {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.listing});
+  const _Body({required this.listing, required this.network});
 
   final Listing listing;
+  final RooftopMatch? network;
+
+  static const networkUnavailableMessage =
+      'Dealer network is unavailable. Drevvy is not guessing in-network or off-network.';
+  static const otdUnavailableMessage =
+      'An out-the-door request is not available yet.';
+  static const dealerChatClosedMessage =
+      'Dealer chat is not opened from this screen.';
 
   @override
   Widget build(BuildContext context) {
@@ -186,12 +199,38 @@ class _Body extends StatelessWidget {
             ),
         ],
         const SizedBox(height: DrevvySpace.s6),
+        Text('Dealer network', style: text.title),
+        const SizedBox(height: DrevvySpace.s2),
         Text(
-          'Dealer chat is not opened from this screen.',
+          _networkCopy(network),
+          style: text.body.copyWith(color: colors.muted),
+        ),
+        const SizedBox(height: DrevvySpace.s2),
+        Text(
+          otdUnavailableMessage,
+          style: text.callout.copyWith(color: colors.muted),
+        ),
+        const SizedBox(height: DrevvySpace.s2),
+        Text(
+          dealerChatClosedMessage,
           style: text.callout.copyWith(color: colors.muted),
         ),
       ],
     );
+  }
+
+  static String _networkCopy(RooftopMatch? network) {
+    if (network == null || network.source == RooftopMatchSource.unavailable) {
+      return networkUnavailableMessage;
+    }
+    if (network.classifiedInNetwork) {
+      return 'This dealer is on Drevvy.';
+    }
+    if (network.classifiedOffNetwork &&
+        network.source == RooftopMatchSource.live) {
+      return 'This dealer is off Drevvy.';
+    }
+    return networkUnavailableMessage;
   }
 
   Widget _line(BuildContext context, String label, String? value) {

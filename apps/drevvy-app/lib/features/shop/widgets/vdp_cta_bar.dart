@@ -46,6 +46,10 @@ class VdpCtaBar extends StatelessWidget {
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final inNetwork = match?.isInNetwork == true;
+    final classifiedOnDrevvy = !inNetwork && match?.classifiedInNetwork == true;
+    final classifiedOffDrevvy =
+        match?.classifiedOffNetwork == true &&
+        match?.source == RooftopMatchSource.live;
     final networkUnknown = match?.source == RooftopMatchSource.unavailable;
 
     return Container(
@@ -139,6 +143,26 @@ class VdpCtaBar extends StatelessWidget {
               conversationOpen
                   ? 'Chat is already open. The dealer can see you in their inbox.'
                   : KeySpend.conversationNote,
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+          ] else if (classifiedOnDrevvy) ...[
+            Text(
+              'This dealer is on Drevvy.',
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+            const SizedBox(height: DrevvySpace.s1),
+            Text(
+              'Dealer chat is not opened from this screen.',
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+          ] else if (classifiedOffDrevvy) ...[
+            Text(
+              'This dealer is off Drevvy.',
+              style: text.callout.copyWith(color: colors.muted),
+            ),
+            const SizedBox(height: DrevvySpace.s1),
+            Text(
+              'An out-the-door request is not available yet.',
               style: text.callout.copyWith(color: colors.muted),
             ),
           ] else if (networkUnknown) ...[

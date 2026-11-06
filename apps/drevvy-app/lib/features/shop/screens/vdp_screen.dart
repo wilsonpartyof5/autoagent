@@ -155,10 +155,14 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     }
     try {
       final listing = await _catalog.listing(widget.listingId);
+      final network = _repo.isLive
+          ? await _repo.getRooftopMatch(listing)
+          : null;
       if (!mounted) return;
       setState(() {
         _listing = listing;
         _market = null;
+        _rooftopMatch = network;
         _isLoading = false;
         _liveError = null;
       });
@@ -167,6 +171,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       setState(() {
         _listing = null;
         _market = null;
+        _rooftopMatch = null;
         _isLoading = false;
         _liveError = error.message;
       });
@@ -398,6 +403,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         listing: _listing,
         errorMessage: _liveError,
         onRetry: _loadData,
+        network: _rooftopMatch,
       );
     }
     final colors = context.drevvy;
