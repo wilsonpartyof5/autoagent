@@ -69,8 +69,10 @@ class DemoRepository {
         ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
+      _balanceKnown = true;
     } else if (_live) {
       _creditBalance = const CarCreditBalance.withBalance(0);
+      _balanceKnown = false;
       _savedCarsInitialized = true;
       _currentUser = _signedOutLiveUser;
       if (!resolved.apiBaseUrl.trim().isNotEmpty) {
@@ -91,6 +93,14 @@ class DemoRepository {
   /// Shown when live mode cannot confirm a key balance. Null in demo mode.
   String? _creditNotice;
   String? get creditNotice => _creditNotice;
+
+  /// A live balance is known only after the server has loaded or confirmed it.
+  bool get balanceKnown => _balanceKnown;
+
+  /// True after a balance for this account was loaded or granted. A live
+  /// zero from sign-out, a failed read, or a build that has not loaded
+  /// credits yet is not a confirmed balance.
+  bool _balanceKnown = true;
 
   static final DemoRepository instance = _createInstance();
 
@@ -292,6 +302,7 @@ class DemoRepository {
   void _clearLiveAccount() {
     _currentUser = _signedOutLiveUser;
     _creditBalance = const CarCreditBalance.withBalance(0);
+    _balanceKnown = false;
     _creditNotice = null;
     _starterGranted = true;
     _savedCars = [];
@@ -437,10 +448,12 @@ class DemoRepository {
       if (_live) {
         _creditNotice ??= 'Key balance is unavailable.';
         _creditBalance = const CarCreditBalance.withBalance(0);
+        _balanceKnown = false;
       }
       return false;
     }
     _creditNotice = null;
+    _balanceKnown = true;
     _creditBalance = remote;
     _starterGranted = true;
     _bumpLists();
@@ -774,6 +787,7 @@ class DemoRepository {
         result.packType,
       );
       _creditBalance = remote;
+      _balanceKnown = true;
       _reportBalance('purchase', result.creditsAdded);
       return;
     }
@@ -832,6 +846,7 @@ class DemoRepository {
       balance: _creditBalance.balance + credits,
       totalPurchased: _creditBalance.totalPurchased + credits,
     );
+    _balanceKnown = true;
     _reportBalance(reason.name, credits);
   }
 
@@ -895,6 +910,7 @@ class DemoRepository {
         );
       }
       _creditBalance = remote;
+      _balanceKnown = true;
       if (transactions.isEmpty) return const RestoreNoPurchases();
       return RestoreSuccess(
         creditsRestored: remote.balance,
