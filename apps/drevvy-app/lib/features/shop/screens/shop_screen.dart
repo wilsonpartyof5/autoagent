@@ -19,6 +19,7 @@ import '../../../data/location/shop_location_store.dart';
 import '../../../data/models/models.dart';
 import '../../../data/notifications/local_flags.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/shopper_session_store.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/chat_empty.dart';
 import '../widgets/chat_messages.dart';
@@ -86,6 +87,7 @@ class _ShopScreenState extends State<ShopScreen> {
   Set<String> _dealsListingIds = {};
   int _heartGeneration = 0;
   bool _reportedShopEmpty = false;
+  late final ShopperAccountWatch _accountWatch;
 
   @override
   void initState() {
@@ -110,6 +112,13 @@ class _ShopScreenState extends State<ShopScreen> {
     ProductAnalytics.instance.screen('ask_chat');
     _repo.onSavedSearchRun = _handleSavedSearchRun;
     _repo.savedDealsTick.addListener(_refreshSavedAndDeals);
+    _accountWatch = ShopperAccountWatch(_onAccountSessionChanged)..bind();
+    _loadData();
+  }
+
+  void _onAccountSessionChanged() {
+    if (!mounted) return;
+    setState(() => _user = null);
     _loadData();
   }
 
@@ -123,6 +132,7 @@ class _ShopScreenState extends State<ShopScreen> {
       _repo.onSavedSearchRun = null;
     }
     _repo.savedDealsTick.removeListener(_refreshSavedAndDeals);
+    _accountWatch.dispose();
     _discover?.removeListener(_onDiscoverChanged);
     _discover?.dispose();
     super.dispose();
@@ -130,9 +140,14 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _refreshSavedAndDeals() async {
     final generation = ++_heartGeneration;
+    final account = _accountWatch.capture();
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
-    if (!mounted || generation != _heartGeneration) return;
+    if (!mounted ||
+        generation != _heartGeneration ||
+        !_accountWatch.same(account)) {
+      return;
+    }
     setState(() {
       _savedListingIds = savedCars.map((car) => car.listingId).toSet();
       _dealsListingIds = deals.map((deal) => deal.listingId).toSet();
@@ -140,30 +155,45 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _loadData() async {
-    final thread = await _repo.getChatThread();
-    final user = await _repo.getCurrentUser();
-    final history = await _repo.getChatHistory();
-    final starters = await _repo.getStarters();
-    final searchProfile = await _repo.getSearchProfile();
+    final account = _accountWatch.capture();
+    try {
+      final thread = await _repo.getChatThread();
+      final user = await _repo.getCurrentUser();
+      final history = await _repo.getChatHistory();
+      final starters = await _repo.getStarters();
+      final searchProfile = await _repo.getSearchProfile();
 
-    // v1.8: Load saved and deals listing IDs for heart state
-    final heartGeneration = ++_heartGeneration;
-    final savedCars = await _repo.getSavedCars();
-    final deals = await _repo.getDeals();
-    if (!mounted) return;
+      // v1.8: Load saved and deals listing IDs for heart state
+      final heartGeneration = ++_heartGeneration;
+      final savedCars = await _repo.getSavedCars();
+      final deals = await _repo.getDeals();
+      if (!mounted || !_accountWatch.same(account)) return;
 
-    setState(() {
-      _thread = thread;
-      _user = user;
-      _chatHistory = history;
-      _starters = starters;
-      _searchProfile = searchProfile;
-      _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
-      if (heartGeneration == _heartGeneration) {
-        _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
-        _dealsListingIds = deals.map((d) => d.listingId).toSet();
-      }
-    });
+      setState(() {
+        _thread = thread;
+        _user = user;
+        _chatHistory = history;
+        _starters = starters;
+        _searchProfile = searchProfile;
+        _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
+        if (heartGeneration == _heartGeneration) {
+          _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
+          _dealsListingIds = deals.map((d) => d.listingId).toSet();
+        }
+      });
+    } on ApiConfigException catch (error) {
+      _showStaleAccountError(account, error.message);
+    } on SavedCarsException catch (error) {
+      _showStaleAccountError(account, error.message);
+    } catch (_) {
+      if (!mounted || !_accountWatch.same(account)) return;
+    }
+  }
+
+  void _showStaleAccountError(int account, String message) {
+    if (!mounted || !_accountWatch.same(account)) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _sendMessage(String text, {String source = 'composer'}) async {
@@ -401,11 +431,12 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Handle heart tap on inventory card
   Future<void> _handleSaveToggle(Listing listing, bool isSaved) async {
     HapticFeedback.lightImpact();
+    final account = _accountWatch.capture();
 
     try {
       if (isSaved) {
         await _repo.unsaveByListingId(listing.id, source: 'shop');
-        if (!mounted) return;
+        if (!mounted || !_accountWatch.same(account)) return;
         setState(() {
           _savedListingIds = Set.from(_savedListingIds)..remove(listing.id);
         });
@@ -417,7 +448,7 @@ class _ShopScreenState extends State<ShopScreen> {
         );
       } else {
         await _repo.saveCar(listing, source: 'shop');
-        if (!mounted) return;
+        if (!mounted || !_accountWatch.same(account)) return;
         setState(() {
           _savedListingIds = Set.from(_savedListingIds)..add(listing.id);
         });
@@ -431,9 +462,7 @@ class _ShopScreenState extends State<ShopScreen> {
     } on StaleAccountException {
       return;
     } on SavedCarsException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      _showStaleAccountError(account, error.message);
     }
   }
 

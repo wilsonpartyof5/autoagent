@@ -92,8 +92,10 @@ class RooftopMatch extends Equatable {
   /// `data.state` is `in_network`, `off_network`, `identity_unavailable`, or
   /// `unknown`. The public body has no rooftop id and no dealer URL. A
   /// verified `in_network` is the server's rooftop match, shown by
-  /// `dealer_conversation` in `ctas`, and this client does not invent an id
-  /// or open chat. Explicit `off_network` is a resolved miss. A body with no
+  /// `dealer_conversation` in `ctas`. Every CTA kind must be one of
+  /// `market_intel`, `dealer_conversation`, or `off_network_otd_request`.
+  /// An extra unknown kind stays unavailable. This client does not invent an
+  /// id or open chat. Explicit `off_network` is a resolved miss. A body with no
   /// `state`, including a legacy `network` / `match: null` payload, stays
   /// unavailable.
   static RooftopMatch parseNetworkResponse(Map<String, dynamic> root) {
@@ -105,7 +107,7 @@ class RooftopMatch extends Equatable {
     if (state is! String) return const RooftopMatch.unavailable();
     switch (state) {
       case 'in_network':
-        if (!_hasCta(payload, 'dealer_conversation')) {
+        if (!_verifiedInNetworkCtas(payload)) {
           return const RooftopMatch.unavailable();
         }
         return const RooftopMatch(
@@ -123,13 +125,25 @@ class RooftopMatch extends Equatable {
     }
   }
 
-  static bool _hasCta(Map<String, dynamic> payload, String kind) {
+  static const _knownCtaKinds = {
+    'market_intel',
+    'dealer_conversation',
+    'off_network_otd_request',
+  };
+
+  /// `dealer_conversation` is required, and it does not accept an unknown
+  /// CTA kind beside it. Classification is not permission to open chat.
+  static bool _verifiedInNetworkCtas(Map<String, dynamic> payload) {
     final ctas = payload['ctas'];
-    if (ctas is! List) return false;
+    if (ctas is! List || ctas.isEmpty) return false;
+    var hasConversation = false;
     for (final item in ctas) {
-      if (item is Map && item['kind'] == kind) return true;
+      if (item is! Map) return false;
+      final kind = item['kind'];
+      if (kind is! String || !_knownCtaKinds.contains(kind)) return false;
+      if (kind == 'dealer_conversation') hasConversation = true;
     }
-    return false;
+    return hasConversation;
   }
 
   static String? _string(Map<String, dynamic> json, List<String> keys) {

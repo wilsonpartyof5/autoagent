@@ -44,7 +44,7 @@ class ShopperSessionStore {
     _session = value;
     final nextUser = _userId(value?.consumerUserId);
     if (previousUser == nextUser && previousToken == accessToken) return;
-    onIdentityChanged?.call();
+    _notifyIdentity();
   }
 
   static String? _userId(String? value) {
@@ -82,6 +82,49 @@ class ShopperSessionStore {
   /// Fired when [session] changes user id or access token, including sign-in
   /// and account switch. Sign-out also calls [onSessionCleared].
   void Function()? onIdentityChanged;
+
+  final List<void Function()> _identityListeners = [];
+  final List<void Function()> _clearedListeners = [];
+
+  /// Extra listeners for widgets. These do not replace [onIdentityChanged],
+  /// which the repository uses to drop late account writes.
+  void addIdentityListener(void Function() listener) {
+    _identityListeners.add(listener);
+  }
+
+  void removeIdentityListener(void Function() listener) {
+    _identityListeners.remove(listener);
+  }
+
+  void addSessionClearedListener(void Function() listener) {
+    _clearedListeners.add(listener);
+  }
+
+  void removeSessionClearedListener(void Function() listener) {
+    _clearedListeners.remove(listener);
+  }
+
+  /// User id and access token. Widgets compare this with the value captured
+  /// before an await so a stored name or balance cannot land on the next
+  /// account.
+  String get accountStamp {
+    final user = _userId(session?.consumerUserId) ?? '';
+    return '$user\u0000${accessToken ?? ''}';
+  }
+
+  void _notifyIdentity() {
+    onIdentityChanged?.call();
+    for (final listener in List<void Function()>.of(_identityListeners)) {
+      listener();
+    }
+  }
+
+  void _notifyCleared() {
+    onSessionCleared?.call();
+    for (final listener in List<void Function()>.of(_clearedListeners)) {
+      listener();
+    }
+  }
 
   /// Trimmed access token, or null when the shopper is signed out.
   String? get accessToken {
@@ -131,8 +174,50 @@ class ShopperSessionStore {
       // Secure storage can be absent in demo mode.
     }
     session = null;
-    onSessionCleared?.call();
+    _notifyCleared();
     ProductAnalytics.instance.signOut();
     await identity?.onSignedOut();
+  }
+}
+
+/// Widget-local generation for a shopper session.
+///
+/// The repository still drops late writes. This watch drops a name, balance,
+/// or error the widget already captured before sign-out or an account switch.
+class ShopperAccountWatch {
+  ShopperAccountWatch(this._onChanged);
+
+  final void Function() _onChanged;
+  int _generation = 0;
+  String _stamp = ShopperSessionStore.instance.accountStamp;
+  var _bound = false;
+
+  void bind() {
+    if (_bound) return;
+    _bound = true;
+    final store = ShopperSessionStore.instance;
+    store.addIdentityListener(_changed);
+    store.addSessionClearedListener(_changed);
+  }
+
+  void dispose() {
+    if (!_bound) return;
+    _bound = false;
+    final store = ShopperSessionStore.instance;
+    store.removeIdentityListener(_changed);
+    store.removeSessionClearedListener(_changed);
+  }
+
+  void _changed() {
+    _generation++;
+    _stamp = ShopperSessionStore.instance.accountStamp;
+    _onChanged();
+  }
+
+  int capture() => _generation;
+
+  bool same(int generation) {
+    return generation == _generation &&
+        _stamp == ShopperSessionStore.instance.accountStamp;
   }
 }
