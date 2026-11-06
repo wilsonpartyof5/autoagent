@@ -167,7 +167,9 @@ void main() {
     expect(find.textContaining('Avery'), findsNothing);
     expect(find.text('11'), findsNothing);
     expect(find.text('Not signed in'), findsWidgets);
-    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Loading key balance'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+    expect(find.text('Out of keys'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -190,7 +192,9 @@ void main() {
       expect(find.textContaining('Avery'), findsNothing);
       expect(find.text('11'), findsNothing);
       expect(find.text('Signed in'), findsWidgets);
-      expect(find.text('0'), findsOneWidget);
+      expect(find.text('Loading key balance'), findsOneWidget);
+      expect(find.text('0'), findsNothing);
+      expect(find.text('Out of keys'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -211,7 +215,9 @@ void main() {
 
     expect(find.text(_oldError), findsNothing);
     expect(find.text('Not signed in'), findsWidgets);
-    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Loading key balance'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+    expect(find.text('Out of keys'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -234,7 +240,9 @@ void main() {
 
     expect(find.text(_oldError), findsNothing);
     expect(find.text('Signed in'), findsWidgets);
-    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Loading key balance'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+    expect(find.text('Out of keys'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
