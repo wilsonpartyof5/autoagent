@@ -223,10 +223,11 @@ class _Body extends StatelessWidget {
     if (network == null || network.source == RooftopMatchSource.unavailable) {
       return networkUnavailableMessage;
     }
-    if (network.isInNetwork) {
+    if (network.classifiedInNetwork) {
       return 'This dealer is on Drevvy.';
     }
-    if (network.source == RooftopMatchSource.live && !network.matched) {
+    if (network.classifiedOffNetwork &&
+        network.source == RooftopMatchSource.live) {
       return 'This dealer is off Drevvy.';
     }
     return networkUnavailableMessage;

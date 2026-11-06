@@ -42,6 +42,7 @@ class ShopScreen extends StatefulWidget {
     this.deviceLocation,
     this.placeSearch,
     this.locationFlags,
+    this.repository,
   });
 
   /// Overrides the dart-define. Tests pass a live config with a fake catalog.
@@ -51,12 +52,15 @@ class ShopScreen extends StatefulWidget {
   final PlaceSearch? placeSearch;
   final LocalFlags? locationFlags;
 
+  /// Overrides [DemoRepository.instance]. Tests use this to watch searches.
+  final DemoRepository? repository;
+
   @override
   State<ShopScreen> createState() => _ShopScreenState();
 }
 
 class _ShopScreenState extends State<ShopScreen> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final bool _liveDiscover;
   late final bool _discoverUnconfigured;
@@ -80,11 +84,13 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Track saved and deals listing IDs
   Set<String> _savedListingIds = {};
   Set<String> _dealsListingIds = {};
+  int _heartGeneration = 0;
   bool _reportedShopEmpty = false;
 
   @override
   void initState() {
     super.initState();
+    _repo = widget.repository ?? DemoRepository.instance;
     final config = widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
     _liveDiscover = config.isLive;
     _discoverUnconfigured = config.needsConfiguration;
@@ -123,9 +129,10 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _refreshSavedAndDeals() async {
+    final generation = ++_heartGeneration;
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
-    if (!mounted) return;
+    if (!mounted || generation != _heartGeneration) return;
     setState(() {
       _savedListingIds = savedCars.map((car) => car.listingId).toSet();
       _dealsListingIds = deals.map((deal) => deal.listingId).toSet();
@@ -140,6 +147,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final searchProfile = await _repo.getSearchProfile();
 
     // v1.8: Load saved and deals listing IDs for heart state
+    final heartGeneration = ++_heartGeneration;
     final savedCars = await _repo.getSavedCars();
     final deals = await _repo.getDeals();
     if (!mounted) return;
@@ -151,8 +159,10 @@ class _ShopScreenState extends State<ShopScreen> {
       _starters = starters;
       _searchProfile = searchProfile;
       _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
-      _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
-      _dealsListingIds = deals.map((d) => d.listingId).toSet();
+      if (heartGeneration == _heartGeneration) {
+        _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
+        _dealsListingIds = deals.map((d) => d.listingId).toSet();
+      }
     });
   }
 
@@ -183,6 +193,15 @@ class _ShopScreenState extends State<ShopScreen> {
     String source = 'composer',
     bool userInitiated = true,
   }) async {
+    // Live with an empty origin is not the demo catalog. Ask-to-shop,
+    // shop starters, and the shop composer all enter through here.
+    if (_discoverUnconfigured) {
+      setState(() {
+        _mode = ChatMode.shop;
+        _isSearching = false;
+      });
+      return;
+    }
     if (userInitiated && (query.trim().isNotEmpty || filters != null)) {
       final properties = searchEventProperties(
         surface: 'shop',
@@ -409,6 +428,8 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
         );
       }
+    } on StaleAccountException {
+      return;
     } on SavedCarsException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

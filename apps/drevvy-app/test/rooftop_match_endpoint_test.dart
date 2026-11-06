@@ -42,7 +42,7 @@ void main() {
     );
   });
 
-  test('live network posts the listing id and reads the rooftop id', () async {
+  test('live network posts the listing id and reads verified state', () async {
     late Map<String, dynamic> body;
     final sessions = ShopperSessionStore()
       ..session = const ShopperSession(accessToken: 'shopper-token');
@@ -55,14 +55,19 @@ void main() {
         jsonEncode({
           'success': true,
           'data': {
-            'network': 'in_network',
-            'match': {
-              'method': 'marketcheck_dealer_id',
-              'rooftopId': 'rt_1',
-              'channel': 'in_app_message',
-              'shopperKnown': true,
-            },
-            'ctas': [],
+            'state': 'in_network',
+            'ctas': [
+              {
+                'kind': 'market_intel',
+                'keyCost': 1,
+                'endpoint': '/api/consumer/keys/market-save',
+              },
+              {
+                'kind': 'dealer_conversation',
+                'keyCost': 1,
+                'endpoint': '/api/consumer/keys/conversation',
+              },
+            ],
           },
         }),
         200,
@@ -74,10 +79,11 @@ void main() {
       sessionStore: sessions,
     );
     final match = await endpoint.match(rav4);
-    expect(body.containsKey('listingUrl'), isFalse);
+    expect(body.keys.toSet(), {'listingId'});
     expect(body['listingId'], 'listing_001');
-    expect(match.isInNetwork, isTrue);
-    expect(match.rooftopId, 'rt_1');
+    expect(match.classifiedInNetwork, isTrue);
+    expect(match.isInNetwork, isFalse);
+    expect(match.rooftopId, isNull);
     expect(match.vdpUrl, isNull);
     expect(match.source, RooftopMatchSource.live);
   });
@@ -104,7 +110,7 @@ void main() {
     expect(match.rooftopId, isNull);
   });
 
-  test('a real listing URL can confirm off-network', () async {
+  test('a listing URL is not sent and does not confirm off-network', () async {
     late Map<String, dynamic> body;
     const withUrl = Listing(
       id: 'listing_002',
@@ -131,10 +137,10 @@ void main() {
       sessionStore: sessions,
     );
     final match = await endpoint.match(withUrl);
-    expect(body['listingUrl'], 'https://www.cars.com/vehicledetail/x');
-    expect(match.source, RooftopMatchSource.live);
-    expect(match.isInNetwork, isFalse);
-    expect(match.vdpUrl, 'https://www.cars.com/vehicledetail/x');
+    expect(body.keys.toSet(), {'listingId'});
+    expect(match.source, RooftopMatchSource.unavailable);
+    expect(match.classifiedOffNetwork, isFalse);
+    expect(match.vdpUrl, isNull);
   });
 
   test('a network error is unavailable and does not use the stub', () async {

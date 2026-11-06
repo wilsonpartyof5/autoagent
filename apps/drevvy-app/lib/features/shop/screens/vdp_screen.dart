@@ -206,6 +206,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
           ),
         );
       }
+    } on StaleAccountException {
+      if (!mounted || _listing == null) return;
+      setState(() => _isSaved = _repo.isListingSaved(_listing!.id));
     } on SavedCarsException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

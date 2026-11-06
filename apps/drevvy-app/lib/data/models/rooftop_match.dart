@@ -1,7 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-import 'json_values.dart';
-
 /// Whether an onboarded rooftop matches a listing.
 ///
 /// Live classification is `POST /api/consumer/listings/network`. Demo mode
@@ -13,6 +11,7 @@ class RooftopMatch extends Equatable {
     this.rooftopId,
     this.vdpUrl,
     this.source = RooftopMatchSource.stub,
+    this.networkState,
   });
 
   final bool matched;
@@ -20,11 +19,23 @@ class RooftopMatch extends Equatable {
   final String? vdpUrl;
   final RooftopMatchSource source;
 
+  /// Explicit `data.state` from the network route. Null on demo stubs.
+  final RooftopNetworkState? networkState;
+
+  /// A conversation can start only when this client has a rooftop id.
+  /// The public network body does not include one, so a verified
+  /// `in_network` state does not open chat.
   bool get isInNetwork => matched && rooftopId != null && rooftopId!.isNotEmpty;
+
+  bool get classifiedInNetwork => networkState == RooftopNetworkState.inNetwork;
+
+  bool get classifiedOffNetwork =>
+      networkState == RooftopNetworkState.offNetwork;
 
   const RooftopMatch.offNetwork({
     this.vdpUrl,
     this.source = RooftopMatchSource.stub,
+    this.networkState = RooftopNetworkState.offNetwork,
   }) : matched = false,
        rooftopId = null;
 
@@ -34,19 +45,22 @@ class RooftopMatch extends Equatable {
     : matched = false,
       rooftopId = null,
       vdpUrl = null,
-      source = RooftopMatchSource.unavailable;
+      source = RooftopMatchSource.unavailable,
+      networkState = null;
 
   RooftopMatch copyWith({
     bool? matched,
     String? rooftopId,
     String? vdpUrl,
     RooftopMatchSource? source,
+    RooftopNetworkState? networkState,
   }) {
     return RooftopMatch(
       matched: matched ?? this.matched,
       rooftopId: rooftopId ?? this.rooftopId,
       vdpUrl: vdpUrl ?? this.vdpUrl,
       source: source ?? this.source,
+      networkState: networkState ?? this.networkState,
     );
   }
 
@@ -75,44 +89,47 @@ class RooftopMatch extends Equatable {
 
   /// Reads `POST /api/consumer/listings/network`.
   ///
-  /// [suppliedListingUrl] is a URL already present on the listing. This parser
-  /// does not invent one. `in_network` requires `data.match.rooftopId`.
-  /// `off_network` is trusted only when that URL was sent. A listing-id-only
-  /// `off_network` body uses the same `match: null` shape as a failed
-  /// MarketCheck identity lookup, so it stays [RooftopMatch.unavailable].
-  static RooftopMatch parseNetworkResponse(
-    Map<String, dynamic> root, {
-    required bool suppliedListingUrl,
-    String? listingUrl,
-  }) {
+  /// `data.state` is `in_network`, `off_network`, `identity_unavailable`, or
+  /// `unknown`. The public body has no rooftop id and no dealer URL. A
+  /// verified `in_network` is the server's rooftop match, shown by
+  /// `dealer_conversation` in `ctas`, and this client does not invent an id
+  /// or open chat. Explicit `off_network` is a resolved miss. A body with no
+  /// `state`, including a legacy `network` / `match: null` payload, stays
+  /// unavailable.
+  static RooftopMatch parseNetworkResponse(Map<String, dynamic> root) {
     if (root['success'] == false) return const RooftopMatch.unavailable();
-    final data = root['data'] is Map
-        ? Map<String, dynamic>.from(root['data'] as Map)
-        : root;
-    final network = data['network'];
-    if (network == 'in_network') {
-      final match = data['match'];
-      final rooftopId = match is Map
-          ? jsonString(Map<String, dynamic>.from(match)['rooftopId'])
-          : null;
-      if (rooftopId == null || rooftopId.isEmpty) {
+    final data = root['data'];
+    if (data is! Map) return const RooftopMatch.unavailable();
+    final payload = Map<String, dynamic>.from(data);
+    final state = payload['state'];
+    if (state is! String) return const RooftopMatch.unavailable();
+    switch (state) {
+      case 'in_network':
+        if (!_hasCta(payload, 'dealer_conversation')) {
+          return const RooftopMatch.unavailable();
+        }
+        return const RooftopMatch(
+          matched: true,
+          source: RooftopMatchSource.live,
+          networkState: RooftopNetworkState.inNetwork,
+        );
+      case 'off_network':
+        return const RooftopMatch.offNetwork(source: RooftopMatchSource.live);
+      case 'identity_unavailable':
+      case 'unknown':
         return const RooftopMatch.unavailable();
-      }
-      return RooftopMatch(
-        matched: true,
-        rooftopId: rooftopId,
-        vdpUrl: suppliedListingUrl ? listingUrl : null,
-        source: RooftopMatchSource.live,
-      );
+      default:
+        return const RooftopMatch.unavailable();
     }
-    if (network == 'off_network') {
-      if (!suppliedListingUrl) return const RooftopMatch.unavailable();
-      return RooftopMatch.offNetwork(
-        vdpUrl: listingUrl,
-        source: RooftopMatchSource.live,
-      );
+  }
+
+  static bool _hasCta(Map<String, dynamic> payload, String kind) {
+    final ctas = payload['ctas'];
+    if (ctas is! List) return false;
+    for (final item in ctas) {
+      if (item is Map && item['kind'] == kind) return true;
     }
-    return const RooftopMatch.unavailable();
+    return false;
   }
 
   static String? _string(Map<String, dynamic> json, List<String> keys) {
@@ -124,7 +141,10 @@ class RooftopMatch extends Equatable {
   }
 
   @override
-  List<Object?> get props => [matched, rooftopId, vdpUrl, source];
+  List<Object?> get props => [matched, rooftopId, vdpUrl, source, networkState];
 }
 
 enum RooftopMatchSource { live, stub, unavailable }
+
+/// `data.state` from `POST /api/consumer/listings/network`.
+enum RooftopNetworkState { inNetwork, offNetwork }
