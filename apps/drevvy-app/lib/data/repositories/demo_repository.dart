@@ -99,7 +99,8 @@ class DemoRepository {
 
   /// True after a balance for this account was loaded or granted. A live
   /// zero from sign-out, a failed read, or a build that has not loaded
-  /// credits yet is not a before-value for a restore delta.
+  /// credits yet is not a confirmed balance and is not a before-value for
+  /// a restore delta.
   bool _balanceKnown = true;
 
   static final DemoRepository instance = _createInstance();

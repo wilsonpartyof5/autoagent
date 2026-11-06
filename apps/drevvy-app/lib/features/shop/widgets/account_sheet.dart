@@ -143,11 +143,9 @@ class _AccountSheetState extends State<AccountSheet> {
               if (!host.mounted || !_sessionStill(account)) return;
               if (sheetContext.mounted) Navigator.pop(sheetContext);
               _showPurchaseMessage(host, _restoreMessage(result));
-            } on ApiConfigException catch (error) {
+            } catch (error) {
               if (!host.mounted || !_sessionStill(account)) return;
-              _showPurchaseMessage(host, error.message);
-            } catch (_) {
-              if (!host.mounted || !_sessionStill(account)) return;
+              _showPurchaseMessage(host, _restoreFailureMessage(error));
             }
           },
           onKeepShopping: () => Navigator.pop(sheetContext),
@@ -189,6 +187,11 @@ class _AccountSheetState extends State<AccountSheet> {
     } catch (_) {
       if (!host.mounted || !_sessionStill(account)) return;
     }
+  }
+
+  String _restoreFailureMessage(Object error) {
+    if (error is ApiConfigException) return error.message;
+    return 'Purchases were not restored.';
   }
 
   String _restoreMessage(RestoreResult result) {
@@ -541,21 +544,14 @@ class _AccountSheetState extends State<AccountSheet> {
             ),
             onTap: () async {
               final account = _accountWatch.capture();
-              final RestoreResult result;
               try {
-                result = await _repo.restorePurchases();
-              } catch (_) {
+                final result = await _repo.restorePurchases();
                 if (!mounted || !_sessionStill(account)) return;
-                return;
+                _showPurchaseMessage(context, _restoreMessage(result));
+              } catch (error) {
+                if (!mounted || !_sessionStill(account)) return;
+                _showPurchaseMessage(context, _restoreFailureMessage(error));
               }
-              if (!mounted || !_sessionStill(account)) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    restoreResultMessage(result, demo: !_repo.isLive),
-                  ),
-                ),
-              );
             },
           ),
         ],

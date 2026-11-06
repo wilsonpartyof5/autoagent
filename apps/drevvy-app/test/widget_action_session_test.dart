@@ -92,7 +92,8 @@ void main() {
     await tester.pump();
   }
 
-  Future<void> openPackSheet(WidgetTester tester) async {
+  Future<void> openPackSheet(WidgetTester tester, _ActionRepo repo) async {
+    await repo.pullSignedInBalance();
     await tester.tap(find.text('Open account'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
@@ -431,6 +432,7 @@ void main() {
 
     expect(repo.restoreFinished, isTrue);
     expect(find.text('Purchases restored'), findsNothing);
+    expect(find.text('Restored 5 keys.'), findsNothing);
     expect(find.text(_restoreError), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -486,7 +488,7 @@ void main() {
     useTallView(tester);
     await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
-    await openPackSheet(tester);
+    await openPackSheet(tester, repo);
     await tapVisible(tester, find.textContaining('Get '));
 
     store.session = null;
@@ -510,7 +512,7 @@ void main() {
     useTallView(tester);
     await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
-    await openPackSheet(tester);
+    await openPackSheet(tester, repo);
     await tapVisible(tester, find.textContaining('Get '));
 
     store.session = const ShopperSession(
@@ -536,7 +538,7 @@ void main() {
     useTallView(tester);
     await repo.pullSignedInBalance();
     await tester.pumpWidget(_accountHome(repo));
-    await openPackSheet(tester);
+    await openPackSheet(tester, repo);
     await tapVisible(tester, find.text('Restore purchases'));
 
     store.session = null;
@@ -548,6 +550,105 @@ void main() {
     expect(find.text(_restoreError), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('account purchase message stays hidden after disposal', (
+    tester,
+  ) async {
+    final repo = _ActionRepo()..stallPurchase = true;
+    bind(repo);
+    useTallView(tester);
+    await tester.pumpWidget(_accountHome(repo));
+    await openPackSheet(tester, repo);
+    await tapVisible(tester, find.textContaining('Get '));
+    await tester.pumpWidget(const SizedBox.shrink());
+    repo.purchaseHold.complete();
+    await settle(tester);
+
+    expect(repo.purchaseFinished, isTrue);
+    expect(find.text('Added 5 keys. Packs never expire.'), findsNothing);
+    expect(find.text(_purchaseError), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account purchase error stays hidden after disposal', (
+    tester,
+  ) async {
+    final repo = _ActionRepo()
+      ..stallPurchase = true
+      ..purchaseResult = const PurchaseError(message: _purchaseError);
+    bind(repo);
+    useTallView(tester);
+    await tester.pumpWidget(_accountHome(repo));
+    await openPackSheet(tester, repo);
+    await tapVisible(tester, find.textContaining('Get '));
+    await tester.pumpWidget(const SizedBox.shrink());
+    repo.purchaseHold.complete();
+    await settle(tester);
+
+    expect(repo.purchaseFinished, isTrue);
+    expect(find.text(_purchaseError), findsNothing);
+    expect(find.textContaining('Added '), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings restore shows a returned error for this session', (
+    tester,
+  ) async {
+    final repo = _ActionRepo()
+      ..stallRestore = true
+      ..restoreValue = const RestoreError(message: _restoreError);
+    bind(repo);
+    await tester.pumpWidget(_account(repo));
+    await settle(tester);
+    await tapVisible(tester, find.text('Restore purchases'));
+    repo.restoreHold.complete();
+    await settle(tester);
+
+    expect(repo.restoreFinished, isTrue);
+    expect(find.text(_restoreError), findsOneWidget);
+    expect(find.text('Purchases restored'), findsNothing);
+    expect(find.text('Purchases restored.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings restore shows a thrown failure for this session', (
+    tester,
+  ) async {
+    final repo = _ActionRepo()
+      ..stallRestore = true
+      ..restoreError = const ApiConfigException(_restoreError);
+    bind(repo);
+    await tester.pumpWidget(_account(repo));
+    await settle(tester);
+    await tapVisible(tester, find.text('Restore purchases'));
+    repo.restoreHold.complete();
+    await settle(tester);
+
+    expect(repo.restoreFinished, isTrue);
+    expect(find.text(_restoreError), findsOneWidget);
+    expect(find.text('Purchases restored'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'settings restore shows a generic failure without the exception',
+    (tester) async {
+      final repo = _ActionRepo()
+        ..stallRestore = true
+        ..restoreError = StateError('restore boom');
+      bind(repo);
+      await tester.pumpWidget(_account(repo));
+      await settle(tester);
+      await tapVisible(tester, find.text('Restore purchases'));
+      repo.restoreHold.complete();
+      await settle(tester);
+
+      expect(find.text('Purchases were not restored.'), findsOneWidget);
+      expect(find.textContaining('restore boom'), findsNothing);
+      expect(find.text('Purchases restored'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Widget _shop(_ActionRepo repo) {
@@ -631,6 +732,7 @@ class _ActionRepo extends DemoRepository {
   Object? searchError;
   Object? profileError;
   Object? restoreError;
+  RestoreResult restoreValue = const RestoreSuccess(creditsRestored: 5);
   PurchaseResult purchaseResult = const PurchaseSuccess(
     packType: CarPackType.single,
     creditsAdded: 5,
@@ -784,7 +886,7 @@ class _ActionRepo extends DemoRepository {
       restoreFinished = true;
       final error = restoreError;
       if (error != null) throw error;
-      return const RestoreSuccess(creditsRestored: 5);
+      return restoreValue;
     }
     return const RestoreNoPurchases();
   }
