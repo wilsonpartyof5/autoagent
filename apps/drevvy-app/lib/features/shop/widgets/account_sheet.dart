@@ -60,6 +60,8 @@ class _AccountSheetState extends State<AccountSheet> {
     super.dispose();
   }
 
+  bool _sessionStill(int account) => _accountWatch.same(account);
+
   void _onAccountSessionChanged() {
     if (!mounted) return;
     setState(() {
@@ -135,10 +137,18 @@ class _AccountSheetState extends State<AccountSheet> {
           placement: 'account',
           onPurchase: (packType) => _buyPack(sheetContext, host, packType),
           onRestore: () async {
-            final result = await _repo.restorePurchases();
-            if (!sheetContext.mounted || !host.mounted) return;
-            Navigator.pop(sheetContext);
-            _showPurchaseMessage(host, _restoreMessage(result));
+            final account = _accountWatch.capture();
+            try {
+              final result = await _repo.restorePurchases();
+              if (!host.mounted || !_sessionStill(account)) return;
+              if (sheetContext.mounted) Navigator.pop(sheetContext);
+              _showPurchaseMessage(host, _restoreMessage(result));
+            } on ApiConfigException catch (error) {
+              if (!host.mounted || !_sessionStill(account)) return;
+              _showPurchaseMessage(host, error.message);
+            } catch (_) {
+              if (!host.mounted || !_sessionStill(account)) return;
+            }
           },
           onKeepShopping: () => Navigator.pop(sheetContext),
         );
@@ -151,25 +161,33 @@ class _AccountSheetState extends State<AccountSheet> {
     BuildContext host,
     CarPackType packType,
   ) async {
-    final result = await _repo.purchasePack(packType);
-    if (!host.mounted) return;
-    if (result is PurchaseSuccess) {
-      if (sheetContext.mounted) Navigator.pop(sheetContext);
-      _showPurchaseMessage(
-        host,
-        keysAddedMessage(added: result.creditsAdded, demo: !_repo.isLive),
-      );
-      return;
-    }
-    if (result is PurchasePending) {
-      _showPurchaseMessage(
-        host,
-        'Payment is pending. Keys are added when it completes.',
-      );
-      return;
-    }
-    if (result is PurchaseError) {
-      _showPurchaseMessage(host, result.message);
+    final account = _accountWatch.capture();
+    try {
+      final result = await _repo.purchasePack(packType);
+      if (!host.mounted || !_sessionStill(account)) return;
+      if (result is PurchaseSuccess) {
+        if (sheetContext.mounted) Navigator.pop(sheetContext);
+        _showPurchaseMessage(
+          host,
+          keysAddedMessage(added: result.creditsAdded, demo: !_repo.isLive),
+        );
+        return;
+      }
+      if (result is PurchasePending) {
+        _showPurchaseMessage(
+          host,
+          'Payment is pending. Keys are added when it completes.',
+        );
+        return;
+      }
+      if (result is PurchaseError) {
+        _showPurchaseMessage(host, result.message);
+      }
+    } on ApiConfigException catch (error) {
+      if (!host.mounted || !_sessionStill(account)) return;
+      _showPurchaseMessage(host, error.message);
+    } catch (_) {
+      if (!host.mounted || !_sessionStill(account)) return;
     }
   }
 
@@ -225,6 +243,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   Future<void> _openRecentSearches() async {
+    final account = _accountWatch.capture();
     final searches = List<SavedSearch>.from(
       _searchProfile?.searches ?? const [],
     );
@@ -242,13 +261,13 @@ class _AccountSheetState extends State<AccountSheet> {
       },
       onClearAll: _repo.clearSavedSearches,
     );
-    if (!mounted) return;
+    if (!mounted || !_sessionStill(account)) return;
     if (ran) {
       Navigator.pop(context);
       return;
     }
     final profile = await _repo.getSearchProfile();
-    if (!mounted) return;
+    if (!mounted || !_sessionStill(account)) return;
     setState(() => _searchProfile = profile);
   }
 
@@ -322,6 +341,7 @@ class _AccountSheetState extends State<AccountSheet> {
                         CarBalanceCard(
                           balance: _creditBalance!,
                           notice: _repo.creditNotice,
+                          showCount: !_repo.isLive || _repo.balanceKnown,
                           onBuy: _showPackPicker,
                         ),
                         const SizedBox(height: DrevvySpace.s6),
@@ -520,16 +540,22 @@ class _AccountSheetState extends State<AccountSheet> {
               color: colors.muted,
             ),
             onTap: () async {
-              final result = await _repo.restorePurchases();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      restoreResultMessage(result, demo: !_repo.isLive),
-                    ),
-                  ),
-                );
+              final account = _accountWatch.capture();
+              final RestoreResult result;
+              try {
+                result = await _repo.restorePurchases();
+              } catch (_) {
+                if (!mounted || !_sessionStill(account)) return;
+                return;
               }
+              if (!mounted || !_sessionStill(account)) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    restoreResultMessage(result, demo: !_repo.isLive),
+                  ),
+                ),
+              );
             },
           ),
         ],
@@ -564,10 +590,11 @@ class _AccountSheetState extends State<AccountSheet> {
           const SizedBox(height: DrevvySpace.s3),
           ShopperSignInActions(
             onSuccess: () async {
+              final account = _accountWatch.capture();
               await _repo.pullSignedInBalance();
-              if (!mounted) return;
+              if (!mounted || !_sessionStill(account)) return;
               await _loadData();
-              if (!mounted) return;
+              if (!mounted || !_sessionStill(account)) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('You are signed in.')),
               );
