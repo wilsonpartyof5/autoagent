@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/config/api_config_exception.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/analytics/product_analytics.dart';
@@ -23,41 +24,77 @@ import 'pack_picker_sheet.dart';
 const accountDeletionUnavailableMessage = 'Account deletion is not available.';
 
 class AccountSheet extends StatefulWidget {
-  const AccountSheet({super.key});
+  const AccountSheet({super.key, this.repository});
+
+  /// Overrides [DemoRepository.instance]. Tests pass the account under load.
+  final DemoRepository? repository;
 
   @override
   State<AccountSheet> createState() => _AccountSheetState();
 }
 
 class _AccountSheetState extends State<AccountSheet> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo;
+  late final ShopperAccountWatch _accountWatch;
   User? _user;
   SearchProfile? _searchProfile;
   CarCreditBalance? _creditBalance;
+  String? _accountError;
   bool _isLoading = true;
   bool _analyticsOn = true;
 
   @override
   void initState() {
     super.initState();
+    _repo = widget.repository ?? DemoRepository.instance;
     _analyticsOn = ProductAnalytics.instance.optedIn;
     ProductAnalytics.instance.screen('profile');
     ProductAnalytics.instance.screen('settings');
+    _accountWatch = ShopperAccountWatch(_onAccountSessionChanged)..bind();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _accountWatch.dispose();
+    super.dispose();
+  }
+
+  void _onAccountSessionChanged() {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _user = null;
+      _creditBalance = null;
+      _accountError = null;
+    });
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final user = await _repo.getCurrentUser();
-    final searchProfile = await _repo.getSearchProfile();
-    final balance = await _repo.getCreditBalance();
-    if (!mounted) return;
+    final account = _accountWatch.capture();
+    try {
+      final user = await _repo.getCurrentUser();
+      final searchProfile = await _repo.getSearchProfile();
+      final balance = await _repo.getCreditBalance();
+      if (!mounted || !_accountWatch.same(account)) return;
 
-    setState(() {
-      _user = user;
-      _searchProfile = searchProfile;
-      _creditBalance = balance;
-      _isLoading = false;
-    });
+      setState(() {
+        _user = user;
+        _searchProfile = searchProfile;
+        _creditBalance = balance;
+        _accountError = null;
+        _isLoading = false;
+      });
+    } on ApiConfigException catch (error) {
+      if (!mounted || !_accountWatch.same(account)) return;
+      setState(() {
+        _accountError = error.message;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || !_accountWatch.same(account)) return;
+    }
   }
 
   void _togglePersonalize(bool value) {
@@ -239,8 +276,14 @@ class _AccountSheetState extends State<AccountSheet> {
           top: Radius.circular(DrevvyRadius.sheetTop),
         ),
       ),
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      child:
+          _isLoading ||
+              _user == null ||
+              _creditBalance == null ||
+              _searchProfile == null
+          ? _accountError == null
+                ? const Center(child: CircularProgressIndicator())
+                : Center(child: Text(_accountError!))
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
