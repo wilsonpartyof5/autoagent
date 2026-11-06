@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { GET as getCreditBalance, handleCreditPurchase } from '../../app/api/consumer/credits/route';
-import { handleCreditRestore } from '../../app/api/consumer/credits/restore/route';
+import { GET as getCreditBalance } from '../../app/api/consumer/credits/route';
+import { handleCreditPurchase } from './credit-purchase';
+import { handleCreditRestore } from './credit-restore';
 import { POST as postRevenueCatWebhook } from '../../app/api/webhooks/revenuecat/route';
 import { handleGetCreditBalance } from './credit-balance-handler';
 import { handleRevenueCatWebhook } from './revenuecat-webhook-handler';
@@ -547,16 +548,27 @@ test('production, missing, invalid, and unverified purchases grant nothing', asy
 test('credit routes require consumer auth and the purchase RPC is service-role only', () => {
   const creditsRoute = readFileSync(join(HERE, '../../app/api/consumer/credits/route.ts'), 'utf8');
   const restoreRoute = readFileSync(join(HERE, '../../app/api/consumer/credits/restore/route.ts'), 'utf8');
+  const purchaseHandler = readFileSync(join(HERE, 'credit-purchase.ts'), 'utf8');
+  const restoreHandler = readFileSync(join(HERE, 'credit-restore.ts'), 'utf8');
   const webhookRoute = readFileSync(join(HERE, '../../app/api/webhooks/revenuecat/route.ts'), 'utf8');
   assert.match(creditsRoute, /requireConsumerAuth/);
   assert.match(creditsRoute, /export async function GET/);
-  assert.match(creditsRoute, /grantVerifiedPurchase/);
-  assert.match(restoreRoute, /requireConsumerAuth/);
-  assert.match(restoreRoute, /grantVerifiedPurchase/);
-  assert.match(creditsRoute, /purchases not configured/);
-  assert.match(restoreRoute, /purchases not configured/);
+  assert.match(creditsRoute, /export async function POST/);
+  assert.match(creditsRoute, /handleCreditPurchase/);
+  assert.equal(creditsRoute.includes('export async function handleCreditPurchase'), false);
+  assert.match(purchaseHandler, /requireConsumerAuth/);
+  assert.match(purchaseHandler, /grantVerifiedPurchase/);
+  assert.match(purchaseHandler, /purchases not configured/);
+  assert.match(restoreRoute, /export async function POST/);
+  assert.match(restoreRoute, /handleCreditRestore/);
+  assert.equal(restoreRoute.includes('export async function handleCreditRestore'), false);
+  assert.match(restoreHandler, /requireConsumerAuth/);
+  assert.match(restoreHandler, /grantVerifiedPurchase/);
+  assert.match(restoreHandler, /purchases not configured/);
   assert.match(webhookRoute, /REVENUECAT_WEBHOOK_SECRET/);
+  assert.match(webhookRoute, /handleRevenueCatWebhook/);
   assert.equal(webhookRoute.includes('requireConsumerAuth'), false);
+  assert.equal(webhookRoute.includes('export async function handle'), false);
 
   const sql = readFileSync(join(HERE, '../../../../../supabase/migrations/20261017000001_credit_purchase_atomic.sql'), 'utf8');
   assert.match(sql, /purchase_credits_atomic/);
