@@ -2441,6 +2441,18 @@ class DemoRepository {
       comms: const DealComms(emails: 6, texts: 3, calls: 1),
     ),
   ];
+
+  /// Instance methods so a signed-in screen can ignore a late profile.
+  /// The demo data still lives on [DemoRepositorySearchProfile].
+  Future<SearchProfile> getSearchProfile() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return DemoRepositorySearchProfile.storedProfile;
+  }
+
+  Future<List<StarterCard>> getStarters() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return DemoRepositorySearchProfile.storedStarters();
+  }
 }
 
 class DealStats {
@@ -2544,6 +2556,53 @@ extension DemoRepositorySearchProfile on DemoRepository {
   /// Restores the in-memory demo search profile between tests.
   void resetDemoSearchProfile() {
     _searchProfile = _newDemoSearchProfile();
+  }
+
+  static SearchProfile get storedProfile => _searchProfile;
+
+  static List<StarterCard> storedStarters() {
+    if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
+      return _genericStarters;
+    }
+
+    final starters = <StarterCard>[];
+    final lastSearch = _searchProfile.searches.first;
+    starters.add(
+      StarterCard(
+        kind: StarterKind.backToSearch,
+        kicker: 'BACK TO YOUR SEARCH',
+        title: lastSearch.displayTitle,
+        action: StarterAction(mode: 'shop', filters: lastSearch.filters),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.priceDrops,
+        kicker: 'PRICE DROPS',
+        title: '3 price drops on cars like ones you viewed',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.newListings,
+        kicker: 'NEW LISTINGS',
+        title: '5 new CR-V Hybrids within 30 mi',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.fairPrice,
+        kicker: 'FAIR PRICE',
+        title: 'Is \$32,995 fair for the RAV4 you viewed?',
+        action: StarterAction(
+          mode: 'ask',
+          prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?',
+        ),
+      ),
+    );
+    return starters.take(4).toList();
   }
 
   /// Stores first-run answers on the shopper and as onboarding memory.
@@ -2656,11 +2715,6 @@ extension DemoRepositorySearchProfile on DemoRepository {
     _searchProfile = _searchProfile.copyWith(searches: const []);
   }
 
-  Future<SearchProfile> getSearchProfile() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _searchProfile;
-  }
-
   Future<SearchProfile> updateSearchProfile(SearchProfile profile) async {
     _searchProfile = profile;
     await Future.delayed(const Duration(milliseconds: 300));
@@ -2685,64 +2739,6 @@ extension DemoRepositorySearchProfile on DemoRepository {
       searches: [],
       viewed: [],
     );
-  }
-
-  Future<List<StarterCard>> getStarters() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
-      return _genericStarters;
-    }
-
-    final starters = <StarterCard>[];
-
-    // Back to search - last saved search
-    if (_searchProfile.searches.isNotEmpty) {
-      final lastSearch = _searchProfile.searches.first;
-      starters.add(
-        StarterCard(
-          kind: StarterKind.backToSearch,
-          kicker: 'BACK TO YOUR SEARCH',
-          title: lastSearch.displayTitle,
-          action: StarterAction(mode: 'shop', filters: lastSearch.filters),
-        ),
-      );
-    }
-
-    // Price drops
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.priceDrops,
-        kicker: 'PRICE DROPS',
-        title: '3 price drops on cars like ones you viewed',
-        action: StarterAction(mode: 'shop'),
-      ),
-    );
-
-    // New listings
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.newListings,
-        kicker: 'NEW LISTINGS',
-        title: '5 new CR-V Hybrids within 30 mi',
-        action: StarterAction(mode: 'shop'),
-      ),
-    );
-
-    // Fair price
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.fairPrice,
-        kicker: 'FAIR PRICE',
-        title: 'Is \$32,995 fair for the RAV4 you viewed?',
-        action: StarterAction(
-          mode: 'ask',
-          prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?',
-        ),
-      ),
-    );
-
-    return starters.take(4).toList();
   }
 
   static const _genericStarters = [

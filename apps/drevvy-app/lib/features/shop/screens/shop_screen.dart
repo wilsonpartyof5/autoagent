@@ -88,6 +88,9 @@ class _ShopScreenState extends State<ShopScreen> {
   int _heartGeneration = 0;
   bool _reportedShopEmpty = false;
   late final ShopperAccountWatch _accountWatch;
+  int? _discoverAccount;
+
+  bool _sameAccount(int account) => mounted && _accountWatch.same(account);
 
   @override
   void initState() {
@@ -118,12 +121,19 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _onAccountSessionChanged() {
     if (!mounted) return;
-    setState(() => _user = null);
+    setState(() {
+      _user = null;
+      _isLoading = false;
+      _isSearching = false;
+    });
     _loadData();
   }
 
   void _onDiscoverChanged() {
-    if (mounted) setState(() {});
+    final account = _discoverAccount;
+    if (!mounted) return;
+    if (account != null && !_accountWatch.same(account)) return;
+    setState(() {});
   }
 
   @override
@@ -197,7 +207,8 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _sendMessage(String text, {String source = 'composer'}) async {
-    if (text.isEmpty) return;
+    if (text.isEmpty || !mounted) return;
+    final account = _accountWatch.capture();
     ProductAnalytics.instance.track(
       AnalyticsEvents.searchSubmitted,
       searchEventProperties(surface: 'ask', query: text, source: source),
@@ -205,16 +216,24 @@ class _ShopScreenState extends State<ShopScreen> {
 
     setState(() => _isLoading = true);
 
-    final thread = await _repo.sendMessage(
-      text,
-      enabledMemoryIds: _enabledMemoryIds,
-    );
-    if (!mounted) return;
-
-    setState(() {
-      _thread = thread;
-      _isLoading = false;
-    });
+    try {
+      final thread = await _repo.sendMessage(
+        text,
+        enabledMemoryIds: _enabledMemoryIds,
+      );
+      if (!_sameAccount(account)) return;
+      setState(() {
+        _thread = thread;
+        _isLoading = false;
+      });
+    } on ApiConfigException catch (error) {
+      if (!_sameAccount(account)) return;
+      setState(() => _isLoading = false);
+      _showStaleAccountError(account, error.message);
+    } catch (_) {
+      if (!_sameAccount(account)) return;
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _search(
@@ -246,39 +265,54 @@ class _ShopScreenState extends State<ShopScreen> {
         properties,
       );
     }
+    if (!mounted) return;
+    final account = _accountWatch.capture();
     ShopBottomChromeScope.read(context)?.show();
     setState(() {
       _mode = ChatMode.shop;
       _isSearching = true;
     });
 
-    if (_liveDiscover) {
-      final discover = _discover!;
-      if (filters != null) {
-        discover.setFilters(DiscoverFilters.fromSearchFilters(filters));
+    try {
+      if (_liveDiscover) {
+        final discover = _discover!;
+        if (filters != null) {
+          discover.setFilters(DiscoverFilters.fromSearchFilters(filters));
+        }
+        _discoverAccount = account;
+        await discover.search(query: query, reset: true);
+        if (!_sameAccount(account)) return;
+        setState(() => _isSearching = false);
+        return;
       }
-      await discover.search(query: query, reset: true);
-      if (!mounted) return;
+
+      final listings = await _repo.searchListings(
+        query: query,
+        filters: filters,
+      );
+      if (!_sameAccount(account)) return;
+
+      setState(() {
+        _listings = listings;
+        _isSearching = false;
+      });
+      if (listings.isEmpty) {
+        if (!_reportedShopEmpty) {
+          _reportedShopEmpty = true;
+          ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
+            'surface': 'shop',
+          });
+        }
+      } else {
+        _reportedShopEmpty = false;
+      }
+    } on ApiConfigException catch (error) {
+      if (!_sameAccount(account)) return;
       setState(() => _isSearching = false);
-      return;
-    }
-
-    final listings = await _repo.searchListings(query: query, filters: filters);
-    if (!mounted) return;
-
-    setState(() {
-      _listings = listings;
-      _isSearching = false;
-    });
-    if (listings.isEmpty) {
-      if (!_reportedShopEmpty) {
-        _reportedShopEmpty = true;
-        ProductAnalytics.instance.track(AnalyticsEvents.emptyStateViewed, {
-          'surface': 'shop',
-        });
-      }
-    } else {
-      _reportedShopEmpty = false;
+      _showStaleAccountError(account, error.message);
+    } catch (_) {
+      if (!_sameAccount(account)) return;
+      setState(() => _isSearching = false);
     }
   }
 
@@ -287,32 +321,48 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _onMemoryItemsChanged(Set<String> ids) async {
+    if (!mounted) return;
+    final account = _accountWatch.capture();
     final revision = ++_memoryRevision;
     setState(() => _enabledMemoryIds = ids);
-    final thread = await _repo.applyChatMemory(ids);
-    if (!mounted || revision != _memoryRevision) return;
-    setState(() => _thread = thread);
+    try {
+      final thread = await _repo.applyChatMemory(ids);
+      if (!_sameAccount(account) || revision != _memoryRevision) return;
+      setState(() => _thread = thread);
+    } catch (_) {
+      if (!_sameAccount(account)) return;
+    }
   }
 
   Future<void> _reloadSearchProfile() async {
-    final profile = await _repo.getSearchProfile();
-    final starters = await _repo.getStarters();
     if (!mounted) return;
-    setState(() {
-      final previousIds =
-          _searchProfile?.items.map((item) => item.id).toSet() ?? {};
-      final nextIds = profile.items.map((item) => item.id).toSet();
-      final enabled = _enabledMemoryIds ?? previousIds;
-      _enabledMemoryIds = {
-        ...enabled.where(nextIds.contains),
-        ...nextIds.where((id) => !previousIds.contains(id)),
-      };
-      _searchProfile = profile;
-      _starters = starters;
-    });
+    final account = _accountWatch.capture();
+    try {
+      final profile = await _repo.getSearchProfile();
+      final starters = await _repo.getStarters();
+      if (!_sameAccount(account)) return;
+      setState(() {
+        final previousIds =
+            _searchProfile?.items.map((item) => item.id).toSet() ?? {};
+        final nextIds = profile.items.map((item) => item.id).toSet();
+        final enabled = _enabledMemoryIds ?? previousIds;
+        _enabledMemoryIds = {
+          ...enabled.where(nextIds.contains),
+          ...nextIds.where((id) => !previousIds.contains(id)),
+        };
+        _searchProfile = profile;
+        _starters = starters;
+      });
+    } on ApiConfigException catch (error) {
+      _showStaleAccountError(account, error.message);
+    } catch (_) {
+      if (!_sameAccount(account)) return;
+    }
   }
 
   Future<void> _openRecentSearches() async {
+    if (!mounted) return;
+    final account = _accountWatch.capture();
     final searches = List<SavedSearch>.from(
       _searchProfile?.searches ?? const [],
     );
@@ -330,7 +380,7 @@ class _ShopScreenState extends State<ShopScreen> {
       },
       onClearAll: _repo.clearSavedSearches,
     );
-    if (!mounted) return;
+    if (!_sameAccount(account)) return;
     await _reloadSearchProfile();
   }
 
@@ -353,36 +403,51 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _ensureDiscover() async {
     final discover = _discover;
-    if (discover == null || _discoverBooted) return;
+    if (discover == null || _discoverBooted || !mounted) return;
     _discoverBooted = true;
-    await discover.restore();
-    if (!mounted) return;
-    if (discover.location?.isUsable == true &&
-        discover.phase == DiscoverShopPhase.needsLocation) {
-      await discover.search(reset: true);
+    final account = _accountWatch.capture();
+    _discoverAccount = account;
+    try {
+      await discover.restore();
+      if (!_sameAccount(account)) return;
+      if (discover.location?.isUsable == true &&
+          discover.phase == DiscoverShopPhase.needsLocation) {
+        await discover.search(reset: true);
+      }
+    } catch (_) {
+      if (!_sameAccount(account)) return;
     }
   }
 
   Future<void> _pickLocation() async {
+    if (!mounted) return;
+    final account = _accountWatch.capture();
     final picked = await DiscoverLocationSheet.show(
       context,
       device: _deviceLocation,
       places: _placeSearch,
     );
-    if (picked == null || !mounted) return;
+    if (picked == null || !_sameAccount(account)) return;
+    _discoverAccount = account;
     await _discover?.setLocation(picked);
   }
 
   Future<void> _pickFilters() async {
     final discover = _discover;
-    if (discover == null) return;
+    if (discover == null || !mounted) return;
+    final account = _accountWatch.capture();
     final next = await DiscoverFilterSheet.show(
       context,
       initial: discover.filters,
     );
-    if (next == null || !mounted) return;
-    discover.setFilters(next);
-    await discover.search(query: discover.queryText, reset: true);
+    if (next == null || !_sameAccount(account)) return;
+    _discoverAccount = account;
+    try {
+      discover.setFilters(next);
+      await discover.search(query: discover.queryText, reset: true);
+    } catch (_) {
+      if (!_sameAccount(account)) return;
+    }
   }
 
   void _openHistoryDrawer() {
@@ -483,13 +548,14 @@ class _ShopScreenState extends State<ShopScreen> {
 
   /// v1.8: Show Account sheet
   Future<void> _showAccountSheet() async {
+    final account = _accountWatch.capture();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const AccountSheet(),
     );
-    if (!mounted) return;
+    if (!_sameAccount(account)) return;
     await _reloadSearchProfile();
   }
 
