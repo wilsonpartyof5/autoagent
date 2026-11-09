@@ -96,47 +96,30 @@ function parseBearerToken(authorization: string | null): string | null {
   return match?.[1] ?? null;
 }
 
-export async function loadDealerMemberships(
-  userId: string,
-): Promise<DealerRooftop[]> {
-  const admin = createAdminClient();
-  const memberships = await admin
-    .from('user_dealerships')
-    .select('dealership_id, role')
-    .eq('user_id', userId);
-  if (memberships.error) {
-    console.error(JSON.stringify({
-      event: 'dealer_memberships_failed',
-      message: memberships.error.message,
-    }));
-    throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
-  }
+function hasOnboardedStamp(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
 
-  const rows = (memberships.data ?? []).filter((row): row is { dealership_id: string; role: string | null } => (
-    typeof row.dealership_id === 'string' && row.dealership_id.length > 0
-  ));
-  if (rows.length === 0) return [];
-
-  const ids = [...new Set(rows.map((row) => row.dealership_id))];
-  const dealerships = await admin
-    .from('dealerships')
-    .select('id, name')
-    .in('id', ids);
-  if (dealerships.error) {
-    console.error(JSON.stringify({
-      event: 'dealer_rooftops_failed',
-      message: dealerships.error.message,
-    }));
-    throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
-  }
-
+export function dealerRooftopsFromRows(
+  memberships: readonly {
+    dealership_id: string;
+    role: string | null;
+    access_verified_at?: unknown;
+  }[],
+  dealerships: readonly { id: string; name?: string | null; onboarded_at?: unknown }[],
+): DealerRooftop[] {
   const names = new Map(
-    (dealerships.data ?? [])
-      .filter((row): row is { id: string; name: string } => typeof row.id === 'string')
-      .map((row) => [row.id, typeof row.name === 'string' && row.name.trim() ? row.name.trim() : 'Rooftop']),
+    dealerships
+      .filter((row) => typeof row.id === 'string' && hasOnboardedStamp(row.onboarded_at))
+      .map((row) => [
+        row.id,
+        typeof row.name === 'string' && row.name.trim() ? row.name.trim() : 'Rooftop',
+      ]),
   );
 
-  return rows.flatMap((row) => {
+  return memberships.flatMap((row) => {
+    if (!hasOnboardedStamp(row.access_verified_at)) return [];
     const name = names.get(row.dealership_id);
     if (!name) return [];
     return [{
@@ -145,6 +128,49 @@ export async function loadDealerMemberships(
       role: mapDealerRole(row.role),
     }];
   });
+}
+
+export async function loadDealerMemberships(
+  userId: string,
+): Promise<DealerRooftop[]> {
+  const admin = createAdminClient();
+  const memberships = await admin
+    .from('user_dealerships')
+    .select('dealership_id, role, access_verified_at')
+    .eq('user_id', userId)
+    .not('access_verified_at', 'is', null);
+  if (memberships.error) {
+    console.error(JSON.stringify({
+      event: 'dealer_memberships_failed',
+      message: memberships.error.message,
+    }));
+    throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
+  }
+
+  const rows = (memberships.data ?? []).filter((row): row is {
+    dealership_id: string;
+    role: string | null;
+    access_verified_at: unknown;
+  } => (
+    typeof row.dealership_id === 'string' && row.dealership_id.length > 0
+  ));
+  if (rows.length === 0) return [];
+
+  const ids = [...new Set(rows.map((row) => row.dealership_id))];
+  const dealerships = await admin
+    .from('dealerships')
+    .select('id, name, onboarded_at')
+    .in('id', ids)
+    .not('onboarded_at', 'is', null);
+  if (dealerships.error) {
+    console.error(JSON.stringify({
+      event: 'dealer_rooftops_failed',
+      message: dealerships.error.message,
+    }));
+    throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
+  }
+
+  return dealerRooftopsFromRows(rows, dealerships.data ?? []);
 }
 
 export function sessionFromUser(

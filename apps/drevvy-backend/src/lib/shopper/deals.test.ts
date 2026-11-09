@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { RooftopDirectoryUnavailable } from '@/lib/dealer/rooftop-store';
+
 import {
   ShopperDealConflict,
   ShopperDealError,
@@ -12,6 +14,7 @@ import {
   getShopperDeal,
   listShopperDeals,
   readCreateDealInput,
+  shopperDealErrorResponse,
   shopperDealStatusLabel,
   toShopperDeal,
   type ShopperDealRepository,
@@ -261,6 +264,14 @@ test('deal routes require a shopper session', () => {
     const source = readFileSync(join(here, route), 'utf8');
     assert.match(source, /requireShopperAuth\(/);
   }
+});
+
+test('a missing onboarded rooftop directory is an explicit 503', async () => {
+  const response = shopperDealErrorResponse(new RooftopDirectoryUnavailable());
+  assert.equal(response.status, 503);
+  const body = await response.json() as { success: boolean; error: { code: string } };
+  assert.equal(body.success, false);
+  assert.equal(body.error.code, 'rooftop_directory_unavailable');
 });
 
 test('the shopper deal migration does not depend on dealer inventory tables', () => {

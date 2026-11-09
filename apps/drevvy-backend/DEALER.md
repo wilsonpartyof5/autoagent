@@ -83,12 +83,15 @@ The route name `leads` matches the information architecture. The screen label is
 
 ## Onboarded rooftop
 
-A rooftop is onboarded when:
+A rooftop is onboarded when `dealerships.onboarded_at` is set (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`). That stamp is written by `create_onboarded_rooftop` (service role), by `accept_dealership_invite`, or by `private.apply_reviewed_rooftop_members` for a row already in `private.reviewed_rooftop_members`. The migration creates that pair table empty. A MarketCheck id, an Apple or Google sign-in, and a `consumer_profiles` row are not pairs and are not stamps. Existing `user_dealerships` rows are kept.
 
-1. A row exists in `dealerships` (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`).
-2. At least one `user_dealerships` membership points at that row (someone can sign in on the dealer dashboard).
+Desk access also requires `user_dealerships.access_verified_at` on that member. Another member of an onboarded rooftop does not inherit it. A shopper JWT cannot execute `create_own_dealership`, insert a rooftop, or change a MarketCheck id or website. Those two identity values cannot belong to two rooftops. The `/dealer/onboarding/*` pages are the demo walkthrough. They do not call `create_own_dealership` and do not write `dealerships`.
 
-`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads that set. A `dealerships` row with no membership is not in-network. The mock desk settings rooftop is not this registry.
+`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry. A missing `onboarded_at` column, or a stale schema cache that cannot see it, throws `RooftopDirectoryUnavailable`. The shopper routes answer 503 `rooftop_directory_unavailable`. They do not match on membership alone. Until `access_verified_at` exists, the live desk query fails closed.
+
+Accepting an invite sets that member's role to the invite role. A salesperson invite does not leave an existing owner verified as owner. Other members of the rooftop are not changed.
+
+Release stays blocked until DW pastes reviewed pairs and writes a disposition for every rooftop that still holds a MarketCheck id or website. This file does not verify those claims. Applying the migration with unpaired memberships or occupied ids requires `drevvy.approve_unpaired_rooftop_lockout = accept-unpaired-lockout` in the same transaction. That phrase is an approval, not a rooftop id.
 
 ## `matchOnboardedRooftop`
 
