@@ -12,7 +12,7 @@ MarketCheck API integration requires the `MARKETCHECK_API_KEY` environment varia
 
 **Variable**: `MARKETCHECK_API_KEY`
 
-**Sample Value**: `MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX`
+**Sample Value**: `<MARKETCHECK_API_KEY>`
 
 **Usage**: Server-side only (used in `syncMarketCheckInventory` server action)
 
@@ -24,7 +24,7 @@ MarketCheck API integration requires the `MARKETCHECK_API_KEY` environment varia
 
 **Variable**: `MARKETCHECK_API_KEY`
 
-**Sample Value**: `MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX`
+**Sample Value**: `<MARKETCHECK_API_KEY>`
 
 **Usage**: Used in MarketCheck service and vehicle search tools
 
@@ -48,7 +48,7 @@ MarketCheck API integration requires the `MARKETCHECK_API_KEY` environment varia
 
 3. **Or manually edit `.env.local`**:
    ```env
-   MARKETCHECK_API_KEY=MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX
+   MARKETCHECK_API_KEY=<MARKETCHECK_API_KEY>
    ```
 
 4. **Restart the dev server**:
@@ -164,7 +164,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
 
 # MarketCheck API
-MARKETCHECK_API_KEY=MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX
+MARKETCHECK_API_KEY=<MARKETCHECK_API_KEY>
 MARKETCHECK_BASE_URL=https://api.marketcheck.com
 
 # Optional: Enable enrichment

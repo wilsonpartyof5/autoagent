@@ -176,7 +176,7 @@ Added detailed logging to `syncMarketCheckInventory` to capture:
 ### Environment Variables Set
 ```env
 # apps/dealer-dashboard/.env.local
-MARKETCHECK_API_KEY=MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX
+MARKETCHECK_API_KEY=<MARKETCHECK_API_KEY>
 MARKETCHECK_BASE_URL=https://api.marketcheck.com
 MARKETCHECK_ENRICH_LISTINGS=1
 NEXT_PUBLIC_SUPABASE_URL=https://vqoawedqmeybbndvqxta.supabase.co
