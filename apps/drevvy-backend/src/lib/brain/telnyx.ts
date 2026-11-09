@@ -242,17 +242,31 @@ export function telnyxStatusCallbackUrl(env: NodeJS.ProcessEnv = process.env): s
 
 const AI_STATUS_EVENTS = 'initiated ringing answered completed no-answer busy canceled failed analyzed';
 
+/**
+ * Per-call values for the ElevenLabs assistant. Telnyx maps this object onto
+ * {{variable}} placeholders. See AIAssistantDynamicVariables on
+ * POST /v2/texml/ai_calls/{connection_id}.
+ */
+export type AiAssistantDynamicVariables = {
+  shopper_first_name: string;
+  stock_number: string;
+  reply_text_number: string;
+  reply_email: string;
+};
+
 export function buildTexmlAiCallBody(input: {
   from: string;
   to: string;
   assistantId: string;
   webhookUrl: string;
   link: CallLink;
+  dynamicVariables?: AiAssistantDynamicVariables;
 }): Record<string, unknown> {
   return {
     From: input.from,
     To: input.to,
     AIAssistantId: input.assistantId,
+    ...(input.dynamicVariables ? { AIAssistantDynamicVariables: input.dynamicVariables } : {}),
     ClientState: encodeClientState(input.link),
     StatusCallback: input.webhookUrl,
     StatusCallbackMethod: 'POST',
@@ -868,6 +882,7 @@ export async function createTexmlAiCall(
     assistantId: string;
     webhookUrl?: string;
     link: CallLink;
+    dynamicVariables?: AiAssistantDynamicVariables;
   },
   options: { apiKey: string; fetchImpl?: typeof fetch } ,
 ): Promise<{ callSid: string | null; clientState: string } | { error: string }> {

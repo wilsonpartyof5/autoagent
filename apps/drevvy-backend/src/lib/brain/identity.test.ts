@@ -333,6 +333,20 @@ test('senders use the identity row, with env values only in test mode', () => {
     fallback: { sms: '803-555-0148' },
   });
   assert.equal('from' in testSms && testSms.from, '+18035550148');
+  const voiceFromText = selectSender({
+    channel: 'voice',
+    identity: null,
+    testMode: true,
+    fallback: { sms: '+18035550148' },
+  });
+  assert.deepEqual(voiceFromText, { error: 'Test mode needs a caller ID.' });
+  const testVoice = selectSender({
+    channel: 'voice',
+    identity: null,
+    testMode: true,
+    fallback: { voice: '+18039878296', sms: '+18035550148' },
+  });
+  assert.equal('from' in testVoice && testVoice.from, '+18039878296');
 });
 
 test('inbound mail finds the conversation by alias, text pair, thread, then client state', () => {
