@@ -8,6 +8,7 @@ import {
   dealerDisplayName,
   dealerInitials,
   dealerPreviewEnabled,
+  dealerRooftopsFromRows,
   highestDealerRole,
   isLiveDealerSession,
   mapDealerRole,
@@ -88,6 +89,28 @@ test('demo desk session opens the pages and live membership still wins', () => {
   const preview = pageSessionDecision(null, null, true);
   assert.equal(preview.redirectToLogin, false);
   assert.equal(preview.session, null);
+});
+
+test('the live desk ignores a membership whose rooftop is not onboarded', () => {
+  const source = readFileSync(join(HERE, 'session.ts'), 'utf8');
+  assert.match(source, /\.not\('onboarded_at', 'is', null\)/);
+  const rooftops = dealerRooftopsFromRows(
+    [
+      { dealership_id: 'roof-on', role: 'owner' },
+      { dealership_id: 'roof-off', role: 'salesperson' },
+      { dealership_id: 'roof-blank', role: 'gm' },
+    ],
+    [
+      { id: 'roof-on', name: 'Honda Cars', onboarded_at: '2026-11-09T00:00:00.000Z' },
+      { id: 'roof-off', name: 'Squatted', onboarded_at: null },
+      { id: 'roof-blank', name: 'Blank', onboarded_at: '   ' },
+    ],
+  );
+  assert.deepEqual(rooftops, [{
+    id: 'roof-on',
+    name: 'Honda Cars',
+    role: 'owner_gm',
+  }]);
 });
 
 test('dealer API routes use requireDealerApi and never requireAdmin', () => {

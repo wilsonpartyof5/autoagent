@@ -73,6 +73,10 @@ function rowsToRooftops(data: unknown, enforceOnboarded: boolean): OnboardedRoof
  * Until the migration that adds the column is applied, a missing-column error
  * falls back to membership-only so a code deploy does not mark every listing
  * off-network. After the column exists, a null stamp is excluded.
+ *
+ * TODO: remove the membership-only fallback after
+ * 20261109170000_lock_rooftop_self_claim.sql is applied. Apply that migration
+ * before or with this code deploy, then delete the onboarded_column_missing branch.
  */
 export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<OnboardedRooftop[]> {
   const memberships = await supabase.from('user_dealerships').select('dealership_id');
@@ -98,6 +102,10 @@ export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<O
     .not('onboarded_at', 'is', null);
 
   if (filtered.error && onboardedColumnMissing(filtered.error)) {
+    // TODO: remove this membership-only fallback after
+    // 20261109170000_lock_rooftop_self_claim.sql is applied. Apply that
+    // migration before or with the code deploy. A missing onboarded_at column
+    // currently keeps the previous membership list.
     console.error(JSON.stringify({
       event: 'onboarded_column_missing',
       message: filtered.error.message,

@@ -13,8 +13,12 @@
 --   * client sessions cannot insert dealerships or memberships, and cannot
 --     change network identity columns
 --
--- Existing member rooftops are backfilled so current dealer logins stay
--- in-network. The demo desk at /dealer/onboarding does not write these tables.
+-- Existing memberships are not backfilled. The only rooftops stamped here are
+-- the known Honda rows (MarketCheck 1038994 and, if it is still present,
+-- 1283655) plus dw_rooftop_ids, which is empty until DW pastes UUIDs.
+-- Before the unique indexes, consumer memberships are removed from every
+-- other rooftop. Email profiles are not treated as shoppers. The demo desk
+-- at /dealer/onboarding does not write these tables.
 --
 -- Rollback is a forward migration, not an edit of this file. See the PR.
 
@@ -95,6 +99,68 @@ set marketcheck_website_url = null
 where marketcheck_website_url is not null
   and btrim(marketcheck_website_url) = '';
 
+-- Allowlist, then consumer-membership cleanup, then the stamp. This block is
+-- before the duplicate check and the unique indexes on purpose. Deleting a
+-- shopper membership does not delete the dealership row and does not clear a
+-- MarketCheck id or website, so a squatted id can still abort the index below.
+-- Review the three audit queries in the PR before applying.
+do $$
+declare
+  -- MarketCheck ids from 20260717191843 and 20260721194636. The UUID is
+  -- generated at insert, so the stable identifier is the MarketCheck id.
+  honda_marketcheck_ids text[] := array['1038994', '1283655'];
+  -- DW: paste additional dealership UUIDs here before applying. Empty by default.
+  dw_rooftop_ids uuid[] := array[]::uuid[];
+  allowlist uuid[];
+begin
+  select coalesce(array_agg(d.id), array[]::uuid[])
+    into allowlist
+  from public.dealerships d
+  where btrim(coalesce(d.marketcheck_dealer_id, '')) = any (honda_marketcheck_ids)
+     or d.id = any (dw_rooftop_ids);
+
+  -- Consumer memberships on unverified rooftops. A consumer is a
+  -- consumer_profiles row or an Apple/Google auth user. Those providers do
+  -- not get a dealer profile. An email account with public.profiles is left
+  -- in place; it is not stamped unless the rooftop is on the allowlist.
+  -- A consumer who is also a member of an allowlisted rooftop keeps that row.
+  if to_regclass('public.consumer_profiles') is not null then
+    delete from public.user_dealerships ud
+    using public.consumer_profiles cp
+    where ud.user_id = cp.user_id
+      and not (ud.dealership_id = any (allowlist));
+  end if;
+
+  if to_regclass('auth.identities') is not null then
+    delete from public.user_dealerships ud
+    using auth.identities i
+    where ud.user_id = i.user_id
+      and i.provider in ('apple', 'google')
+      and not (ud.dealership_id = any (allowlist));
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'auth'
+      and table_name = 'users'
+      and column_name = 'raw_app_meta_data'
+  ) then
+    execute
+      'delete from public.user_dealerships ud
+       using auth.users u
+       where ud.user_id = u.id
+         and coalesce(u.raw_app_meta_data->>''provider'', '''') in (''apple'', ''google'')
+         and not (ud.dealership_id = any ($1))'
+    using allowlist;
+  end if;
+
+  update public.dealerships d
+  set onboarded_at = coalesce(d.created_at, timezone('utc'::text, now()))
+  where d.onboarded_at is null
+    and d.id = any (allowlist);
+end $$;
+
 do $$
 declare
   dup_mc text;
@@ -139,15 +205,6 @@ create unique index if not exists dealerships_website_key
   on public.dealerships (public.rooftop_website_key(marketcheck_website_url))
   where public.rooftop_website_key(marketcheck_website_url) is not null;
 
-update public.dealerships d
-set onboarded_at = coalesce(d.created_at, timezone('utc'::text, now()))
-where d.onboarded_at is null
-  and exists (
-    select 1
-    from public.user_dealerships ud
-    where ud.dealership_id = d.id
-  );
-
 create or replace function private.caller_can_provision_rooftop()
 returns boolean
 language plpgsql
@@ -158,12 +215,28 @@ as $$
 declare
   jwt_role text;
   session_role text;
+  claims_text text;
 begin
-  jwt_role := nullif(current_setting('request.jwt.claim.role', true), '');
+  -- PostgREST puts the verified role on request.jwt.claims (json) and, on
+  -- older stacks, request.jwt.claim.role. A present claims role wins so a
+  -- stale legacy GUC cannot upgrade the caller. Empty, missing, or unreadable
+  -- claims fall through to the legacy GUC. Anything else is refused.
+  claims_text := nullif(current_setting('request.jwt.claims', true), '');
+  if claims_text is not null then
+    begin
+      jwt_role := nullif(claims_text::jsonb ->> 'role', '');
+    exception
+      when others then
+        jwt_role := null;
+    end;
+  end if;
+
+  if jwt_role is null then
+    jwt_role := nullif(current_setting('request.jwt.claim.role', true), '');
+  end if;
+
   session_role := current_setting('role', true);
 
-  -- PostgREST copies the verified JWT role into request.jwt.claim.role.
-  -- A security definer body must not treat current_user/postgres as the caller.
   if jwt_role = 'service_role' or session_role = 'service_role' then
     return true;
   end if;
@@ -173,10 +246,9 @@ begin
        and coalesce((select private.is_platform_admin()), false) then
       return true;
     end if;
-    return false;
   end if;
 
-  return true;
+  return false;
 end;
 $$;
 
@@ -457,9 +529,173 @@ drop policy if exists "Users can insert their memberships" on public.user_dealer
 revoke insert on table public.dealerships from public, anon, authenticated;
 revoke insert on table public.user_dealerships from public, anon, authenticated;
 
+-- SHA-256 in core SQL. pgcrypto is not on every preview image or on the PGlite
+-- harness, and the digest has to match in both places. Tokens are short.
+create or replace function private.sha256_hex(payload bytea)
+returns text
+language plpgsql
+immutable
+strict
+set search_path = ''
+as $$
+declare
+  mask bigint := 4294967295;
+  k bigint[] := array[
+    1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221,
+    3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580,
+    3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986,
+    2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895,
+    666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037,
+    2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344,
+    430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779,
+    1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298
+  ];
+  hh bigint[] := array[
+    1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541459225
+  ];
+  w bigint[];
+  padded bytea;
+  bit_len bigint;
+  blocks int;
+  block int;
+  i int;
+  j int;
+  a bigint;
+  b bigint;
+  c bigint;
+  d bigint;
+  e bigint;
+  f bigint;
+  g bigint;
+  h bigint;
+  s0 bigint;
+  s1 bigint;
+  ch bigint;
+  maj bigint;
+  t1 bigint;
+  t2 bigint;
+  word bigint;
+  out_hex text := '';
+begin
+  bit_len := octet_length(payload) * 8;
+  padded := payload || '\x80'::bytea;
+  while (octet_length(padded) % 64) <> 56 loop
+    padded := padded || '\x00'::bytea;
+  end loop;
+  for i in 0..7 loop
+    padded := padded || set_byte('\x00'::bytea, 0, ((bit_len >> ((7 - i) * 8)) & 255)::int);
+  end loop;
+
+  blocks := octet_length(padded) / 64;
+  for block in 0..blocks - 1 loop
+    w := array_fill(0::bigint, array[64]);
+    for i in 0..15 loop
+      word := 0;
+      for j in 0..3 loop
+        word := ((word << 8) | get_byte(padded, block * 64 + i * 4 + j)) & mask;
+      end loop;
+      w[i + 1] := word;
+    end loop;
+
+    for i in 16..63 loop
+      word := w[i - 14];
+      s0 := (
+        ((word >> 7) | ((word << 25) & mask))
+        # ((word >> 18) | ((word << 14) & mask))
+        # (word >> 3)
+      ) & mask;
+      word := w[i - 1];
+      s1 := (
+        ((word >> 17) | ((word << 15) & mask))
+        # ((word >> 19) | ((word << 13) & mask))
+        # (word >> 10)
+      ) & mask;
+      w[i + 1] := (w[i - 15] + s0 + w[i - 6] + s1) & mask;
+    end loop;
+
+    a := hh[1];
+    b := hh[2];
+    c := hh[3];
+    d := hh[4];
+    e := hh[5];
+    f := hh[6];
+    g := hh[7];
+    h := hh[8];
+
+    for i in 0..63 loop
+      s1 := (
+        ((e >> 6) | ((e << 26) & mask))
+        # ((e >> 11) | ((e << 21) & mask))
+        # ((e >> 25) | ((e << 7) & mask))
+      ) & mask;
+      ch := ((e & f) # ((mask # e) & g)) & mask;
+      t1 := (h + s1 + ch + k[i + 1] + w[i + 1]) & mask;
+      s0 := (
+        ((a >> 2) | ((a << 30) & mask))
+        # ((a >> 13) | ((a << 19) & mask))
+        # ((a >> 22) | ((a << 10) & mask))
+      ) & mask;
+      maj := ((a & b) # (a & c) # (b & c)) & mask;
+      t2 := (s0 + maj) & mask;
+      h := g;
+      g := f;
+      f := e;
+      e := (d + t1) & mask;
+      d := c;
+      c := b;
+      b := a;
+      a := (t1 + t2) & mask;
+    end loop;
+
+    hh[1] := (hh[1] + a) & mask;
+    hh[2] := (hh[2] + b) & mask;
+    hh[3] := (hh[3] + c) & mask;
+    hh[4] := (hh[4] + d) & mask;
+    hh[5] := (hh[5] + e) & mask;
+    hh[6] := (hh[6] + f) & mask;
+    hh[7] := (hh[7] + g) & mask;
+    hh[8] := (hh[8] + h) & mask;
+  end loop;
+
+  for i in 1..8 loop
+    out_hex := out_hex || lpad(to_hex(hh[i]), 8, '0');
+  end loop;
+  return out_hex;
+end;
+$$;
+
+revoke all on function private.sha256_hex(bytea) from public, anon, authenticated;
+
+create or replace function private.invite_token_hash(raw text)
+returns text
+language sql
+immutable
+strict
+set search_path = ''
+as $$
+  select private.sha256_hex(convert_to(raw, 'utf8'));
+$$;
+
+-- 32 bytes from two v4 UUIDs. gen_random_uuid uses the server CSPRNG.
+create or replace function private.new_invite_token()
+returns text
+language sql
+volatile
+set search_path = ''
+as $$
+  select encode(
+    decode(replace(gen_random_uuid()::text, '-', ''), 'hex')
+    || decode(replace(gen_random_uuid()::text, '-', ''), 'hex'),
+    'hex'
+  );
+$$;
+
+revoke all on function private.invite_token_hash(text) from public, anon, authenticated;
+revoke all on function private.new_invite_token() from public, anon, authenticated;
+
 create table if not exists public.dealership_invites (
   id uuid primary key default gen_random_uuid(),
-  token text not null unique,
+  token_hash text not null unique,
   dealership_id uuid references public.dealerships(id),
   name text,
   marketcheck_dealer_id text,
@@ -471,6 +707,7 @@ create table if not exists public.dealership_invites (
   expires_at timestamptz not null,
   accepted_by uuid,
   accepted_at timestamptz,
+  failed_attempts integer not null default 0 check (failed_attempts >= 0),
   created_at timestamptz not null default timezone('utc'::text, now()),
   constraint dealership_invites_target_check check (
     dealership_id is not null
@@ -479,7 +716,22 @@ create table if not exists public.dealership_invites (
 );
 
 comment on table public.dealership_invites is
-  'Operator-issued rooftop invite. The token is the secret. Client roles cannot read this table. Accepting it is the only authenticated create path, and the MarketCheck id and website are the ones the operator stored.';
+  'Operator-issued rooftop invite. Only the sha256 of the token is stored. Client roles cannot read this table. Accepting it is the only authenticated create path, and the MarketCheck id and website are the ones the operator stored.';
+
+comment on column public.dealership_invites.token_hash is
+  'sha256 hex of the 32-byte token returned once by issue_dealership_invite. The plaintext is not stored.';
+
+create table if not exists private.dealership_invite_attempts (
+  user_id uuid not null,
+  token_hash text,
+  outcome text not null,
+  attempted_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index if not exists dealership_invite_attempts_user_recent
+  on private.dealership_invite_attempts (user_id, attempted_at desc);
+
+revoke all on table private.dealership_invite_attempts from public, anon, authenticated;
 
 alter table public.dealership_invites enable row level security;
 
@@ -494,8 +746,7 @@ create or replace function public.issue_dealership_invite(
   p_logo_url text default null,
   p_role text default 'owner',
   p_dealership_id uuid default null,
-  p_expires_at timestamptz default null,
-  p_token text default null
+  p_expires_at timestamptz default null
 )
 returns table (invite_id uuid, token text)
 language plpgsql
@@ -554,12 +805,9 @@ begin
     raise exception 'rooftop not found';
   end if;
 
-  v_token := nullif(btrim(coalesce(p_token, '')), '');
-  if v_token is null then
-    v_token := replace(gen_random_uuid()::text, '-', '')
-      || replace(gen_random_uuid()::text, '-', '');
-  elsif length(v_token) < 20 then
-    raise exception 'invite token is too short';
+  v_token := private.new_invite_token();
+  if v_token is null or v_token !~ '^[0-9a-f]{64}$' then
+    raise exception 'invite token was not generated';
   end if;
 
   v_expires := coalesce(p_expires_at, timezone('utc'::text, now()) + interval '14 days');
@@ -568,7 +816,7 @@ begin
   end if;
 
   insert into public.dealership_invites (
-    token,
+    token_hash,
     dealership_id,
     name,
     marketcheck_dealer_id,
@@ -579,7 +827,7 @@ begin
     invited_by,
     expires_at
   ) values (
-    v_token,
+    private.invite_token_hash(v_token),
     p_dealership_id,
     nullif(btrim(coalesce(p_name, '')), ''),
     nullif(btrim(coalesce(p_marketcheck_dealer_id, '')), ''),
@@ -596,16 +844,16 @@ begin
 end;
 $$;
 
-comment on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz, text) is
-  'Operator path. Binds the rooftop identity. The caller receives the token once. Not granted to shoppers.';
+comment on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz) is
+  'Operator path. Generates a 32-byte token, stores only its sha256, and returns the plaintext once. Not granted to shoppers.';
 
-revoke all on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz, text)
+revoke all on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz)
   from public, anon, authenticated;
-grant execute on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz, text)
+grant execute on function public.issue_dealership_invite(text, text, text, text, text, text, uuid, timestamptz)
   to service_role;
 
 create or replace function public.accept_dealership_invite(p_token text)
-returns public.dealerships
+returns table (dealership public.dealerships, invite_error text)
 language plpgsql
 security definer
 set search_path = ''
@@ -614,40 +862,95 @@ declare
   uid uuid;
   invite public.dealership_invites;
   created public.dealerships;
+  v_token text;
+  v_hash text;
+  v_recent integer;
 begin
+  -- Failures return a row and commit. Raising would roll the attempt back,
+  -- and the 8-per-15-minutes limit would never stick across requests.
   uid := (select auth.uid());
   if uid is null then
-    raise exception 'Not authenticated';
+    return query select null::public.dealerships, 'Not authenticated'::text;
+    return;
   end if;
-  if p_token is null or length(btrim(p_token)) < 20 then
-    raise exception 'invite not found';
+
+  select count(*)
+    into v_recent
+  from private.dealership_invite_attempts a
+  where a.user_id = uid
+    and a.attempted_at > timezone('utc'::text, now()) - interval '15 minutes';
+
+  if v_recent >= 8 then
+    insert into private.dealership_invite_attempts (user_id, outcome)
+    values (uid, 'rate_limited');
+    return query select null::public.dealerships, 'too many invite attempts'::text;
+    return;
   end if;
+
+  v_token := nullif(btrim(coalesce(p_token, '')), '');
+  if v_token is null or v_token !~ '^[0-9a-f]{64}$' then
+    insert into private.dealership_invite_attempts (user_id, outcome)
+    values (uid, 'not_found');
+    return query select null::public.dealerships, 'invite not found'::text;
+    return;
+  end if;
+
+  v_hash := private.invite_token_hash(v_token);
 
   select *
     into invite
   from public.dealership_invites
-  where token = btrim(p_token)
+  where token_hash = v_hash
   for update;
 
   if not found then
-    raise exception 'invite not found';
+    insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+    values (uid, v_hash, 'not_found');
+    return query select null::public.dealerships, 'invite not found'::text;
+    return;
+  end if;
+
+  if invite.accepted_at is not null
+     and invite.accepted_by = uid
+     and invite.dealership_id is not null then
+    select * into created
+    from public.dealerships
+    where id = invite.dealership_id;
+    if not found then
+      insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+      values (uid, v_hash, 'not_found');
+      return query select null::public.dealerships, 'invite not found'::text;
+      return;
+    end if;
+    return query select created, null::text;
+    return;
+  end if;
+
+  if invite.failed_attempts >= 5 then
+    insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+    values (uid, v_hash, 'locked');
+    return query select null::public.dealerships, 'too many invite attempts'::text;
+    return;
   end if;
 
   if invite.accepted_at is not null then
-    if invite.accepted_by = uid and invite.dealership_id is not null then
-      select * into created
-      from public.dealerships
-      where id = invite.dealership_id;
-      if not found then
-        raise exception 'invite not found';
-      end if;
-      return created;
-    end if;
-    raise exception 'invite already used';
+    update public.dealership_invites
+    set failed_attempts = failed_attempts + 1
+    where id = invite.id;
+    insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+    values (uid, v_hash, 'already_used');
+    return query select null::public.dealerships, 'invite already used'::text;
+    return;
   end if;
 
   if invite.expires_at <= timezone('utc'::text, now()) then
-    raise exception 'invite expired';
+    update public.dealership_invites
+    set failed_attempts = failed_attempts + 1
+    where id = invite.id;
+    insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+    values (uid, v_hash, 'expired');
+    return query select null::public.dealerships, 'invite expired'::text;
+    return;
   end if;
 
   if invite.dealership_id is null then
@@ -665,7 +968,10 @@ begin
     from public.dealerships
     where id = invite.dealership_id;
     if not found then
-      raise exception 'invite not found';
+      insert into private.dealership_invite_attempts (user_id, token_hash, outcome)
+      values (uid, v_hash, 'not_found');
+      return query select null::public.dealerships, 'invite not found'::text;
+      return;
     end if;
 
     insert into public.user_dealerships (user_id, dealership_id, role)
@@ -685,12 +991,12 @@ begin
       dealership_id = created.id
   where id = invite.id;
 
-  return created;
+  return query select created, null::text;
 end;
 $$;
 
 comment on function public.accept_dealership_invite(text) is
-  'Authenticated dealers redeem an operator invite. The function ignores any caller-supplied MarketCheck id or website.';
+  'Authenticated dealers redeem an operator invite. Failures return invite_error and commit the attempt so the per-user limit holds. The caller cannot supply a MarketCheck id or website. Eight failures in fifteen minutes, or five failures of the same invite, stop further attempts.';
 
 revoke all on function public.accept_dealership_invite(text) from public, anon;
 grant execute on function public.accept_dealership_invite(text) to authenticated, service_role;

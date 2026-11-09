@@ -96,6 +96,35 @@ function parseBearerToken(authorization: string | null): string | null {
   return match?.[1] ?? null;
 }
 
+function hasOnboardedStamp(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
+export function dealerRooftopsFromRows(
+  memberships: readonly { dealership_id: string; role: string | null }[],
+  dealerships: readonly { id: string; name?: string | null; onboarded_at?: unknown }[],
+): DealerRooftop[] {
+  const names = new Map(
+    dealerships
+      .filter((row) => typeof row.id === 'string' && hasOnboardedStamp(row.onboarded_at))
+      .map((row) => [
+        row.id,
+        typeof row.name === 'string' && row.name.trim() ? row.name.trim() : 'Rooftop',
+      ]),
+  );
+
+  return memberships.flatMap((row) => {
+    const name = names.get(row.dealership_id);
+    if (!name) return [];
+    return [{
+      id: row.dealership_id,
+      name,
+      role: mapDealerRole(row.role),
+    }];
+  });
+}
+
 export async function loadDealerMemberships(
   userId: string,
 ): Promise<DealerRooftop[]> {
@@ -120,8 +149,9 @@ export async function loadDealerMemberships(
   const ids = [...new Set(rows.map((row) => row.dealership_id))];
   const dealerships = await admin
     .from('dealerships')
-    .select('id, name')
-    .in('id', ids);
+    .select('id, name, onboarded_at')
+    .in('id', ids)
+    .not('onboarded_at', 'is', null);
   if (dealerships.error) {
     console.error(JSON.stringify({
       event: 'dealer_rooftops_failed',
@@ -130,21 +160,7 @@ export async function loadDealerMemberships(
     throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
   }
 
-  const names = new Map(
-    (dealerships.data ?? [])
-      .filter((row): row is { id: string; name: string } => typeof row.id === 'string')
-      .map((row) => [row.id, typeof row.name === 'string' && row.name.trim() ? row.name.trim() : 'Rooftop']),
-  );
-
-  return rows.flatMap((row) => {
-    const name = names.get(row.dealership_id);
-    if (!name) return [];
-    return [{
-      id: row.dealership_id,
-      name,
-      role: mapDealerRole(row.role),
-    }];
-  });
+  return dealerRooftopsFromRows(rows, dealerships.data ?? []);
 }
 
 export function sessionFromUser(

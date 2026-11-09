@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -22,7 +23,6 @@ const ADMIN = '33333333-3333-4333-8333-333333333333';
 const SALES = '44444444-4444-4444-8444-444444444444';
 const CONTACT = 'CONTACT-BLOB-9f3a';
 const ADF = '<adf><email>shopper-secret@example.com</email></adf>';
-const INVITE = 'invite-token-lakeside-0001';
 
 async function boot(): Promise<PGlite> {
   const db = new PGlite();
@@ -142,6 +142,13 @@ async function boot(): Promise<PGlite> {
     grant select, insert, update, delete on public.user_dealerships to anon, authenticated;
     grant select, insert, update, delete on public.leads to anon, authenticated;
     grant select, insert, update, delete on public.lead_delivery_logs to anon, authenticated;
+
+    create policy "System can insert leads"
+      on public.leads for insert to authenticated
+      with check (true);
+    create policy "Members can insert dealership delivery logs"
+      on public.lead_delivery_logs for insert to authenticated
+      with check (true);
   `);
   await db.exec(ROOFTOP_SQL);
   await db.exec(LEAD_SQL);
@@ -230,6 +237,9 @@ async function actAs(
   role: 'authenticated' | 'anon' | 'service_role',
 ): Promise<void> {
   await db.exec('reset role');
+  await db.query(`select set_config('request.jwt.claims', $1, false)`, [
+    JSON.stringify({ sub: userId ?? '', role }),
+  ]);
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [userId ?? '']);
   await db.query(`select set_config('request.jwt.claim.role', $1, false)`, [role]);
   await db.exec(`set role ${role}`);
@@ -237,6 +247,7 @@ async function actAs(
 
 async function actAsOwner(db: PGlite): Promise<void> {
   await db.exec('reset role');
+  await db.query(`select set_config('request.jwt.claims', '', false)`);
   await db.query(`select set_config('request.jwt.claim.sub', '', false)`);
   await db.query(`select set_config('request.jwt.claim.role', '', false)`);
 }
@@ -272,6 +283,14 @@ async function count(db: PGlite, sql: string, params: unknown[] = []): Promise<n
 test('a shopper JWT cannot create or claim a rooftop, and operator or invite paths still can', async () => {
   const db = await boot();
   try {
+    for (const sample of ['', 'abc', 'ab'.repeat(40)]) {
+      const hashed = await db.query<{ hash: string }>(
+        `select private.invite_token_hash($1) as hash`,
+        [sample],
+      );
+      assert.equal(hashed.rows[0]?.hash, createHash('sha256').update(sample).digest('hex'));
+    }
+
     const hondaKey = await db.query<{ key: string }>(
       `select public.rooftop_website_key($1) as key`,
       ['https://www.HondaCars.example/'],
@@ -302,8 +321,29 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
     ), true);
     assert.equal(await flag(
       db,
-      `select has_function_privilege('authenticated', 'public.issue_dealership_invite(text,text,text,text,text,text,uuid,timestamptz,text)', 'execute') as ok`,
+      `select has_function_privilege('authenticated', 'public.issue_dealership_invite(text,text,text,text,text,text,uuid,timestamptz)', 'execute') as ok`,
     ), false);
+    assert.match(ROOFTOP_SQL, /dw_rooftop_ids uuid\[\] := array\[\]::uuid\[\]/);
+    assert.ok(
+      ROOFTOP_SQL.indexOf('Consumer memberships on unverified rooftops')
+        < ROOFTOP_SQL.indexOf('create unique index if not exists dealerships_marketcheck_dealer_id_key'),
+    );
+    await actAsOwner(db);
+    assert.equal(await flag(db, `select private.caller_can_provision_rooftop() as ok`), false);
+    await db.query(`select set_config('request.jwt.claims', '{"role":"service_role"}', false)`);
+    await db.query(`select set_config('request.jwt.claim.role', '', false)`);
+    assert.equal(await flag(db, `select private.caller_can_provision_rooftop() as ok`), true);
+    await db.query(
+      `select set_config('request.jwt.claims', $1, false)`,
+      [JSON.stringify({ role: 'authenticated', sub: SHOPPER })],
+    );
+    await db.query(`select set_config('request.jwt.claim.role', 'service_role', false)`);
+    await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [SHOPPER]);
+    assert.equal(await flag(db, `select private.caller_can_provision_rooftop() as ok`), false);
+    await db.query(`select set_config('request.jwt.claims', 'not-json', false)`);
+    await db.query(`select set_config('request.jwt.claim.role', 'service_role', false)`);
+    assert.equal(await flag(db, `select private.caller_can_provision_rooftop() as ok`), true);
+    await actAsOwner(db);
     assert.equal(await flag(
       db,
       `select has_function_privilege('authenticated', 'public.accept_dealership_invite(text)', 'execute') as ok`,
@@ -350,14 +390,20 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
 
     const invited = await db.query<{ token: string }>(
       `select token
-       from public.issue_dealership_invite($1, $2, null, $3, null, 'owner', null, null, $4)`,
-      ['Lakeside', '555', 'https://www.lakeside.example/sales', INVITE],
+       from public.issue_dealership_invite($1, $2, null, $3, null, 'owner', null, null)`,
+      ['Lakeside', '555', 'https://www.lakeside.example/sales'],
     );
-    assert.equal(invited.rows[0]?.token, INVITE);
+    const inviteToken = invited.rows[0]?.token ?? '';
+    assert.match(inviteToken, /^[0-9a-f]{64}$/);
+    const storedInvite = await db.query<{ token_hash: string }>(
+      `select token_hash from public.dealership_invites where btrim(marketcheck_dealer_id) = '555'`,
+    );
+    assert.equal(storedInvite.rows[0]?.token_hash === inviteToken, false);
+    assert.equal((storedInvite.rows[0]?.token_hash ?? '').length, 64);
     await expectReject(
       db,
       () => db.query(
-        `select token from public.issue_dealership_invite($1, $2, null, $3, null, 'owner', null, null, null)`,
+        `select token from public.issue_dealership_invite($1, $2, null, $3, null, 'owner', null, null)`,
         ['Lakeside copy', '555', 'https://unused.example'],
       ),
       /marketcheck dealer id is already claimed/,
@@ -382,17 +428,17 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
     );
     await expectReject(
       db,
-      () => db.query(`select token from public.issue_dealership_invite('Nope', '1', null, null, null, 'owner', null, null, null)`),
+      () => db.query(`select token from public.issue_dealership_invite('Nope', '1', null, null, null, 'owner', null, null)`),
       /permission denied for function issue_dealership_invite/i,
     );
-    await expectReject(
-      db,
-      () => db.query(`select id from public.accept_dealership_invite($1)`, ['not-a-real-invite-token']),
-      /invite not found/,
+    const missingInvite = await db.query<{ invite_error: string }>(
+      `select invite_error from public.accept_dealership_invite($1)`,
+      ['not-a-real-invite-token'],
     );
+    assert.equal(missingInvite.rows[0]?.invite_error, 'invite not found');
     await expectReject(
       db,
-      () => db.query(`select token from public.dealership_invites`),
+      () => db.query(`select token_hash from public.dealership_invites`),
       /permission denied/i,
     );
     await actAsOwner(db);
@@ -416,38 +462,50 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
     await db.exec(`revoke execute on function public.create_own_dealership(text, text, text, text, text) from authenticated`);
 
     await actAs(db, DEALER, 'authenticated');
-    const lakeside = await db.query<{ id: string; marketcheck_dealer_id: string; onboarded_at: string }>(
-      `select id, marketcheck_dealer_id, onboarded_at from public.accept_dealership_invite($1)`,
-      [INVITE],
+    const lakeside = await db.query<{
+      id: string;
+      marketcheck_dealer_id: string;
+      onboarded_at: string;
+      invite_error: string | null;
+    }>(
+      `select (dealership).id as id,
+              (dealership).marketcheck_dealer_id as marketcheck_dealer_id,
+              (dealership).onboarded_at as onboarded_at,
+              invite_error
+       from public.accept_dealership_invite($1)`,
+      [inviteToken],
     );
+    assert.equal(lakeside.rows[0]?.invite_error ?? null, null);
     assert.equal(lakeside.rows[0]?.marketcheck_dealer_id, '555');
     assert.equal(lakeside.rows[0]?.onboarded_at != null, true);
     const lakesideId = lakeside.rows[0]?.id ?? '';
-    const retry = await db.query<{ id: string }>(
-      `select id from public.accept_dealership_invite($1)`,
-      [INVITE],
+    const retry = await db.query<{ id: string; invite_error: string | null }>(
+      `select (dealership).id as id, invite_error from public.accept_dealership_invite($1)`,
+      [inviteToken],
     );
+    assert.equal(retry.rows[0]?.invite_error ?? null, null);
     assert.equal(retry.rows[0]?.id, lakesideId);
 
     await actAs(db, SALES, 'authenticated');
-    await expectReject(
-      db,
-      () => db.query(`select id from public.accept_dealership_invite($1)`, [INVITE]),
-      /invite already used/,
+    const reused = await db.query<{ invite_error: string }>(
+      `select invite_error from public.accept_dealership_invite($1)`,
+      [inviteToken],
     );
+    assert.equal(reused.rows[0]?.invite_error, 'invite already used');
 
-    await actAsOwner(db);
+    await actAs(db, null, 'service_role');
     const join = await db.query<{ token: string }>(
-      `select token from public.issue_dealership_invite(null, null, null, null, null, 'salesperson', $1, null, null)`,
+      `select token from public.issue_dealership_invite(null, null, null, null, null, 'salesperson', $1, null)`,
       [hondaId],
     );
     const joinToken = join.rows[0]?.token ?? '';
-    assert.equal(joinToken.length >= 20, true);
+    assert.match(joinToken, /^[0-9a-f]{64}$/);
     await actAs(db, SALES, 'authenticated');
-    const joined = await db.query<{ id: string }>(
-      `select id from public.accept_dealership_invite($1)`,
+    const joined = await db.query<{ id: string; invite_error: string | null }>(
+      `select (dealership).id as id, invite_error from public.accept_dealership_invite($1)`,
       [joinToken],
     );
+    assert.equal(joined.rows[0]?.invite_error ?? null, null);
     assert.equal(joined.rows[0]?.id, hondaId);
     await actAsOwner(db);
     assert.equal(await count(
@@ -562,6 +620,43 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
       db,
       `select has_function_privilege('authenticated', 'public.create_own_dealership(text,text,text,text,text)', 'execute') as ok`,
     ), false);
+
+    await actAs(db, null, 'service_role');
+    const lockedInvite = await db.query<{ token: string }>(
+      `select token from public.issue_dealership_invite($1, '5656', null, null, null, 'owner', null, null)`,
+      ['Locked lot'],
+    );
+    const lockedToken = lockedInvite.rows[0]?.token ?? '';
+    await actAsOwner(db);
+    await db.query(
+      `update public.dealership_invites
+       set failed_attempts = 5
+       where token_hash = private.invite_token_hash($1)`,
+      [lockedToken],
+    );
+    await actAs(db, DEALER, 'authenticated');
+    const locked = await db.query<{ invite_error: string }>(
+      `select invite_error from public.accept_dealership_invite($1)`,
+      [lockedToken],
+    );
+    assert.equal(locked.rows[0]?.invite_error, 'too many invite attempts');
+
+    await actAsOwner(db);
+    await db.query(`delete from private.dealership_invite_attempts where user_id = $1`, [SHOPPER]);
+    await actAs(db, SHOPPER, 'authenticated');
+    const wrongToken = 'ab'.repeat(32);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const miss = await db.query<{ invite_error: string }>(
+        `select invite_error from public.accept_dealership_invite($1)`,
+        [wrongToken],
+      );
+      assert.equal(miss.rows[0]?.invite_error, 'invite not found');
+    }
+    const limited = await db.query<{ invite_error: string }>(
+      `select invite_error from public.accept_dealership_invite($1)`,
+      [inviteToken],
+    );
+    assert.equal(limited.rows[0]?.invite_error, 'too many invite attempts');
   } finally {
     await db.exec('reset role').catch(() => undefined);
     await db.close();
@@ -615,6 +710,26 @@ test('a shopper or dealer JWT cannot read or update lead contact payloads', asyn
       db,
       `select has_table_privilege('authenticated', 'public.lead_delivery_logs', 'INSERT') as ok`,
     ), false);
+    assert.equal(await flag(
+      db,
+      `select has_table_privilege('anon', 'public.leads', 'INSERT') as ok`,
+    ), false);
+    assert.equal(await flag(
+      db,
+      `select has_table_privilege('authenticated', 'public.leads', 'INSERT') as ok`,
+    ), false);
+    assert.equal(await flag(
+      db,
+      `select has_table_privilege('anon', 'public.lead_delivery_logs', 'INSERT') as ok`,
+    ), false);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n
+       from pg_policies
+       where schemaname = 'public'
+         and tablename in ('leads', 'lead_delivery_logs')
+         and cmd = 'INSERT'`,
+    ), 0);
     assert.equal(await flag(
       db,
       `select has_function_privilege('authenticated', 'public.update_dealer_lead_status(text,text)', 'execute') as ok`,
@@ -732,6 +847,24 @@ test('a shopper or dealer JWT cannot read or update lead contact payloads', asyn
     );
     assert.equal(updated.rows[0]?.status, 'contacted');
     assert.equal(JSON.stringify(updated.rows).includes(CONTACT), false);
+    await expectReject(
+      db,
+      () => db.query(`select status from public.update_dealer_lead_status('lead-1', 'pwned')`),
+      /status is not allowed/,
+    );
+    await expectReject(
+      db,
+      () => db.query(`update public.leads set status = 'pwned' where id = 'lead-1'`),
+      /leads_status_client_allowed|check constraint/i,
+    );
+    await expectReject(
+      db,
+      () => db.query(
+        `insert into public.leads (id, vehicle_id, vin, enc_payload, status)
+         values ('lead-2', 'veh-2', '1HGCM82633A004352', 'blob', 'new')`,
+      ),
+      /permission denied/i,
+    );
 
     await actAs(db, SHOPPER, 'authenticated');
     const hidden = await db.query(`select id from public.dealer_leads`);
@@ -768,6 +901,124 @@ test('a shopper or dealer JWT cannot read or update lead contact payloads', asyn
     assert.equal(stored.rows[0]?.vin, '1HGCM82633A004352');
   } finally {
     await db.exec('reset role').catch(() => undefined);
+    await db.close();
+  }
+});
+
+test('only the Honda allowlist is stamped, and consumer memberships leave unverified rooftops', async () => {
+  const db = new PGlite();
+  const squat = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+  const adminRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
+  const mixed = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
+  const honda = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4';
+  const appleRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5';
+  const appleUser = '55555555-5555-4555-8555-555555555555';
+  try {
+    await db.exec(`
+      create role anon nologin;
+      create role authenticated nologin;
+      create role service_role nologin;
+      create schema if not exists auth;
+      create table auth.users (
+        id uuid primary key,
+        raw_app_meta_data jsonb
+      );
+      insert into auth.users (id, raw_app_meta_data) values
+        ('${SHOPPER}', '{"provider":"email"}'::jsonb),
+        ('${DEALER}', '{"provider":"email"}'::jsonb),
+        ('${ADMIN}', '{"provider":"email"}'::jsonb),
+        ('${appleUser}', '{"provider":"apple"}'::jsonb);
+
+      create table public.profiles (
+        id uuid primary key,
+        platform_role text not null default 'dealer_user'
+      );
+      insert into public.profiles (id, platform_role) values
+        ('${SHOPPER}', 'dealer_user'),
+        ('${DEALER}', 'dealer_user'),
+        ('${ADMIN}', 'platform_admin');
+
+      create table public.consumer_profiles (
+        user_id uuid primary key references auth.users(id)
+      );
+      insert into public.consumer_profiles (user_id) values ('${SHOPPER}');
+
+      create table public.dealerships (
+        id uuid primary key,
+        name text not null,
+        marketcheck_dealer_id text,
+        marketcheck_zip text,
+        marketcheck_website_url text,
+        logo_url text,
+        created_by uuid references auth.users(id),
+        created_at timestamptz not null default timezone('utc'::text, now()),
+        updated_at timestamptz not null default timezone('utc'::text, now())
+      );
+      create table public.user_dealerships (
+        user_id uuid not null references auth.users(id),
+        dealership_id uuid not null references public.dealerships(id),
+        role text default 'owner',
+        created_at timestamptz not null default timezone('utc'::text, now()),
+        primary key (user_id, dealership_id)
+      );
+
+      insert into public.dealerships (id, name, marketcheck_dealer_id, created_by) values
+        ('${squat}', 'Squatted', '4242', '${SHOPPER}'),
+        ('${adminRoof}', 'Admin lot', '1001', '${ADMIN}'),
+        ('${mixed}', 'Mixed lot', '1002', '${ADMIN}'),
+        ('${honda}', 'Honda Cars Of Rock Hill', '1038994', '${DEALER}'),
+        ('${appleRoof}', 'Apple lot', '4243', '${appleUser}');
+      insert into public.user_dealerships (user_id, dealership_id, role) values
+        ('${SHOPPER}', '${squat}', 'owner'),
+        ('${SHOPPER}', '${honda}', 'salesperson'),
+        ('${ADMIN}', '${adminRoof}', 'owner'),
+        ('${ADMIN}', '${mixed}', 'owner'),
+        ('${DEALER}', '${mixed}', 'salesperson'),
+        ('${DEALER}', '${honda}', 'owner'),
+        ('${appleUser}', '${appleRoof}', 'owner');
+    `);
+    await db.exec(ROOFTOP_SQL);
+
+    const rows = await db.query<{ id: string; onboarded_at: string | null }>(
+      `select id, onboarded_at from public.dealerships`,
+    );
+    const byId = new Map(rows.rows.map((row) => [row.id, row.onboarded_at]));
+    assert.equal(byId.get(honda) != null, true);
+    assert.equal(byId.get(squat) ?? null, null);
+    assert.equal(byId.get(adminRoof) ?? null, null);
+    assert.equal(byId.get(mixed) ?? null, null);
+    assert.equal(byId.get(appleRoof) ?? null, null);
+
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
+      [squat],
+    ), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
+      [appleRoof],
+    ), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where dealership_id = $1 and user_id = $2`,
+      [honda, SHOPPER],
+    ), 1);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
+      [mixed],
+    ), 2);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.dealerships where id = $1`,
+      [squat],
+    ), 1);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.dealerships where btrim(marketcheck_dealer_id) = '4242'`,
+    ), 1);
+  } finally {
     await db.close();
   }
 });

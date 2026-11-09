@@ -12,6 +12,11 @@
 --
 -- service_role keeps full table access for the server that stores the blob.
 -- VIN stays readable and is not client-updatable.
+-- anon and authenticated have no INSERT. The member insert policy on
+-- lead_delivery_logs from 20260910155723 is dropped here.
+-- update_dealer_lead_status allows only new, contacted, qualified, closed,
+-- and test_drive_booked. A check constraint blocks other status writes
+-- through the column grant.
 --
 -- Rollback is a forward migration, not an edit of this file. See the PR.
 
@@ -54,6 +59,27 @@ begin
 
   grant update (status) on table public.leads to authenticated;
   grant select, insert, update, delete on table public.leads to service_role;
+end $$;
+
+drop policy if exists "System can insert leads" on public.leads;
+revoke insert on table public.leads from public, anon, authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'leads_status_client_allowed'
+      and conrelid = 'public.leads'::regclass
+  ) then
+    alter table public.leads
+      add constraint leads_status_client_allowed
+      check (
+        status is null
+        or status in ('new', 'contacted', 'qualified', 'closed', 'test_drive_booked')
+      )
+      not valid;
+  end if;
 end $$;
 
 comment on view public.dealer_leads is
@@ -102,6 +128,10 @@ begin
   grant select, insert, update, delete on table public.lead_delivery_logs to service_role;
 end $$;
 
+drop policy if exists "Users can insert own delivery logs" on public.lead_delivery_logs;
+drop policy if exists "Members can insert dealership delivery logs" on public.lead_delivery_logs;
+revoke insert on table public.lead_delivery_logs from public, anon, authenticated;
+
 comment on view public.dealer_lead_delivery_logs is
   'Contact-free delivery log. adf_payload and response_body are not in this view. security_invoker keeps lead_delivery_logs RLS.';
 
@@ -126,8 +156,11 @@ begin
   end if;
 
   v_status := nullif(btrim(coalesce(p_status, '')), '');
-  if v_status is null or length(v_status) > 40 then
+  if v_status is null then
     raise exception 'status is required';
+  end if;
+  if v_status not in ('new', 'contacted', 'qualified', 'closed', 'test_drive_booked') then
+    raise exception 'status is not allowed';
   end if;
 
   update public.leads
@@ -147,7 +180,7 @@ end;
 $$;
 
 comment on function public.update_dealer_lead_status(text, text) is
-  'Member status update. Writes status only and returns dealer_leads, which has no contact payload.';
+  'Member status update. Writes one of new, contacted, qualified, closed, test_drive_booked. Returns dealer_leads, which has no contact payload.';
 
 revoke all on function public.update_dealer_lead_status(text, text) from public, anon;
 grant execute on function public.update_dealer_lead_status(text, text) to authenticated, service_role;

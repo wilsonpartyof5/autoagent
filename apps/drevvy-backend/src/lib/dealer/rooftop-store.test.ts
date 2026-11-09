@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -81,6 +82,12 @@ test('onboardedColumnMissing only matches a missing onboarded_at column', () => 
   assert.equal(onboardedColumnMissing({
     message: 'column dealerships.name does not exist',
   }), false);
+});
+
+test('the membership-only fallback is marked for removal after the migration', () => {
+  const source = readFileSync(new URL('./rooftop-store.ts', import.meta.url), 'utf8');
+  assert.match(source, /TODO: remove this membership-only fallback/);
+  assert.match(source, /20261109170000_lock_rooftop_self_claim\.sql/);
 });
 
 test('loadOnboardedRooftops drops memberships whose rooftop is not onboarded', async () => {
