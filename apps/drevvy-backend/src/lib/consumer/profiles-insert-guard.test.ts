@@ -9,6 +9,8 @@ import { PGlite } from '@electric-sql/pglite';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = join(HERE, '../../../../../supabase/migrations');
 const SQL = readFileSync(join(MIGRATIONS, '20261109172331_lock_profiles_client_insert.sql'), 'utf8');
+const PLATFORM_ROLE_GUARD = readFileSync(join(MIGRATIONS, '20260910144654_lock_platform_role.sql'), 'utf8');
+const HARDENING = readFileSync(join(MIGRATIONS, '20261109173937_profiles_update_guard_current_user.sql'), 'utf8');
 const UPDATE_GUARD = readFileSync(join(MIGRATIONS, '20260911150328_lock_private_rooms.sql'), 'utf8');
 const SIGNUP = readFileSync(join(MIGRATIONS, '20261001172059_consumer_profiles.sql'), 'utf8');
 const GOOGLE_SIGNUP = readFileSync(join(MIGRATIONS, '20261017123700_google_shoppers.sql'), 'utf8');
@@ -59,7 +61,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function boot(): Promise<PGlite> {
+async function boot(applyHardening = true): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(`
     create schema if not exists auth;
@@ -124,6 +126,8 @@ async function boot(): Promise<PGlite> {
       with check (auth.uid() = id);
   `);
   await db.exec(SQL);
+  await db.exec(PLATFORM_ROLE_GUARD);
+  if (applyHardening) await db.exec(HARDENING);
   return db;
 }
 
@@ -170,7 +174,18 @@ test('the migration revokes client insert and keeps the update column list', () 
   assert.match(SQL, /revoke insert on table public\.profiles from public, anon, authenticated;/);
   assert.match(SQL, /drop policy if exists "Users can insert own profile" on public\.profiles;/);
   assert.match(SQL, /security invoker/);
-  assert.equal(SQL.includes('security definer\nset search_path = \'\'\nas $$\ndeclare\n  actor text'), false);
+  assert.match(SQL, /security definer/);
+  assert.match(SQL, /request\.jwt\.claim\.role/);
+  assert.equal(SQL.includes('prevent_platform_role_client_change'), false);
+  assert.equal((HARDENING.match(/security invoker/g) ?? []).length, 2);
+  const hardeningBodies = [...HARDENING.matchAll(/as \$\$([\s\S]*?)\$\$;/g)].map((match) => match[1]);
+  assert.equal(hardeningBodies.length, 2);
+  for (const body of hardeningBodies) {
+    assert.equal(body.includes('request.jwt'), false);
+    assert.equal(body.includes('current_setting'), false);
+    assert.match(body, /current_user::text/);
+    assert.match(body, /actor in \('postgres', 'supabase_admin', 'service_role'\)/);
+  }
   assert.match(SQL, /before insert on public\.profiles/);
   assert.match(SQL, /new\.platform_role := 'dealer_user'/);
   for (const column of [
@@ -494,11 +509,14 @@ test('the update guard still rejects every privileged column from authenticated'
     assert.deepEqual(attempts.map(([column]) => column), [...PRIVILEGED_COLUMNS]);
 
     for (const [column, value] of attempts) {
+      const expected = column === 'platform_role'
+        ? /platform_role cannot be changed from the client/i
+        : /privileged profile fields cannot be changed from the client/i;
       await assert.rejects(
         () => withRole(db, 'authenticated', SHOPPER, async (tx) => {
           await tx.query(`update public.profiles set ${column} = ${value} where id = $1`, [SHOPPER]);
         }),
-        (error: unknown) => /privileged profile fields cannot be changed from the client/i.test(messageOf(error)),
+        (error: unknown) => expected.test(messageOf(error)),
         column,
       );
     }
@@ -523,6 +541,176 @@ test('the update guard still rejects every privileged column from authenticated'
     assert.equal(promoted?.platform_role, 'platform_admin');
     assert.equal(promoted?.marketcheck_dealer_id, '1038994');
     assert.equal(promoted?.lead_delivery_email, 'leads@dealer.example');
+  } finally {
+    await db.close();
+  }
+});
+
+async function guardDefinerFlags(db: PGlite): Promise<Record<string, boolean>> {
+  const result = await db.query<{ proname: string; prosecdef: boolean }>(`
+    select p.proname, p.prosecdef
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in (
+        'prevent_platform_role_client_change',
+        'prevent_privileged_profile_client_change'
+      )
+  `);
+  return Object.fromEntries(result.rows.map((row) => [row.proname, row.prosecdef]));
+}
+
+test('a direct SQL set_config bypass of the UPDATE guards is closed; it is not a REST call', async () => {
+  // PGlite runs the SQL in-process. Nothing here sends HTTP, uses the anon
+  // key, or calls an RPC. The bypass is a local session setting a GUC.
+  const db = await boot(false);
+  try {
+    assert.deepEqual(await guardDefinerFlags(db), {
+      prevent_platform_role_client_change: true,
+      prevent_privileged_profile_client_change: true,
+    });
+
+    await addUser(db, SHOPPER, 'shopper@example.com', 'email');
+    await db.query(
+      `insert into public.profiles (id, email) values ($1, 'shopper@example.com')`,
+      [SHOPPER],
+    );
+
+    await db.query('begin');
+    await db.query('set local role authenticated');
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [SHOPPER]);
+    await db.query(`select set_config('request.jwt.claim.role', 'service_role', true)`);
+    await db.query(
+      `update public.profiles
+          set platform_role = 'platform_admin',
+              marketcheck_dealer_id = '1038994'
+        where id = $1`,
+      [SHOPPER],
+    );
+    await db.query('commit');
+
+    const bypassed = await profile(db, SHOPPER);
+    assert.equal(bypassed?.platform_role, 'platform_admin');
+    assert.equal(bypassed?.marketcheck_dealer_id, '1038994');
+
+    // The DEFINER guard trusts current_setting('role'), which stays 'none'
+    // for a normal postgres session. SET ROLE postgres is what that guard allows.
+    await db.query('begin');
+    await db.query('set local role postgres');
+    await db.query(
+      `update public.profiles
+          set platform_role = 'dealer_user',
+              marketcheck_dealer_id = null
+        where id = $1`,
+      [SHOPPER],
+    );
+    await db.query('commit');
+    await db.exec(HARDENING);
+    assert.deepEqual(await guardDefinerFlags(db), {
+      prevent_platform_role_client_change: false,
+      prevent_privileged_profile_client_change: false,
+    });
+
+    await assert.rejects(
+      () => withRole(db, 'authenticated', SHOPPER, async (tx) => {
+        await tx.query(`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`);
+        await tx.query(
+          `update public.profiles set platform_role = 'platform_admin' where id = $1`,
+          [SHOPPER],
+        );
+      }, 'service_role'),
+      (error: unknown) => /platform_role cannot be changed from the client/i.test(messageOf(error)),
+    );
+    await assert.rejects(
+      () => withRole(db, 'authenticated', SHOPPER, async (tx) => {
+        await tx.query(
+          `update public.profiles set lead_delivery_email = 'leads@evil.test' where id = $1`,
+          [SHOPPER],
+        );
+      }, 'service_role'),
+      (error: unknown) => /privileged profile fields cannot be changed from the client/i.test(messageOf(error)),
+    );
+    const blocked = await profile(db, SHOPPER);
+    assert.equal(blocked?.platform_role, 'dealer_user');
+    assert.equal(blocked?.marketcheck_dealer_id, null);
+    assert.equal(blocked?.lead_delivery_email, null);
+
+    await withRole(db, 'authenticated', SHOPPER, async (tx) => {
+      await tx.query(`update public.profiles set email = 'still-editable@example.com' where id = $1`, [SHOPPER]);
+    }, 'service_role');
+    assert.equal((await profile(db, SHOPPER))?.email, 'still-editable@example.com');
+
+    await withRole(db, 'service_role', null, async (tx) => {
+      await tx.query(
+        `update public.profiles
+            set platform_role = 'platform_admin',
+                lead_delivery_email = 'leads@dealer.example'
+          where id = $1`,
+        [SHOPPER],
+      );
+    }, 'authenticated');
+    assert.equal((await profile(db, SHOPPER))?.platform_role, 'platform_admin');
+    assert.equal((await profile(db, SHOPPER))?.lead_delivery_email, 'leads@dealer.example');
+
+    await db.query(
+      `update public.profiles
+          set platform_role = 'dealer_user',
+              lead_delivery_email = null,
+              dms_provider = null
+        where id = $1`,
+      [SHOPPER],
+    );
+    await withRole(db, 'supabase_admin', null, async (tx) => {
+      await tx.query(
+        `update public.profiles set inventory_connected = true where id = $1`,
+        [SHOPPER],
+      );
+    }, 'authenticated');
+    assert.equal((await profile(db, SHOPPER))?.inventory_connected, true);
+
+    await db.exec(`
+      create or replace function public.promote_profile_as_definer(p_id uuid)
+      returns void
+      language plpgsql
+      security definer
+      set search_path = public
+      as $$
+      begin
+        update public.profiles
+           set platform_role = 'platform_admin',
+               dms_provider = 'cdk'
+         where id = p_id;
+      end;
+      $$;
+    `);
+    await withRole(db, 'authenticated', SHOPPER, async (tx) => {
+      await tx.query(`select public.promote_profile_as_definer($1)`, [SHOPPER]);
+    }, 'authenticated');
+    const trusted = await profile(db, SHOPPER);
+    assert.equal(trusted?.platform_role, 'platform_admin');
+    assert.equal(trusted?.dms_provider, 'cdk');
+
+    await db.query('begin');
+    try {
+      await db.query('set session authorization authenticated');
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [SHOPPER]);
+      let roleGucError: string | null = null;
+      try {
+        await db.query(`select set_config('role', 'service_role', true)`);
+      } catch (error) {
+        roleGucError = messageOf(error);
+      }
+      if (roleGucError) {
+        assert.match(roleGucError, /permission denied/i);
+      } else {
+        await assert.rejects(
+          () => db.query(`update public.profiles set billing_active = true where id = $1`, [SHOPPER]),
+          (error: unknown) => /cannot be changed from the client/i.test(messageOf(error)),
+        );
+      }
+    } finally {
+      await db.query('rollback');
+    }
   } finally {
     await db.close();
   }
