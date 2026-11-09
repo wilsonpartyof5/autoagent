@@ -273,7 +273,7 @@ When `MARKETCHECK_ENRICH_LISTINGS=1`, additional fields are fetched from `/v2/de
 
 **Fix Applied**:
 - Added `MARKETCHECK_API_KEY` to `apps/dealer-dashboard/.env.local`
-- Key value: `MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX`
+- Key value: `<MARKETCHECK_API_KEY>`
 - Server restarted to load new environment variable
 - See [Environment Setup Documentation](./env-setup.md) for details
 

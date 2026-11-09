@@ -30,7 +30,7 @@
 **Script Behavior**: 
 - Initially script only loaded from `.env` and `apps/dealer-dashboard/.env.local`
 - Updated to also load from `apps/mcp-server/.env`
-- API key successfully loaded: `MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX`
+- API key successfully loaded: `<MARKETCHECK_API_KEY>`
 
 ## Script Execution Output
 
@@ -55,7 +55,7 @@ https://api.marketcheck.com/v2/dealer/search?api_key=undefined&name=Rock%20Hill%
 [dotenv@17.2.3] injecting env (10) from apps/mcp-server/.env
 🔍 Searching for dealer in MarketCheck...
 Searching for vehicles in Rock Hill, SC
-Search URL: https://api.marketcheck.com/v2/search/car/active?api_key=MLyMpVhvNRm1y4jGKXuzBvHaBjhKrgsX&location=Rock%20Hill%2C%20SC&radius=10&pageSize=100
+Search URL: https://api.marketcheck.com/v2/search/car/active?api_key=<MARKETCHECK_API_KEY>&location=Rock%20Hill%2C%20SC&radius=10&pageSize=100
 ❌ Dealer "Rock Hill Buick GMC" not found in search results for Rock Hill, SC.
 Available dealers in this area:
   - Sansone Chrysler Jeep Dodge (ID: 1018557)
