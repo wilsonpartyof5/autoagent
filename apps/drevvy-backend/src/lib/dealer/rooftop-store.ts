@@ -23,8 +23,24 @@ export function supabaseRooftopDirectory(supabase: SupabaseClient): RooftopDirec
 }
 
 /**
+ * The onboarded-rooftop directory cannot be read. Callers must treat this as
+ * unavailable. It is not an empty in-network list and it is not permission to
+ * match on membership alone.
+ */
+export class RooftopDirectoryUnavailable extends Error {
+  readonly status = 503;
+  readonly code = 'rooftop_directory_unavailable';
+
+  constructor(message = 'Dealer network is unavailable until rooftop onboarding is in the schema.') {
+    super(message);
+    this.name = 'RooftopDirectoryUnavailable';
+  }
+}
+
+/**
  * True when PostgREST or Postgres says `dealerships.onboarded_at` is not in
- * the schema yet. Any other failure stays fail-closed.
+ * the schema yet, including a stale schema cache. Those errors are unavailable,
+ * not a membership list.
  */
 export function onboardedColumnMissing(error: { message?: string; code?: string }): boolean {
   const message = error.message ?? '';
@@ -39,10 +55,10 @@ function hasOnboardedStamp(value: unknown): boolean {
   return value instanceof Date && !Number.isNaN(value.getTime());
 }
 
-function rooftopFromRow(row: unknown, enforceOnboarded: boolean): OnboardedRooftop | null {
+function rooftopFromRow(row: unknown): OnboardedRooftop | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
-  if (enforceOnboarded && !hasOnboardedStamp(record.onboarded_at)) return null;
+  if (!hasOnboardedStamp(record.onboarded_at)) return null;
   const id = typeof record.id === 'string' ? record.id : '';
   if (!id) return null;
   return {
@@ -57,10 +73,10 @@ function rooftopFromRow(row: unknown, enforceOnboarded: boolean): OnboardedRooft
   };
 }
 
-function rowsToRooftops(data: unknown, enforceOnboarded: boolean): OnboardedRooftop[] {
+function rowsToRooftops(data: unknown): OnboardedRooftop[] {
   if (!Array.isArray(data)) return [];
   return data.flatMap((row) => {
-    const rooftop = rooftopFromRow(row, enforceOnboarded);
+    const rooftop = rooftopFromRow(row);
     return rooftop ? [rooftop] : [];
   });
 }
@@ -72,13 +88,8 @@ function rowsToRooftops(data: unknown, enforceOnboarded: boolean): OnboardedRoof
  * service-role client bypasses RLS, so the column filter is what keeps a
  * non-onboarded membership off the network.
  *
- * Until the migration that adds the column is applied, a missing-column error
- * falls back to membership-only so a code deploy does not mark every listing
- * off-network. After the column exists, a null stamp is excluded.
- *
- * TODO: remove the membership-only fallback after
- * 20261109170000_lock_rooftop_self_claim.sql is applied. Apply that migration
- * before or with this code deploy, then delete the onboarded_column_missing branch.
+ * A missing `onboarded_at` column or a stale schema cache throws
+ * `RooftopDirectoryUnavailable`. Memberships are not returned in that case.
  */
 export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<OnboardedRooftop[]> {
   const memberships = await supabase.from('user_dealerships').select('dealership_id');
@@ -103,38 +114,19 @@ export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<O
     .in('id', ids)
     .not('onboarded_at', 'is', null);
 
-  if (filtered.error && onboardedColumnMissing(filtered.error)) {
-    // TODO: remove this membership-only fallback after
-    // 20261109170000_lock_rooftop_self_claim.sql is applied. Apply that
-    // migration before or with the code deploy. A missing onboarded_at column
-    // currently keeps the previous membership list.
-    console.error(JSON.stringify({
-      event: 'onboarded_column_missing',
-      message: filtered.error.message,
-    }));
-    const legacy = await supabase
-      .from('dealerships')
-      .select('id, name, marketcheck_dealer_id, marketcheck_website_url')
-      .in('id', ids);
-    if (legacy.error) {
-      console.error(JSON.stringify({
-        event: 'onboarded_rooftops_failed',
-        message: legacy.error.message,
-      }));
-      return [];
-    }
-    return rowsToRooftops(legacy.data, false);
-  }
-
   if (filtered.error) {
     console.error(JSON.stringify({
       event: 'onboarded_rooftops_failed',
       message: filtered.error.message,
+      code: filtered.error.code ?? null,
     }));
+    if (onboardedColumnMissing(filtered.error)) {
+      throw new RooftopDirectoryUnavailable();
+    }
     return [];
   }
 
-  return rowsToRooftops(filtered.data, true);
+  return rowsToRooftops(filtered.data);
 }
 
 type RawListing = {

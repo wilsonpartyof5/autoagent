@@ -327,6 +327,8 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
     assert.equal(ROOFTOP_SQL.includes('1038994'), false);
     assert.equal(ROOFTOP_SQL.includes('1283655'), false);
     assert.match(ROOFTOP_SQL, /private\.reviewed_rooftop_members/);
+    assert.match(ROOFTOP_SQL, /accept-unpaired-lockout/);
+    assert.match(ROOFTOP_SQL, /refusing to apply 20261109170000/);
     assert.ok(
       ROOFTOP_SQL.indexOf('duplicate marketcheck_dealer_id')
         < ROOFTOP_SQL.indexOf('set marketcheck_dealer_id = null'),
@@ -1108,6 +1110,9 @@ test('social sign-in, shopper profiles, email squatters, and claimed MarketCheck
           )
         );
     `);
+    await db.query(
+      `select set_config('drevvy.approve_unpaired_rooftop_lockout', 'accept-unpaired-lockout', false)`,
+    );
     await db.exec(ROOFTOP_SQL);
     await db.exec(`grant usage on schema private to authenticated`);
 
@@ -1204,6 +1209,35 @@ test('social sign-in, shopper profiles, email squatters, and claimed MarketCheck
     assert.equal((await db.query(`select dealership_id from public.dealership_billing_accounts`)).rows.length, 0);
 
     await actAsOwner(db);
+    await db.query(
+      `update public.user_dealerships
+       set access_verified_at = timezone('utc', now()),
+           access_verified_source = 'operator'
+       where user_id = $1 and dealership_id = $2`,
+      [squatter, squatRoof],
+    );
+    await db.query(
+      `update public.dealerships
+       set onboarded_at = timezone('utc', now())
+       where id = $1`,
+      [squatRoof],
+    );
+    await db.query(`delete from private.reviewed_rooftop_members where user_id = $1`, [socialUser]);
+    assert.equal(await dealerAccess(socialUser, '5555'), true);
+    await actAsOwner(db);
+    await db.query(`select private.apply_reviewed_rooftop_members()`);
+    assert.equal(await dealerAccess(socialUser, '5555'), false);
+    assert.equal(await dealerAccess(squatter, '4242'), true);
+    await actAsOwner(db);
+    const afterRevoke = await db.query<{ id: string; onboarded_at: string | null }>(
+      `select id, onboarded_at from public.dealerships`,
+    );
+    const afterMap = new Map(afterRevoke.rows.map((row) => [row.id, row.onboarded_at]));
+    assert.equal(afterMap.get(socialRoof) ?? null, null);
+    assert.equal(afterMap.get(squatRoof) != null, true);
+    assert.equal(await count(db, `select count(*)::int as n from public.user_dealerships`), 4);
+
+    await actAsOwner(db);
     await db.exec(`
       create policy "members can attempt membership updates"
         on public.user_dealerships for update to authenticated
@@ -1227,6 +1261,123 @@ test('social sign-in, shopper profiles, email squatters, and claimed MarketCheck
     );
   } finally {
     await db.exec('reset role').catch(() => undefined);
+    await db.close();
+  }
+});
+
+test('an existing owner who accepts a salesperson invite is verified only as salesperson', async () => {
+  const db = await boot();
+  try {
+    await actAs(db, null, 'service_role');
+    const created = await db.query<{ id: string }>(
+      `select id from public.create_onboarded_rooftop($1, 'Role lot', '5656', null, null, null, 'owner')`,
+      [DEALER],
+    );
+    const roofId = created.rows[0]?.id ?? '';
+    await actAsOwner(db);
+    await db.query(
+      `insert into public.user_dealerships (user_id, dealership_id, role)
+       values ($1, $2, 'owner')`,
+      [SALES, roofId],
+    );
+    await actAs(db, null, 'service_role');
+    const invite = await db.query<{ token: string }>(
+      `select token from public.issue_dealership_invite(null, null, null, null, null, 'salesperson', $1, null)`,
+      [roofId],
+    );
+    await actAs(db, DEALER, 'authenticated');
+    const accepted = await db.query<{ invite_error: string | null }>(
+      `select invite_error from public.accept_dealership_invite($1)`,
+      [invite.rows[0]?.token],
+    );
+    assert.equal(accepted.rows[0]?.invite_error ?? null, null);
+    await actAsOwner(db);
+    const rows = await db.query<{ user_id: string; role: string; verified: boolean; source: string | null }>(
+      `select user_id, role, access_verified_at is not null as verified, access_verified_source as source
+       from public.user_dealerships
+       where dealership_id = $1`,
+      [roofId],
+    );
+    const byUser = new Map(rows.rows.map((row) => [row.user_id, row]));
+    assert.equal(byUser.get(DEALER)?.role, 'salesperson');
+    assert.equal(byUser.get(DEALER)?.verified, true);
+    assert.equal(byUser.get(DEALER)?.source, 'invite');
+    assert.equal(byUser.get(SALES)?.role, 'owner');
+    assert.equal(byUser.get(SALES)?.verified, false);
+    assert.equal(byUser.get(SALES)?.source ?? null, null);
+    await db.exec(`grant usage on schema private to authenticated`);
+    assert.equal(await (async () => {
+      await actAs(db, SALES, 'authenticated');
+      return flag(db, `select private.user_has_rooftop_access('${roofId}'::uuid, null) as ok`);
+    })(), false);
+    await actAs(db, DEALER, 'authenticated');
+    assert.equal(await flag(
+      db,
+      `select private.user_has_rooftop_access('${roofId}'::uuid, null) as ok`,
+    ), true);
+  } finally {
+    await db.exec('reset role').catch(() => undefined);
+    await db.close();
+  }
+});
+
+test('the migration refuses an occupied claim when the lockout is not approved', async () => {
+  const db = new PGlite();
+  const roof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa9';
+  try {
+    await db.exec(`
+      create role anon nologin;
+      create role authenticated nologin;
+      create role service_role nologin;
+      create schema if not exists auth;
+      create table auth.users (id uuid primary key);
+      insert into auth.users (id) values ('${DEALER}');
+      create table public.dealerships (
+        id uuid primary key,
+        name text not null,
+        marketcheck_dealer_id text,
+        marketcheck_website_url text,
+        created_at timestamptz not null default timezone('utc', now())
+      );
+      create table public.user_dealerships (
+        user_id uuid not null references auth.users(id),
+        dealership_id uuid not null references public.dealerships(id),
+        role text,
+        primary key (user_id, dealership_id)
+      );
+      insert into public.dealerships (id, name, marketcheck_dealer_id)
+      values ('${roof}', 'Occupied', '4242');
+      insert into public.user_dealerships (user_id, dealership_id, role)
+      values ('${DEALER}', '${roof}', 'owner');
+    `);
+    let refused = false;
+    try {
+      await db.exec(ROOFTOP_SQL);
+    } catch (error) {
+      refused = true;
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /refusing to apply 20261109170000/);
+    }
+    assert.equal(refused, true);
+    await db.exec('rollback').catch(() => undefined);
+    const column = await db.query<{ n: number }>(
+      `select count(*)::int as n
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'dealerships'
+         and column_name = 'onboarded_at'`,
+    );
+    assert.equal(Number(column.rows[0]?.n ?? 0), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
+      [roof],
+    ), 1);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.dealerships where btrim(marketcheck_dealer_id) = '4242'`,
+    ), 1);
+  } finally {
     await db.close();
   }
 });

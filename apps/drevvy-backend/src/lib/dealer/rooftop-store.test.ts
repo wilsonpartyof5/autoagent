@@ -4,7 +4,11 @@ import test from 'node:test';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { loadOnboardedRooftops, onboardedColumnMissing } from './rooftop-store';
+import {
+  RooftopDirectoryUnavailable,
+  loadOnboardedRooftops,
+  onboardedColumnMissing,
+} from './rooftop-store';
 
 type QueryResult = {
   data: unknown[] | null;
@@ -29,6 +33,7 @@ function thenable(result: QueryResult) {
 function client(script: {
   memberships: QueryResult;
   bySelect: Record<string, QueryResult>;
+  selects?: string[];
 }): SupabaseClient {
   return {
     from(table: string) {
@@ -37,6 +42,7 @@ function client(script: {
       const builder = {
         select(cols: string) {
           columns = cols;
+          script.selects?.push(cols);
           return builder;
         },
         in() {
@@ -84,10 +90,14 @@ test('onboardedColumnMissing only matches a missing onboarded_at column', () => 
   }), false);
 });
 
-test('the membership-only fallback is marked for removal after the migration', () => {
+test('rooftop-store has no membership-only fallback', () => {
   const source = readFileSync(new URL('./rooftop-store.ts', import.meta.url), 'utf8');
-  assert.match(source, /TODO: remove this membership-only fallback/);
-  assert.match(source, /20261109170000_lock_rooftop_self_claim\.sql/);
+  assert.equal(source.includes('membership-only'), false);
+  assert.equal(source.includes('onboarded_column_missing'), false);
+  assert.equal(
+    source.includes(".select('id, name, marketcheck_dealer_id, marketcheck_website_url')"),
+    false,
+  );
 });
 
 test('loadOnboardedRooftops drops memberships whose rooftop is not onboarded', async () => {
@@ -121,48 +131,67 @@ test('loadOnboardedRooftops drops memberships whose rooftop is not onboarded', a
   assert.equal(rooftops[0]?.websiteUrl, 'https://www.hondacars.example');
 });
 
-test('loadOnboardedRooftops keeps current memberships when the column is not migrated yet', async () => {
-  const errors: string[] = [];
+test('a missing onboarded_at column is unavailable and does not publish membership rooftops', async () => {
+  await assertDirectoryUnavailable({
+    code: '42703',
+    message: 'column dealerships.onboarded_at does not exist',
+  });
+});
+
+test('a stale onboarded_at schema cache is unavailable and does not publish membership rooftops', async () => {
+  await assertDirectoryUnavailable({
+    code: 'PGRST204',
+    message: "Could not find the 'onboarded_at' column of 'dealerships' in the schema cache",
+  });
+});
+
+async function assertDirectoryUnavailable(error: { code: string; message: string }) {
+  const selects: string[] = [];
   const original = console.error;
-  console.error = (line?: unknown) => {
-    errors.push(String(line));
-  };
+  console.error = () => {};
   try {
-    const rooftops = await loadOnboardedRooftops(client({
-      memberships: MEMBERSHIPS,
-      bySelect: {
-        'id, name, marketcheck_dealer_id, marketcheck_website_url, onboarded_at': {
-          data: null,
-          error: {
-            code: 'PGRST204',
-            message: "Could not find the 'onboarded_at' column of 'dealerships' in the schema cache",
+    await assert.rejects(
+      () => loadOnboardedRooftops(client({
+        memberships: MEMBERSHIPS,
+        selects,
+        bySelect: {
+          'id, name, marketcheck_dealer_id, marketcheck_website_url, onboarded_at': {
+            data: null,
+            error,
+          },
+          'id, name, marketcheck_dealer_id, marketcheck_website_url': {
+            data: [
+              {
+                id: 'roof-on',
+                name: 'Honda',
+                marketcheck_dealer_id: '1038994',
+                marketcheck_website_url: 'https://hondacars.example',
+              },
+              {
+                id: 'roof-off',
+                name: 'Second',
+                marketcheck_dealer_id: null,
+                marketcheck_website_url: null,
+              },
+            ],
+            error: null,
           },
         },
-        'id, name, marketcheck_dealer_id, marketcheck_website_url': {
-          data: [
-            {
-              id: 'roof-on',
-              name: 'Honda',
-              marketcheck_dealer_id: '1038994',
-              marketcheck_website_url: 'https://hondacars.example',
-            },
-            {
-              id: 'roof-off',
-              name: 'Second',
-              marketcheck_dealer_id: null,
-              marketcheck_website_url: null,
-            },
-          ],
-          error: null,
-        },
+      })),
+      (caught: unknown) => {
+        assert.ok(caught instanceof RooftopDirectoryUnavailable);
+        assert.equal(caught.status, 503);
+        assert.equal(caught.code, 'rooftop_directory_unavailable');
+        return true;
       },
-    }));
-    assert.deepEqual(rooftops.map((rooftop) => rooftop.id), ['roof-on', 'roof-off']);
-    assert.equal(errors.some((line) => line.includes('onboarded_column_missing')), true);
+    );
+    assert.deepEqual(selects, [
+      'id, name, marketcheck_dealer_id, marketcheck_website_url, onboarded_at',
+    ]);
   } finally {
     console.error = original;
   }
-});
+}
 
 test('loadOnboardedRooftops returns nothing when the rooftop read fails', async () => {
   const original = console.error;

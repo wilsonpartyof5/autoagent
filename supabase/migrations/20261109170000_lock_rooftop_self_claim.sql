@@ -19,8 +19,16 @@
 --     change network identity columns or access_verified_at
 --
 -- Duplicate checks run before any dealership or membership update. The file
--- must run as one transaction. The demo desk at /dealer/onboarding does not
--- write these tables.
+-- must run as one transaction, and it locks dealerships and user_dealerships
+-- so a concurrent insert cannot land between the duplicate check and the
+-- unique indexes. The demo desk at /dealer/onboarding does not write these
+-- tables.
+--
+-- An empty reviewed-pair table, or any rooftop that still holds a MarketCheck
+-- id or website, does not apply unless this same transaction sets
+-- drevvy.approve_unpaired_rooftop_lockout to accept-unpaired-lockout. That
+-- phrase is an approval, not a rooftop id. Without it, the migration raises
+-- and writes nothing.
 --
 -- Rollback is a forward migration, not an edit of this file. See the PR.
 
@@ -93,7 +101,7 @@ create temporary table rooftop_lock_txn_guard (
 ) on commit drop;
 insert into rooftop_lock_txn_guard (ok) values (true);
 
--- Read-only. Runs before any column add or row update.
+-- Runs before any column add or row update. The locks last until commit.
 do $$
 declare
   dup_mc text;
@@ -102,6 +110,13 @@ begin
   if to_regclass('pg_temp.rooftop_lock_txn_guard') is null then
     raise exception '20261109170000 must run inside a single transaction';
   end if;
+
+  -- Held until this transaction ends. Concurrent rooftop and membership
+  -- writes wait. Reads do not. A runner that autocommits each statement
+  -- releases the lock before the next statement, and the guard above then
+  -- aborts before any row update.
+  lock table public.dealerships in share row exclusive mode;
+  lock table public.user_dealerships in share row exclusive mode;
 
   select btrim(marketcheck_dealer_id)
     into dup_mc
@@ -179,6 +194,47 @@ begin
   end if;
 end $$;
 
+-- Refuses the accidental lockout. Zero pasted pairs, any membership that is
+-- not in the pair table, or any rooftop that still holds a MarketCheck id or
+-- website requires the approval setting in this same transaction. The setting
+-- is not a dealership id and it does not stamp anyone.
+do $$
+declare
+  unpaired integer;
+  occupied integer;
+  approval text;
+begin
+  if to_regclass('pg_temp.rooftop_lock_txn_guard') is null then
+    raise exception '20261109170000 must run inside a single transaction';
+  end if;
+
+  select count(*)
+    into unpaired
+  from public.user_dealerships ud
+  where not exists (
+    select 1
+    from private.reviewed_rooftop_members r
+    where r.dealership_id = ud.dealership_id
+      and r.user_id = ud.user_id
+  );
+
+  select count(*)
+    into occupied
+  from public.dealerships d
+  where nullif(btrim(d.marketcheck_dealer_id), '') is not null
+     or nullif(btrim(d.marketcheck_website_url), '') is not null;
+
+  approval := nullif(current_setting('drevvy.approve_unpaired_rooftop_lockout', true), '');
+
+  if (unpaired > 0 or occupied > 0)
+     and approval is distinct from 'accept-unpaired-lockout' then
+    raise exception
+      'refusing to apply 20261109170000: % memberships are not in reviewed_rooftop_members and % rooftops hold a MarketCheck id or website. Unpaired memberships lose desk, in-network, and membership RLS, and occupied ids stay taken. Review the rollout inventory, record a disposition for each occupied claim, then set drevvy.approve_unpaired_rooftop_lockout to accept-unpaired-lockout in this same transaction. This setting is an approval, not a rooftop id.',
+      unpaired,
+      occupied;
+  end if;
+end $$;
+
 alter table public.dealerships
   add column if not exists onboarded_at timestamptz;
 
@@ -188,8 +244,24 @@ comment on column public.dealerships.onboarded_at is
 alter table public.user_dealerships
   add column if not exists access_verified_at timestamptz;
 
+alter table public.user_dealerships
+  add column if not exists access_verified_source text;
+
+alter table public.user_dealerships
+  drop constraint if exists user_dealerships_access_verified_source_chk;
+
+alter table public.user_dealerships
+  add constraint user_dealerships_access_verified_source_chk
+  check (
+    access_verified_source is null
+    or access_verified_source in ('reviewed_pair', 'operator', 'invite')
+  );
+
 comment on column public.user_dealerships.access_verified_at is
   'Set on the membership an operator creates, an invite accepts, or a row in private.reviewed_rooftop_members. Other members of the same rooftop stay unverified.';
+
+comment on column public.user_dealerships.access_verified_source is
+  'reviewed_pair, operator, or invite. apply_reviewed_rooftop_members clears a reviewed_pair stamp when that pair row is gone. Deleting the pair row alone does not clear it. operator and invite stamps are left in place.';
 
 create or replace function private.apply_reviewed_rooftop_members()
 returns void
@@ -198,12 +270,32 @@ security definer
 set search_path = ''
 as $$
 begin
+  lock table public.dealerships in share row exclusive mode;
+  lock table public.user_dealerships in share row exclusive mode;
+
   update public.user_dealerships ud
-  set access_verified_at = coalesce(ud.access_verified_at, timezone('utc'::text, now()))
+  set access_verified_at = coalesce(ud.access_verified_at, timezone('utc'::text, now())),
+      access_verified_source = coalesce(ud.access_verified_source, 'reviewed_pair')
   from private.reviewed_rooftop_members r
   where ud.dealership_id = r.dealership_id
     and ud.user_id = r.user_id
-    and ud.access_verified_at is null;
+    and (
+      ud.access_verified_at is null
+      or ud.access_verified_source is null
+    );
+
+  -- A deleted pair row does not clear anything until this function runs.
+  -- operator and invite stamps are not revoked here.
+  update public.user_dealerships ud
+  set access_verified_at = null,
+      access_verified_source = null
+  where ud.access_verified_source = 'reviewed_pair'
+    and not exists (
+      select 1
+      from private.reviewed_rooftop_members r
+      where r.dealership_id = ud.dealership_id
+        and r.user_id = ud.user_id
+    );
 
   update public.dealerships d
   set onboarded_at = coalesce(d.onboarded_at, timezone('utc'::text, now()))
@@ -214,11 +306,21 @@ begin
       where ud.dealership_id = d.id
         and ud.access_verified_at is not null
     );
+
+  update public.dealerships d
+  set onboarded_at = null
+  where d.onboarded_at is not null
+    and not exists (
+      select 1
+      from public.user_dealerships ud
+      where ud.dealership_id = d.id
+        and ud.access_verified_at is not null
+    );
 end;
 $$;
 
 comment on function private.apply_reviewed_rooftop_members() is
-  'Stamps access_verified_at and onboarded_at from private.reviewed_rooftop_members. Does not insert or delete memberships. Granted to service_role so a later reviewed insert can be applied without editing this file.';
+  'Stamps reviewed pairs and clears reviewed_pair stamps whose pair row is gone, including onboarded_at when no verified membership remains. Does not insert or delete memberships and does not restore membership-only access helpers. Deleting a pair row without calling this function leaves the stamp. Granted to service_role.';
 
 revoke all on function private.apply_reviewed_rooftop_members() from public, anon, authenticated;
 grant execute on function private.apply_reviewed_rooftop_members() to service_role;
@@ -402,13 +504,20 @@ begin
   )
   returning * into created;
 
-  insert into public.user_dealerships (user_id, dealership_id, role, access_verified_at)
-  values (p_owner, created.id, v_role, timezone('utc'::text, now()))
+  insert into public.user_dealerships (
+    user_id, dealership_id, role, access_verified_at, access_verified_source
+  )
+  values (p_owner, created.id, v_role, timezone('utc'::text, now()), 'operator')
   on conflict (user_id, dealership_id) do update
-  set access_verified_at = coalesce(
-    public.user_dealerships.access_verified_at,
-    excluded.access_verified_at
-  );
+  set role = excluded.role,
+      access_verified_at = coalesce(
+        public.user_dealerships.access_verified_at,
+        excluded.access_verified_at
+      ),
+      access_verified_source = coalesce(
+        public.user_dealerships.access_verified_source,
+        excluded.access_verified_source
+      );
 
   return created;
 exception
@@ -474,6 +583,7 @@ begin
      or new.dealership_id is distinct from old.dealership_id
      or new.role is distinct from old.role
      or new.access_verified_at is distinct from old.access_verified_at
+     or new.access_verified_source is distinct from old.access_verified_source
   then
     raise exception 'rooftop membership cannot be changed from the client';
   end if;
@@ -1032,13 +1142,17 @@ begin
       return;
     end if;
 
-    insert into public.user_dealerships (user_id, dealership_id, role, access_verified_at)
-    values (uid, created.id, invite.role, timezone('utc'::text, now()))
+    insert into public.user_dealerships (
+      user_id, dealership_id, role, access_verified_at, access_verified_source
+    )
+    values (uid, created.id, invite.role, timezone('utc'::text, now()), 'invite')
     on conflict (user_id, dealership_id) do update
-    set access_verified_at = coalesce(
-      public.user_dealerships.access_verified_at,
-      excluded.access_verified_at
-    );
+    set role = excluded.role,
+        access_verified_at = coalesce(
+          public.user_dealerships.access_verified_at,
+          excluded.access_verified_at
+        ),
+        access_verified_source = 'invite';
 
     update public.dealerships
     set onboarded_at = coalesce(onboarded_at, timezone('utc'::text, now())),
@@ -1058,7 +1172,7 @@ end;
 $$;
 
 comment on function public.accept_dealership_invite(text) is
-  'Authenticated dealers redeem an operator invite. Failures return invite_error and commit the attempt so the per-user limit holds. The caller cannot supply a MarketCheck id or website. Eight failures in fifteen minutes, or five failures of the same invite, stop further attempts.';
+  'Authenticated dealers redeem an operator invite. An existing membership is updated to the invite role, so a salesperson invite does not leave the acceptor verified as owner. Other members of that rooftop are unchanged. Failures return invite_error and commit the attempt so the per-user limit holds. The caller cannot supply a MarketCheck id or website. Eight failures in fifteen minutes, or five failures of the same invite, stop further attempts.';
 
 revoke all on function public.accept_dealership_invite(text) from public, anon;
 grant execute on function public.accept_dealership_invite(text) to authenticated, service_role;

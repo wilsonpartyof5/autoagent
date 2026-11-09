@@ -87,7 +87,11 @@ A rooftop is onboarded when `dealerships.onboarded_at` is set (name, optional `m
 
 Desk access also requires `user_dealerships.access_verified_at` on that member. Another member of an onboarded rooftop does not inherit it. A shopper JWT cannot execute `create_own_dealership`, insert a rooftop, or change a MarketCheck id or website. Those two identity values cannot belong to two rooftops. The `/dealer/onboarding/*` pages are the demo walkthrough. They do not call `create_own_dealership` and do not write `dealerships`.
 
-`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry. If `onboarded_at` is not in the schema yet, the loader falls back to membership-only. Apply the migration before or with the code deploy, then remove that fallback. Until `access_verified_at` exists, the live desk query fails closed.
+`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry. A missing `onboarded_at` column, or a stale schema cache that cannot see it, throws `RooftopDirectoryUnavailable`. The shopper routes answer 503 `rooftop_directory_unavailable`. They do not match on membership alone. Until `access_verified_at` exists, the live desk query fails closed.
+
+Accepting an invite sets that member's role to the invite role. A salesperson invite does not leave an existing owner verified as owner. Other members of the rooftop are not changed.
+
+Release stays blocked until DW pastes reviewed pairs and writes a disposition for every rooftop that still holds a MarketCheck id or website. This file does not verify those claims. Applying the migration with unpaired memberships or occupied ids requires `drevvy.approve_unpaired_rooftop_lockout = accept-unpaired-lockout` in the same transaction. That phrase is an approval, not a rooftop id.
 
 ## `matchOnboardedRooftop`
 

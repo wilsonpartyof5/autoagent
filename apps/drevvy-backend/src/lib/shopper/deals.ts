@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { RooftopDirectoryUnavailable } from '@/lib/dealer/rooftop-store';
+
 import { ShopperAuthError, shopperAuthErrorResponse } from './session';
 
 export const SHOPPER_DEAL_STATUSES = ['interested', 'negotiating', 'accepted', 'closed'] as const;
@@ -209,6 +211,12 @@ export function toShopperDeal(row: ShopperDealRow): ShopperDeal {
 
 export function shopperDealErrorResponse(error: unknown): NextResponse {
   if (error instanceof ShopperAuthError) return shopperAuthErrorResponse(error);
+  if (error instanceof RooftopDirectoryUnavailable) {
+    return NextResponse.json(
+      { success: false, error: { code: error.code, message: error.message } },
+      { status: error.status },
+    );
+  }
   if (error instanceof ShopperDealError) {
     return NextResponse.json(
       { success: false, error: { code: error.code, message: error.message } },
