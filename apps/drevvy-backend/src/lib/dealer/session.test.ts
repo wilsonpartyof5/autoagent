@@ -91,17 +91,21 @@ test('demo desk session opens the pages and live membership still wins', () => {
   assert.equal(preview.session, null);
 });
 
-test('the live desk ignores a membership whose rooftop is not onboarded', () => {
+test('the live desk ignores a membership that is not verified or whose rooftop is not onboarded', () => {
   const source = readFileSync(join(HERE, 'session.ts'), 'utf8');
   assert.match(source, /\.not\('onboarded_at', 'is', null\)/);
+  assert.match(source, /\.not\('access_verified_at', 'is', null\)/);
+  const stamp = '2026-11-09T00:00:00.000Z';
   const rooftops = dealerRooftopsFromRows(
     [
-      { dealership_id: 'roof-on', role: 'owner' },
-      { dealership_id: 'roof-off', role: 'salesperson' },
-      { dealership_id: 'roof-blank', role: 'gm' },
+      { dealership_id: 'roof-on', role: 'owner', access_verified_at: stamp },
+      { dealership_id: 'roof-peer', role: 'salesperson', access_verified_at: null },
+      { dealership_id: 'roof-off', role: 'salesperson', access_verified_at: stamp },
+      { dealership_id: 'roof-blank', role: 'gm', access_verified_at: stamp },
     ],
     [
-      { id: 'roof-on', name: 'Honda Cars', onboarded_at: '2026-11-09T00:00:00.000Z' },
+      { id: 'roof-on', name: 'Honda Cars', onboarded_at: stamp },
+      { id: 'roof-peer', name: 'Honda Cars', onboarded_at: stamp },
       { id: 'roof-off', name: 'Squatted', onboarded_at: null },
       { id: 'roof-blank', name: 'Blank', onboarded_at: '   ' },
     ],

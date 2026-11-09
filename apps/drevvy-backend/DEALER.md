@@ -83,16 +83,11 @@ The route name `leads` matches the information architecture. The screen label is
 
 ## Onboarded rooftop
 
-A rooftop is onboarded when:
+A rooftop is onboarded when `dealerships.onboarded_at` is set (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`). That stamp is written by `create_onboarded_rooftop` (service role), by `accept_dealership_invite`, or by `private.apply_reviewed_rooftop_members` for a row already in `private.reviewed_rooftop_members`. The migration creates that pair table empty. A MarketCheck id, an Apple or Google sign-in, and a `consumer_profiles` row are not pairs and are not stamps. Existing `user_dealerships` rows are kept.
 
-1. A row exists in `dealerships` with `onboarded_at` set (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`).
-2. At least one `user_dealerships` membership points at that row (someone can sign in on the dealer dashboard).
+Desk access also requires `user_dealerships.access_verified_at` on that member. Another member of an onboarded rooftop does not inherit it. A shopper JWT cannot execute `create_own_dealership`, insert a rooftop, or change a MarketCheck id or website. Those two identity values cannot belong to two rooftops. The `/dealer/onboarding/*` pages are the demo walkthrough. They do not call `create_own_dealership` and do not write `dealerships`.
 
-`onboarded_at` is written by `create_onboarded_rooftop` (service role) or by `accept_dealership_invite` after an operator issues the invite. A shopper JWT cannot execute `create_own_dealership`, insert a rooftop, or change a MarketCheck id or website. Those two identity values cannot belong to two rooftops. The `/dealer/onboarding/*` pages are the demo walkthrough. They do not call `create_own_dealership` and do not write `dealerships`.
-
-Applying `20261109170000_lock_rooftop_self_claim.sql` stamps only the Honda rooftops (MarketCheck `1038994`, and `1283655` if that row is still present) plus any UUIDs DW pastes into `dw_rooftop_ids`. That array is empty. A membership, including a `platform_admin` membership, is not enough. The same migration removes `consumer_profiles` and Apple/Google memberships from every other rooftop. It does not delete the rooftop row or clear its MarketCheck id. The live desk ignores a membership whose rooftop has no `onboarded_at`.
-
-`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry. If `onboarded_at` is not in the schema yet, the loader falls back to membership-only. Apply the migration before or with the code deploy, then remove that fallback.
+`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry. If `onboarded_at` is not in the schema yet, the loader falls back to membership-only. Apply the migration before or with the code deploy, then remove that fallback. Until `access_verified_at` exists, the live desk query fails closed.
 
 ## `matchOnboardedRooftop`
 

@@ -102,7 +102,11 @@ function hasOnboardedStamp(value: unknown): boolean {
 }
 
 export function dealerRooftopsFromRows(
-  memberships: readonly { dealership_id: string; role: string | null }[],
+  memberships: readonly {
+    dealership_id: string;
+    role: string | null;
+    access_verified_at?: unknown;
+  }[],
   dealerships: readonly { id: string; name?: string | null; onboarded_at?: unknown }[],
 ): DealerRooftop[] {
   const names = new Map(
@@ -115,6 +119,7 @@ export function dealerRooftopsFromRows(
   );
 
   return memberships.flatMap((row) => {
+    if (!hasOnboardedStamp(row.access_verified_at)) return [];
     const name = names.get(row.dealership_id);
     if (!name) return [];
     return [{
@@ -131,8 +136,9 @@ export async function loadDealerMemberships(
   const admin = createAdminClient();
   const memberships = await admin
     .from('user_dealerships')
-    .select('dealership_id, role')
-    .eq('user_id', userId);
+    .select('dealership_id, role, access_verified_at')
+    .eq('user_id', userId)
+    .not('access_verified_at', 'is', null);
   if (memberships.error) {
     console.error(JSON.stringify({
       event: 'dealer_memberships_failed',
@@ -141,7 +147,11 @@ export async function loadDealerMemberships(
     throw new DealerAuthError('Drevvy could not load rooftop access.', 503, 'service_unavailable');
   }
 
-  const rows = (memberships.data ?? []).filter((row): row is { dealership_id: string; role: string | null } => (
+  const rows = (memberships.data ?? []).filter((row): row is {
+    dealership_id: string;
+    role: string | null;
+    access_verified_at: unknown;
+  } => (
     typeof row.dealership_id === 'string' && row.dealership_id.length > 0
   ));
   if (rows.length === 0) return [];

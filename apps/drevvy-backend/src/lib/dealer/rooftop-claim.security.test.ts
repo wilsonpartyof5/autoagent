@@ -323,10 +323,17 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
       db,
       `select has_function_privilege('authenticated', 'public.issue_dealership_invite(text,text,text,text,text,text,uuid,timestamptz)', 'execute') as ok`,
     ), false);
-    assert.match(ROOFTOP_SQL, /dw_rooftop_ids uuid\[\] := array\[\]::uuid\[\]/);
+    assert.equal(/delete\s+from\s+public\.user_dealerships/i.test(ROOFTOP_SQL), false);
+    assert.equal(ROOFTOP_SQL.includes('1038994'), false);
+    assert.equal(ROOFTOP_SQL.includes('1283655'), false);
+    assert.match(ROOFTOP_SQL, /private\.reviewed_rooftop_members/);
     assert.ok(
-      ROOFTOP_SQL.indexOf('Consumer memberships on unverified rooftops')
-        < ROOFTOP_SQL.indexOf('create unique index if not exists dealerships_marketcheck_dealer_id_key'),
+      ROOFTOP_SQL.indexOf('duplicate marketcheck_dealer_id')
+        < ROOFTOP_SQL.indexOf('set marketcheck_dealer_id = null'),
+    );
+    assert.ok(
+      ROOFTOP_SQL.indexOf('20261109170000 must run inside a single transaction')
+        < ROOFTOP_SQL.indexOf('set marketcheck_dealer_id = null'),
     );
     await actAsOwner(db);
     assert.equal(await flag(db, `select private.caller_can_provision_rooftop() as ok`), false);
@@ -370,6 +377,23 @@ test('a shopper JWT cannot create or claim a rooftop, and operator or invite pat
     const hondaId = honda.rows[0]?.id ?? '';
     assert.equal(hondaId.length > 0, true);
     assert.equal(honda.rows[0]?.onboarded_at != null, true);
+    await actAsOwner(db);
+    const ownerMembership = await db.query<{ ok: boolean }>(
+      `select access_verified_at is not null as ok
+       from public.user_dealerships
+       where dealership_id = $1 and user_id = $2`,
+      [hondaId, DEALER],
+    );
+    assert.equal(ownerMembership.rows[0]?.ok, true);
+    await actAs(db, null, 'service_role');
+    await expectReject(
+      db,
+      () => db.query(
+        `select token from public.issue_dealership_invite($1, '999001', null, null, null, 'owner', null, timezone('utc', now()) + interval '15 days')`,
+        ['Far expiry'],
+      ),
+      /invite expiry is capped at 14 days/,
+    );
 
     await expectReject(
       db,
@@ -905,43 +929,80 @@ test('a shopper or dealer JWT cannot read or update lead contact payloads', asyn
   }
 });
 
-test('only the Honda allowlist is stamped, and consumer memberships leave unverified rooftops', async () => {
+test('social sign-in, shopper profiles, email squatters, and claimed MarketCheck ids stay unverified until a pair is reviewed', async () => {
   const db = new PGlite();
-  const squat = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
-  const adminRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
-  const mixed = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
-  const honda = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4';
-  const appleRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5';
-  const appleUser = '55555555-5555-4555-8555-555555555555';
+  const socialRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+  const squatRoof = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
+  const honda = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
+  const socialUser = '55555555-5555-4555-8555-555555555555';
+  const squatter = '66666666-6666-4666-8666-666666666666';
+  const peer = '77777777-7777-4777-8777-777777777777';
   try {
     await db.exec(`
       create role anon nologin;
       create role authenticated nologin;
-      create role service_role nologin;
+      create role service_role nologin bypassrls;
       create schema if not exists auth;
       create table auth.users (
         id uuid primary key,
         raw_app_meta_data jsonb
       );
+      create table auth.identities (
+        user_id uuid not null references auth.users(id),
+        provider text not null
+      );
+      create or replace function auth.uid()
+      returns uuid
+      language sql
+      stable
+      as $$
+        select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+      $$;
+      grant usage on schema auth to anon, authenticated, service_role;
+      grant execute on function auth.uid() to anon, authenticated, service_role;
+
       insert into auth.users (id, raw_app_meta_data) values
-        ('${SHOPPER}', '{"provider":"email"}'::jsonb),
+        ('${socialUser}', '{"provider":"apple"}'::jsonb),
+        ('${squatter}', '{"provider":"email"}'::jsonb),
         ('${DEALER}', '{"provider":"email"}'::jsonb),
-        ('${ADMIN}', '{"provider":"email"}'::jsonb),
-        ('${appleUser}', '{"provider":"apple"}'::jsonb);
+        ('${peer}', '{"provider":"email"}'::jsonb),
+        ('${ADMIN}', '{"provider":"email"}'::jsonb);
+      insert into auth.identities (user_id, provider) values
+        ('${socialUser}', 'apple'),
+        ('${squatter}', 'email'),
+        ('${DEALER}', 'email');
 
       create table public.profiles (
         id uuid primary key,
         platform_role text not null default 'dealer_user'
       );
       insert into public.profiles (id, platform_role) values
-        ('${SHOPPER}', 'dealer_user'),
+        ('${socialUser}', 'dealer_user'),
+        ('${squatter}', 'dealer_user'),
         ('${DEALER}', 'dealer_user'),
+        ('${peer}', 'dealer_user'),
         ('${ADMIN}', 'platform_admin');
 
       create table public.consumer_profiles (
         user_id uuid primary key references auth.users(id)
       );
-      insert into public.consumer_profiles (user_id) values ('${SHOPPER}');
+      insert into public.consumer_profiles (user_id) values ('${socialUser}');
+
+      create schema if not exists private;
+      create or replace function private.is_platform_admin()
+      returns boolean
+      language sql
+      stable
+      security definer
+      set search_path = ''
+      as $$
+        select exists (
+          select 1
+          from public.profiles p
+          where p.id = (select auth.uid())
+            and p.platform_role = 'platform_admin'
+        );
+      $$;
 
       create table public.dealerships (
         id uuid primary key,
@@ -961,64 +1022,211 @@ test('only the Honda allowlist is stamped, and consumer memberships leave unveri
         created_at timestamptz not null default timezone('utc'::text, now()),
         primary key (user_id, dealership_id)
       );
-
       insert into public.dealerships (id, name, marketcheck_dealer_id, created_by) values
-        ('${squat}', 'Squatted', '4242', '${SHOPPER}'),
-        ('${adminRoof}', 'Admin lot', '1001', '${ADMIN}'),
-        ('${mixed}', 'Mixed lot', '1002', '${ADMIN}'),
-        ('${honda}', 'Honda Cars Of Rock Hill', '1038994', '${DEALER}'),
-        ('${appleRoof}', 'Apple lot', '4243', '${appleUser}');
+        ('${socialRoof}', 'Social rooftop', '5555', '${socialUser}'),
+        ('${squatRoof}', 'Email squat', '4242', '${squatter}'),
+        ('${honda}', 'Claimed Honda', '1038994', '${DEALER}');
       insert into public.user_dealerships (user_id, dealership_id, role) values
-        ('${SHOPPER}', '${squat}', 'owner'),
-        ('${SHOPPER}', '${honda}', 'salesperson'),
-        ('${ADMIN}', '${adminRoof}', 'owner'),
-        ('${ADMIN}', '${mixed}', 'owner'),
-        ('${DEALER}', '${mixed}', 'salesperson'),
-        ('${DEALER}', '${honda}', 'owner'),
-        ('${appleUser}', '${appleRoof}', 'owner');
+        ('${socialUser}', '${socialRoof}', 'owner'),
+        ('${peer}', '${socialRoof}', 'salesperson'),
+        ('${squatter}', '${squatRoof}', 'owner'),
+        ('${DEALER}', '${honda}', 'owner');
+
+      alter table public.dealerships enable row level security;
+      alter table public.user_dealerships enable row level security;
+      grant select, update on public.dealerships to authenticated;
+      grant select, update on public.user_dealerships to authenticated;
+      create policy "Users can view their dealerships"
+        on public.dealerships for select
+        using (
+          exists (
+            select 1 from public.user_dealerships ud
+            where ud.dealership_id = dealerships.id
+              and ud.user_id = (select auth.uid())
+          )
+        );
+
+      create table public.inventory_vehicles (
+        id uuid primary key,
+        dealership_id uuid references public.dealerships(id),
+        vin text
+      );
+      insert into public.inventory_vehicles (id, dealership_id, vin)
+      values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', '${socialRoof}', 'VINSOCIAL');
+      alter table public.inventory_vehicles enable row level security;
+      grant select on public.inventory_vehicles to authenticated;
+      create policy "Users can view dealership inventory"
+        on public.inventory_vehicles for select
+        using (
+          exists (
+            select 1 from public.user_dealerships ud
+            where ud.dealership_id = inventory_vehicles.dealership_id
+              and ud.user_id = (select auth.uid())
+          )
+        );
+
+      create table public.dealership_billing_accounts (
+        dealership_id uuid primary key references public.dealerships(id),
+        cash_balance_cents bigint not null default 0
+      );
+      insert into public.dealership_billing_accounts (dealership_id, cash_balance_cents)
+      values ('${socialRoof}', 100);
+      alter table public.dealership_billing_accounts enable row level security;
+      grant select on public.dealership_billing_accounts to authenticated;
+      create policy "Members can view dealership billing accounts"
+        on public.dealership_billing_accounts for select to authenticated
+        using (
+          exists (
+            select 1 from public.user_dealerships ud
+            where ud.user_id = (select auth.uid())
+              and ud.dealership_id = dealership_billing_accounts.dealership_id
+          )
+          or (select private.is_platform_admin())
+        );
+
+      create table public.analytics_sessions (
+        id uuid primary key,
+        user_id uuid,
+        dealer_id text
+      );
+      insert into public.analytics_sessions (id, user_id, dealer_id) values
+        ('cccccccc-cccc-4ccc-8ccc-ccccccccccc1', null, '5555'),
+        ('cccccccc-cccc-4ccc-8ccc-ccccccccccc2', '${socialUser}', '4242');
+      alter table public.analytics_sessions enable row level security;
+      grant select on public.analytics_sessions to authenticated;
+      create policy "Users can view sessions for their dealerships"
+        on public.analytics_sessions for select
+        using (
+          (user_id is not null and auth.uid() = user_id)
+          or (
+            dealer_id is not null and exists (
+              select 1 from public.dealerships d
+              inner join public.user_dealerships ud on ud.dealership_id = d.id
+              where d.marketcheck_dealer_id = analytics_sessions.dealer_id
+                and ud.user_id = auth.uid()
+            )
+          )
+        );
     `);
     await db.exec(ROOFTOP_SQL);
+    await db.exec(`grant usage on schema private to authenticated`);
 
-    const rows = await db.query<{ id: string; onboarded_at: string | null }>(
+    assert.equal(await count(db, `select count(*)::int as n from public.user_dealerships`), 4);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.user_dealerships where access_verified_at is not null`,
+    ), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.dealerships where onboarded_at is not null`,
+    ), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from private.reviewed_rooftop_members`,
+    ), 0);
+    assert.equal(await count(
+      db,
+      `select count(*)::int as n from public.dealerships where btrim(marketcheck_dealer_id) = '1038994'`,
+    ), 1);
+
+    async function dealerAccess(userId: string, dealerId: string): Promise<boolean> {
+      await actAs(db, userId, 'authenticated');
+      return flag(db, `select private.user_has_dealer_access('${dealerId}') as ok`);
+    }
+    async function rooftopAccess(userId: string, dealershipId: string): Promise<boolean> {
+      await actAs(db, userId, 'authenticated');
+      return flag(
+        db,
+        `select private.user_has_rooftop_access('${dealershipId}'::uuid, null) as ok`,
+      );
+    }
+    async function vehicleAccess(userId: string, dealershipId: string): Promise<boolean> {
+      await actAs(db, userId, 'authenticated');
+      return flag(
+        db,
+        `select private.user_can_access_uvs_vehicle('${dealershipId}'::uuid, null) as ok`,
+      );
+    }
+
+    assert.equal(await dealerAccess(socialUser, '5555'), false);
+    assert.equal(await rooftopAccess(socialUser, socialRoof), false);
+    assert.equal(await vehicleAccess(socialUser, socialRoof), false);
+    assert.equal(await dealerAccess(squatter, '4242'), false);
+    assert.equal(await dealerAccess(DEALER, '1038994'), false);
+    assert.equal(await rooftopAccess(peer, socialRoof), false);
+    assert.equal(await dealerAccess(ADMIN, '1038994'), true);
+
+    await actAs(db, socialUser, 'authenticated');
+    assert.equal((await db.query(`select id from public.dealerships`)).rows.length, 0);
+    assert.equal((await db.query(`select vin from public.inventory_vehicles`)).rows.length, 0);
+    assert.equal((await db.query(`select dealership_id from public.dealership_billing_accounts`)).rows.length, 0);
+    const ownSession = await db.query<{ id: string }>(`select id from public.analytics_sessions`);
+    assert.deepEqual(ownSession.rows.map((row) => row.id), ['cccccccc-cccc-4ccc-8ccc-ccccccccccc2']);
+
+    await actAsOwner(db);
+    await db.query(
+      `insert into private.reviewed_rooftop_members (dealership_id, user_id) values ($1, $2)`,
+      [socialRoof, socialUser],
+    );
+    await db.query(`select private.apply_reviewed_rooftop_members()`);
+
+    assert.equal(await count(db, `select count(*)::int as n from public.user_dealerships`), 4);
+    assert.equal(await dealerAccess(socialUser, '5555'), true);
+    assert.equal(await rooftopAccess(socialUser, socialRoof), true);
+    assert.equal(await vehicleAccess(socialUser, socialRoof), true);
+    assert.equal(await dealerAccess(peer, '5555'), false);
+    assert.equal(await rooftopAccess(peer, socialRoof), false);
+    assert.equal(await dealerAccess(squatter, '4242'), false);
+    assert.equal(await dealerAccess(DEALER, '1038994'), false);
+    await actAsOwner(db);
+    const stamps = await db.query<{ id: string; onboarded_at: string | null }>(
       `select id, onboarded_at from public.dealerships`,
     );
-    const byId = new Map(rows.rows.map((row) => [row.id, row.onboarded_at]));
-    assert.equal(byId.get(honda) != null, true);
-    assert.equal(byId.get(squat) ?? null, null);
-    assert.equal(byId.get(adminRoof) ?? null, null);
-    assert.equal(byId.get(mixed) ?? null, null);
-    assert.equal(byId.get(appleRoof) ?? null, null);
+    const onboarded = new Map(stamps.rows.map((row) => [row.id, row.onboarded_at]));
+    assert.equal(onboarded.get(socialRoof) != null, true);
+    assert.equal(onboarded.get(squatRoof) ?? null, null);
+    assert.equal(onboarded.get(honda) ?? null, null);
 
-    assert.equal(await count(
+    await actAs(db, socialUser, 'authenticated');
+    assert.equal((await db.query(`select vin from public.inventory_vehicles`)).rows.length, 1);
+    assert.equal((await db.query(`select dealership_id from public.dealership_billing_accounts`)).rows.length, 1);
+    assert.equal((await db.query(`select id from public.dealerships`)).rows.length, 1);
+    const verifiedSessions = await db.query<{ id: string }>(
+      `select id from public.analytics_sessions order by id`,
+    );
+    assert.deepEqual(
+      verifiedSessions.rows.map((row) => row.id),
+      ['cccccccc-cccc-4ccc-8ccc-ccccccccccc1', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2'],
+    );
+
+    await actAs(db, peer, 'authenticated');
+    assert.equal((await db.query(`select vin from public.inventory_vehicles`)).rows.length, 0);
+    assert.equal((await db.query(`select dealership_id from public.dealership_billing_accounts`)).rows.length, 0);
+
+    await actAsOwner(db);
+    await db.exec(`
+      create policy "members can attempt membership updates"
+        on public.user_dealerships for update to authenticated
+        using (true)
+        with check (true);
+    `);
+    await db.exec(`
+      create policy "members can read memberships"
+        on public.user_dealerships for select to authenticated
+        using (true);
+    `);
+    await actAs(db, socialUser, 'authenticated');
+    await expectReject(
       db,
-      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
-      [squat],
-    ), 0);
-    assert.equal(await count(
-      db,
-      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
-      [appleRoof],
-    ), 0);
-    assert.equal(await count(
-      db,
-      `select count(*)::int as n from public.user_dealerships where dealership_id = $1 and user_id = $2`,
-      [honda, SHOPPER],
-    ), 1);
-    assert.equal(await count(
-      db,
-      `select count(*)::int as n from public.user_dealerships where dealership_id = $1`,
-      [mixed],
-    ), 2);
-    assert.equal(await count(
-      db,
-      `select count(*)::int as n from public.dealerships where id = $1`,
-      [squat],
-    ), 1);
-    assert.equal(await count(
-      db,
-      `select count(*)::int as n from public.dealerships where btrim(marketcheck_dealer_id) = '4242'`,
-    ), 1);
+      () => db.query(
+        `update public.user_dealerships
+         set access_verified_at = timezone('utc', now())
+         where user_id = '${peer}'`,
+      ),
+      /rooftop membership cannot be changed from the client/,
+    );
   } finally {
+    await db.exec('reset role').catch(() => undefined);
     await db.close();
   }
 });

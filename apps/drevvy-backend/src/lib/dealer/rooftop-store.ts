@@ -67,8 +67,10 @@ function rowsToRooftops(data: unknown, enforceOnboarded: boolean): OnboardedRoof
 
 /**
  * Rooftops that can receive an in-network conversation: a membership whose
- * dealership has `onboarded_at` set. The service-role client bypasses RLS,
- * so the column filter is what keeps a non-onboarded membership off the network.
+ * dealership has `onboarded_at` set. That column is stamped only for an
+ * operator create, an accepted invite, or a reviewed membership pair. The
+ * service-role client bypasses RLS, so the column filter is what keeps a
+ * non-onboarded membership off the network.
  *
  * Until the migration that adds the column is applied, a missing-column error
  * falls back to membership-only so a code deploy does not mark every listing

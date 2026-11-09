@@ -1,8 +1,9 @@
 /**
  * Match a VDP / listing to an onboarded dealer-dashboard rooftop.
  *
- * Onboarded means a `dealerships` row with `onboarded_at` set and at least one
- * `user_dealerships` membership. Shoppers cannot create that row. The dealer
+ * Onboarded means a `dealerships` row with `onboarded_at` set. That stamp comes
+ * from an operator create, an accepted invite, or a reviewed membership pair.
+ * A membership alone is not a stamp. Shoppers cannot create that row. The dealer
  * desk demo does not persist rooftops, so this is the live registry.
  *
  * A listing is in-network when any of these hit that rooftop, in this order:

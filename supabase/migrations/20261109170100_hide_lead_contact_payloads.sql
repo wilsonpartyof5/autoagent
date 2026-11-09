@@ -15,8 +15,12 @@
 -- anon and authenticated have no INSERT. The member insert policy on
 -- lead_delivery_logs from 20260910155723 is dropped here.
 -- update_dealer_lead_status allows only new, contacted, qualified, closed,
--- and test_drive_booked. A check constraint blocks other status writes
--- through the column grant.
+-- and test_drive_booked. That is the check from
+-- migrations_archive/20250127_add_leads_status.sql. No app path writes
+-- public.leads.status. A check constraint blocks other status writes
+-- through the column grant. The constraint is NOT VALID so an existing
+-- out-of-list row does not abort this migration; a later update must use
+-- one of those five values.
 --
 -- Rollback is a forward migration, not an edit of this file. See the PR.
 

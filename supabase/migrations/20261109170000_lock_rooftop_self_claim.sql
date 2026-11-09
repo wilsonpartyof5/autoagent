@@ -8,17 +8,19 @@
 --   * client roles cannot execute create_own_dealership
 --   * a rooftop is created by service_role (create_onboarded_rooftop) or by
 --     accepting an operator-issued dealership_invites row
---   * onboarded_at is set only on those paths
+--   * onboarded_at is set only on those paths, or for an explicit
+--     (dealership uuid, user uuid) pair in private.reviewed_rooftop_members
+--   * that pair table is created empty. A MarketCheck id, an Apple or Google
+--     sign-in, or a consumer_profiles row is not a pair and is not a stamp
+--   * every existing user_dealerships row is kept. This file does not delete
+--     memberships. An unverified membership does not grant RLS access
 --   * MarketCheck dealer id and normalized website are unique
 --   * client sessions cannot insert dealerships or memberships, and cannot
---     change network identity columns
+--     change network identity columns or access_verified_at
 --
--- Existing memberships are not backfilled. The only rooftops stamped here are
--- the known Honda rows (MarketCheck 1038994 and, if it is still present,
--- 1283655) plus dw_rooftop_ids, which is empty until DW pastes UUIDs.
--- Before the unique indexes, consumer memberships are removed from every
--- other rooftop. Email profiles are not treated as shoppers. The demo desk
--- at /dealer/onboarding does not write these tables.
+-- Duplicate checks run before any dealership or membership update. The file
+-- must run as one transaction. The demo desk at /dealer/onboarding does not
+-- write these tables.
 --
 -- Rollback is a forward migration, not an edit of this file. See the PR.
 
@@ -83,89 +85,24 @@ comment on function public.rooftop_website_key(text) is
 revoke all on function public.rooftop_website_key(text) from public, anon, authenticated;
 grant execute on function public.rooftop_website_key(text) to service_role;
 
-alter table public.dealerships
-  add column if not exists onboarded_at timestamptz;
+-- Dropped at commit. A later statement that cannot see this table aborts
+-- before it updates dealerships or memberships, which is what happens if the
+-- file is applied one statement at a time.
+create temporary table rooftop_lock_txn_guard (
+  ok boolean primary key
+) on commit drop;
+insert into rooftop_lock_txn_guard (ok) values (true);
 
-comment on column public.dealerships.onboarded_at is
-  'Set when an operator or an accepted invite puts this rooftop on the network. A membership alone is not enough.';
-
-update public.dealerships
-set marketcheck_dealer_id = null
-where marketcheck_dealer_id is not null
-  and btrim(marketcheck_dealer_id) = '';
-
-update public.dealerships
-set marketcheck_website_url = null
-where marketcheck_website_url is not null
-  and btrim(marketcheck_website_url) = '';
-
--- Allowlist, then consumer-membership cleanup, then the stamp. This block is
--- before the duplicate check and the unique indexes on purpose. Deleting a
--- shopper membership does not delete the dealership row and does not clear a
--- MarketCheck id or website, so a squatted id can still abort the index below.
--- Review the three audit queries in the PR before applying.
-do $$
-declare
-  -- MarketCheck ids from 20260717191843 and 20260721194636. The UUID is
-  -- generated at insert, so the stable identifier is the MarketCheck id.
-  honda_marketcheck_ids text[] := array['1038994', '1283655'];
-  -- DW: paste additional dealership UUIDs here before applying. Empty by default.
-  dw_rooftop_ids uuid[] := array[]::uuid[];
-  allowlist uuid[];
-begin
-  select coalesce(array_agg(d.id), array[]::uuid[])
-    into allowlist
-  from public.dealerships d
-  where btrim(coalesce(d.marketcheck_dealer_id, '')) = any (honda_marketcheck_ids)
-     or d.id = any (dw_rooftop_ids);
-
-  -- Consumer memberships on unverified rooftops. A consumer is a
-  -- consumer_profiles row or an Apple/Google auth user. Those providers do
-  -- not get a dealer profile. An email account with public.profiles is left
-  -- in place; it is not stamped unless the rooftop is on the allowlist.
-  -- A consumer who is also a member of an allowlisted rooftop keeps that row.
-  if to_regclass('public.consumer_profiles') is not null then
-    delete from public.user_dealerships ud
-    using public.consumer_profiles cp
-    where ud.user_id = cp.user_id
-      and not (ud.dealership_id = any (allowlist));
-  end if;
-
-  if to_regclass('auth.identities') is not null then
-    delete from public.user_dealerships ud
-    using auth.identities i
-    where ud.user_id = i.user_id
-      and i.provider in ('apple', 'google')
-      and not (ud.dealership_id = any (allowlist));
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'auth'
-      and table_name = 'users'
-      and column_name = 'raw_app_meta_data'
-  ) then
-    execute
-      'delete from public.user_dealerships ud
-       using auth.users u
-       where ud.user_id = u.id
-         and coalesce(u.raw_app_meta_data->>''provider'', '''') in (''apple'', ''google'')
-         and not (ud.dealership_id = any ($1))'
-    using allowlist;
-  end if;
-
-  update public.dealerships d
-  set onboarded_at = coalesce(d.created_at, timezone('utc'::text, now()))
-  where d.onboarded_at is null
-    and d.id = any (allowlist);
-end $$;
-
+-- Read-only. Runs before any column add or row update.
 do $$
 declare
   dup_mc text;
   dup_site text;
 begin
+  if to_regclass('pg_temp.rooftop_lock_txn_guard') is null then
+    raise exception '20261109170000 must run inside a single transaction';
+  end if;
+
   select btrim(marketcheck_dealer_id)
     into dup_mc
   from public.dealerships
@@ -194,6 +131,117 @@ begin
       'duplicate rooftop website % must be resolved before locking rooftop claims',
       dup_site;
   end if;
+end $$;
+
+-- Explicit pairs only. Leave this table empty until DW has verified the
+-- provenance of a specific membership. Do not paste a MarketCheck id, and do
+-- not infer a pair from a sign-in provider or from consumer_profiles.
+create table if not exists private.reviewed_rooftop_members (
+  dealership_id uuid not null references public.dealerships(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  primary key (dealership_id, user_id)
+);
+
+comment on table private.reviewed_rooftop_members is
+  'Reviewed (dealership uuid, user uuid) pairs. Empty in this migration. A row here is the only backfill that can stamp an existing membership. It does not create a membership.';
+
+revoke all on table private.reviewed_rooftop_members from public, anon, authenticated;
+grant select, insert, delete on table private.reviewed_rooftop_members to service_role;
+
+-- DW: paste reviewed pairs below, one existing membership per row, and only
+-- after that membership's provenance is verified. Leave the statement commented.
+-- insert into private.reviewed_rooftop_members (dealership_id, user_id)
+-- values ('<dealership uuid>', '<user uuid>');
+
+do $$
+declare
+  missing text;
+begin
+  if to_regclass('pg_temp.rooftop_lock_txn_guard') is null then
+    raise exception '20261109170000 must run inside a single transaction';
+  end if;
+
+  select r.dealership_id::text || ' / ' || r.user_id::text
+    into missing
+  from private.reviewed_rooftop_members r
+  where not exists (
+    select 1
+    from public.user_dealerships ud
+    where ud.dealership_id = r.dealership_id
+      and ud.user_id = r.user_id
+  )
+  limit 1;
+
+  if missing is not null then
+    raise exception
+      'reviewed rooftop pair % has no membership row; this migration does not create memberships',
+      missing;
+  end if;
+end $$;
+
+alter table public.dealerships
+  add column if not exists onboarded_at timestamptz;
+
+comment on column public.dealerships.onboarded_at is
+  'Set by an operator create, an accepted invite, or a reviewed membership pair. A MarketCheck id is not a stamp. A membership alone is not enough.';
+
+alter table public.user_dealerships
+  add column if not exists access_verified_at timestamptz;
+
+comment on column public.user_dealerships.access_verified_at is
+  'Set on the membership an operator creates, an invite accepts, or a row in private.reviewed_rooftop_members. Other members of the same rooftop stay unverified.';
+
+create or replace function private.apply_reviewed_rooftop_members()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.user_dealerships ud
+  set access_verified_at = coalesce(ud.access_verified_at, timezone('utc'::text, now()))
+  from private.reviewed_rooftop_members r
+  where ud.dealership_id = r.dealership_id
+    and ud.user_id = r.user_id
+    and ud.access_verified_at is null;
+
+  update public.dealerships d
+  set onboarded_at = coalesce(d.onboarded_at, timezone('utc'::text, now()))
+  where d.onboarded_at is null
+    and exists (
+      select 1
+      from public.user_dealerships ud
+      where ud.dealership_id = d.id
+        and ud.access_verified_at is not null
+    );
+end;
+$$;
+
+comment on function private.apply_reviewed_rooftop_members() is
+  'Stamps access_verified_at and onboarded_at from private.reviewed_rooftop_members. Does not insert or delete memberships. Granted to service_role so a later reviewed insert can be applied without editing this file.';
+
+revoke all on function private.apply_reviewed_rooftop_members() from public, anon, authenticated;
+grant execute on function private.apply_reviewed_rooftop_members() to service_role;
+
+-- First writes to existing rows. Still refused unless the guard table from
+-- the start of this file is visible.
+do $$
+begin
+  if to_regclass('pg_temp.rooftop_lock_txn_guard') is null then
+    raise exception '20261109170000 must run inside a single transaction';
+  end if;
+
+  update public.dealerships
+  set marketcheck_dealer_id = null
+  where marketcheck_dealer_id is not null
+    and btrim(marketcheck_dealer_id) = '';
+
+  update public.dealerships
+  set marketcheck_website_url = null
+  where marketcheck_website_url is not null
+    and btrim(marketcheck_website_url) = '';
+
+  perform private.apply_reviewed_rooftop_members();
 end $$;
 
 create unique index if not exists dealerships_marketcheck_dealer_id_key
@@ -354,9 +402,13 @@ begin
   )
   returning * into created;
 
-  insert into public.user_dealerships (user_id, dealership_id, role)
-  values (p_owner, created.id, v_role)
-  on conflict (user_id, dealership_id) do nothing;
+  insert into public.user_dealerships (user_id, dealership_id, role, access_verified_at)
+  values (p_owner, created.id, v_role, timezone('utc'::text, now()))
+  on conflict (user_id, dealership_id) do update
+  set access_verified_at = coalesce(
+    public.user_dealerships.access_verified_at,
+    excluded.access_verified_at
+  );
 
   return created;
 exception
@@ -421,6 +473,7 @@ begin
   if new.user_id is distinct from old.user_id
      or new.dealership_id is distinct from old.dealership_id
      or new.role is distinct from old.role
+     or new.access_verified_at is distinct from old.access_verified_at
   then
     raise exception 'rooftop membership cannot be changed from the client';
   end if;
@@ -757,6 +810,7 @@ declare
   v_token text;
   v_role text;
   v_expires timestamptz;
+  v_cap timestamptz;
   v_id uuid;
 begin
   if not private.caller_can_provision_rooftop() then
@@ -810,9 +864,13 @@ begin
     raise exception 'invite token was not generated';
   end if;
 
-  v_expires := coalesce(p_expires_at, timezone('utc'::text, now()) + interval '14 days');
+  v_cap := timezone('utc'::text, now()) + interval '14 days';
+  v_expires := coalesce(p_expires_at, v_cap);
   if v_expires <= timezone('utc'::text, now()) then
     raise exception 'invite expired';
+  end if;
+  if v_expires > v_cap then
+    raise exception 'invite expiry is capped at 14 days';
   end if;
 
   insert into public.dealership_invites (
@@ -974,9 +1032,13 @@ begin
       return;
     end if;
 
-    insert into public.user_dealerships (user_id, dealership_id, role)
-    values (uid, created.id, invite.role)
-    on conflict (user_id, dealership_id) do nothing;
+    insert into public.user_dealerships (user_id, dealership_id, role, access_verified_at)
+    values (uid, created.id, invite.role, timezone('utc'::text, now()))
+    on conflict (user_id, dealership_id) do update
+    set access_verified_at = coalesce(
+      public.user_dealerships.access_verified_at,
+      excluded.access_verified_at
+    );
 
     update public.dealerships
     set onboarded_at = coalesce(onboarded_at, timezone('utc'::text, now())),
@@ -1000,3 +1062,285 @@ comment on function public.accept_dealership_invite(text) is
 
 revoke all on function public.accept_dealership_invite(text) from public, anon;
 grant execute on function public.accept_dealership_invite(text) to authenticated, service_role;
+
+-- Membership grants access only when that membership is verified and the
+-- rooftop is onboarded. Platform admin stays a separate bypass inside the
+-- helpers that already had it. It is not a membership stamp.
+create or replace function private.membership_grants_access(
+  target_dealership_id uuid,
+  target_dealer_id text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.user_dealerships ud
+    join public.dealerships d on d.id = ud.dealership_id
+    where ud.user_id = (select auth.uid())
+      and ud.access_verified_at is not null
+      and d.onboarded_at is not null
+      and (
+        (
+          target_dealership_id is not null
+          and ud.dealership_id = target_dealership_id
+        )
+        or (
+          target_dealership_id is null
+          and coalesce(target_dealer_id, '') <> ''
+          and d.marketcheck_dealer_id = target_dealer_id
+        )
+      )
+  );
+$$;
+
+revoke all on function private.membership_grants_access(uuid, text) from public;
+grant execute on function private.membership_grants_access(uuid, text) to anon, authenticated;
+
+create or replace function private.user_has_dealer_access(target_dealer_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    coalesce(target_dealer_id, '') <> ''
+    and (
+      (select private.is_platform_admin())
+      or (select private.membership_grants_access(null::uuid, target_dealer_id))
+    );
+$$;
+
+revoke all on function private.user_has_dealer_access(text) from public;
+grant execute on function private.user_has_dealer_access(text) to authenticated;
+
+create or replace function private.user_has_rooftop_access(
+  target_dealership_id uuid,
+  target_dealer_id text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    (select auth.uid()) is not null
+    and (
+      (select private.is_platform_admin())
+      or (
+        target_dealership_id is not null
+        and (select private.membership_grants_access(target_dealership_id, null::text))
+      )
+      or (
+        target_dealership_id is null
+        and (select private.user_has_dealer_access(target_dealer_id))
+      )
+    );
+$$;
+
+revoke all on function private.user_has_rooftop_access(uuid, text) from public, anon;
+grant execute on function private.user_has_rooftop_access(uuid, text) to authenticated;
+
+create or replace function private.user_can_access_uvs_vehicle(
+  target_dealership_id uuid,
+  target_dealer_id text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    (select private.is_platform_admin())
+    or (
+      target_dealership_id is not null
+      and (select private.membership_grants_access(target_dealership_id, null::text))
+    )
+    or (
+      target_dealership_id is null
+      and (select private.user_has_dealer_access(target_dealer_id))
+    );
+$$;
+
+revoke all on function private.user_can_access_uvs_vehicle(uuid, text) from public, anon;
+grant execute on function private.user_can_access_uvs_vehicle(uuid, text) to authenticated;
+
+-- Policies that inline a membership check are replaced only when they already
+-- exist, so a preview database that never replayed the archive files is left
+-- alone. The new predicate is the verified-membership helper.
+do $$
+begin
+  if to_regclass('public.dealership_billing_accounts') is not null then
+    execute 'drop policy if exists "Members can view dealership billing accounts" on public.dealership_billing_accounts';
+    execute $policy$
+      create policy "Members can view dealership billing accounts"
+        on public.dealership_billing_accounts for select to authenticated
+        using (
+          (select private.is_platform_admin())
+          or (select private.membership_grants_access(dealership_id, null::text))
+        )
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'dealerships'
+      and policyname = 'Users can view their dealerships'
+  ) then
+    execute 'drop policy "Users can view their dealerships" on public.dealerships';
+    execute $policy$
+      create policy "Users can view their dealerships"
+        on public.dealerships for select
+        using ((select private.membership_grants_access(id, null::text)))
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'dealerships'
+      and policyname = 'Users can update their dealerships'
+  ) then
+    execute 'drop policy "Users can update their dealerships" on public.dealerships';
+    execute $policy$
+      create policy "Users can update their dealerships"
+        on public.dealerships for update
+        using (
+          (select private.membership_grants_access(id, null::text))
+          and exists (
+            select 1
+            from public.user_dealerships ud
+            where ud.dealership_id = dealerships.id
+              and ud.user_id = (select auth.uid())
+              and ud.role = 'owner'
+              and ud.access_verified_at is not null
+          )
+        )
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'inventory_vehicles'
+      and policyname = 'Users can view dealership inventory'
+  ) then
+    execute 'drop policy "Users can view dealership inventory" on public.inventory_vehicles';
+    execute $policy$
+      create policy "Users can view dealership inventory"
+        on public.inventory_vehicles for select
+        using ((select private.membership_grants_access(dealership_id, null::text)))
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'inventory_vehicles'
+      and policyname = 'Users can insert dealership inventory'
+  ) then
+    execute 'drop policy "Users can insert dealership inventory" on public.inventory_vehicles';
+    execute $policy$
+      create policy "Users can insert dealership inventory"
+        on public.inventory_vehicles for insert
+        with check ((select private.membership_grants_access(dealership_id, null::text)))
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'inventory_vehicles'
+      and policyname = 'Users can update dealership inventory'
+  ) then
+    execute 'drop policy "Users can update dealership inventory" on public.inventory_vehicles';
+    execute $policy$
+      create policy "Users can update dealership inventory"
+        on public.inventory_vehicles for update
+        using ((select private.membership_grants_access(dealership_id, null::text)))
+        with check ((select private.membership_grants_access(dealership_id, null::text)))
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'inventory_vehicles'
+      and policyname = 'Users can delete dealership inventory'
+  ) then
+    execute 'drop policy "Users can delete dealership inventory" on public.inventory_vehicles';
+    execute $policy$
+      create policy "Users can delete dealership inventory"
+        on public.inventory_vehicles for delete
+        using ((select private.membership_grants_access(dealership_id, null::text)))
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'analytics_sessions'
+      and policyname = 'Users can view sessions for their dealerships'
+  ) then
+    execute 'drop policy "Users can view sessions for their dealerships" on public.analytics_sessions';
+    execute $policy$
+      create policy "Users can view sessions for their dealerships"
+        on public.analytics_sessions for select
+        using (
+          (user_id is not null and (select auth.uid()) = user_id)
+          or (
+            dealer_id is not null
+            and (select private.membership_grants_access(null::uuid, dealer_id))
+          )
+        )
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'analytics_events'
+      and policyname = 'Users can view events for their dealerships'
+  ) then
+    execute 'drop policy "Users can view events for their dealerships" on public.analytics_events';
+    execute $policy$
+      create policy "Users can view events for their dealerships"
+        on public.analytics_events for select
+        using (
+          (user_id is not null and (select auth.uid()) = user_id)
+          or (
+            dealer_id is not null
+            and (select private.membership_grants_access(null::uuid, dealer_id))
+          )
+          or dealer_id is null
+        )
+    $policy$;
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'analytics_vehicle_snapshots'
+      and policyname = 'Users can view snapshots for their dealerships'
+  ) then
+    execute 'drop policy "Users can view snapshots for their dealerships" on public.analytics_vehicle_snapshots';
+    execute $policy$
+      create policy "Users can view snapshots for their dealerships"
+        on public.analytics_vehicle_snapshots for select
+        using (
+          (
+            dealer_id is not null
+            and (select private.membership_grants_access(null::uuid, dealer_id))
+          )
+          or dealer_id is null
+        )
+    $policy$;
+  end if;
+end $$;
