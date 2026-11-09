@@ -85,10 +85,12 @@ The route name `leads` matches the information architecture. The screen label is
 
 A rooftop is onboarded when:
 
-1. A row exists in `dealerships` (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`).
+1. A row exists in `dealerships` with `onboarded_at` set (name, optional `marketcheck_dealer_id`, optional `marketcheck_website_url`).
 2. At least one `user_dealerships` membership points at that row (someone can sign in on the dealer dashboard).
 
-`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads that set. A `dealerships` row with no membership is not in-network. The mock desk settings rooftop is not this registry.
+`onboarded_at` is written by `create_onboarded_rooftop` (service role) or by `accept_dealership_invite` after an operator issues the invite. A shopper JWT cannot execute `create_own_dealership`, insert a rooftop, or change a MarketCheck id or website. Those two identity values cannot belong to two rooftops. The `/dealer/onboarding/*` pages are the demo walkthrough. They do not call `create_own_dealership` and do not write `dealerships`.
+
+`loadOnboardedRooftops` in `src/lib/dealer/rooftop-store.ts` loads memberships whose rooftop has `onboarded_at`. A `dealerships` row with no membership, or a membership with no `onboarded_at`, is not in-network. The mock desk settings rooftop is not this registry.
 
 ## `matchOnboardedRooftop`
 

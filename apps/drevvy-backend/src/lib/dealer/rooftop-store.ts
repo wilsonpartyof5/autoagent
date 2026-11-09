@@ -23,8 +23,56 @@ export function supabaseRooftopDirectory(supabase: SupabaseClient): RooftopDirec
 }
 
 /**
- * Rooftops a salesperson can open on the dealer dashboard: a dealerships row
- * with at least one user_dealerships membership.
+ * True when PostgREST or Postgres says `dealerships.onboarded_at` is not in
+ * the schema yet. Any other failure stays fail-closed.
+ */
+export function onboardedColumnMissing(error: { message?: string; code?: string }): boolean {
+  const message = error.message ?? '';
+  if (!/onboarded_at/i.test(message)) return false;
+  return error.code === '42703'
+    || error.code === 'PGRST204'
+    || /does not exist|schema cache|could not find/i.test(message);
+}
+
+function hasOnboardedStamp(value: unknown): boolean {
+  if (typeof value === 'string') return value.length > 0;
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
+function rooftopFromRow(row: unknown, enforceOnboarded: boolean): OnboardedRooftop | null {
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  if (enforceOnboarded && !hasOnboardedStamp(record.onboarded_at)) return null;
+  const id = typeof record.id === 'string' ? record.id : '';
+  if (!id) return null;
+  return {
+    id,
+    name: typeof record.name === 'string' ? record.name : '',
+    marketcheckDealerId: typeof record.marketcheck_dealer_id === 'string'
+      ? record.marketcheck_dealer_id
+      : null,
+    websiteUrl: typeof record.marketcheck_website_url === 'string'
+      ? record.marketcheck_website_url
+      : null,
+  };
+}
+
+function rowsToRooftops(data: unknown, enforceOnboarded: boolean): OnboardedRooftop[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((row) => {
+    const rooftop = rooftopFromRow(row, enforceOnboarded);
+    return rooftop ? [rooftop] : [];
+  });
+}
+
+/**
+ * Rooftops that can receive an in-network conversation: a membership whose
+ * dealership has `onboarded_at` set. The service-role client bypasses RLS,
+ * so the column filter is what keeps a non-onboarded membership off the network.
+ *
+ * Until the migration that adds the column is applied, a missing-column error
+ * falls back to membership-only so a code deploy does not mark every listing
+ * off-network. After the column exists, a null stamp is excluded.
  */
 export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<OnboardedRooftop[]> {
   const memberships = await supabase.from('user_dealerships').select('dealership_id');
@@ -43,29 +91,40 @@ export async function loadOnboardedRooftops(supabase: SupabaseClient): Promise<O
   )];
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
+  const filtered = await supabase
     .from('dealerships')
-    .select('id, name, marketcheck_dealer_id, marketcheck_website_url')
-    .in('id', ids);
+    .select('id, name, marketcheck_dealer_id, marketcheck_website_url, onboarded_at')
+    .in('id', ids)
+    .not('onboarded_at', 'is', null);
 
-  if (error) {
+  if (filtered.error && onboardedColumnMissing(filtered.error)) {
+    console.error(JSON.stringify({
+      event: 'onboarded_column_missing',
+      message: filtered.error.message,
+    }));
+    const legacy = await supabase
+      .from('dealerships')
+      .select('id, name, marketcheck_dealer_id, marketcheck_website_url')
+      .in('id', ids);
+    if (legacy.error) {
+      console.error(JSON.stringify({
+        event: 'onboarded_rooftops_failed',
+        message: legacy.error.message,
+      }));
+      return [];
+    }
+    return rowsToRooftops(legacy.data, false);
+  }
+
+  if (filtered.error) {
     console.error(JSON.stringify({
       event: 'onboarded_rooftops_failed',
-      message: error.message,
+      message: filtered.error.message,
     }));
     return [];
   }
 
-  return (data ?? []).flatMap((row) => {
-    const id = typeof row.id === 'string' ? row.id : '';
-    if (!id) return [];
-    return [{
-      id,
-      name: typeof row.name === 'string' ? row.name : '',
-      marketcheckDealerId: typeof row.marketcheck_dealer_id === 'string' ? row.marketcheck_dealer_id : null,
-      websiteUrl: typeof row.marketcheck_website_url === 'string' ? row.marketcheck_website_url : null,
-    }];
-  });
+  return rowsToRooftops(filtered.data, true);
 }
 
 type RawListing = {
