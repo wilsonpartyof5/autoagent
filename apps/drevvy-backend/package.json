@@ -13,7 +13,7 @@
     "test:get": "tsx --test src/lib/store-links.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
     "test:admin": "tsx --test src/lib/admin/*.test.ts",
-    "test:sprint-hq": "tsx --tsconfig src/sprint-hq/tsconfig.test.json --test src/sprint-hq/snapshot.test.ts src/sprint-hq/demo-engine.test.ts src/sprint-hq/ui.test.ts src/sprint-hq/security.test.ts src/sprint-hq/sprint-hq-app.test.tsx",
+    "test:sprint-hq": "tsx --tsconfig src/sprint-hq/tsconfig.test.json --test src/sprint-hq/snapshot.test.ts src/sprint-hq/demo-engine.test.ts src/sprint-hq/ui.test.ts src/sprint-hq/security.test.ts src/sprint-hq/sprint-hq-app.test.tsx src/sprint-hq/live/map-github.test.ts src/sprint-hq/live/load.test.ts",
     "test:dealer": "tsx --test --test-concurrency=1 src/lib/dealer/*.test.ts",
     "test:brain": "tsx --test src/lib/brain/*.test.ts src/lib/brain/eval/*.test.ts",
     "eval:brain": "tsx src/lib/brain/eval/run-eval.ts",

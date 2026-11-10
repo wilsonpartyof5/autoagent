@@ -14,6 +14,7 @@ export function OfficeScene({
   miniBot,
   simulatedApproval,
   large,
+  ciRunning = false,
 }: {
   mode: DataMode;
   poses: Record<RoleId, AnimState>;
@@ -25,6 +26,7 @@ export function OfficeScene({
   miniBot: { desk: 'pivot' | 'flutter'; label: string } | null;
   simulatedApproval: boolean;
   large: boolean;
+  ciRunning?: boolean;
 }) {
   return (
     <section className={`shq-office${large ? ' is-large' : ''}`} data-office-view={officeView} aria-label="Office simulation">
@@ -111,10 +113,21 @@ export function OfficeScene({
           {mode === 'snapshot'
             ? 'Bots stay idle. No fresh telemetry, so nobody is shown typing.'
             : mode === 'live'
-              ? 'Live connection unavailable — not configured.'
+              ? ciRunning
+                ? 'GitHub Actions has a check in progress on a card head. The six roles stay idle because GitHub does not assign them.'
+                : 'The six roles are idle. No card head has a check run in progress. Cursor telemetry is not connected.'
               : 'Press Play to run the synthetic office script.'}
         </p>
       )}
+      {mode === 'live' ? (
+        <p
+          className={`shq-ci-lamp${ciRunning && !reduce ? ' is-running' : ''}`}
+          data-testid="github-actions-runner"
+          data-anim={ciRunning ? 'building' : 'idle'}
+        >
+          GitHub Actions: {ciRunning ? 'check in progress' : 'idle'}
+        </p>
+      ) : null}
       {simulatedApproval ? <p className="shq-sim-approval">Simulated approval</p> : null}
       {!reduce && mode === 'demo' && Object.values(poses).includes('released') ? (
         <div className="shq-confetti" aria-hidden="true">

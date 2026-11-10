@@ -19,15 +19,13 @@ function filesIn(dir: string): string[] {
   return found;
 }
 
-test('sprint hq source does not fetch, embed secrets, or copy internal evidence paths', () => {
+test('sprint hq source does not embed secrets or copy internal evidence paths', () => {
   const files = filesIn(root);
   assert.ok(files.length > 5);
   const forbidden = [
-    /fetch\s*\(/,
     /@supabase/,
     /supabase\.co/,
     /createClient\s*\(/,
-    /process\.env/,
     /ghp_/,
     /github_pat_/,
     /sk-[A-Za-z0-9]{16,}/,
@@ -41,12 +39,27 @@ test('sprint hq source does not fetch, embed secrets, or copy internal evidence 
   ];
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
+    const relative = path.relative(root, file);
+    const serverAdapter = relative === path.join('live', 'load.ts');
     for (const pattern of forbidden) {
-      assert.equal(pattern.test(source), false, `${path.relative(root, file)} matched ${pattern}`);
+      assert.equal(pattern.test(source), false, `${relative} matched ${pattern}`);
     }
-    if (file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.css')) {
-      assert.equal(source.includes('https://'), false, file);
-      assert.equal(source.includes('http://'), false, file);
+    if (!serverAdapter) {
+      assert.equal(/fetch\s*\(/.test(source), false, relative);
+      assert.equal(/process\.env/.test(source), false, relative);
+      assert.equal(source.includes('https://'), false, relative);
+      assert.equal(source.includes('http://'), false, relative);
+      assert.equal(source.includes('SPRINT_HQ_GITHUB_TOKEN'), false, relative);
+      assert.equal(source.includes('live/load'), false, relative);
     }
   }
+  const adapter = readFileSync(path.join(root, 'live', 'load.ts'), 'utf8');
+  assert.match(adapter, /https:\/\/api\.github\.com/);
+  assert.match(adapter, /SPRINT_HQ_GITHUB_TOKEN/);
+  assert.equal(adapter.includes('ghp_'), false);
+  const page = readFileSync(path.resolve(root, '../app/admin/sprint/page.tsx'), 'utf8');
+  const client = readFileSync(path.join(root, 'components', 'sprint-hq-app.tsx'), 'utf8');
+  assert.match(page, /loadLiveBoard/);
+  assert.equal(client.includes('loadLiveBoard'), false);
+  assert.equal(client.includes('SPRINT_HQ_GITHUB_TOKEN'), false);
 });

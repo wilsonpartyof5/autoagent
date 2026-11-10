@@ -1,9 +1,15 @@
 import { LANES, MERGED_NOT_LIVE_NOTE } from '../lanes';
-import type { Lane, SprintCard } from '../types';
+import type { Lane, LiveHealth, SprintCard } from '../types';
 
 function evidenceChip(card: SprintCard): string {
-  if (card.evidenceState === 'released') return 'Released (simulation)';
-  if (card.evidenceState === 'independently_verified') return 'Verified (simulation)';
+  if (card.sourceMode === 'demo') {
+    if (card.evidenceState === 'released') return 'Released (simulation)';
+    if (card.evidenceState === 'independently_verified') return 'Verified (simulation)';
+    if (card.evidenceState === 'prepared') return 'Prepared, not verified';
+    return 'Unverified';
+  }
+  if (card.evidenceState === 'released') return 'Production deployment recorded';
+  if (card.evidenceState === 'independently_verified') return 'Independently verified';
   if (card.evidenceState === 'prepared') return 'Prepared, not verified';
   return 'Unverified';
 }
@@ -15,6 +21,7 @@ export function SprintBoard({
   activeLane,
   pulsingId,
   reduce,
+  liveHealth,
   onSelect,
   onLane,
 }: {
@@ -24,14 +31,17 @@ export function SprintBoard({
   activeLane: string | null;
   pulsingId: string | null;
   reduce: boolean;
+  liveHealth?: LiveHealth | null;
   onSelect: (id: string) => void;
   onLane: (lane: Lane) => void;
 }) {
   return (
     <div className="shq-board-block">
-      {mode === 'live' ? (
+      {mode === 'live' && liveHealth !== 'fresh' ? (
         <p className="shq-live-empty" role="status">
-          Live connection unavailable — not configured. No cards are loaded from GitHub, Cursor, or Supabase.
+          {liveHealth === 'stale'
+            ? 'Showing the last good GitHub sync. This board is Stale, not LIVE.'
+            : 'Unknown. No GitHub cards are loaded. Demo and snapshot cards are not substituted.'}
         </p>
       ) : null}
       <div className="shq-lane-switch" role="tablist" aria-label="Jump to lane">
@@ -72,7 +82,9 @@ export function SprintBoard({
                 {lane.mergedNote ? <p className="shq-merged-note">{MERGED_NOT_LIVE_NOTE}</p> : null}
                 {laneCards.length === 0 ? (
                   <p className="shq-empty">
-                    Nothing in this lane.
+                    {mode === 'live' && (lane.id === 'backlog' || lane.id === 'ready')
+                      ? 'No backlog source connected (master sheet not wired)'
+                      : 'Nothing in this lane.'}
                     {mode === 'snapshot' && (lane.id === 'building' || lane.id === 'release_ready' || lane.id === 'live')
                       ? ' The Nov 9 proposal has no cards here.'
                       : ''}
@@ -95,6 +107,8 @@ export function SprintBoard({
                             <span className="shq-chip">{evidenceChip(card)}</span>
                             {card.proposed ? <span className="shq-chip">Proposed</span> : null}
                             {card.blocked ? <span className="shq-chip shq-chip-hold">Hold</span> : null}
+                            {card.ciInProgress ? <span className="shq-chip">Checks running</span> : null}
+                            {card.reconciliation ? <span className="shq-chip">Needs reconciliation</span> : null}
                             {card.sourceMode === 'demo' ? <span className="shq-chip shq-chip-sim">SIMULATION</span> : null}
                           </span>
                           <span className="shq-fresh">Evidence time: {card.evidenceTimestamp ?? 'Not available'}</span>

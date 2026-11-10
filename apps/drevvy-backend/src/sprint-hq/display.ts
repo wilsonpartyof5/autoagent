@@ -1,5 +1,5 @@
 import { laneLabel } from './lanes';
-import type { DataMode, SprintCard } from './types';
+import type { DataMode, LiveBoard, SprintCard } from './types';
 
 export const NOT_AVAILABLE = 'Not available';
 
@@ -9,18 +9,36 @@ export const DEFAULT_MODE: DataMode = 'snapshot';
 export type ModeBanner = {
   mode: DataMode;
   text: string;
-  /** Phase A never claims a connected live board. The type forbids true. */
-  claimsLive: false;
+  /** True only for a fresh GitHub sync. Demo, snapshot, stale, and unknown stay false. */
+  claimsLive: boolean;
 };
 
-export function modeBanner(mode: DataMode): ModeBanner {
+export function modeBanner(mode: DataMode, live?: LiveBoard | null): ModeBanner {
   if (mode === 'demo') {
     return { mode, text: 'SIMULATION — NOT LIVE', claimsLive: false };
   }
   if (mode === 'snapshot') {
     return { mode, text: 'PROPOSAL SNAPSHOT — Nov 9, 2026', claimsLive: false };
   }
-  return { mode, text: 'Live connection unavailable — not configured', claimsLive: false };
+  if (live?.health === 'fresh' && live.syncedAt) {
+    return {
+      mode,
+      text: `LIVE — ${live.source} — Last sync ${live.syncedAt} — health fresh`,
+      claimsLive: true,
+    };
+  }
+  if (live?.health === 'stale') {
+    return {
+      mode,
+      text: `Stale — ${live.source} — last good sync ${live.syncedAt ?? 'not available'} — ${live.detail}`,
+      claimsLive: false,
+    };
+  }
+  return {
+    mode,
+    text: `Unknown — ${live?.detail ?? 'no successful GitHub sync yet'}`,
+    claimsLive: false,
+  };
 }
 
 export function show(value: string | null | undefined): string {
@@ -78,6 +96,7 @@ export function drawerRows(card: SprintCard): DrawerRow[] {
     { label: 'releaseAuthorization', value: showRelease(card) },
     { label: 'postDeployEvidence', value: show(card.postDeployEvidence) },
     { label: 'lastUpdated', value: show(card.lastUpdated) },
+    { label: 'reconciliation', value: show(card.reconciliation) },
   ];
 }
 
@@ -88,7 +107,7 @@ export function approvalBrief(card: SprintCard): string {
   return [
     'Drevvy Sprint HQ — approval brief',
     'Read-only summary. This text does not approve, deploy, merge, or publish.',
-    `Banner: ${modeBanner(card.sourceMode).text}`,
+    `Banner: ${card.sourceMode === 'live' ? 'Sync health is on the page banner. This brief does not claim LIVE.' : modeBanner(card.sourceMode).text}`,
     '',
     rows,
   ].join('\n');
@@ -101,13 +120,26 @@ export type Metric = {
   detail: string;
 };
 
-export function metricsFor(mode: DataMode, cards: readonly SprintCard[]): Metric[] {
+export function metricsFor(mode: DataMode, cards: readonly SprintCard[], live?: LiveBoard | null): Metric[] {
   if (mode === 'live') {
+    const counted = live?.health === 'fresh' || live?.health === 'stale';
+    const running = cards.filter((card) => card.ciInProgress).length;
+    const holds = cards.filter((card) => card.blocked).length;
     return [
-      { id: 'progress', label: 'Verified progress', value: 'Not configured', detail: 'No live adapter' },
-      { id: 'builders', label: 'Active builders', value: 'Not configured', detail: 'No run telemetry connected' },
-      { id: 'blocked', label: 'Blocked outcomes', value: '—', detail: 'Not configured' },
-      { id: 'approvals', label: 'Approvals needed', value: 'Not configured', detail: 'No live approval queue' },
+      { id: 'progress', label: 'Verified progress', value: '—', detail: 'No committed sprint baseline' },
+      {
+        id: 'builders',
+        label: 'Active builders',
+        value: 'Not configured',
+        detail: `Cursor run telemetry is not connected. GitHub checks in progress: ${running}.`,
+      },
+      {
+        id: 'blocked',
+        label: 'Holds in view',
+        value: counted ? String(holds) : '—',
+        detail: 'Counted from GitHub check failures in this sync',
+      },
+      { id: 'approvals', label: 'Approvals needed', value: 'Not configured', detail: 'GitHub does not record a DW approval' },
       { id: 'time', label: 'Sprint time left', value: 'Not configured', detail: 'No committed sprint baseline' },
     ];
   }

@@ -5,7 +5,7 @@ import { approvalBrief, formatClock } from '../display';
 import { idlePoses, ROLES } from '../roles';
 import { initialUiState, uiReducer, type UiState } from '../state/ui-state';
 import { sprintView } from '../state/view-model';
-import type { DataMode, RoleId, Speed, ViewId } from '../types';
+import type { DataMode, LiveBoard, RoleId, Speed, ViewId } from '../types';
 import { SprintBoard } from './board';
 import { CardDrawer, RoleDrawer } from './drawer';
 import { OfficeScene } from './office-scene';
@@ -31,18 +31,26 @@ const SPEEDS: Speed[] = [0.5, 1, 2];
 
 const OWNERS = ['all', 'Pivot Ship', 'Flutter Build', 'QA & Integration', 'Drevvy Security', 'Unassigned'];
 
-export function SprintHqApp({ initialState }: { initialState?: UiState }) {
+export function SprintHqApp({ initialState, live = null }: { initialState?: UiState; live?: LiveBoard | null }) {
   const [state, dispatch] = useReducer(uiReducer, initialState ?? initialUiState);
   const [osReduce, setOsReduce] = useState(false);
   const reduce = state.reduceMotion || osReduce;
-  const view = sprintView(state);
+  const view = sprintView(state, live);
   const poses = view.projection?.step.poses ?? idlePoses();
   const speech = view.projection?.step.speech ?? null;
   const miniBot = view.projection?.step.miniBot ?? null;
   const simulatedApproval = view.projection?.simulatedApproval ?? false;
   const selected = view.cards.find((card) => card.id === state.selectedCardId) ?? null;
+  const ciRunning = state.mode === 'live' && view.cards.some((card) => card.ciInProgress);
   const sprintName =
-    state.mode === 'demo' ? 'Cinema Demo script' : state.mode === 'live' ? 'Not configured' : 'No sprint configured';
+    state.mode === 'demo'
+      ? 'Cinema Demo script'
+      : state.mode === 'live'
+        ? live?.source ?? 'GitHub sync not fresh'
+        : 'No sprint configured';
+  const ownerOptions = Array.from(
+    new Set(['all', ...view.cards.map((card) => card.ownerRole ?? 'Unassigned'), ...OWNERS.filter((owner) => owner !== 'all')]),
+  );
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -120,17 +128,21 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
               onClick={() => dispatch({ type: 'setMode', mode: mode.id })}
             >
               {mode.label}
-              {mode.id === 'snapshot' ? <span className="shq-default-tag">Default</span> : null}
+              {mode.id === 'snapshot' ? <span className="shq-default-tag">Fallback</span> : null}
             </button>
           ))}
         </div>
       </header>
 
-      <p className="shq-banner" role="status" data-testid="mode-banner" data-claims-live="false" data-banner={view.banner.mode}>
+      <p className="shq-banner" role="status" data-testid="mode-banner" data-claims-live={view.banner.claimsLive ? 'true' : 'false'} data-banner={view.banner.mode}>
         {view.banner.text}
       </p>
       <p className="shq-default-note">
-        This admin route opens on the Nov 9 Snapshot. Cinema Demo is a synthetic script. Live is not built.
+        {state.mode === 'live' && live?.health === 'fresh'
+          ? 'Opened on Live because this GitHub read succeeded. Snapshot and Cinema Demo are unchanged.'
+          : state.mode === 'live'
+            ? 'Live is selected, but this sync is not fresh. Demo cards are not used.'
+            : 'Snapshot is the fallback when GitHub is not fresh. Cinema Demo is a synthetic script.'}
       </p>
 
       <section className="shq-metrics" aria-label="Sprint metrics">
@@ -171,6 +183,7 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
             miniBot={miniBot}
             simulatedApproval={simulatedApproval}
             large={state.view === 'office'}
+            ciRunning={ciRunning}
           />
           {state.view === 'office' ? (
             <div className="shq-office-tools">
@@ -204,7 +217,7 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
                 <label>
                   Owner
                   <select aria-label="Filter by owner" value={state.owner} onChange={(event) => dispatch({ type: 'setOwner', owner: event.target.value })}>
-                    {OWNERS.map((owner) => (
+                    {ownerOptions.map((owner) => (
                       <option key={owner} value={owner}>
                         {owner === 'all' ? 'All owners' : owner}
                       </option>
@@ -235,6 +248,7 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
                 activeLane={state.activeLane}
                 pulsingId={state.pulseStepId ? view.projection?.step.cardId ?? null : null}
                 reduce={reduce}
+                liveHealth={state.mode === 'live' ? live?.health ?? 'unknown' : null}
                 onSelect={(id) => dispatch({ type: 'selectCard', id })}
                 onLane={(lane) => dispatch({ type: 'setActiveLane', lane })}
               />
@@ -249,9 +263,15 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
       ) : null}
 
       {state.view === 'agents' ? (
-        <AgentsPanel mode={state.mode} cards={view.cards} poses={poses} onSelectRole={(role) => dispatch({ type: 'selectRole', id: role })} />
+        <AgentsPanel
+          mode={state.mode}
+          cards={view.cards}
+          poses={poses}
+          workflowRuns={live?.workflowRuns}
+          onSelectRole={(role) => dispatch({ type: 'selectRole', id: role })}
+        />
       ) : null}
-      {state.view === 'runs' ? <RunsPanel mode={state.mode} cards={view.cards} /> : null}
+      {state.view === 'runs' ? <RunsPanel mode={state.mode} cards={view.cards} workflowRuns={live?.workflowRuns} /> : null}
       {state.view === 'approvals' ? (
         <ApprovalsPanel
           cards={view.cards}
@@ -259,7 +279,7 @@ export function SprintHqApp({ initialState }: { initialState?: UiState }) {
           onCopy={(card) => void copyBrief(card)}
         />
       ) : null}
-      {state.view === 'reports' ? <ReportsPanel cards={view.cards} mode={state.mode} /> : null}
+      {state.view === 'reports' ? <ReportsPanel cards={view.cards} mode={state.mode} liveDetail={live?.detail} /> : null}
 
       <section className="shq-playback" aria-label="Demo playback">
         <div className="shq-playback-row">

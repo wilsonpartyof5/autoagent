@@ -35,6 +35,3 @@ export const PHASE_1_PILOT = {
 
 export const STALL_RULE =
   'An active worker with no recorded progress for 30 minutes is a flag for investigation, not an automatic cancel. Waiting on review or approval is not stalled. This view has no run telemetry, so nothing is flagged from a clock.';
-
-export const LIVE_UNAVAILABLE =
-  'Live connection unavailable — not configured. The proposed GitHub Project does not exist yet, and this screen does not create one.';

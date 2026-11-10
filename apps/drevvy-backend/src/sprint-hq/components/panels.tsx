@@ -1,8 +1,8 @@
-import { LIVE_UNAVAILABLE, PHASE_1_PILOT, STALL_RULE, WIP_RULES } from '../copy/model';
+import { PHASE_1_PILOT, STALL_RULE, WIP_RULES } from '../copy/model';
 import { LANES, MERGED_NOT_LIVE_NOTE } from '../lanes';
 import { ROLES, ROLE_IDS, confirmedStatus } from '../roles';
 import type { ActivityItem } from '../state/view-model';
-import type { AnimState, DataMode, RoleId, SprintCard } from '../types';
+import type { AnimState, DataMode, LiveWorkflowRun, RoleId, SprintCard } from '../types';
 
 export function ActivityFeed({
   items,
@@ -44,11 +44,13 @@ export function AgentsPanel({
   mode,
   cards,
   poses,
+  workflowRuns,
   onSelectRole,
 }: {
   mode: DataMode;
   cards: readonly SprintCard[];
   poses: Record<RoleId, AnimState>;
+  workflowRuns?: readonly LiveWorkflowRun[];
   onSelectRole: (role: RoleId) => void;
 }) {
   return (
@@ -78,19 +80,64 @@ export function AgentsPanel({
       {mode === 'demo' ? (
         <p>Mini-bots appear only while the script says a synthetic run is active. They use DEMO-RUN ids and leave when that beat ends.</p>
       ) : (
-        <p>No temporary Cursor workers. No run telemetry connected.</p>
+        <p>Cursor run telemetry: Not connected</p>
       )}
+      {mode === 'live' ? (
+        <>
+          <h3>GitHub Actions</h3>
+          {(workflowRuns ?? []).length === 0 ? (
+            <p>No workflow runs in this sync.</p>
+          ) : (
+            <ul className="shq-run-list">
+              {(workflowRuns ?? []).map((run) => (
+                <li key={run.id}>
+                  <strong>{run.name}</strong>
+                  <span>{run.status}{run.conclusion ? ` · ${run.conclusion}` : ''}</span>
+                  <span>{run.headSha ?? 'Not available'}</span>
+                  <span>{run.htmlUrl ?? 'Not available'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : null}
       <p className="shq-fine">Chat presence is not a running agent. Status words here are Unknown unless the Cinema Demo script is playing.</p>
     </section>
   );
 }
 
-export function RunsPanel({ mode, cards }: { mode: DataMode; cards: readonly SprintCard[] }) {
+export function RunsPanel({
+  mode,
+  cards,
+  workflowRuns,
+}: {
+  mode: DataMode;
+  cards: readonly SprintCard[];
+  workflowRuns?: readonly LiveWorkflowRun[];
+}) {
   const demoRuns = mode === 'demo' ? cards.filter((card) => card.ci || card.pr) : [];
+  const liveRuns = mode === 'live' ? workflowRuns ?? [] : [];
   return (
     <section className="shq-panel" aria-label="Runs and builds">
       <h2>Runs & Builds</h2>
-      {mode !== 'demo' ? (
+      {mode === 'live' ? (
+        liveRuns.length === 0 ? (
+          <p className="shq-callout" data-testid="runs-empty">No GitHub Actions runs in this sync</p>
+        ) : (
+          <ul className="shq-run-list">
+            {liveRuns.map((run) => (
+              <li key={run.id}>
+                <strong>{run.name}</strong>
+                <span>Status: {run.status}</span>
+                <span>Conclusion: {run.conclusion ?? 'Not available'}</span>
+                <span>Head: {run.headSha ?? 'Not available'}</span>
+                <span>{run.htmlUrl ?? 'Not available'}</span>
+                <span>{run.updatedAt ?? 'Not available'}</span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : mode !== 'demo' ? (
         <p className="shq-callout" data-testid="runs-empty">No run telemetry connected</p>
       ) : demoRuns.length === 0 ? (
         <p className="shq-callout">No synthetic run is on the clock yet. Press Play.</p>
@@ -107,7 +154,8 @@ export function RunsPanel({ mode, cards }: { mode: DataMode; cards: readonly Spr
           ))}
         </ul>
       )}
-      <p>{STALL_RULE}</p>
+      {mode === 'live' ? <p>Cursor run telemetry: Not connected</p> : null}
+      <p>{mode === 'live' ? 'GitHub Actions runs are listed when the sync has them. Nothing here auto-cancels a worker. Cursor run telemetry is not connected.' : STALL_RULE}</p>
     </section>
   );
 }
@@ -152,14 +200,14 @@ export function ApprovalsPanel({
   );
 }
 
-export function ReportsPanel({ cards, mode }: { cards: readonly SprintCard[]; mode: DataMode }) {
+export function ReportsPanel({ cards, mode, liveDetail }: { cards: readonly SprintCard[]; mode: DataMode; liveDetail?: string | null }) {
   return (
     <section className="shq-panel" aria-label="Reports">
       <h2>Reports</h2>
       <p className="shq-callout" data-testid="baseline">No committed sprint baseline</p>
       <p>Lane counts below are placements in this view. They are not a completion percent.</p>
       <p>{MERGED_NOT_LIVE_NOTE}</p>
-      {mode === 'live' ? <p>{LIVE_UNAVAILABLE}</p> : null}
+      {mode === 'live' ? <p>{liveDetail ?? 'Unknown — no successful GitHub sync yet'}</p> : null}
       <ul className="shq-counts">
         {LANES.map((lane) => (
           <li key={lane.id}>

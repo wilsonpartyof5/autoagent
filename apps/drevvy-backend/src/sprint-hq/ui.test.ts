@@ -6,17 +6,50 @@ import { projectDemo } from './engine/demo-engine';
 import { SNAPSHOT_CARDS } from './fixtures/snapshot';
 import { initialUiState, uiReducer } from './state/ui-state';
 import { filterCards, sprintView } from './state/view-model';
+import type { LiveBoard, SprintCard } from './types';
 import { sprintCss } from './components/sprint-hq-css';
 
-test('mode banners never claim a connected LIVE board', () => {
+test('mode banners claim LIVE only for a fresh GitHub sync', () => {
   for (const mode of ['demo', 'snapshot', 'live'] as const) {
     const banner = modeBanner(mode);
     assert.equal(banner.claimsLive, false);
-    assert.notEqual(banner.text, 'LIVE');
+    assert.equal(banner.text.startsWith('LIVE —'), false);
   }
   assert.equal(modeBanner('demo').text, 'SIMULATION — NOT LIVE');
   assert.equal(modeBanner('snapshot').text, 'PROPOSAL SNAPSHOT — Nov 9, 2026');
-  assert.equal(modeBanner('live').text, 'Live connection unavailable — not configured');
+  assert.match(modeBanner('live').text, /^Unknown —/);
+  const fresh = modeBanner('live', {
+    health: 'fresh',
+    source: 'github.com/wilsonpartyof5/autoagent',
+    syncedAt: '2026-11-10T15:00:00.000Z',
+    detail: 'health fresh',
+    cards: [],
+    workflowRuns: [],
+    closedUnmerged: [],
+  });
+  assert.equal(fresh.claimsLive, true);
+  assert.match(fresh.text, /^LIVE — github.com\/wilsonpartyof5\/autoagent — Last sync 2026-11-10T15:00:00.000Z — health fresh$/);
+  const stale = modeBanner('live', {
+    health: 'stale',
+    source: 'github.com/wilsonpartyof5/autoagent',
+    syncedAt: '2026-11-10T15:00:00.000Z',
+    detail: 'Last good sync kept after a rate limit.',
+    cards: [],
+    workflowRuns: [],
+    closedUnmerged: [],
+  });
+  assert.equal(stale.claimsLive, false);
+  assert.match(stale.text, /^Stale —/);
+  assert.equal(stale.text.includes('LIVE —'), false);
+  assert.equal(modeBanner('demo', {
+    health: 'fresh',
+    source: 'github.com/wilsonpartyof5/autoagent',
+    syncedAt: '2026-11-10T15:00:00.000Z',
+    detail: 'health fresh',
+    cards: [],
+    workflowRuns: [],
+    closedUnmerged: [],
+  }).claimsLive, false);
 });
 
 test('default state is the snapshot and playback cannot move it', () => {
@@ -77,6 +110,37 @@ test('switching back to snapshot drops demo selection and live shows no cards', 
   assert.equal(live.cards.length, 0);
   assert.equal(live.banner.claimsLive, false);
   assert.equal(live.metrics.every((metric) => metric.value === 'Not configured' || metric.value === '—'), true);
+});
+
+test('live mode renders the GitHub board and never substitutes demo cards', () => {
+  const card = {
+    ...SNAPSHOT_CARDS[0],
+    id: 'PR-7',
+    title: 'Real pull request',
+    lane: 'release_ready' as const,
+    sourceMode: 'live' as const,
+    sourceSystem: 'github' as const,
+    executionState: 'Merged, not released',
+    ciInProgress: false,
+  } satisfies SprintCard;
+  const live: LiveBoard = {
+    health: 'stale',
+    source: 'github.com/wilsonpartyof5/autoagent',
+    syncedAt: '2026-11-10T15:00:00.000Z',
+    detail: 'Last good sync kept after a fetch failure.',
+    cards: [card],
+    workflowRuns: [],
+    closedUnmerged: [],
+  };
+  let state = uiReducer(initialUiState, { type: 'setMode', mode: 'demo' });
+  state = uiReducer(state, { type: 'seek', stepId: 'fictional-release' });
+  state = uiReducer(state, { type: 'setMode', mode: 'live' });
+  const view = sprintView(state, live);
+  assert.deepEqual(view.cards.map((item) => item.id), ['PR-7']);
+  assert.equal(view.cards.some((item) => item.id.startsWith('DEMO-')), false);
+  assert.equal(view.banner.claimsLive, false);
+  assert.match(view.banner.text, /^Stale —/);
+  assert.equal(view.projection, null);
 });
 
 test('filters narrow the snapshot without moving lanes', () => {

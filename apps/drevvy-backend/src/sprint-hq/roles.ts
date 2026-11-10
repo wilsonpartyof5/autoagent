@@ -74,8 +74,9 @@ export function idlePoses(): Record<RoleId, AnimState> {
 }
 
 /**
- * Snapshot and the unconfigured live view never play work, review, or
- * celebrate motion. A card sitting in a lane is not a live process.
+ * The six named roles stay idle outside Cinema Demo. GitHub does not assign
+ * those roles. A separate GitHub Actions indicator is the only live motion,
+ * and only while a check run is actually in progress.
  */
 export function visualPose(state: AnimState, mode: DataMode): VisualPose {
   if (mode !== 'demo') return 'idle';

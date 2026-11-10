@@ -404,6 +404,17 @@ html[data-drevvy-theme='light'] .shq-sheet-bar { background: #f6f7fb; }
     border-radius: 20px 0 0 20px;
   }
 }
+.shq-ci-lamp.is-running::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 99px;
+  background: #3ee0ff;
+  animation: shq-type 0.8s ease-in-out infinite;
+}
+.shq-reduce .shq-ci-lamp.is-running::before,
 .shq-reduce .shq-bot .shq-rig,
 .shq-reduce .shq-bot .shq-eyes,
 .shq-reduce .shq-bot .shq-arm-l,
@@ -415,6 +426,7 @@ html[data-drevvy-theme='light'] .shq-sheet-bar { background: #f6f7fb; }
   animation: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
+  .shq .shq-ci-lamp.is-running::before,
   .shq .shq-bot .shq-rig,
   .shq .shq-bot .shq-eyes,
   .shq .shq-bot .shq-arm-l,

@@ -4,10 +4,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { SprintHqApp } from './components/sprint-hq-app';
+import { SNAPSHOT_CARDS } from './fixtures/snapshot';
 import { initialUiState } from './state/ui-state';
+import type { LiveBoard } from './types';
 
-function render(state: typeof initialUiState): string {
-  return renderToStaticMarkup(createElement(SprintHqApp, { initialState: state }));
+function render(state: typeof initialUiState, live?: LiveBoard | null): string {
+  return renderToStaticMarkup(createElement(SprintHqApp, { initialState: state, live }));
 }
 
 test('snapshot board renders seven lanes, the snapshot banner, and no live claim', () => {
@@ -81,15 +83,76 @@ test('mode switch render shows the simulation banner and a replayable event', ()
   assert.doesNotMatch(html, /G-128 \+ G-136/);
 });
 
-test('reduced motion flag is visible and live mode stays unavailable', () => {
+test('reduced motion flag is visible and an unknown live sync does not claim LIVE', () => {
   const reduced = render({ ...initialUiState, reduceMotion: true });
   assert.match(reduced, /data-reduce="true"/);
   assert.match(reduced, /class="shq shq-reduce"/);
   const live = render({ ...initialUiState, mode: 'live', view: 'runs' });
-  assert.match(live, /Live connection unavailable — not configured/);
-  assert.match(live, /No run telemetry connected/);
+  assert.match(live, /Unknown —/);
+  assert.match(live, /Cursor run telemetry: Not connected/);
+  assert.match(live, /No GitHub Actions runs in this sync/);
   assert.equal(live.includes('data-claims-live="true"'), false);
-  assert.equal(live.includes('>LIVE<'), false);
+  assert.equal(live.includes('DEMO-'), false);
+});
+
+test('a fresh live board shows GitHub cards, empty backlog, and a building lamp only while checks run', () => {
+  const running = {
+    ...SNAPSHOT_CARDS[0],
+    id: 'PR-11',
+    title: 'Checks are running',
+    lane: 'building' as const,
+    ownerRole: 'octocat',
+    blocked: false,
+    sourceMode: 'live' as const,
+    sourceSystem: 'github' as const,
+    executionState: 'Checks in progress',
+    ciInProgress: true,
+    reconciliation: null,
+  };
+  const held = {
+    ...running,
+    id: 'PR-12',
+    title: 'Checks failed',
+    blocked: true,
+    blocker: 'Failed checks: unit',
+    executionState: 'Checks failed',
+    ciInProgress: false,
+  };
+  const live: LiveBoard = {
+    health: 'fresh',
+    source: 'github.com/wilsonpartyof5/autoagent',
+    syncedAt: '2026-11-10T15:04:00.000Z',
+    detail: 'health fresh',
+    cards: [running, held],
+    workflowRuns: [
+      {
+        id: 'actions-9',
+        name: 'CI',
+        status: 'completed',
+        conclusion: 'success',
+        htmlUrl: 'https://github.com/wilsonpartyof5/autoagent/actions/runs/9',
+        headSha: 'abc1234',
+        updatedAt: '2026-11-10T15:03:00Z',
+      },
+    ],
+    closedUnmerged: [],
+  };
+  const board = render({ ...initialUiState, mode: 'live' }, live);
+  assert.match(board, /LIVE — github.com\/wilsonpartyof5\/autoagent — Last sync 2026-11-10T15:04:00.000Z — health fresh/);
+  assert.match(board, /data-claims-live="true"/);
+  assert.match(board, /No backlog source connected \(master sheet not wired\)/);
+  assert.match(board, /Checks are running/);
+  assert.match(board, /Checks running/);
+  assert.match(board, /data-anim="building"/);
+  assert.match(board, /PR-12/);
+  assert.equal(board.includes('DEMO-'), false);
+  const runs = render({ ...initialUiState, mode: 'live', view: 'runs' }, live);
+  assert.match(runs, /GitHub Actions/);
+  assert.match(runs, /Cursor run telemetry: Not connected/);
+  assert.match(runs, /actions\/runs\/9/);
+  const idle = render({ ...initialUiState, mode: 'live' }, { ...live, cards: [held] });
+  assert.match(idle, /data-anim="idle"/);
+  assert.equal(idle.includes('data-anim="building"'), false);
 });
 
 test('approvals offer evidence and a brief, and reports keep the phase 1 pilot', () => {

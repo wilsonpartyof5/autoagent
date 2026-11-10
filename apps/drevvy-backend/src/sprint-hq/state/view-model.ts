@@ -2,13 +2,13 @@ import { metricsFor, modeBanner, type Metric, type ModeBanner } from '../display
 import { projectDemo, type DemoProjection } from '../engine/demo-engine';
 import { DEMO_SCRIPT, type DemoStep } from '../fixtures/demo-script';
 import { SNAPSHOT_CARDS } from '../fixtures/snapshot';
-import type { SprintCard } from '../types';
+import type { LiveBoard, SprintCard } from '../types';
 import type { UiState } from './ui-state';
 
-export function cardsForMode(state: Pick<UiState, 'mode' | 'elapsedMs'>): SprintCard[] {
+export function cardsForMode(state: Pick<UiState, 'mode' | 'elapsedMs'>, live?: LiveBoard | null): SprintCard[] {
   if (state.mode === 'demo') return projectDemo(state.elapsedMs).cards;
   if (state.mode === 'snapshot') return [...SNAPSHOT_CARDS];
-  return [];
+  return live?.cards ? [...live.cards] : [];
 }
 
 export function filterCards(
@@ -37,18 +37,49 @@ export type ActivityItem = {
   stepId: string | null;
 };
 
-export function activityItems(state: Pick<UiState, 'mode' | 'elapsedMs' | 'watchCardId'>): ActivityItem[] {
+export function activityItems(state: Pick<UiState, 'mode' | 'elapsedMs' | 'watchCardId'>, live?: LiveBoard | null): ActivityItem[] {
   if (state.mode === 'live') {
-    return [
-      {
-        id: 'live-unavailable',
-        title: 'No activity',
-        detail: 'Live connection unavailable — not configured.',
-        timeLabel: 'Not available',
-        simulation: false,
-        stepId: null,
-      },
-    ];
+    if (!live || live.health === 'unknown') {
+      return [
+        {
+          id: 'live-unknown',
+          title: 'Unknown',
+          detail: live?.detail ?? 'No successful GitHub sync yet.',
+          timeLabel: 'Not available',
+          simulation: false,
+          stepId: null,
+        },
+      ];
+    }
+    const runs = live.workflowRuns.map((run) => ({
+      id: run.id,
+      title: run.name,
+      detail: `${run.status}${run.conclusion ? ` · ${run.conclusion}` : ''}${run.headSha ? ` · ${run.headSha}` : ''}`,
+      timeLabel: run.updatedAt ?? live.syncedAt ?? 'Not available',
+      simulation: false,
+      stepId: null,
+    }));
+    const closed = live.closedUnmerged.map((pull) => ({
+      id: `closed-${pull.id}`,
+      title: pull.id,
+      detail: `Closed, not merged. ${pull.title}`,
+      timeLabel: pull.updatedAt ?? 'Not available',
+      simulation: false,
+      stepId: null,
+    }));
+    if (runs.length === 0 && closed.length === 0) {
+      return [
+        {
+          id: 'live-quiet',
+          title: 'No workflow runs in this sync',
+          detail: live.detail,
+          timeLabel: live.syncedAt ?? 'Not available',
+          simulation: false,
+          stepId: null,
+        },
+      ];
+    }
+    return [...runs, ...closed];
   }
   if (state.mode === 'snapshot') {
     return [
@@ -101,15 +132,15 @@ export type SprintView = {
   script: readonly DemoStep[];
 };
 
-export function sprintView(state: UiState): SprintView {
-  const cards = cardsForMode(state);
+export function sprintView(state: UiState, live?: LiveBoard | null): SprintView {
+  const cards = cardsForMode(state, live);
   return {
-    banner: modeBanner(state.mode),
+    banner: modeBanner(state.mode, live),
     cards,
     filtered: filterCards(cards, state),
-    metrics: metricsFor(state.mode, cards),
+    metrics: metricsFor(state.mode, cards, live),
     projection: state.mode === 'demo' ? projectDemo(state.elapsedMs) : null,
-    activity: activityItems(state),
+    activity: activityItems(state, live),
     script: state.mode === 'demo' ? visibleScript(state) : [],
   };
 }
