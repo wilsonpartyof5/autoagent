@@ -12,6 +12,7 @@ const rail = [
   { href: '/admin', label: 'Users', icon: '👤' },
   { href: '/admin/dealers', label: 'Dealers', icon: '⌂' },
   { href: '/admin/terms-log', label: 'Terms log', icon: '✓' },
+  { href: '/admin/sprint', label: 'Sprint HQ', icon: '◈' },
 ];
 
 const pills = [
@@ -22,6 +23,7 @@ const pills = [
   { href: '/admin/terms-log', label: 'Terms log' },
   { href: '/admin/outreach', label: 'Outreach' },
   { href: '/admin/costs', label: 'Costs' },
+  { href: '/admin/sprint', label: 'Sprint HQ' },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -55,6 +57,9 @@ function pageMeta(pathname: string): { crumb: string; title: string } {
   }
   if (pathname.startsWith('/admin/analytics')) {
     return { crumb: 'admin.drevvy.com', title: 'Shopper analytics' };
+  }
+  if (pathname.startsWith('/admin/sprint')) {
+    return { crumb: 'admin.drevvy.com', title: 'Sprint HQ' };
   }
   if (pathname.startsWith('/admin/shoppers')) {
     return { crumb: 'Shoppers + dealer staff', title: 'Shopper' };
