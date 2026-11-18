@@ -22,7 +22,7 @@ export default async function DealerInvitePage({
         <div className="note">
           Drevvy shoppers message you directly. Chat is for transparency and
           answering questions — itemized out-the-door, availability, vehicle
-          details. Day-to-day is free; $300 only when you mark sold.
+          details. Day-to-day is free. The $300 fee is due only when the shopper confirms a purchase. Nothing is charged now.
         </div>
         <OnboardingNav
           backHref="/dealer/login"
