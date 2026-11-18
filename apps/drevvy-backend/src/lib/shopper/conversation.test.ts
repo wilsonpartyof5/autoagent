@@ -97,6 +97,11 @@ function credits(balance: number, firstName = 'Dana Blake') {
       if (table === 'drevvy_vdp_matches') {
         return {
           insert: (data: Record<string, unknown>) => {
+            assert.equal(
+              Object.prototype.hasOwnProperty.call(data, 'network_status'),
+              false,
+              'network_status is GENERATED ALWAYS; a payload that writes it fails with SQLSTATE 428C9',
+            );
             const saved = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...data };
             vdpMatches.push(saved);
             return {
@@ -158,7 +163,7 @@ test('conversation starts only for an onboarded rooftop and spends the dealer ke
   assert.equal(started.credits.balance, 1);
   assert.equal(deals.rows.length, 1);
   assert.equal(supabase.conversations[0]?.shopper_first_name, 'Dana');
-  assert.equal(supabase.vdpMatches[0]?.network_status, 'in_network');
+  assert.equal(Object.prototype.hasOwnProperty.call(supabase.vdpMatches[0] ?? {}, 'network_status'), false);
   assert.equal(supabase.vdpMatches[0]?.dealership_id, HONDA.id);
   assert.equal(supabase.vdpMatches[0]?.match_method, 'dealer_map');
   assert.equal(supabase.spends[0]?.p_vdp_match_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
