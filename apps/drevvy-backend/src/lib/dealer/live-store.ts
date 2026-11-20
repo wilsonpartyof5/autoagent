@@ -9,13 +9,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { shopperFirstNameOnly } from './rooftop-match';
 import { presentFromConversation, toInboxItem } from './present';
 import { evaluateOtdWithhold, recordLiveDealerReply } from './otd-warnings';
+import { isDuplicateDealerReply } from './reply-guard';
 import {
   CLOSE_FEE_CENTS,
   CLOSE_FEE_COPY,
   isInboxFilter,
   isOpenStage,
+  itemizedOtdShareBody,
+  itemizedTotalCents,
   matchesInboxFilter,
   numbersShareBody,
+  type ItemizedOtdLines,
   RANGE_LABEL,
   validCents,
 } from './format';
@@ -626,16 +630,22 @@ async function mutateLive(
   return { ok: true, data: next };
 }
 
+const liveReplyKeys = new Map<string, Set<string>>();
+
 export async function postLiveMessage(
   session: DealerSession,
   dealId: string,
   body: string,
   now = new Date(),
+  idempotencyKey?: string | null,
 ): Promise<DealerResult<ConversationDetail>> {
   const text = body.trim();
   if (!text) return fail('empty_message');
   if (text.length > MESSAGE_LIMIT) return fail('message_too_long');
   return mutateLive(session, dealId, now, async (supabase, conversation) => {
+    if (isDuplicateDealerReply(conversation.messages, text, idempotencyKey, liveReplyKeys.get(conversation.id))) {
+      return { ok: true, data: undefined };
+    }
     const sentAt = now.toISOString();
     await insertThreadMessage(supabase, conversation.id, {
       author: 'salesperson',
@@ -647,6 +657,12 @@ export async function postLiveMessage(
     if (!conversation.firstReplyAt) patch.first_reply_at = sentAt;
     if (Object.keys(patch).length > 0) await patchConversation(supabase, conversation.id, patch);
     await afterDealerReply(supabase, conversation, text, now);
+    const key = idempotencyKey?.trim();
+    if (key) {
+      const bucket = liveReplyKeys.get(conversation.id) ?? new Set<string>();
+      bucket.add(key);
+      liveReplyKeys.set(conversation.id, bucket);
+    }
     return { ok: true, data: undefined };
   });
 }
@@ -654,22 +670,34 @@ export async function postLiveMessage(
 export async function shareLiveNumbers(
   session: DealerSession,
   dealId: string,
-  input: { statedPriceCents: number; writtenOtdCents: number | null; note: string },
+  input: {
+    statedPriceCents: number;
+    writtenOtdCents: number | null;
+    note: string;
+    lines?: ItemizedOtdLines | null;
+  },
   now = new Date(),
 ): Promise<DealerResult<ConversationDetail>> {
   if (!validCents(input.statedPriceCents)) return fail('invalid_price');
   if (input.writtenOtdCents != null && !validCents(input.writtenOtdCents)) return fail('invalid_price');
   const note = input.note.trim();
   if (note.length > NOTE_LIMIT) return fail('invalid_price');
+  const lineTotal = input.lines ? itemizedTotalCents(input.lines) : null;
+  if (input.lines && (lineTotal == null || (input.writtenOtdCents != null && input.writtenOtdCents !== lineTotal))) {
+    return fail('invalid_price');
+  }
+  const writtenOtdCents = lineTotal ?? input.writtenOtdCents;
   return mutateLive(session, dealId, now, async (supabase, conversation) => {
     if (!isOpenStage(conversation.stage)) return fail('conversation_closed');
     const sentAt = now.toISOString();
-    const numbersBody = numbersShareBody({
-      advertisedPriceCents: conversation.advertisedPriceCents,
-      statedPriceCents: input.statedPriceCents,
-      writtenOtdCents: input.writtenOtdCents,
-      note,
-    });
+    const numbersBody = input.lines
+      ? itemizedOtdShareBody(input.lines, note)
+      : numbersShareBody({
+        advertisedPriceCents: conversation.advertisedPriceCents,
+        statedPriceCents: input.statedPriceCents,
+        writtenOtdCents,
+        note,
+      });
     await insertThreadMessage(supabase, conversation.id, {
       author: 'salesperson',
       kind: 'numbers',
@@ -678,7 +706,7 @@ export async function shareLiveNumbers(
     });
     const patch: Record<string, unknown> = {
       stated_price_cents: input.statedPriceCents,
-      written_otd_cents: input.writtenOtdCents,
+      written_otd_cents: writtenOtdCents,
     };
     if (!conversation.firstReplyAt) patch.first_reply_at = sentAt;
     await patchConversation(supabase, conversation.id, patch);

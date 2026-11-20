@@ -48,10 +48,10 @@ export const SHARE_NUMBERS_DISCLAIMER =
 
 export const CLOSE_FEE_CENTS = 30_000;
 
-export const CLOSE_FEE_COPY = '$300 per closed deal';
+export const CLOSE_FEE_COPY = '$300 when the shopper confirms a purchase';
 
 export const MARK_SOLD_CONFIRM =
-  'Mark this car sold? A participating dealer is charged $300 when a deal closes. Day-to-day use of the desk stays free. This copy is a placeholder. This demo does not charge a card.';
+  'Mark this car sold on the desk? That does not charge the dealer. The $300 fee is due only when the shopper confirms the purchase. Nothing is charged now. Stripe is not connected.';
 
 const MAX_CENTS = 200_000_000;
 
@@ -255,6 +255,63 @@ export function numbersShareBody(input: {
   const note = input.note.trim();
   if (note) lines.push(note);
   return lines.join('\n');
+}
+
+/** Line items that satisfy an itemized best out-the-door. Dollars, not a guess. */
+export type ItemizedOtdLines = {
+  vehiclePriceCents: number;
+  docFeeCents: number;
+  taxCents: number;
+  titleCents: number;
+  registrationCents: number;
+};
+
+/** Sum of the five required lines. Null when a line or the sum is outside the allowed range. */
+export function itemizedTotalCents(lines: ItemizedOtdLines): number | null {
+  const values = [
+    lines.vehiclePriceCents,
+    lines.docFeeCents,
+    lines.taxCents,
+    lines.titleCents,
+    lines.registrationCents,
+  ];
+  if (values.some((value) => !validCents(value))) return null;
+  const sum = values.reduce((total, value) => total + value, 0);
+  if (!Number.isSafeInteger(sum) || sum > MAX_CENTS) return null;
+  return sum;
+}
+
+export function itemizedOtdShareBody(lines: ItemizedOtdLines, note: string): string {
+  const total = itemizedTotalCents(lines);
+  const rows = [
+    'Itemized out-the-door in this chat. Informational, not a binding offer.',
+    `Vehicle price: ${formatMoney(lines.vehiclePriceCents)}`,
+    `Doc fee: ${formatMoney(lines.docFeeCents)}`,
+    `Tax: ${formatMoney(lines.taxCents)}`,
+    `Title: ${formatMoney(lines.titleCents)}`,
+    `Registration: ${formatMoney(lines.registrationCents)}`,
+  ];
+  if (total != null) rows.push(`Itemized total: ${formatMoney(total)}`);
+  const extra = note.trim();
+  if (extra) rows.push(extra);
+  return rows.join('\n');
+}
+
+export function readItemizedLines(
+  record: Record<string, unknown>,
+): ItemizedOtdLines | null | 'invalid' {
+  if (record.lines == null) return null;
+  if (typeof record.lines !== 'object' || Array.isArray(record.lines)) return 'invalid';
+  const row = record.lines as Record<string, unknown>;
+  const keys = ['vehiclePriceCents', 'docFeeCents', 'taxCents', 'titleCents', 'registrationCents'] as const;
+  const parsed = {} as ItemizedOtdLines;
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value !== 'number' || !validCents(value)) return 'invalid';
+    parsed[key] = value;
+  }
+  if (itemizedTotalCents(parsed) == null) return 'invalid';
+  return parsed;
 }
 
 export function matchesInboxFilter(

@@ -98,6 +98,9 @@ export function InboxDesk({
                     <SlaText sla={item.sla} />
                   </div>
                   <div className="mut">{item.vehicleTitle}</div>
+                  {item.fixtureLabel ? (
+                    <div className="mut">{item.fixtureLabel}</div>
+                  ) : null}
                   <div
                     style={{
                       fontSize: 12,

@@ -2,6 +2,11 @@
  * Persist an in-network VDP match so conversation key spends can stamp
  * `vdp_match_id`. Analytics `drevvy_conversation_key_guard` requires that
  * id to point at a `drevvy_vdp_matches` row with network_status = in_network.
+ *
+ * `network_status` is GENERATED ALWAYS from `dealership_id`
+ * (null -> off_network, otherwise in_network). This insert always sets
+ * `dealership_id`, so the stored value is in_network. Do not send
+ * `network_status`: Postgres rejects writes to a generated column (428C9).
  */
 
 import { createHash } from 'node:crypto';
@@ -43,7 +48,6 @@ export async function recordInNetworkVdpMatch(
     url_domain: normalizeHost(input.listingUrl) ?? normalizeHost(input.match.rooftop.websiteUrl),
     match_method: analyticsMatchMethod(input.match.method),
     dealership_id: input.match.rooftop.id,
-    network_status: 'in_network' as const,
     matcher_version: VDP_MATCHER_VERSION,
   };
 

@@ -71,6 +71,7 @@ test('login, callback, and terms wire the session handoff', () => {
   const login = readFileSync(join(HERE, '../../components/dealer/login-form.tsx'), 'utf8');
   const callback = readFileSync(join(HERE, '../../app/dealer/auth/callback/route.ts'), 'utf8');
   const terms = readFileSync(join(HERE, '../../app/dealer/onboarding/terms/page.tsx'), 'utf8');
+  const termsForm = readFileSync(join(HERE, '../../app/dealer/onboarding/terms/terms-form.tsx'), 'utf8');
   const actions = readFileSync(join(HERE, '../../app/dealer/actions.ts'), 'utf8');
   const layout = readFileSync(join(HERE, '../../app/layout.tsx'), 'utf8');
 
@@ -85,7 +86,9 @@ test('login, callback, and terms wire the session handoff', () => {
   assert.match(callback, /\/dealer\/inbox/);
   assert.equal(callback.includes('www.drevvy.com'), false);
 
-  assert.match(terms, /acceptDemoOnboarding/);
+  assert.match(terms, /TermsForm/);
+  assert.match(termsForm, /acceptDemoOnboarding/);
+  assert.match(termsForm, /message-only|commitment/);
   assert.match(actions, /isLiveDealerSession/);
   assert.match(layout, /marketingAuthCodeScript/);
 });

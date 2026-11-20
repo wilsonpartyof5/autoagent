@@ -33,7 +33,7 @@ Narrow web and the Flutter app: **Inbox** is the list. **Lead detail** is full s
 | `/dealer/onboarding/rooftops` | Add rooftops. |
 | `/dealer/onboarding/team` | Invite team. |
 | `/dealer/onboarding/routing` | Conversation routing. |
-| `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. Accepting the demo invite starts the demo desk session. |
+| `/dealer/onboarding/terms` | In-network messaging terms `v2026.10`. All 5 boxes required. Accepting the demo invite records a **test fixture**: the selected rooftops plus message-only and itemized-best-OTD commitments, then starts the demo desk session. It does not accept terms for a live dealer and does not write `user_dealerships`. |
 | `/dealer/onboarding/done` | Ready, then inbox. |
 | `/dealer/inbox` | Rooftop-scoped conversation list. Beside it, desktop shows a preview thread. |
 | `/dealer/leads/:id` | Same split on desktop. On a narrow window the thread and composer fill the screen. |
@@ -50,7 +50,7 @@ A mock row shows **first name + conversation ref** such as **Jordan · #A7F2**, 
 
 Stages: **New request → In conversation → Numbers shared**, and the end states **Closed**, **Car sold**, and **No reply**.
 
-The mock seed still opens with the templated **Get Best Price** demo line. Live in-network chat does not. Its first dealer-facing message is exactly `{first} wants your best itemized out-the-door` (`inNetworkOpener`), first name only. A ZIP is added only when the shopper is financing and a ZIP is already known. This path does not have a financing flag, so the ZIP is omitted. After that, both sides write freeform text in this chat. Composer chips are message-only: Share itemized OTD · Still available · Answer question · Price & fees · Vehicle details. No come-in or test-drive CTAs. **Share itemized OTD** can also open the informational numbers card. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx. Shopper chips are suggestions. Nothing is sent until the shopper taps.
+The mock seed still opens with the templated **Get Best Price** demo line. Live in-network chat does not. Its first dealer-facing message is exactly `{first} wants your best itemized out-the-door` (`inNetworkOpener`), first name only. A ZIP is added only when the shopper is financing and a ZIP is already known. This path does not have a financing flag, so the ZIP is omitted. After that, both sides write freeform text in this chat. Composer chips are message-only: Share itemized OTD · Still available · Answer question · Price & fees · Vehicle details. No come-in or test-drive CTAs. **Share itemized OTD** opens the informational numbers card. A complete card has vehicle price, doc fee, tax, title, and registration. That line-item message stops withhold warnings. A single total does not. It is not a binding offer. v1 is chat inside Drevvy. This desk does not send text, email, or calls, and it does not use Telnyx. Shopper chips are suggestions. Nothing is sent until the shopper taps.
 
 Analytics cards: reply rate, median first-reply time, conversations started, conversations closed, itemized OTD shared.
 
@@ -148,7 +148,9 @@ The count is `shopper_dealer_conversations.otd_warning_count`, with each warning
 
 `Your store has been removed from the Drevvy dealer network after 3 warnings for not giving an itemized best out-the-door. Transparency is why Drevvy exists.`
 
-That sets `otd_removal_recommended_at`. It recommends network removal for an admin. It does not delete the rooftop. A come-in push more than once sets `come_in_admin_flag` and stays separate from this ladder. There is no come-in rebuttal. The mock desk runs the same check when the thread opener is the live sentence. Demo **Get Best Price** rows are not warned.
+That sets `otd_removal_recommended_at`. It recommends network removal for an admin. It does not delete the rooftop and it does not update `dealerships`. A repeated reply does not add another strike. A come-in push more than once sets `come_in_admin_flag` and stays separate from this ladder. There is no come-in rebuttal. The mock desk runs the same check when the thread opener is the live sentence. Demo **Get Best Price** rows are not warned.
+
+The isolated fixture book (`DEALER_THREAD_FIXTURE=1` and a non-empty `NODE_ENV` other than production) is the only path that marks a rooftop removed, and only its own `fixroof_lakeside` row. Production, an empty `NODE_ENV`, `DEALER_PREVIEW=1`, and `ADMIN_PREVIEW=1` do not open that book. The book is a mode `0600` temp file on that server (`persistence: "isolated-preview-file"`), locked during each read and write, shared by the shopper and dealer routes, and labeled `TEST FIXTURE`. It is not Supabase. A live membership still reads and writes live rows for every id that does not start with `fixconv_`. Off-network opens return `not_chat` and do not create a thread. An itemized share stores the sum of vehicle price, doc fee, tax, title, and registration, and rejects a stated total that does not match. Live `recordLiveDealerReply` stays recommendation-only.
 
 ## Keys
 
