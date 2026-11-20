@@ -185,3 +185,30 @@ class FakePurchaseService implements PurchaseService {
     return CarPackType.values.any((p) => p.productId == productId);
   }
 }
+
+/// Live mode without a store SDK key. Purchases fail in the open instead of
+/// granting local keys.
+class UnavailablePurchaseService implements PurchaseService {
+  const UnavailablePurchaseService();
+
+  static const _message = 'Purchases are not configured for this build.';
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<List<CarPackOffering>?> getOfferings() async => null;
+
+  @override
+  Future<PurchaseResult> purchasePack(CarPackType packType) async {
+    return const PurchaseError(message: _message, code: 'not_configured');
+  }
+
+  @override
+  Future<RestoreResult> restorePurchases() async {
+    return const RestoreError(message: _message);
+  }
+
+  @override
+  Future<bool> isProductAvailable(String productId) async => false;
+}

@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
 import '../services/credits_endpoint.dart';
@@ -9,7 +11,19 @@ import '../services/purchase_config.dart';
 import '../services/purchase_service.dart';
 import '../services/purchase_service_factory.dart';
 import '../services/rooftop_match_endpoint.dart';
+import '../services/saved_cars_endpoint.dart';
+import '../services/shopper_profile_endpoint.dart';
+import '../services/shopper_session_store.dart';
 import '../../core/theme/drevvy_tokens.dart';
+
+/// A profile, credit, saved-car, or deal request finished after sign-out or
+/// an account switch. Callers leave the current account unchanged.
+class StaleAccountException implements Exception {
+  const StaleAccountException();
+
+  @override
+  String toString() => 'The account changed before this request finished.';
+}
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
 /// This allows for easy swap to the real backend later.
@@ -30,21 +44,72 @@ class DemoRepository {
     RooftopMatchEndpoint? rooftopMatch,
     KeySpendEndpoint? keySpend,
     DealChipsEndpoint? dealChips,
+    SavedCarsEndpoint? savedCars,
+    ShopperProfileEndpoint? profile,
+    http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
-    _credits = credits ?? CreditsEndpoint.fromConfig(resolved);
+    _live = resolved.isLive;
+    _credits =
+        credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
-    _rooftopMatch = rooftopMatch ?? RooftopMatchEndpoint.fromConfig(resolved);
-    _keySpend = keySpend ?? KeySpendEndpoint.fromConfig(resolved);
-    _dealChips = dealChips ?? DealChipsEndpoint.fromConfig(resolved);
+    _rooftopMatch =
+        rooftopMatch ??
+        RooftopMatchEndpoint.fromConfig(resolved, client: httpClient);
+    _keySpend =
+        keySpend ?? KeySpendEndpoint.fromConfig(resolved, client: httpClient);
+    _dealChips =
+        dealChips ?? DealChipsEndpoint.fromConfig(resolved, client: httpClient);
+    _savedCarsEndpoint =
+        savedCars ?? SavedCarsEndpoint.fromConfig(resolved, client: httpClient);
+    _profile =
+        profile ??
+        ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
+      _balanceKnown = true;
+    } else if (_live) {
+      _creditBalance = const CarCreditBalance.withBalance(0);
+      _balanceKnown = false;
+      _savedCarsInitialized = true;
+      _currentUser = _signedOutLiveUser;
+      if (!resolved.apiBaseUrl.trim().isNotEmpty) {
+        _creditNotice = apiNotConfiguredMessage;
+      }
     }
   }
 
-  static final instance = DemoRepository();
+  late final bool _live;
+
+  /// Live mode, including a live build whose API origin is still empty.
+  bool get isLive => _live;
+
+  /// Market intel has no shopper payload and no unlock read, so live mode
+  /// does not spend a key for it.
+  bool get marketIntelSpendEnabled => !_live;
+
+  /// Shown when live mode cannot confirm a key balance. Null in demo mode.
+  String? _creditNotice;
+  String? get creditNotice => _creditNotice;
+
+  /// A live balance is known only after the server has loaded or confirmed it.
+  bool get balanceKnown => _balanceKnown;
+
+  /// True after a balance for this account was loaded or granted. A live
+  /// zero from sign-out, a failed read, or a build that has not loaded
+  /// credits yet is not a confirmed balance.
+  bool _balanceKnown = true;
+
+  static final DemoRepository instance = _createInstance();
+
+  static DemoRepository _createInstance() {
+    final repo = DemoRepository();
+    ShopperSessionStore.instance.onSessionCleared = repo.clearSignedInState;
+    ShopperSessionStore.instance.onIdentityChanged = repo.noteSignedInIdentity;
+    return repo;
+  }
 
   final Duration _networkDelay;
   late final CreditsEndpoint _credits;
@@ -52,6 +117,8 @@ class DemoRepository {
   late final RooftopMatchEndpoint _rooftopMatch;
   late final KeySpendEndpoint _keySpend;
   late final DealChipsEndpoint _dealChips;
+  late final SavedCarsEndpoint _savedCarsEndpoint;
+  late final ShopperProfileEndpoint _profile;
 
   /// Chips route for an in-network deal. Missing base URL keeps the opener pair.
   DealChipsEndpoint get dealChips => _dealChips;
@@ -101,6 +168,31 @@ class DemoRepository {
   /// Off-network OTD requests captured for analytics review.
   final Set<String> _otdRequested = {};
 
+  int _accountGeneration = 0;
+
+  _AccountEpoch _captureAccount() {
+    return _AccountEpoch(
+      generation: _accountGeneration,
+      userId: _sessionUserId(
+        ShopperSessionStore.instance.session?.consumerUserId,
+      ),
+      token: ShopperSessionStore.instance.accessToken,
+    );
+  }
+
+  bool _accountStill(_AccountEpoch epoch) {
+    final current = _captureAccount();
+    return epoch.generation == current.generation &&
+        epoch.userId == current.userId &&
+        epoch.token == current.token;
+  }
+
+  static String? _sessionUserId(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   /// Shop listens so "Run again" from the menu or account sheet opens results.
   void Function(SavedSearch search)? onSavedSearchRun;
 
@@ -122,8 +214,109 @@ class DemoRepository {
   User? _currentUser;
 
   Future<User> getCurrentUser() async {
+    if (_live) {
+      _currentUser ??= _signedOutLiveUser;
+    } else {
+      _currentUser ??= _demoUser;
+    }
+    await _delay(null);
+    if (_live) _currentUser ??= _signedOutLiveUser;
     _currentUser ??= _demoUser;
-    return _delay(_currentUser!);
+    return _currentUser!;
+  }
+
+  /// Loads the profile id and the server balance and saved cars.
+  /// A profile miss keeps the neutral signed-in label. It never becomes Dana.
+  /// A sign-out or account switch before the responses return keeps the
+  /// account those responses no longer belong to.
+  Future<User> refreshLiveAccount() async {
+    if (!_live) return getCurrentUser();
+    final epoch = _captureAccount();
+    if (epoch.token == null) {
+      if (_accountStill(epoch)) _currentUser = _signedOutLiveUser;
+      return _currentUser ?? _signedOutLiveUser;
+    }
+    var userId = epoch.userId ?? '';
+    try {
+      final profile = await _profile.fetch();
+      if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
+      userId = profile.consumerUserId;
+    } on ApiConfigException {
+      if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
+    }
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
+    _currentUser = _signedInLiveUser(userId);
+    await pullSignedInBalance();
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
+    try {
+      await getSavedCars();
+    } on SavedCarsException {
+      // The saved tab shows the error and a retry for this same account.
+    } on StaleAccountException {
+      return _currentUser ?? _signedOutLiveUser;
+    }
+    if (!_accountStill(epoch)) return _currentUser ?? _signedOutLiveUser;
+    return _currentUser!;
+  }
+
+  /// The signed-in shopper changed. Live mode drops the previous account
+  /// immediately, including deals, so a late response cannot restore it.
+  void noteSignedInIdentity() {
+    if (!_live) return;
+    _accountGeneration++;
+    final userId = _sessionUserId(
+      ShopperSessionStore.instance.session?.consumerUserId,
+    );
+    _clearLiveAccount();
+    if (userId != null && ShopperSessionStore.instance.accessToken != null) {
+      _currentUser = _signedInLiveUser(userId);
+    }
+    _bumpLists();
+  }
+
+  /// Drops the signed-in account. Live mode does not fall back to Dana or
+  /// the seeded key balance. Demo mode restores the labeled sample shopper.
+  void clearSignedInState() {
+    _accountGeneration++;
+    _marketIntelUnlocked.clear();
+    _conversationStarted.clear();
+    _otdRequested.clear();
+    _savedListings.clear();
+    _savedCarsError = null;
+    _creditLedger.clear();
+    _conversationDealIds.clear();
+    _dealThreads.clear();
+    if (_live) {
+      _clearLiveAccount();
+    } else {
+      _currentUser = null;
+      _starterGranted = false;
+      _creditBalance = const CarCreditBalance.withBalance(6);
+      _creditNotice = null;
+      _savedCars = [];
+      _savedCarsInitialized = false;
+    }
+    _bumpLists();
+  }
+
+  void _clearLiveAccount() {
+    _currentUser = _signedOutLiveUser;
+    _creditBalance = const CarCreditBalance.withBalance(0);
+    _balanceKnown = false;
+    _creditNotice = null;
+    _starterGranted = true;
+    _savedCars = [];
+    _savedCarsInitialized = true;
+    _savedCarsError = null;
+    _savedListings.clear();
+    _marketIntelUnlocked.clear();
+    _conversationStarted.clear();
+    _otdRequested.clear();
+    _creditLedger.clear();
+    _conversationDealIds.clear();
+    _dealThreads.clear();
+    _deals = [];
+    _dealsSeeded = true;
   }
 
   Future<User> updateUser(User user) async {
@@ -140,6 +333,7 @@ class DemoRepository {
   /// Grants [starterFreeKeys] once. If the demo balance already covers that
   /// amount, this only records the grant so first-run does not stack keys.
   Future<bool> grantStarterKeys() async {
+    if (_live) return false;
     if (_starterGranted) return false;
     _starterGranted = true;
     if (_creditBalance.balance >= starterFreeKeys) {
@@ -161,6 +355,33 @@ class DemoRepository {
     );
     _reportBalance('starter_grant', needed);
     return true;
+  }
+
+  static const signedInShopperLabel = 'Signed in';
+  static const signedOutShopperLabel = 'Not signed in';
+  static const askUnavailableMessage = 'Ask is not available yet.';
+
+  static final _signedOutLiveUser = User(
+    id: 'signed_out',
+    firstName: signedOutShopperLabel,
+    email: '',
+    nameIsKnown: false,
+    entitlement: Entitlement.free,
+    usage: Usage(used: 0, cap: 0, resetsOn: DateTime.utc(2026)),
+  );
+
+  static User _signedInLiveUser(String consumerUserId) {
+    final id = consumerUserId.trim().isEmpty
+        ? 'signed_in'
+        : consumerUserId.trim();
+    return User(
+      id: id,
+      firstName: signedInShopperLabel,
+      email: '',
+      nameIsKnown: false,
+      entitlement: Entitlement.free,
+      usage: Usage(used: 0, cap: 0, resetsOn: DateTime.utc(2026)),
+    );
   }
 
   static final _demoUser = User(
@@ -212,19 +433,45 @@ class DemoRepository {
 
   /// Get current key balance.
   Future<CarCreditBalance> getCreditBalance() async {
-    return _delay(_creditBalance);
+    await _delay(null);
+    return _creditBalance;
   }
 
   /// Replaces the local balance with `GET /api/consumer/credits`.
   /// The server grants the 3 starter keys when the profile is created.
   /// A miss leaves the demo balance alone.
   Future<bool> pullSignedInBalance() async {
-    final remote = await _credits.fetchBalance();
-    if (remote == null) return false;
+    final epoch = _captureAccount();
+    final remote = await _readCredits(_credits.fetchBalance, epoch);
+    if (!_accountStill(epoch)) return false;
+    if (remote == null) {
+      if (_live) {
+        _creditNotice ??= 'Key balance is unavailable.';
+        _creditBalance = const CarCreditBalance.withBalance(0);
+        _balanceKnown = false;
+      }
+      return false;
+    }
+    _creditNotice = null;
+    _balanceKnown = true;
     _creditBalance = remote;
     _starterGranted = true;
     _bumpLists();
     return true;
+  }
+
+  Future<CarCreditBalance?> _readCredits(
+    Future<CarCreditBalance?> Function() read,
+    _AccountEpoch epoch,
+  ) async {
+    try {
+      final balance = await read();
+      if (!_accountStill(epoch)) return null;
+      return balance;
+    } on ApiConfigException catch (error) {
+      if (_accountStill(epoch)) _creditNotice = error.message;
+      return null;
+    }
   }
 
   /// Get credit ledger entries for this user.
@@ -325,7 +572,7 @@ class DemoRepository {
   }
 
   bool hasUnlockedMarketIntel(String listingId) =>
-      _marketIntelUnlocked.contains(listingId);
+      !_live && _marketIntelUnlocked.contains(listingId);
 
   bool hasStartedConversation(String listingId) =>
       _conversationStarted.contains(listingId);
@@ -333,19 +580,28 @@ class DemoRepository {
   bool hasRequestedOtd(String listingId) => _otdRequested.contains(listingId);
 
   Future<RooftopMatch> getRooftopMatch(Listing listing) async {
+    final epoch = _live ? _captureAccount() : null;
     final match = await _rooftopMatch.match(listing);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
     ProductAnalytics.instance.track(AnalyticsEvents.rooftopMatchResolved, {
       'listing_id': listing.id,
       'matched': match.matched,
       if (match.rooftopId != null) 'rooftop_id': match.rooftopId,
       'source': match.source.name,
     });
-    return _delay(match);
+    await _delay(null);
+    if (epoch != null && !_accountStill(epoch)) {
+      return const RooftopMatch.unavailable();
+    }
+    return match;
   }
 
   Future<bool> unlockMarketIntel(Listing listing) async {
+    if (_live) return false;
     final remote = await _keySpend.spendMarketSave(listing);
-    if (remote.source == KeySpendSource.live) {
+    if (_refusesLocalKeySpend(remote)) {
       if (remote.ok) {
         _marketIntelUnlocked.add(listing.id);
         if (remote.balance != null) _creditBalance = remote.balance!;
@@ -372,14 +628,16 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!match.isInNetwork) return null;
+    if (!_mayStartConversation(match)) return null;
+    final epoch = _captureAccount();
     final remote = await _keySpend.startConversation(
       listing: listing,
       match: match,
       templateId: templateId,
       message: message,
     );
-    if (remote.source == KeySpendSource.live) {
+    if (!_accountStill(epoch)) return null;
+    if (_refusesLocalKeySpend(remote)) {
       if (!remote.ok) return null;
       _conversationStarted.add(listing.id);
       if (remote.balance != null) _creditBalance = remote.balance!;
@@ -392,7 +650,13 @@ class DemoRepository {
           'source': 'live',
         },
       );
-      final created = await addDeal(listing, spend: false, id: remote.dealId);
+      final Deal created;
+      try {
+        created = await addDeal(listing, spend: false, id: remote.dealId);
+      } on StaleAccountException {
+        return null;
+      }
+      if (!_accountStill(epoch)) return null;
       _conversationDealIds[listing.id] = created.id;
       return created;
     }
@@ -406,13 +670,19 @@ class DemoRepository {
       if (templateId != null) 'template_id': templateId,
       'source': 'stub',
     });
-    final created = await addDeal(listing, spend: false);
+    final Deal created;
+    try {
+      created = await addDeal(listing, spend: false);
+    } on StaleAccountException {
+      return null;
+    }
+    if (!_accountStill(epoch)) return null;
     _conversationDealIds[listing.id] = created.id;
     return created;
   }
 
   Future<bool> requestOtdNumber(Listing listing, {String? note}) async {
-    _otdRequested.add(listing.id);
+    if (_live) return false;
     ProductAnalytics.instance.track(AnalyticsEvents.otdNumberRequested, {
       'listing_id': listing.id,
       'free': true,
@@ -421,8 +691,51 @@ class DemoRepository {
       if (listing.vdpUrl != null) 'has_vdp_url': true,
     });
     final remote = await _keySpend.requestOtdNumber(listing, note: note);
-    if (remote.source == KeySpendSource.live) return remote.ok;
+    if (_refusesLocalKeySpend(remote)) {
+      if (remote.ok) _otdRequested.add(listing.id);
+      return remote.ok;
+    }
+    _otdRequested.add(listing.id);
     return true;
+  }
+
+  /// In-network is not enough in live mode. A stub match and an unavailable
+  /// match must not post a conversation or fall through to the local ledger.
+  bool _mayStartConversation(RooftopMatch match) {
+    if (!match.isInNetwork) return false;
+    if (_live && match.source != RooftopMatchSource.live) return false;
+    return true;
+  }
+
+  /// Seeded demo deals already carry the fair-price formula. Live must not
+  /// keep that valuation on a deal it just attached to a real conversation.
+  Deal _dropSyntheticMarket(Deal deal) {
+    if (!_live || deal.marketContext == null) return deal;
+    return Deal(
+      id: deal.id,
+      listingId: deal.listingId,
+      letter: deal.letter,
+      status: deal.status,
+      listedAtStart: deal.listedAtStart,
+      addedAt: deal.addedAt,
+      firstContactAt: deal.firstContactAt,
+      listing: deal.listing,
+      offers: deal.offers,
+      comms: deal.comms,
+      events: deal.events,
+      dealer: deal.dealer,
+      officialOffer: deal.officialOffer,
+      outcome: deal.outcome,
+      acceptedOffer: deal.acceptedOffer,
+      changedOffer: deal.changedOffer,
+      tryOnceMoreUsed: deal.tryOnceMoreUsed,
+      dealerTimelines: deal.dealerTimelines,
+    );
+  }
+
+  bool _refusesLocalKeySpend(KeySpendResult remote) {
+    return remote.source == KeySpendSource.live ||
+        remote.source == KeySpendSource.blocked;
   }
 
   /// Refund 1 credit for a deal. Returns true if successful.
@@ -456,12 +769,17 @@ class DemoRepository {
 
   /// Record a store purchase. Server balance wins when the credits route exists.
   Future<void> _recordPurchase(PurchaseSuccess result) async {
+    final epoch = _captureAccount();
     if (_hasTransaction(result.transactionId)) return;
 
-    final remote = await _credits.grantPurchase(
-      productId: result.packType.productId,
-      transactionId: result.transactionId,
+    final remote = await _readCredits(
+      () => _credits.grantPurchase(
+        productId: result.packType.productId,
+        transactionId: result.transactionId,
+      ),
+      epoch,
     );
+    if (!_accountStill(epoch)) return;
     if (remote != null) {
       _rememberTransaction(
         result.transactionId,
@@ -469,9 +787,11 @@ class DemoRepository {
         result.packType,
       );
       _creditBalance = remote;
+      _balanceKnown = true;
       _reportBalance('purchase', result.creditsAdded);
       return;
     }
+    if (_live) return;
     _addCredits(
       result.creditsAdded,
       CreditReason.purchase,
@@ -526,6 +846,7 @@ class DemoRepository {
       balance: _creditBalance.balance + credits,
       totalPurchased: _creditBalance.totalPurchased + credits,
     );
+    _balanceKnown = true;
     _reportBalance(reason.name, credits);
   }
 
@@ -566,15 +887,20 @@ class DemoRepository {
     });
     if (result is RestoreError) return result;
 
+    final epoch = _captureAccount();
     final transactions = switch (result) {
       RestoreSuccess(:final transactions) => transactions,
       _ => const <RestoredTransaction>[],
     };
-    final remote = await _credits.restorePurchases(
-      transactionIds: [
-        for (final transaction in transactions) transaction.transactionId,
-      ],
+    final remote = await _readCredits(
+      () => _credits.restorePurchases(
+        transactionIds: [
+          for (final transaction in transactions) transaction.transactionId,
+        ],
+      ),
+      epoch,
     );
+    if (!_accountStill(epoch)) return const RestoreNoPurchases();
     if (remote != null) {
       for (final transaction in transactions) {
         _rememberTransaction(
@@ -584,6 +910,7 @@ class DemoRepository {
         );
       }
       _creditBalance = remote;
+      _balanceKnown = true;
       if (transactions.isEmpty) return const RestoreNoPurchases();
       return RestoreSuccess(
         creditsRestored: remote.balance,
@@ -591,6 +918,11 @@ class DemoRepository {
       );
     }
 
+    if (_live) {
+      return RestoreError(
+        message: _creditNotice ?? 'Purchases were not restored. The credits service did not confirm them.',
+      );
+    }
     if (transactions.isEmpty) return const RestoreNoPurchases();
 
     var added = 0;
@@ -649,7 +981,7 @@ class DemoRepository {
     if (!includes(filters.models, listing.build.model)) return false;
     if (!includes(filters.bodyTypes, listing.build.bodyType)) return false;
     if (!includes(filters.fuel, listing.build.powertrainType)) return false;
-    if (filters.priceMax != null && listing.price > filters.priceMax!) {
+    if (filters.priceMax != null && (listing.price ?? 0) > filters.priceMax!) {
       return false;
     }
     if (filters.milesMax != null && (listing.miles ?? 0) > filters.milesMax!) {
@@ -677,19 +1009,23 @@ class DemoRepository {
   }
 
   Future<MarketContext> getMarketContext(Listing listing) async {
+    if (_live) {
+      throw StateError('Market intel is unavailable.');
+    }
     // Mock market context with consistent math per audit
     // Fair price MUST be between low and high
     final isNew = listing.isNew;
 
+    final price = listing.price ?? 0;
     if (isNew) {
-      final msrp = listing.msrp ?? listing.price + 2000;
-      final discount = msrp - listing.price;
+      final msrp = listing.msrp ?? price + 2000;
+      final discount = msrp - price;
       return _delay(
         MarketContext(
-          fairVehiclePrice: listing.price,
-          fairOtd: listing.price + 3500, // +fees/tax estimate
-          lowPrice: listing.price - 1500,
-          medianPrice: listing.price + 500,
+          fairVehiclePrice: price,
+          fairOtd: price + 3500, // +fees/tax estimate
+          lowPrice: price - 1500,
+          medianPrice: price + 500,
           highPrice: msrp + 1000,
           comparablesCount: 8,
           daysListedMedian: 25,
@@ -702,11 +1038,10 @@ class DemoRepository {
 
     // Used car: ensure fairVehiclePrice is between low and high
     // Using consistent percentiles (p25/p50/p75)
-    final lowPrice = (listing.price * 0.92).round(); // p25
-    final medianPrice = (listing.price * 1.02).round(); // p50
-    final highPrice = (listing.price * 1.12).round(); // p75
-    final fairVehicle = (listing.price * 1.03)
-        .round(); // MC Price between p50-p75
+    final lowPrice = (price * 0.92).round(); // p25
+    final medianPrice = (price * 1.02).round(); // p50
+    final highPrice = (price * 1.12).round(); // p75
+    final fairVehicle = (price * 1.03).round(); // MC Price between p50-p75
 
     return _delay(
       MarketContext(
@@ -730,13 +1065,52 @@ class DemoRepository {
   List<SavedCar> _savedCars = [];
   bool _savedCarsInitialized = false;
 
+  /// Last live saved-cars failure. Null after a successful read.
+  String? _savedCarsError;
+  String? get savedCarsError => _savedCarsError;
+
+  final Map<String, Listing> _savedListings = {};
+
+  /// Listing shell returned with a saved car. Null in demo, where the catalog
+  /// lookup is used instead.
+  Listing? listingForSavedCar(String listingId) => _savedListings[listingId];
+
   /// Get all saved cars for the current user.
   Future<List<SavedCar>> getSavedCars() async {
+    if (_live) return _loadLiveSavedCars();
     if (!_savedCarsInitialized) {
       _savedCars = _demoSavedCars;
       _savedCarsInitialized = true;
     }
-    return _delay(List.unmodifiable(_savedCars));
+    await _delay(null);
+    return List.unmodifiable(_savedCars);
+  }
+
+  Future<List<SavedCar>> _loadLiveSavedCars() async {
+    final epoch = _captureAccount();
+    try {
+      final records = await _savedCarsEndpoint.list();
+      if (!_accountStill(epoch)) return List.unmodifiable(_savedCars);
+      _replaceSavedRecords(records);
+      _savedCarsError = null;
+      _savedCarsInitialized = true;
+      return List.unmodifiable(_savedCars);
+    } on SavedCarsException catch (error) {
+      if (!_accountStill(epoch)) return List.unmodifiable(_savedCars);
+      _savedCarsError = error.message;
+      rethrow;
+    }
+  }
+
+  void _replaceSavedRecords(List<SavedCarRecord> records) {
+    _savedCars = [for (final record in records) record.car];
+    _savedListings
+      ..clear()
+      ..addEntries(
+        records
+            .where((record) => record.listing != null)
+            .map((record) => MapEntry(record.car.listingId, record.listing!)),
+      );
   }
 
   /// Check if a listing is saved.
@@ -752,6 +1126,30 @@ class DemoRepository {
 
   /// Save a car (heart tap). No credit spent, no dealer contact.
   Future<SavedCar> saveCar(Listing listing, {String source = 'unknown'}) async {
+    if (_live) {
+      final epoch = _captureAccount();
+      final record = await _savedCarsEndpoint.save(
+        listingId: listing.id,
+        vin: listing.vin,
+      );
+      if (!_accountStill(epoch)) throw const StaleAccountException();
+      _savedCars = [
+        for (final car in _savedCars)
+          if (car.listingId != record.car.listingId) car,
+        record.car,
+      ];
+      if (record.listing != null) {
+        _savedListings[record.car.listingId] = record.listing!;
+      }
+      _savedCarsError = null;
+      _bumpLists();
+      ProductAnalytics.instance.track(AnalyticsEvents.carSaved, {
+        'listing_id': listing.id,
+        'inventory_type': listing.inventoryType,
+        'source': source,
+      });
+      return record.car;
+    }
     final savedCar = SavedCar(
       id: 'saved_${DateTime.now().millisecondsSinceEpoch}',
       userId: _currentUser?.id ?? 'user_demo_001',
@@ -780,6 +1178,16 @@ class DemoRepository {
         .where((car) => car.id == savedCarId)
         .map((car) => car.listingId)
         .firstOrNull;
+    final epoch = _captureAccount();
+    if (_live) {
+      if (listingId == null) {
+        throw const SavedCarsException('Saved car not found.');
+      }
+      await _savedCarsEndpoint.delete(listingId);
+      if (!_accountStill(epoch)) throw const StaleAccountException();
+      _savedListings.remove(listingId);
+    }
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _savedCars = _savedCars.where((sc) => sc.id != savedCarId).toList();
     _bumpLists();
     if (listingId != null) {
@@ -796,6 +1204,13 @@ class DemoRepository {
     String listingId, {
     String source = 'unknown',
   }) async {
+    final epoch = _captureAccount();
+    if (_live) {
+      await _savedCarsEndpoint.delete(listingId);
+      if (!_accountStill(epoch)) throw const StaleAccountException();
+      _savedListings.remove(listingId);
+    }
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _savedCars = _savedCars.where((sc) => sc.listingId != listingId).toList();
     _bumpLists();
     ProductAnalytics.instance.track(AnalyticsEvents.carUnsaved, {
@@ -876,13 +1291,21 @@ class DemoRepository {
 
   void _ensureDealsLoaded() {
     if (_dealsSeeded) return;
+    if (_live) {
+      _deals = [];
+      _dealsSeeded = true;
+      return;
+    }
     _deals = List<Deal>.from(_demoDealsList);
     _dealsSeeded = true;
   }
 
   Future<List<Deal>> getDeals() async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
-    return _delay(_deals);
+    await _delay(null);
+    if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+    return List<Deal>.unmodifiable(_deals);
   }
 
   Future<Deal> getDealById(String id) async {
@@ -891,13 +1314,16 @@ class DemoRepository {
   }
 
   Future<Deal> addDeal(Listing listing, {bool spend = true, String? id}) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     for (final deal in _deals) {
       if (deal.listingId == listing.id) {
-        final next = id != null && id.isNotEmpty && deal.id != id
+        final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        if (next.id != deal.id) {
+        final next = _dropSyntheticMarket(renamed);
+        if (next.id != deal.id || next.marketContext != deal.marketContext) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -925,11 +1351,12 @@ class DemoRepository {
       listingId: listing.id,
       letter: _getNextLetter(),
       status: DealStatus.reachingOut,
-      listedAtStart: listing.price,
+      listedAtStart: listing.price ?? 0,
       addedAt: DateTime.now(),
       listing: listing,
-      marketContext: await getMarketContext(listing),
+      marketContext: _live ? null : await getMarketContext(listing),
     );
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     _deals = [..._deals, newDeal];
     _savedCars = _savedCars
         .where((car) => car.listingId != listing.id)
@@ -948,8 +1375,10 @@ class DemoRepository {
   }
 
   Future<void> removeDeal(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final refunded = canGetEarlyRemovalRefund(deal);
     _deals = _deals.where((d) => d.id != dealId).toList();
 
@@ -968,8 +1397,10 @@ class DemoRepository {
   }
 
   Future<Deal> acceptOffer(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final updated = deal.copyWith(
       status: DealStatus.accepted,
       acceptedOffer: deal.latestOffer,
@@ -984,8 +1415,10 @@ class DemoRepository {
   }
 
   Future<Deal> keepGoing(String dealId) async {
+    final epoch = _captureAccount();
     _ensureDealsLoaded();
     final deal = await getDealById(dealId);
+    if (!_accountStill(epoch)) throw const StaleAccountException();
     final updated = deal.copyWith(status: DealStatus.findingBestPrice);
     _deals = _deals.map((d) => d.id == dealId ? updated : d).toList();
     _bumpLists();
@@ -1017,6 +1450,7 @@ class DemoRepository {
   /// Get chat history for the drawer (v1.6.1)
   /// Deal-scoped chats are excluded per spec §6.13
   Future<List<ChatThread>> getChatHistory() async {
+    if (_live) return _delay(List.unmodifiable(_chatHistory));
     if (_chatHistory.isEmpty) {
       _chatHistory = _demoChatHistory;
     }
@@ -1098,6 +1532,20 @@ class DemoRepository {
       messages: [..._chatThread.messages, userMsg],
     );
 
+    if (_live) {
+      final unavailable = ChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}_agent',
+        role: MessageRole.agent,
+        contentType: MessageContentType.error,
+        text: askUnavailableMessage,
+        timestamp: DateTime.now(),
+      );
+      _chatThread = _chatThread.copyWith(
+        messages: [..._chatThread.messages, unavailable],
+      );
+      return _chatThread;
+    }
+
     // Simulate agent response
     await Future.delayed(const Duration(milliseconds: 1500));
 
@@ -1121,6 +1569,7 @@ class DemoRepository {
 
   /// Rewrites the latest answer so toggles in the memory sheet apply to this chat only.
   Future<ChatThread> applyChatMemory(Set<String> enabledIds) async {
+    if (_live) return _chatThread;
     final messages = List<ChatMessage>.from(_chatThread.messages);
     final agentIndex = messages.lastIndexWhere((message) => message.isAgent);
     if (agentIndex < 0) return _chatThread;
@@ -2008,6 +2457,18 @@ class DemoRepository {
       comms: const DealComms(emails: 6, texts: 3, calls: 1),
     ),
   ];
+
+  /// Instance methods so a signed-in screen can ignore a late profile.
+  /// The demo data still lives on [DemoRepositorySearchProfile].
+  Future<SearchProfile> getSearchProfile() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return DemoRepositorySearchProfile.storedProfile;
+  }
+
+  Future<List<StarterCard>> getStarters() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return DemoRepositorySearchProfile.storedStarters();
+  }
 }
 
 class DealStats {
@@ -2111,6 +2572,53 @@ extension DemoRepositorySearchProfile on DemoRepository {
   /// Restores the in-memory demo search profile between tests.
   void resetDemoSearchProfile() {
     _searchProfile = _newDemoSearchProfile();
+  }
+
+  static SearchProfile get storedProfile => _searchProfile;
+
+  static List<StarterCard> storedStarters() {
+    if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
+      return _genericStarters;
+    }
+
+    final starters = <StarterCard>[];
+    final lastSearch = _searchProfile.searches.first;
+    starters.add(
+      StarterCard(
+        kind: StarterKind.backToSearch,
+        kicker: 'BACK TO YOUR SEARCH',
+        title: lastSearch.displayTitle,
+        action: StarterAction(mode: 'shop', filters: lastSearch.filters),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.priceDrops,
+        kicker: 'PRICE DROPS',
+        title: '3 price drops on cars like ones you viewed',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.newListings,
+        kicker: 'NEW LISTINGS',
+        title: '5 new CR-V Hybrids within 30 mi',
+        action: StarterAction(mode: 'shop'),
+      ),
+    );
+    starters.add(
+      const StarterCard(
+        kind: StarterKind.fairPrice,
+        kicker: 'FAIR PRICE',
+        title: 'Is \$32,995 fair for the RAV4 you viewed?',
+        action: StarterAction(
+          mode: 'ask',
+          prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?',
+        ),
+      ),
+    );
+    return starters.take(4).toList();
   }
 
   /// Stores first-run answers on the shopper and as onboarding memory.
@@ -2223,11 +2731,6 @@ extension DemoRepositorySearchProfile on DemoRepository {
     _searchProfile = _searchProfile.copyWith(searches: const []);
   }
 
-  Future<SearchProfile> getSearchProfile() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _searchProfile;
-  }
-
   Future<SearchProfile> updateSearchProfile(SearchProfile profile) async {
     _searchProfile = profile;
     await Future.delayed(const Duration(milliseconds: 300));
@@ -2252,64 +2755,6 @@ extension DemoRepositorySearchProfile on DemoRepository {
       searches: [],
       viewed: [],
     );
-  }
-
-  Future<List<StarterCard>> getStarters() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (!_searchProfile.personalize || _searchProfile.searches.isEmpty) {
-      return _genericStarters;
-    }
-
-    final starters = <StarterCard>[];
-
-    // Back to search - last saved search
-    if (_searchProfile.searches.isNotEmpty) {
-      final lastSearch = _searchProfile.searches.first;
-      starters.add(
-        StarterCard(
-          kind: StarterKind.backToSearch,
-          kicker: 'BACK TO YOUR SEARCH',
-          title: lastSearch.displayTitle,
-          action: StarterAction(mode: 'shop', filters: lastSearch.filters),
-        ),
-      );
-    }
-
-    // Price drops
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.priceDrops,
-        kicker: 'PRICE DROPS',
-        title: '3 price drops on cars like ones you viewed',
-        action: StarterAction(mode: 'shop'),
-      ),
-    );
-
-    // New listings
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.newListings,
-        kicker: 'NEW LISTINGS',
-        title: '5 new CR-V Hybrids within 30 mi',
-        action: StarterAction(mode: 'shop'),
-      ),
-    );
-
-    // Fair price
-    starters.add(
-      const StarterCard(
-        kind: StarterKind.fairPrice,
-        kicker: 'FAIR PRICE',
-        title: 'Is \$32,995 fair for the RAV4 you viewed?',
-        action: StarterAction(
-          mode: 'ask',
-          prompt: 'Is \$32,995 fair for the 2024 RAV4 Hybrid XLE?',
-        ),
-      ),
-    );
-
-    return starters.take(4).toList();
   }
 
   static const _genericStarters = [
@@ -2347,4 +2792,16 @@ extension DemoRepositorySearchProfile on DemoRepository {
       action: StarterAction(mode: 'shop', prompt: 'EVs under \$35k'),
     ),
   ];
+}
+
+class _AccountEpoch {
+  const _AccountEpoch({
+    required this.generation,
+    required this.userId,
+    required this.token,
+  });
+
+  final int generation;
+  final String? userId;
+  final String? token;
 }

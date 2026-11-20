@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import 'json_values.dart';
 import 'rooftop_match.dart';
 
 /// Listing model following MarketCheck API fields for clean swap-in.
@@ -34,7 +35,9 @@ class Listing extends Equatable {
   final String id;
   final String vin;
   final String? stockNo;
-  final int price;
+
+  /// Null when the payload omitted a price or sent a value that is not a number.
+  final int? price;
   final int? miles;
   final int? msrp;
   final ListingBuild build;
@@ -80,7 +83,11 @@ class Listing extends Equatable {
     return '${_formatNumber(miles!)} mi';
   }
 
-  String get priceFormatted => '\$${_formatNumber(price)}';
+  String get priceFormatted {
+    final value = price;
+    if (value == null) return 'Price unavailable';
+    return '\$${_formatNumber(value)}';
+  }
 
   String get distanceFormatted {
     if (dist == null) return '';
@@ -105,51 +112,72 @@ class Listing extends Equatable {
   @override
   List<Object?> get props => [id, vin, price, miles, build, media];
 
-  factory Listing.fromJson(Map<String, dynamic> json) {
+  /// Parses a Discover or MarketCheck listing. A missing price, a decimal
+  /// price, or a numeric string does not throw. Returns null when the id or
+  /// build is missing, so one bad row cannot take down a result list.
+  static Listing? tryFromJson(Map<String, dynamic> json) {
+    final id = jsonString(json['id']);
+    final buildRaw = json['build'];
+    if (id == null || buildRaw is! Map) return null;
+    final build = ListingBuild.tryFromJson(Map<String, dynamic>.from(buildRaw));
+    if (build == null) return null;
+    final mediaRaw = json['media'];
+    final dealerRaw = json['dealer'];
+    final locationRaw = json['car_location'];
+    final extraRaw = json['extra'];
+    final colorsRaw = json['colors'];
+    final rooftopRaw = json['rooftop_match'] ?? json['rooftop'];
     return Listing(
-      id: json['id'] as String,
-      vin: json['vin'] as String,
-      stockNo: json['stock_no'] as String?,
-      price: json['price'] as int,
-      miles: json['miles'] as int?,
-      msrp: json['msrp'] as int?,
-      build: ListingBuild.fromJson(json['build'] as Map<String, dynamic>),
-      media: ListingMedia.fromJson(json['media'] as Map<String, dynamic>),
-      dealer: json['dealer'] != null
-          ? ListingDealer.fromJson(json['dealer'] as Map<String, dynamic>)
+      id: id,
+      vin: jsonString(json['vin']) ?? '',
+      stockNo: jsonString(json['stock_no']),
+      price: jsonInt(json['price']),
+      miles: jsonInt(json['miles']),
+      msrp: jsonInt(json['msrp']),
+      build: build,
+      media: mediaRaw is Map
+          ? ListingMedia.fromJson(Map<String, dynamic>.from(mediaRaw))
+          : const ListingMedia(photoLinks: []),
+      dealer: dealerRaw is Map
+          ? ListingDealer.tryFromJson(Map<String, dynamic>.from(dealerRaw))
           : null,
-      carLocation: json['car_location'] != null
-          ? CarLocation.fromJson(json['car_location'] as Map<String, dynamic>)
+      carLocation: locationRaw is Map
+          ? CarLocation.fromJson(Map<String, dynamic>.from(locationRaw))
           : null,
-      dist: (json['dist'] as num?)?.toDouble(),
-      domActive: json['dom_active'] as int?,
-      inventoryType: json['inventory_type'] as String? ?? 'used',
-      fees: json['fees'] as int?,
-      priceIncludesFees: json['price_includes_fees'] as bool?,
-      refPrice: json['ref_price'] as int?,
-      priceChangePercent: (json['price_change_percent'] as num?)?.toDouble(),
-      carfax1Owner: json['carfax_1_owner'] as bool?,
-      carfaxCleanTitle: json['carfax_clean_title'] as bool?,
-      extra: json['extra'] != null
-          ? ListingExtra.fromJson(json['extra'] as Map<String, dynamic>)
+      dist: jsonDouble(json['dist']),
+      domActive: jsonInt(json['dom_active']),
+      inventoryType: jsonString(json['inventory_type']) ?? 'used',
+      fees: jsonInt(json['fees']),
+      priceIncludesFees: json['price_includes_fees'] is bool
+          ? json['price_includes_fees'] as bool
           : null,
-      colors: json['colors'] != null
-          ? ListingColors.fromJson(json['colors'] as Map<String, dynamic>)
+      refPrice: jsonInt(json['ref_price']),
+      priceChangePercent: jsonDouble(json['price_change_percent']),
+      carfax1Owner: json['carfax_1_owner'] is bool
+          ? json['carfax_1_owner'] as bool
+          : null,
+      carfaxCleanTitle: json['carfax_clean_title'] is bool
+          ? json['carfax_clean_title'] as bool
+          : null,
+      extra: extraRaw is Map
+          ? ListingExtra.fromJson(Map<String, dynamic>.from(extraRaw))
+          : null,
+      colors: colorsRaw is Map
+          ? ListingColors.fromJson(Map<String, dynamic>.from(colorsRaw))
           : null,
       vdpUrl:
-          json['vdp_url'] as String? ??
-          json['listing_url'] as String? ??
-          json['url'] as String?,
-      rooftopMatch: json['rooftop_match'] is Map
-          ? RooftopMatch.fromJson(
-              Map<String, dynamic>.from(json['rooftop_match'] as Map),
-            )
-          : json['rooftop'] is Map
-          ? RooftopMatch.fromJson(
-              Map<String, dynamic>.from(json['rooftop'] as Map),
-            )
+          jsonString(json['vdp_url']) ??
+          jsonString(json['listing_url']) ??
+          jsonString(json['url']),
+      rooftopMatch: rooftopRaw is Map
+          ? RooftopMatch.fromJson(Map<String, dynamic>.from(rooftopRaw))
           : null,
     );
+  }
+
+  factory Listing.fromJson(Map<String, dynamic> json) {
+    return tryFromJson(json) ??
+        (throw const FormatException('Listing is missing an id or build.'));
   }
 }
 
@@ -183,20 +211,29 @@ class ListingBuild extends Equatable {
   @override
   List<Object?> get props => [year, make, model, trim];
 
-  factory ListingBuild.fromJson(Map<String, dynamic> json) {
+  static ListingBuild? tryFromJson(Map<String, dynamic> json) {
+    final year = jsonInt(json['year']);
+    final make = jsonString(json['make']);
+    final model = jsonString(json['model']);
+    if (year == null || make == null || model == null) return null;
     return ListingBuild(
-      year: json['year'] as int,
-      make: json['make'] as String,
-      model: json['model'] as String,
-      trim: json['trim'] as String?,
-      bodyType: json['body_type'] as String?,
-      drivetrain: json['drivetrain'] as String?,
-      powertrainType: json['powertrain_type'] as String?,
-      engine: json['engine'] as String?,
-      cityMpg: json['city_mpg'] as int?,
-      highwayMpg: json['highway_mpg'] as int?,
-      seatingCapacity: json['seating_capacity'] as int?,
+      year: year,
+      make: make,
+      model: model,
+      trim: jsonString(json['trim']),
+      bodyType: jsonString(json['body_type']),
+      drivetrain: jsonString(json['drivetrain']),
+      powertrainType: jsonString(json['powertrain_type']),
+      engine: jsonString(json['engine']),
+      cityMpg: jsonInt(json['city_mpg']),
+      highwayMpg: jsonInt(json['highway_mpg']),
+      seatingCapacity: jsonInt(json['seating_capacity']),
     );
+  }
+
+  factory ListingBuild.fromJson(Map<String, dynamic> json) {
+    return tryFromJson(json) ??
+        (throw const FormatException('Listing build is missing year, make, or model.'));
   }
 }
 
@@ -215,14 +252,10 @@ class ListingMedia extends Equatable {
   List<Object?> get props => [photoLinks];
 
   factory ListingMedia.fromJson(Map<String, dynamic> json) {
+    final cached = jsonStringList(json['photo_links_cached']);
     return ListingMedia(
-      photoLinks: (json['photo_links'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      photoLinksCached: (json['photo_links_cached'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
+      photoLinks: jsonStringList(json['photo_links']),
+      photoLinksCached: cached.isEmpty ? null : cached,
     );
   }
 }
@@ -267,21 +300,29 @@ class ListingDealer extends Equatable {
   @override
   List<Object?> get props => [id, name];
 
-  factory ListingDealer.fromJson(Map<String, dynamic> json) {
+  static ListingDealer? tryFromJson(Map<String, dynamic> json) {
+    final id = jsonString(json['id']);
+    final name = jsonString(json['name']);
+    if (id == null || name == null) return null;
     return ListingDealer(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      street: json['street'] as String?,
-      city: json['city'] as String?,
-      state: json['state'] as String?,
-      zip: json['zip'] as String?,
-      latitude: (json['latitude'] as num?)?.toDouble(),
-      longitude: (json['longitude'] as num?)?.toDouble(),
-      phone: json['phone'] as String?,
-      sellerEmail: json['seller_email'] as String?,
-      website: json['website'] as String?,
-      dealerType: json['dealer_type'] as String?,
+      id: id,
+      name: name,
+      street: jsonString(json['street']),
+      city: jsonString(json['city']),
+      state: jsonString(json['state']),
+      zip: jsonString(json['zip']),
+      latitude: jsonDouble(json['latitude']),
+      longitude: jsonDouble(json['longitude']),
+      phone: jsonString(json['phone']),
+      sellerEmail: jsonString(json['seller_email']),
+      website: jsonString(json['website']),
+      dealerType: jsonString(json['dealer_type']),
     );
+  }
+
+  factory ListingDealer.fromJson(Map<String, dynamic> json) {
+    return tryFromJson(json) ??
+        (throw const FormatException('Dealer is missing an id or name.'));
   }
 }
 
@@ -307,12 +348,12 @@ class CarLocation extends Equatable {
 
   factory CarLocation.fromJson(Map<String, dynamic> json) {
     return CarLocation(
-      street: json['street'] as String?,
-      city: json['city'] as String?,
-      state: json['state'] as String?,
-      zip: json['zip'] as String?,
-      latitude: double.tryParse(json['latitude']?.toString() ?? ''),
-      longitude: double.tryParse(json['longitude']?.toString() ?? ''),
+      street: jsonString(json['street']),
+      city: jsonString(json['city']),
+      state: jsonString(json['state']),
+      zip: jsonString(json['zip']),
+      latitude: jsonDouble(json['latitude']),
+      longitude: jsonDouble(json['longitude']),
     );
   }
 }
@@ -330,13 +371,11 @@ class ListingExtra extends Equatable {
   List<Object?> get props => [features, highValueFeatures];
 
   factory ListingExtra.fromJson(Map<String, dynamic> json) {
+    final features = jsonStringList(json['features']);
+    final highValue = jsonStringList(json['high_value_features']);
     return ListingExtra(
-      features: (json['features'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-      highValueFeatures: (json['high_value_features'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
+      features: features.isEmpty ? null : features,
+      highValueFeatures: highValue.isEmpty ? null : highValue,
     );
   }
 }
@@ -355,8 +394,8 @@ class ListingColors extends Equatable {
 
   factory ListingColors.fromJson(Map<String, dynamic> json) {
     return ListingColors(
-      exteriorColor: json['exterior_color'] as String?,
-      interiorColor: json['interior_color'] as String?,
+      exteriorColor: jsonString(json['exterior_color']),
+      interiorColor: jsonString(json['interior_color']),
     );
   }
 }

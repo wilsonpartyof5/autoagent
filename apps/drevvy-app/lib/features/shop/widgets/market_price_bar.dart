@@ -25,7 +25,7 @@ class MarketPriceBar extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
 
-    final listedPrice = listing.price;
+    final listedPrice = listing.price ?? 0;
     final fairPrice = market.fairVehiclePrice;
     final lowPrice = market.lowPrice;
     final highPrice = market.highPrice;

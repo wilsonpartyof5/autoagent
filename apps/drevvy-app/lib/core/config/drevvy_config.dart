@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import 'drevvy_api_config.dart';
+
 /// Runtime configuration for auth and push.
 ///
 /// Real keys are supplied with `--dart-define` (or by editing the defaults
@@ -8,11 +10,12 @@ import 'package:flutter/foundation.dart';
 class DrevvyConfig {
   const DrevvyConfig._();
 
-  /// TODO: Point this at the deployed Drevvy backend origin, with no trailing slash.
-  static const apiBaseUrl = String.fromEnvironment(
-    'DREVVY_API_BASE_URL',
-    defaultValue: 'https://www.drevvy.com',
-  );
+  /// Same origin as credits, key spend, rooftop match, and deal chips.
+  ///
+  /// Reads [DrevvyApiConfig]. Empty until
+  /// `--dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com`.
+  /// Demo mode does not fall back to `https://www.drevvy.com`.
+  static String get apiBaseUrl => DrevvyApiConfig.fromEnvironment().origin;
 
   static const applePath = '/api/consumer/auth/apple';
 

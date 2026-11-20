@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/car_pack.dart';
 import 'purchase_config.dart';
@@ -14,9 +15,10 @@ import 'shopper_session_store.dart';
 /// A purchase body is `{productId, transactionId}`. A restore body is
 /// `{transactionIds}`. The balance response is
 /// `{data: {balance, lifetimePurchased, lifetimeUsed, lifetimeRefunded}}`.
-/// A missing route (404, 405, 501), a 503 `purchases not configured`, an empty
-/// base URL, or a network failure returns null so the caller keeps the local
-/// demo balance.
+/// In demo mode, a missing route (404, 405, 501), a 503 `purchases not
+/// configured`, an empty base URL, or a network failure returns null so the
+/// caller keeps the local demo balance. Live mode throws [ApiConfigException]
+/// instead of pretending that miss is a balance.
 abstract class CreditsEndpoint {
   const CreditsEndpoint();
 
@@ -25,6 +27,14 @@ abstract class CreditsEndpoint {
     http.Client? client,
   }) {
     final baseUrl = config.apiBaseUrl.trim();
+    if (config.isLive) {
+      if (baseUrl.isEmpty) return const UnconfiguredCreditsEndpoint();
+      return HttpCreditsEndpoint(
+        baseUrl: baseUrl,
+        client: client,
+        strict: true,
+      );
+    }
     if (baseUrl.isEmpty) return const MissingCreditsEndpoint();
     return HttpCreditsEndpoint(baseUrl: baseUrl, client: client);
   }
@@ -41,6 +51,31 @@ abstract class CreditsEndpoint {
   /// `GET /api/consumer/credits`. Null when signed out, or when the route
   /// is missing, so demo mode keeps its local balance.
   Future<CarCreditBalance?> fetchBalance();
+}
+
+/// Live mode with no base URL. Callers must not keep the seeded demo balance.
+class UnconfiguredCreditsEndpoint extends CreditsEndpoint {
+  const UnconfiguredCreditsEndpoint();
+
+  @override
+  Future<CarCreditBalance?> grantPurchase({
+    required String productId,
+    required String transactionId,
+  }) async {
+    throw ApiConfigException.notConfigured;
+  }
+
+  @override
+  Future<CarCreditBalance?> restorePurchases({
+    List<String> transactionIds = const [],
+  }) async {
+    throw ApiConfigException.notConfigured;
+  }
+
+  @override
+  Future<CarCreditBalance?> fetchBalance() async {
+    throw ApiConfigException.notConfigured;
+  }
 }
 
 class MissingCreditsEndpoint extends CreditsEndpoint {
@@ -73,12 +108,16 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
     http.Client? client,
     ShopperSessionStore? sessionStore,
     this.log,
+    this.strict = false,
     this.timeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client(),
        _sessionStore = sessionStore ?? ShopperSessionStore.instance;
 
   final String baseUrl;
   final Duration timeout;
+
+  /// Live mode. Failures throw instead of returning null for a local balance.
+  final bool strict;
   final http.Client _client;
   final ShopperSessionStore _sessionStore;
   final void Function(String message)? log;
@@ -110,16 +149,20 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
       final response = await _client
           .get(_uri('/api/consumer/credits'), headers: _headers())
           .timeout(timeout);
-      if (_endpointMissing(response.statusCode)) return null;
-      if (response.statusCode == 401 || response.statusCode == 403) return null;
+      if (_endpointMissing(response.statusCode)) return _miss();
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        return _miss();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _reportFailure('/api/consumer/credits', response.statusCode);
-        return null;
+        return _miss();
       }
       return _parseBalance(response.body);
+    } on ApiConfigException {
+      rethrow;
     } on Exception {
       _reportFailure('/api/consumer/credits', 0);
-      return null;
+      return _miss();
     }
   }
 
@@ -133,20 +176,27 @@ class HttpCreditsEndpoint extends CreditsEndpoint {
           .timeout(timeout);
       if (_purchasesNotConfigured(response.statusCode, response.body)) {
         _log(
-          'Credits server is not ready (purchases not configured). Keeping the local demo balance.',
+          strict ? 'Credits server is not ready (purchases not configured).' : 'Credits server is not ready (purchases not configured). Keeping the local demo balance.',
         );
-        return null;
+        return _miss();
       }
-      if (_endpointMissing(response.statusCode)) return null;
+      if (_endpointMissing(response.statusCode)) return _miss();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _reportFailure(path, response.statusCode);
-        return null;
+        return _miss();
       }
       return _parseBalance(response.body);
+    } on ApiConfigException {
+      rethrow;
     } on Exception {
       _reportFailure(path, 0);
-      return null;
+      return _miss();
     }
+  }
+
+  CarCreditBalance? _miss() {
+    if (strict) throw ApiConfigException.creditsUnavailable;
+    return null;
   }
 
   void _reportFailure(String path, int status) {

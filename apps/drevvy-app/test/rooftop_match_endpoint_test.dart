@@ -42,17 +42,33 @@ void main() {
     );
   });
 
-  test('live rooftop match parses match boolean and rooftop id', () async {
+  test('live network posts the listing id and reads verified state', () async {
+    late Map<String, dynamic> body;
+    final sessions = ShopperSessionStore()
+      ..session = const ShopperSession(accessToken: 'shopper-token');
     final client = MockClient((request) async {
-      expect(
-        request.url.path,
-        '/api/consumer/listings/listing_001/rooftop-match',
-      );
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/consumer/listings/network');
+      expect(request.headers['authorization'], 'Bearer shopper-token');
+      body = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response(
         jsonEncode({
-          'matched': true,
-          'rooftopId': 'rt_1',
-          'vdpUrl': 'https://example.com/vdp',
+          'success': true,
+          'data': {
+            'state': 'in_network',
+            'ctas': [
+              {
+                'kind': 'market_intel',
+                'keyCost': 1,
+                'endpoint': '/api/consumer/keys/market-save',
+              },
+              {
+                'kind': 'dealer_conversation',
+                'keyCost': 1,
+                'endpoint': '/api/consumer/keys/conversation',
+              },
+            ],
+          },
         }),
         200,
       );
@@ -60,52 +76,116 @@ void main() {
     final endpoint = HttpRooftopMatchEndpoint(
       baseUrl: 'https://api.drevvy.com',
       client: client,
-      sessionStore: ShopperSessionStore(),
+      sessionStore: sessions,
     );
     final match = await endpoint.match(rav4);
-    expect(match.isInNetwork, isTrue);
-    expect(match.rooftopId, 'rt_1');
+    expect(body.keys.toSet(), {'listingId'});
+    expect(body['listingId'], 'listing_001');
+    expect(match.classifiedInNetwork, isTrue);
+    expect(match.isInNetwork, isFalse);
+    expect(match.rooftopId, isNull);
+    expect(match.vdpUrl, isNull);
     expect(match.source, RooftopMatchSource.live);
   });
 
-  test('missing rooftop match route falls back to the stub', () async {
-    final client = MockClient((request) async => http.Response('', 404));
+  test('a listing-id-only off-network body stays unavailable', () async {
+    final sessions = ShopperSessionStore()
+      ..session = const ShopperSession(accessToken: 'shopper-token');
     final endpoint = HttpRooftopMatchEndpoint(
       baseUrl: 'https://api.drevvy.com',
-      client: client,
+      client: MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'network': 'off_network', 'match': null, 'ctas': []},
+          }),
+          200,
+        );
+      }),
+      sessionStore: sessions,
+    );
+    final match = await endpoint.match(rav4);
+    expect(match.source, RooftopMatchSource.unavailable);
+    expect(match.isInNetwork, isFalse);
+    expect(match.rooftopId, isNull);
+  });
+
+  test('a listing URL is not sent and does not confirm off-network', () async {
+    late Map<String, dynamic> body;
+    const withUrl = Listing(
+      id: 'listing_002',
+      vin: 'VIN2',
+      price: 1,
+      vdpUrl: 'https://www.cars.com/vehicledetail/x',
+      build: ListingBuild(year: 2024, make: 'Honda', model: 'CR-V'),
+      media: ListingMedia(photoLinks: []),
+    );
+    final sessions = ShopperSessionStore()
+      ..session = const ShopperSession(accessToken: 'shopper-token');
+    final endpoint = HttpRooftopMatchEndpoint(
+      baseUrl: 'https://api.drevvy.com',
+      client: MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'network': 'off_network', 'match': null, 'ctas': []},
+          }),
+          200,
+        );
+      }),
+      sessionStore: sessions,
+    );
+    final match = await endpoint.match(withUrl);
+    expect(body.keys.toSet(), {'listingId'});
+    expect(match.source, RooftopMatchSource.unavailable);
+    expect(match.classifiedOffNetwork, isFalse);
+    expect(match.vdpUrl, isNull);
+  });
+
+  test('a network error is unavailable and does not use the stub', () async {
+    final sessions = ShopperSessionStore()
+      ..session = const ShopperSession(accessToken: 'shopper-token');
+    final endpoint = HttpRooftopMatchEndpoint(
+      baseUrl: 'https://api.drevvy.com',
+      client: MockClient((request) async => http.Response('missing', 404)),
+      sessionStore: sessions,
+    );
+    final match = await endpoint.match(rav4);
+    expect(match.source, RooftopMatchSource.unavailable);
+    expect(match.rooftopId, isNot(StubRooftopMatchEndpoint.demoRooftopId));
+  });
+
+  test('a signed-out shopper does not call network classification', () async {
+    var called = false;
+    final endpoint = HttpRooftopMatchEndpoint(
+      baseUrl: 'https://api.drevvy.com',
+      client: MockClient((request) async {
+        called = true;
+        return http.Response('{}', 200);
+      }),
       sessionStore: ShopperSessionStore(),
     );
     final match = await endpoint.match(rav4);
-    expect(match.isInNetwork, isTrue);
-    expect(match.source, RooftopMatchSource.stub);
+    expect(called, isFalse);
+    expect(match.source, RooftopMatchSource.unavailable);
   });
 
-  test('OTD request posts as a free analytics form, not a key spend', () async {
-    late Map<String, dynamic> body;
-    final sessions = ShopperSessionStore()
-      ..session = const ShopperSession(
-        accessToken: 'shopper-token',
-        consumerUserId: 'user-1',
-      );
-    final client = MockClient((request) async {
-      expect(
-        request.url.path,
-        '/api/consumer/listings/listing_002/otd-request',
-      );
-      expect(request.headers['Authorization'], 'Bearer shopper-token');
-      body = jsonDecode(request.body) as Map<String, dynamic>;
-      return http.Response(jsonEncode({'ok': true}), 200);
-    });
+  test('OTD submission stays blocked and does not post', () async {
+    var called = false;
     final endpoint = HttpKeySpendEndpoint(
       baseUrl: 'https://api.drevvy.com',
-      client: client,
-      sessionStore: sessions,
+      client: MockClient((request) async {
+        called = true;
+        return http.Response('{}', 200);
+      }),
+      sessionStore: ShopperSessionStore()
+        ..session = const ShopperSession(accessToken: 'shopper-token'),
     );
     final result = await endpoint.requestOtdNumber(crv, note: 'need OTD');
-    expect(result.ok, isTrue);
-    expect(body['free'], isTrue);
-    expect(body['usesKey'], isFalse);
-    expect(body['note'], 'need OTD');
+    expect(called, isFalse);
+    expect(result.ok, isFalse);
+    expect(result.source, KeySpendSource.blocked);
   });
 
   test('a signed-out shopper does not call live dealer chat', () async {

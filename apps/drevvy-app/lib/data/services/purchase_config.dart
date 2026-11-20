@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/config/drevvy_api_config.dart';
+
 /// Selects the demo purchase service until store SDK keys exist.
 ///
 /// Pass keys at build time:
@@ -7,9 +9,11 @@ import 'package:flutter/foundation.dart';
 /// `--dart-define=REVENUECAT_ANDROID_API_KEY=goog_...`
 /// `--dart-define=SUPERWALL_IOS_API_KEY=...`
 /// `--dart-define=SUPERWALL_ANDROID_API_KEY=...`
+/// `--dart-define=DREVVY_DATA_MODE=live`
 /// `--dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com`
 ///
 /// Public SDK keys only. Never put a RevenueCat secret key in the app.
+/// [apiBaseUrl] is the shared reader in [DrevvyApiConfig], not a second default.
 class PurchaseConfig {
   const PurchaseConfig({
     this.revenueCatIosApiKey = '',
@@ -17,15 +21,24 @@ class PurchaseConfig {
     this.superwallIosApiKey = '',
     this.superwallAndroidApiKey = '',
     this.apiBaseUrl = '',
+    this.mode = DrevvyDataMode.demo,
   });
 
   factory PurchaseConfig.fromEnvironment() {
-    return const PurchaseConfig(
-      revenueCatIosApiKey: String.fromEnvironment('REVENUECAT_IOS_API_KEY'),
-      revenueCatAndroidApiKey: String.fromEnvironment('REVENUECAT_ANDROID_API_KEY'),
-      superwallIosApiKey: String.fromEnvironment('SUPERWALL_IOS_API_KEY'),
-      superwallAndroidApiKey: String.fromEnvironment('SUPERWALL_ANDROID_API_KEY'),
-      apiBaseUrl: String.fromEnvironment('DREVVY_API_BASE_URL'),
+    final api = DrevvyApiConfig.fromEnvironment();
+    return PurchaseConfig(
+      revenueCatIosApiKey: const String.fromEnvironment(
+        'REVENUECAT_IOS_API_KEY',
+      ),
+      revenueCatAndroidApiKey: const String.fromEnvironment(
+        'REVENUECAT_ANDROID_API_KEY',
+      ),
+      superwallIosApiKey: const String.fromEnvironment('SUPERWALL_IOS_API_KEY'),
+      superwallAndroidApiKey: const String.fromEnvironment(
+        'SUPERWALL_ANDROID_API_KEY',
+      ),
+      apiBaseUrl: api.origin,
+      mode: api.mode,
     );
   }
 
@@ -34,10 +47,17 @@ class PurchaseConfig {
   final String superwallIosApiKey;
   final String superwallAndroidApiKey;
 
-  /// Shopper API origin. Empty keeps the local demo credit balance.
+  /// Shopper API origin. Empty in demo mode keeps the local credit balance.
+  /// Empty in live mode is not configured and must not look like a success.
   final String apiBaseUrl;
 
-  bool get usesRevenueCat => _present(revenueCatApiKeyFor(defaultTargetPlatform));
+  /// `demo` keeps labeled local data. `live` reports endpoint failures.
+  final DrevvyDataMode mode;
+
+  bool get isLive => mode == DrevvyDataMode.live;
+
+  bool get usesRevenueCat =>
+      _present(revenueCatApiKeyFor(defaultTargetPlatform));
 
   bool get usesSuperwall => _present(superwallApiKeyFor(defaultTargetPlatform));
 

@@ -222,8 +222,9 @@ class SavedCarCard extends StatelessWidget {
 
     // Calculate price change from saved price
     // TODO: In production, this must come from live MarketCheck data
-    final priceChange = savedCar.savedPrice != null
-        ? savedCar.savedPrice! - listingData.price
+    final currentPrice = listingData.price;
+    final priceChange = savedCar.savedPrice != null && currentPrice != null
+        ? savedCar.savedPrice! - currentPrice
         : null;
     final hasPriceChange = priceChange != null && priceChange != 0;
     final isPriceDrop = priceChange != null && priceChange > 0;
@@ -293,7 +294,7 @@ class SavedCarCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        _formatPrice(listingData.price),
+                        listingData.priceFormatted,
                         style: text.figureS,
                       ),
                       Text(
