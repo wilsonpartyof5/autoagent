@@ -1,9 +1,11 @@
 import { createAdminClient } from '../supabase/admin';
 
-import { DISCOVER_DAY_MS, DISCOVER_LIMITS, DISCOVER_MINUTE_MS, RATE_LIMIT_POLICY, type DiscoverRouteName } from './constants';
+import { rateLimitIpKey } from './client-ip';
+import { DISCOVER_DAY_MS, DISCOVER_LIMITS, DISCOVER_MINUTE_MS, PHOTO_LIMITS, RATE_LIMIT_POLICY, type DiscoverRouteName } from './constants';
 import { DiscoverApiError } from './errors';
 
 const RATE_LIMIT_UNAVAILABLE_MESSAGE = 'Listings are temporarily unavailable. Please try again later.';
+const PHOTO_UNAVAILABLE_MESSAGE = 'Photos are temporarily unavailable. Please try again later.';
 
 export type RateLimitHit = {
   allowed: boolean;
@@ -116,6 +118,8 @@ function logUnavailable(): void {
   console.error(JSON.stringify({ event: 'discover_rate_limit_unavailable' }));
 }
 
+type LimitWindow = { bucket: string; windowMs: number; limit: number };
+
 async function hitStore(
   store: RateLimitStore,
   bucket: string,
@@ -125,6 +129,21 @@ async function hitStore(
 ): Promise<RateLimitHit> {
   const windowStartMs = alignedWindow(nowMs, windowMs);
   return store.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+}
+
+/** Later windows are not touched once one refuses the request. */
+async function consumeUntilBlocked(
+  store: RateLimitStore,
+  windows: readonly LimitWindow[],
+  nowMs: number,
+): Promise<RateLimitHit[]> {
+  const hits: RateLimitHit[] = [];
+  for (const window of windows) {
+    const hit = await hitStore(store, window.bucket, window.windowMs, window.limit, nowMs);
+    hits.push(hit);
+    if (!hit.allowed) break;
+  }
+  return hits;
 }
 
 /**
@@ -170,24 +189,23 @@ export async function enforceDiscoverRateLimit(input: {
 }): Promise<DiscoverRateLimitResult> {
   const nowMs = input.nowMs ?? Date.now();
   const limits = DISCOVER_LIMITS[input.route];
-  const ip = input.ip.replace(/[^A-Za-z0-9.:_-]/g, '').slice(0, 64) || 'unknown';
+  const ip = rateLimitIpKey(input.ip);
   const env = input.env ?? process.env;
   const failClosed = discoverLimiterFailsClosed(env);
   const fallback = input.fallbackStore ?? memoryFallback;
   const store = input.store ?? (await resolveDiscoverRateLimitStore(env));
 
-  const windows: Array<{ bucket: string; windowMs: number; limit: number; label: string }> = [
-    { bucket: `disc:${input.route}:ip:${ip}:m`, windowMs: DISCOVER_MINUTE_MS, limit: limits.ipPerMinute, label: 'ip' },
-    { bucket: `disc:${input.route}:g:m`, windowMs: DISCOVER_MINUTE_MS, limit: limits.globalPerMinute, label: 'global' },
-    { bucket: `disc:${input.route}:ip:${ip}:d`, windowMs: DISCOVER_DAY_MS, limit: limits.ipPerDay, label: 'ip-day' },
-    { bucket: `disc:${input.route}:g:d`, windowMs: DISCOVER_DAY_MS, limit: limits.globalPerDay, label: 'global-day' },
+  // Per-IP windows run first. A rejected IP must not increment the global caps.
+  const windows: LimitWindow[] = [
+    { bucket: `disc:${input.route}:ip:${ip}:m`, windowMs: DISCOVER_MINUTE_MS, limit: limits.ipPerMinute },
+    { bucket: `disc:${input.route}:ip:${ip}:d`, windowMs: DISCOVER_DAY_MS, limit: limits.ipPerDay },
+    { bucket: `disc:${input.route}:g:m`, windowMs: DISCOVER_MINUTE_MS, limit: limits.globalPerMinute },
+    { bucket: `disc:${input.route}:g:d`, windowMs: DISCOVER_DAY_MS, limit: limits.globalPerDay },
   ];
 
-  const hits: RateLimitHit[] = [];
+  let hits: RateLimitHit[];
   try {
-    for (const window of windows) {
-      hits.push(await hitStore(store, window.bucket, window.windowMs, window.limit, nowMs));
-    }
+    hits = await consumeUntilBlocked(store, windows, nowMs);
   } catch {
     if (failClosed || store === fallback) {
       logUnavailable();
@@ -197,11 +215,8 @@ export async function enforceDiscoverRateLimit(input: {
       loggedFallback = true;
       console.error(JSON.stringify({ event: 'discover_rate_limit_fallback_memory' }));
     }
-    hits.length = 0;
     try {
-      for (const window of windows) {
-        hits.push(await hitStore(fallback, window.bucket, window.windowMs, window.limit, nowMs));
-      }
+      hits = await consumeUntilBlocked(fallback, windows, nowMs);
     } catch {
       logUnavailable();
       throw unavailableError();
@@ -216,6 +231,54 @@ export async function enforceDiscoverRateLimit(input: {
   const retryAfter = Math.max(1, Math.ceil((blocked.resetAtMs - nowMs) / 1000));
   throw new DiscoverApiError('RATE_LIMITED', 'Too many listing requests. Please wait and try again.', {
     ...headersFrom(blocked.limit === ipMinute.limit ? ipMinute : blocked),
+    'Retry-After': String(retryAfter),
+  });
+}
+
+export async function enforcePhotoRateLimit(input: {
+  ip: string;
+  nowMs?: number;
+  store?: RateLimitStore;
+  fallbackStore?: RateLimitStore;
+  env?: NodeJS.ProcessEnv;
+}): Promise<DiscoverRateLimitResult> {
+  const nowMs = input.nowMs ?? Date.now();
+  const ip = rateLimitIpKey(input.ip);
+  const env = input.env ?? process.env;
+  const failClosed = discoverLimiterFailsClosed(env);
+  const fallback = input.fallbackStore ?? memoryFallback;
+  const store = input.store ?? (await resolveDiscoverRateLimitStore(env));
+  const windows: LimitWindow[] = [
+    { bucket: `photo:ip:${ip}:m`, windowMs: DISCOVER_MINUTE_MS, limit: PHOTO_LIMITS.ipPerMinute },
+    { bucket: `photo:ip:${ip}:d`, windowMs: DISCOVER_DAY_MS, limit: PHOTO_LIMITS.ipPerDay },
+  ];
+
+  let hits: RateLimitHit[];
+  try {
+    hits = await consumeUntilBlocked(store, windows, nowMs);
+  } catch {
+    if (failClosed || store === fallback) {
+      logUnavailable();
+      throw new DiscoverApiError('RATE_LIMIT_UNAVAILABLE', PHOTO_UNAVAILABLE_MESSAGE);
+    }
+    if (!loggedFallback) {
+      loggedFallback = true;
+      console.error(JSON.stringify({ event: 'discover_rate_limit_fallback_memory' }));
+    }
+    try {
+      hits = await consumeUntilBlocked(fallback, windows, nowMs);
+    } catch {
+      logUnavailable();
+      throw new DiscoverApiError('RATE_LIMIT_UNAVAILABLE', PHOTO_UNAVAILABLE_MESSAGE);
+    }
+  }
+
+  const minute = hits[0]!;
+  const blocked = hits.find((hit) => !hit.allowed);
+  if (!blocked) return { headers: headersFrom(minute) };
+  const retryAfter = Math.max(1, Math.ceil((blocked.resetAtMs - nowMs) / 1000));
+  throw new DiscoverApiError('RATE_LIMITED', 'Too many photo requests. Please wait and try again.', {
+    ...headersFrom(blocked),
     'Retry-After': String(retryAfter),
   });
 }

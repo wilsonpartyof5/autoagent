@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { discoverClientIp } from './client-ip';
+import { discoverClientIp, rateLimitIpKey } from './client-ip';
 
 test('x-forwarded-for still identifies the client when Vercel has not set its own header', () => {
   const headers = new Headers({ 'x-forwarded-for': '203.0.113.10, 10.0.0.4' });
@@ -18,4 +18,14 @@ test('a platform x-vercel-forwarded-for wins over a rewritten x-forwarded-for', 
 
 test('missing forwarding headers share one unknown bucket', () => {
   assert.equal(discoverClientIp(new Headers()), 'unknown');
+});
+
+test('IPv6 rate-limit keys keep the /64 and map embedded IPv4', () => {
+  assert.equal(rateLimitIpKey('2001:db8:85a3::1'), '2001:db8:85a3:0');
+  assert.equal(rateLimitIpKey('2001:DB8:85a3:0:ffff:ffff:ffff:ffff'), '2001:db8:85a3:0');
+  assert.equal(rateLimitIpKey('2001:db8:85a4::1'), '2001:db8:85a4:0');
+  assert.equal(rateLimitIpKey('::ffff:203.0.113.10'), '203.0.113.10');
+  assert.equal(rateLimitIpKey('::ffff:cb00:710a'), '203.0.113.10');
+  assert.equal(rateLimitIpKey('203.0.113.10'), '203.0.113.10');
+  assert.equal(rateLimitIpKey('::1'), '0:0:0:0');
 });

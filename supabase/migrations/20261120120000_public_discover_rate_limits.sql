@@ -1,4 +1,5 @@
--- Durable counters for anonymous Discover search/detail.
+-- Durable counters for anonymous Discover search/detail and the photo proxy.
+-- Photo windows use the same table (photo:ip:<key>:m and photo:ip:<key>:d).
 -- Service role only. Anon and authenticated have no table or RPC access.
 -- NOT applied by this PR. Do not run against production from the Discover change.
 
@@ -10,7 +11,7 @@ create table if not exists public.public_discover_rate_limits (
 );
 
 comment on table public.public_discover_rate_limits is
-  'Anonymous Discover IP/global windows. No shopper identity. Service role only.';
+  'Anonymous Discover and photo-proxy windows. No shopper identity. Service role only.';
 
 alter table public.public_discover_rate_limits enable row level security;
 alter table public.public_discover_rate_limits force row level security;
@@ -30,13 +31,13 @@ returns table(
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_count integer;
   v_window timestamptz;
 begin
-  if p_bucket is null or char_length(p_bucket) < 8 or char_length(p_bucket) > 180 then
+  if p_bucket is null or pg_catalog.char_length(p_bucket) < 8 or pg_catalog.char_length(p_bucket) > 180 then
     raise exception 'invalid rate limit bucket';
   end if;
   if p_limit is null or p_limit < 1 or p_limit > 100000 then
@@ -55,7 +56,7 @@ begin
       else 1
     end,
     window_start = excluded.window_start,
-    updated_at = timezone('utc'::text, now())
+    updated_at = pg_catalog.timezone('utc'::text, pg_catalog.now())
   returning rl.hit_count, rl.window_start
   into v_count, v_window;
 

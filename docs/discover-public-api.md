@@ -54,7 +54,7 @@ Every response includes:
 | Search | 20 | 120 | 200 | 4,000 |
 | Detail | 40 | 240 | 400 | 8,000 |
 
-Invalid requests still consume a token (abuse control). MarketCheck is not called until the request is valid and under limit. If the durable counter is missing or errors in production or on Vercel preview, the route returns `503 RATE_LIMIT_UNAVAILABLE` and does not call MarketCheck.
+Invalid requests still consume a token (abuse control). MarketCheck is not called until the request is valid and under limit. A request rejected by its per-IP window does not increment the global counters; only allowed requests count toward those caps. If the durable counter is missing or errors in production or on Vercel preview, the route returns `503 RATE_LIMIT_UNAVAILABLE` and does not call MarketCheck. IPv6 clients are keyed by /64.
 
 Search cost caps (enforced before MarketCheck):
 
@@ -161,7 +161,7 @@ Unknown fields, ZIP geocoding, filter arrays, and `bounds` are not accepted. Sen
 
 `inventory_type` is `new`, `used`, or `cpo` (certified). `dist` is miles from the request lat/lng. Listings without a VIN or id are dropped. Empty `listings` with `success: true` means no matches — not an error, and not demo data.
 
-Photo URLs never include `api_key`. Credentialed MarketCheck image hosts are rewritten to the existing public signed proxy `/api/inventory/photo`.
+Photo URLs never include `api_key`. Credentialed MarketCheck image hosts are rewritten to the signed proxy `/api/inventory/photo`. Those links last 24 hours and accept only `u`, `e`, and `s`. The proxy is limited per IP (240/minute, 4,000/day) and returns `503` without fetching when the durable counter is missing or errors. IPv6 clients share a /64.
 
 ## GET `/api/public/discover/listings/{id}`
 

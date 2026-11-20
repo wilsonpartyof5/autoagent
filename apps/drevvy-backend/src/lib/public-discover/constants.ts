@@ -42,6 +42,12 @@ export const DISCOVER_LIMITS = {
 
 export type DiscoverRouteName = keyof typeof DISCOVER_LIMITS;
 
+/** Credentialed photo proxy. A listing exposes at most 20 photos. */
+export const PHOTO_LIMITS = {
+  ipPerMinute: 240,
+  ipPerDay: 4_000,
+} as const;
+
 export const RATE_LIMIT_POLICY =
   'ip;w=60, global;w=60, ip-day;w=86400, global-day;w=86400';
 

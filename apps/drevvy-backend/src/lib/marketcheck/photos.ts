@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 
+import { discoverClientIp } from '../public-discover/client-ip';
+import { DiscoverApiError } from '../public-discover/errors';
+import { enforcePhotoRateLimit, type RateLimitStore } from '../public-discover/rate-limit';
+
 import { currentPhotoOrigin } from './context';
 import { redactSecrets } from './secrets';
 
@@ -12,8 +16,9 @@ import { redactSecrets } from './secrets';
  * The proxy allowlist is MarketCheck API hosts only. Other hosts are rejected.
  */
 
-const PHOTO_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PHOTO_LINK_MAX_TTL_MS = 8 * 24 * 60 * 60 * 1000;
+export const PHOTO_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const PHOTO_LINK_MAX_TTL_MS = PHOTO_LINK_TTL_MS;
+const PHOTO_QUERY_KEYS = new Set(['u', 'e', 's']);
 const MAX_PHOTO_BYTES = 8_000_000;
 
 export const PHOTO_CACHE_CONTROL = 'public, max-age=86400, s-maxage=86400';
@@ -139,6 +144,16 @@ function fail(status: number, code: string, message: string): PhotoProxyFailure 
   return { ok: false, status, code, message };
 }
 
+/** Exactly one u, one e, and one s. Extra or repeated keys are cache-busters. */
+export function photoQueryKeysAllowed(keys: Iterable<string>): boolean {
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (!PHOTO_QUERY_KEYS.has(key) || seen.has(key)) return false;
+    seen.add(key);
+  }
+  return seen.size === PHOTO_QUERY_KEYS.size;
+}
+
 function decodePhotoTarget(
   payload: string | null,
   expRaw: string | null,
@@ -220,10 +235,14 @@ export async function proxyMarketCheckPhoto(input: {
   payload: string | null;
   exp: string | null;
   sig: string | null;
+  queryKeys?: Iterable<string>;
   lookup?: HostLookup;
   fetchImpl?: typeof fetch;
   now?: number;
 }): Promise<PhotoProxyResult> {
+  if (input.queryKeys && !photoQueryKeysAllowed(input.queryKeys)) {
+    return fail(400, 'PHOTO_INVALID', 'Photo link is not valid.');
+  }
   const decoded = decodePhotoTarget(input.payload, input.exp, input.sig, input.now ?? Date.now());
   if (!decoded.ok) return decoded;
 
@@ -283,4 +302,70 @@ export async function proxyMarketCheckPhoto(input: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export type PhotoHandlerDeps = {
+  nowMs?: number;
+  rateLimitStore?: RateLimitStore;
+  rateLimitEnv?: NodeJS.ProcessEnv;
+  lookup?: HostLookup;
+  fetchImpl?: typeof fetch;
+};
+
+function photoErrorResponse(
+  status: number,
+  code: string,
+  message: string,
+  extra?: Record<string, string>,
+): Response {
+  const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) headers.set(key, value);
+  }
+  return new Response(JSON.stringify({ success: false, error: { code, message } }), { status, headers });
+}
+
+/**
+ * GET /api/inventory/photo. Rate limit runs before any upstream fetch.
+ * Only the signed u, e, and s query keys are accepted.
+ */
+export async function handleInventoryPhoto(request: Request, deps: PhotoHandlerDeps = {}): Promise<Response> {
+  const url = new URL(request.url);
+  let rateHeaders: Record<string, string> | undefined;
+  try {
+    const limited = await enforcePhotoRateLimit({
+      ip: discoverClientIp(request.headers),
+      nowMs: deps.nowMs,
+      store: deps.rateLimitStore,
+      env: deps.rateLimitEnv,
+    });
+    rateHeaders = limited.headers;
+  } catch (error) {
+    if (error instanceof DiscoverApiError) {
+      return photoErrorResponse(error.status, error.code, error.message, error.extraHeaders);
+    }
+    return photoErrorResponse(503, 'RATE_LIMIT_UNAVAILABLE', 'Photos are temporarily unavailable. Please try again later.');
+  }
+
+  const queryKeys = [...url.searchParams.keys()];
+  const result = await proxyMarketCheckPhoto({
+    payload: url.searchParams.get('u'),
+    exp: url.searchParams.get('e'),
+    sig: url.searchParams.get('s'),
+    queryKeys,
+    lookup: deps.lookup,
+    fetchImpl: deps.fetchImpl,
+    now: deps.nowMs,
+  });
+  if (!result.ok) {
+    return photoErrorResponse(result.status, result.code, result.message, rateHeaders);
+  }
+  return new Response(Buffer.from(result.body), {
+    status: 200,
+    headers: {
+      'Content-Type': result.contentType,
+      'Cache-Control': result.cacheControl || PHOTO_CACHE_CONTROL,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }

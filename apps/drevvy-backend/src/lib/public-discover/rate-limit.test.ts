@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DISCOVER_LIMITS } from './constants';
+import { DISCOVER_LIMITS, PHOTO_LIMITS } from './constants';
 import { DiscoverApiError } from './errors';
 import {
   MemoryRateLimitStore,
   SupabaseRateLimitStore,
   discoverLimiterFailsClosed,
   enforceDiscoverRateLimit,
+  enforcePhotoRateLimit,
   type RateLimitStore,
 } from './rate-limit';
 
@@ -90,6 +91,103 @@ test('detail has a higher IP cap than search', async () => {
   }
   const still = await enforceDiscoverRateLimit({ ip: '192.0.2.8', route: 'detail', nowMs, store });
   assert.ok(Number(still.headers['RateLimit-Remaining']) >= 0);
+});
+
+test('an IP hammering past its cap does not consume the global buckets', async () => {
+  const store = new MemoryRateLimitStore();
+  const globalHits: string[] = [];
+  const wrapped: RateLimitStore = {
+    async hit(bucket, windowStartMs, windowMs, limit, nowMs) {
+      if (bucket.includes(':g:')) globalHits.push(bucket);
+      return store.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+    },
+  };
+  const nowMs = 1_700_000_900_000;
+  const ip = '203.0.113.80';
+  for (let i = 0; i < DISCOVER_LIMITS.search.ipPerMinute; i += 1) {
+    await enforceDiscoverRateLimit({ ip, route: 'search', nowMs, store: wrapped });
+  }
+  const allowedGlobalHits = globalHits.length;
+  assert.equal(allowedGlobalHits, DISCOVER_LIMITS.search.ipPerMinute * 2);
+  for (let i = 0; i < 30; i += 1) {
+    await assert.rejects(
+      () => enforceDiscoverRateLimit({ ip, route: 'search', nowMs, store: wrapped }),
+      (error: unknown) => error instanceof DiscoverApiError && error.code === 'RATE_LIMITED',
+    );
+  }
+  assert.equal(globalHits.length, allowedGlobalHits);
+  const other = await enforceDiscoverRateLimit({
+    ip: '203.0.113.81',
+    route: 'search',
+    nowMs,
+    store: wrapped,
+  });
+  assert.equal(other.headers['RateLimit-Remaining'], String(DISCOVER_LIMITS.search.ipPerMinute - 1));
+  assert.equal(globalHits.length, allowedGlobalHits + 2);
+});
+
+test('IPv6 clients in one /64 share a bucket and a different /64 does not', async () => {
+  const store = new MemoryRateLimitStore();
+  const nowMs = 1_700_001_000_000;
+  const first = '2001:db8:85a3::1';
+  const samePrefix = '2001:DB8:85a3:0:ffff:ffff:ffff:ffff';
+  for (let i = 0; i < DISCOVER_LIMITS.search.ipPerMinute; i += 1) {
+    await enforceDiscoverRateLimit({ ip: i % 2 === 0 ? first : samePrefix, route: 'search', nowMs, store });
+  }
+  await assert.rejects(
+    () => enforceDiscoverRateLimit({ ip: samePrefix, route: 'search', nowMs, store }),
+    (error: unknown) => error instanceof DiscoverApiError && error.code === 'RATE_LIMITED',
+  );
+  const otherPrefix = await enforceDiscoverRateLimit({
+    ip: '2001:db8:85a4::1',
+    route: 'search',
+    nowMs,
+    store,
+  });
+  assert.equal(otherPrefix.headers['RateLimit-Remaining'], String(DISCOVER_LIMITS.search.ipPerMinute - 1));
+});
+
+test('IPv4-mapped IPv6 keeps the embedded address', async () => {
+  const store = new MemoryRateLimitStore();
+  const nowMs = 1_700_001_060_000;
+  for (let i = 0; i < DISCOVER_LIMITS.search.ipPerMinute; i += 1) {
+    await enforceDiscoverRateLimit({ ip: '::ffff:203.0.113.50', route: 'search', nowMs, store });
+  }
+  await assert.rejects(
+    () => enforceDiscoverRateLimit({ ip: '203.0.113.50', route: 'search', nowMs, store }),
+    (error: unknown) => error instanceof DiscoverApiError && error.code === 'RATE_LIMITED',
+  );
+  const other = await enforceDiscoverRateLimit({ ip: '::ffff:203.0.113.51', route: 'search', nowMs, store });
+  assert.equal(other.headers['RateLimit-Remaining'], String(DISCOVER_LIMITS.search.ipPerMinute - 1));
+});
+
+test('photo limits are per IP and fail closed without calling a later window', async () => {
+  const store = new MemoryRateLimitStore();
+  const hits: string[] = [];
+  const wrapped: RateLimitStore = {
+    async hit(bucket, windowStartMs, windowMs, limit, nowMs) {
+      hits.push(bucket);
+      return store.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+    },
+  };
+  const nowMs = 1_700_001_120_000;
+  for (let i = 0; i < PHOTO_LIMITS.ipPerMinute; i += 1) {
+    await enforcePhotoRateLimit({ ip: '198.51.100.8', nowMs, store: wrapped });
+  }
+  await assert.rejects(
+    () => enforcePhotoRateLimit({ ip: '198.51.100.8', nowMs, store: wrapped }),
+    (error: unknown) => error instanceof DiscoverApiError && error.status === 429,
+  );
+  assert.equal(hits.filter((bucket) => bucket.endsWith(':d')).length, PHOTO_LIMITS.ipPerMinute);
+  await assert.rejects(
+    () => enforcePhotoRateLimit({
+      ip: '198.51.100.9',
+      nowMs,
+      env: { NODE_ENV: 'production', VERCEL_ENV: 'production' },
+      store: throwingStore(),
+    }),
+    (error: unknown) => error instanceof DiscoverApiError && error.status === 503,
+  );
 });
 
 test('production mode is fail-closed and development is not', () => {
