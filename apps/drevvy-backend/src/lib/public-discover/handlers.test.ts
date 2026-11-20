@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { currentSubjectHash } from '../marketcheck/context';
 import { MarketCheckQuotaError } from '../marketcheck/mcp-adapter';
 import type { DetailResponse, LiveSearchResult, LiveVehicle } from '../marketcheck/mcp-adapter';
 
 import { handleDiscoverListing, handleDiscoverSearch } from './handlers';
-import { MemoryRateLimitStore } from './rate-limit';
+import { MemoryRateLimitStore, type RateLimitStore } from './rate-limit';
+
+const PRODUCTION_ENV: NodeJS.ProcessEnv = { NODE_ENV: 'production', VERCEL_ENV: 'production' };
 
 const VIN = '4T1B11HK5JU123456';
 
@@ -228,6 +231,101 @@ test('MarketCheck quota becomes 502 UPSTREAM_ERROR with no demo rows', async () 
   assert.equal(status, 502);
   assert.equal((body.error as { code: string }).code, 'UPSTREAM_ERROR');
   assert.equal('data' in body, false);
+});
+
+function unavailableStore(): RateLimitStore {
+  return {
+    async hit(bucket) {
+      if (bucket.includes(':g:d')) throw new Error('connect ECONNREFUSED');
+      return {
+        allowed: true,
+        count: 1,
+        limit: 40,
+        remaining: 39,
+        resetAtMs: 1_700_000_500_000,
+      };
+    },
+  };
+}
+
+test('production store errors are 503 and search does not call MarketCheck', async () => {
+  let calls = 0;
+  const response = await handleDiscoverSearch(
+    searchRequest({ latitude: 35.2271, longitude: -80.8431 }, '203.0.113.70'),
+    {
+      rateLimitEnv: PRODUCTION_ENV,
+      rateLimitStore: unavailableStore(),
+      search: async () => {
+        calls += 1;
+        return searchResult();
+      },
+    },
+  );
+  const { status, body } = await readJson(response);
+  assert.equal(status, 503);
+  assert.equal((body.error as { code: string }).code, 'RATE_LIMIT_UNAVAILABLE');
+  assert.equal(calls, 0);
+  assert.equal(JSON.stringify(body).includes('ECONNREFUSED'), false);
+  assert.equal(JSON.stringify(body).includes('public_discover_rate_limits'), false);
+});
+
+test('development still reaches search when the durable store errors', async () => {
+  let calls = 0;
+  const response = await handleDiscoverSearch(
+    searchRequest({ latitude: 35.2271, longitude: -80.8431 }, '203.0.113.73'),
+    {
+      rateLimitEnv: { NODE_ENV: 'development' },
+      rateLimitStore: unavailableStore(),
+      search: async () => {
+        calls += 1;
+        return searchResult();
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+});
+
+test('production without a durable store is 503 and detail does not call MarketCheck', async () => {
+  let calls = 0;
+  const response = await handleDiscoverListing(
+    detailRequest('listing-live-1', '203.0.113.71'),
+    'listing-live-1',
+    {
+      rateLimitEnv: { NODE_ENV: 'production' },
+      detail: async () => {
+        calls += 1;
+        return detail();
+      },
+    },
+  );
+  const { status, body } = await readJson(response);
+  assert.equal(status, 503);
+  assert.equal((body.error as { code: string }).code, 'RATE_LIMIT_UNAVAILABLE');
+  assert.equal(calls, 0);
+});
+
+test('detail ignores a client x-drevvy-subject header', async () => {
+  const subject = '11111111-1111-4111-8111-111111111111';
+  let seen: string | undefined = 'unset';
+  const request = new Request('https://api.drevvy.com/api/public/discover/listings/listing-live-1', {
+    method: 'GET',
+    headers: {
+      'x-forwarded-for': '203.0.113.72',
+      'x-drevvy-subject': subject,
+    },
+  });
+  const response = await handleDiscoverListing(request, 'listing-live-1', {
+    rateLimitStore: new MemoryRateLimitStore(),
+    detail: async () => {
+      seen = currentSubjectHash();
+      return detail();
+    },
+  });
+  const { status, body } = await readJson(response);
+  assert.equal(status, 200);
+  assert.equal(seen, undefined);
+  assert.equal(JSON.stringify(body).includes(subject), false);
 });
 
 test('invalid listing id is 400 and does not call detail', async () => {

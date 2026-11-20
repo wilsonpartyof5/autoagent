@@ -54,7 +54,7 @@ Every response includes:
 | Search | 20 | 120 | 200 | 4,000 |
 | Detail | 40 | 240 | 400 | 8,000 |
 
-Invalid requests still consume a token (abuse control). MarketCheck is not called until the request is valid and under limit.
+Invalid requests still consume a token (abuse control). MarketCheck is not called until the request is valid and under limit. If the durable counter is missing or errors in production or on Vercel preview, the route returns `503 RATE_LIMIT_UNAVAILABLE` and does not call MarketCheck.
 
 Search cost caps (enforced before MarketCheck):
 
@@ -212,7 +212,7 @@ Every error:
 | 404 | `LISTING_NOT_FOUND` | Id is well-formed but MarketCheck has no listing |
 | 429 | `RATE_LIMITED` | IP or global window exhausted |
 | 502 | `UPSTREAM_ERROR` | MarketCheck failed, quota, or timeout. No demo fallback. |
-| 503 | `RATE_LIMIT_UNAVAILABLE` | Durable limiter could not run and production refused to fail open |
+| 503 | `RATE_LIMIT_UNAVAILABLE` | Durable limiter is missing or errored. Production and Vercel preview do not call MarketCheck. |
 
 Messages are safe to show in the app. They never include secrets or upstream payloads.
 
@@ -268,4 +268,10 @@ The new routes read these **server** variables. None of them go in the app.
 
 `INVENTORY_SEARCH_API_KEY` is **not** required and must not be placed in the Flutter app for these routes. `AI_GATEWAY_API_KEY` is unused here.
 
-Preview: if `MARKETCHECK_API_KEY` is missing on the Preview environment, search/detail return `502 UPSTREAM_ERROR`. Do not copy production secrets into Preview from this change. If Supabase URL/service role are missing, the limiter falls back to process-local counts so a Preview smoke test can still run; that fallback is not multi-instance durable until `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present and migration `public_discover_rate_limits` is applied.
+Preview: if `MARKETCHECK_API_KEY` is missing, search and detail return `502 UPSTREAM_ERROR` only after the durable limiter allows the request. Do not copy production secrets into Preview from this change.
+
+Production (`NODE_ENV=production`) and Vercel preview/production return `503 RATE_LIMIT_UNAVAILABLE` when `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing, or when the durable counter errors. That includes a missing `public_discover_rate_limits` table. The 503 does not call MarketCheck. Local development (`NODE_ENV=development` or `test`) may use a process-local counter so one dev server still enforces the same caps. That counter is not multi-instance durable and is not used for production or preview traffic.
+
+The counter migration is `supabase/migrations/20261120120000_public_discover_rate_limits.sql`. This change does not apply it.
+
+Detail ignores a client `x-drevvy-subject` header. There is no shopper session on this route to validate it against, and the value would only spoof usage attribution.

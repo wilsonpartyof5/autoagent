@@ -3,6 +3,8 @@ import { createAdminClient } from '../supabase/admin';
 import { DISCOVER_DAY_MS, DISCOVER_LIMITS, DISCOVER_MINUTE_MS, RATE_LIMIT_POLICY, type DiscoverRouteName } from './constants';
 import { DiscoverApiError } from './errors';
 
+const RATE_LIMIT_UNAVAILABLE_MESSAGE = 'Listings are temporarily unavailable. Please try again later.';
+
 export type RateLimitHit = {
   allowed: boolean;
   count: number;
@@ -77,6 +79,7 @@ export class SupabaseRateLimitStore implements RateLimitStore {
 
 const memoryFallback = new MemoryRateLimitStore();
 let storeOverride: RateLimitStore | null = null;
+let loggedUnavailable = false;
 let loggedFallback = false;
 
 export function setDiscoverRateLimitStoreForTests(store: RateLimitStore | null): void {
@@ -85,11 +88,32 @@ export function setDiscoverRateLimitStoreForTests(store: RateLimitStore | null):
 
 export function resetDiscoverRateLimitFallbackForTests(): void {
   memoryFallback.reset();
+  loggedUnavailable = false;
   loggedFallback = false;
 }
 
-function supabaseConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+export function supabaseConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.NEXT_PUBLIC_SUPABASE_URL?.trim() && env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+}
+
+/**
+ * Production and Vercel preview must not serve paid MarketCheck calls from a
+ * per-instance counter. Local `next dev` and the test runner stay on the
+ * memory limiter unless they opt into this mode.
+ */
+export function discoverLimiterFailsClosed(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview') return true;
+  return env.NODE_ENV === 'production';
+}
+
+function unavailableError(): DiscoverApiError {
+  return new DiscoverApiError('RATE_LIMIT_UNAVAILABLE', RATE_LIMIT_UNAVAILABLE_MESSAGE);
+}
+
+function logUnavailable(): void {
+  if (loggedUnavailable) return;
+  loggedUnavailable = true;
+  console.error(JSON.stringify({ event: 'discover_rate_limit_unavailable' }));
 }
 
 async function hitStore(
@@ -104,13 +128,21 @@ async function hitStore(
 }
 
 /**
- * Durable store is Supabase (already in this repo). Preview/local without the
- * migration or service role falls back to process-local counts so a smoke test
- * can still reach MarketCheck. That fallback is not multi-instance durable.
+ * Durable store is the Supabase counter. Production and Vercel preview fail
+ * closed when that store is missing or errors. Development and tests may use
+ * the process-local counter, which only covers one process.
  */
-export async function resolveDiscoverRateLimitStore(): Promise<RateLimitStore> {
+export async function resolveDiscoverRateLimitStore(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<RateLimitStore> {
   if (storeOverride) return storeOverride;
-  if (!supabaseConfigured()) return memoryFallback;
+  if (!supabaseConfigured(env)) {
+    if (discoverLimiterFailsClosed(env)) {
+      logUnavailable();
+      throw unavailableError();
+    }
+    return memoryFallback;
+  }
   return SupabaseRateLimitStore.fromAdmin();
 }
 
@@ -132,11 +164,17 @@ export async function enforceDiscoverRateLimit(input: {
   route: DiscoverRouteName;
   nowMs?: number;
   store?: RateLimitStore;
+  /** Process-local counter used only when fail-closed is off. Tests pass their own. */
+  fallbackStore?: RateLimitStore;
+  env?: NodeJS.ProcessEnv;
 }): Promise<DiscoverRateLimitResult> {
   const nowMs = input.nowMs ?? Date.now();
   const limits = DISCOVER_LIMITS[input.route];
   const ip = input.ip.replace(/[^A-Za-z0-9.:_-]/g, '').slice(0, 64) || 'unknown';
-  const store = input.store ?? (await resolveDiscoverRateLimitStore());
+  const env = input.env ?? process.env;
+  const failClosed = discoverLimiterFailsClosed(env);
+  const fallback = input.fallbackStore ?? memoryFallback;
+  const store = input.store ?? (await resolveDiscoverRateLimitStore(env));
 
   const windows: Array<{ bucket: string; windowMs: number; limit: number; label: string }> = [
     { bucket: `disc:${input.route}:ip:${ip}:m`, windowMs: DISCOVER_MINUTE_MS, limit: limits.ipPerMinute, label: 'ip' },
@@ -150,17 +188,23 @@ export async function enforceDiscoverRateLimit(input: {
     for (const window of windows) {
       hits.push(await hitStore(store, window.bucket, window.windowMs, window.limit, nowMs));
     }
-  } catch (error) {
-    if (storeOverride) throw error;
+  } catch {
+    if (failClosed || store === fallback) {
+      logUnavailable();
+      throw unavailableError();
+    }
     if (!loggedFallback) {
       loggedFallback = true;
-      console.error(JSON.stringify({
-        event: 'discover_rate_limit_fallback_memory',
-        message: error instanceof Error ? error.message : 'store_failed',
-      }));
+      console.error(JSON.stringify({ event: 'discover_rate_limit_fallback_memory' }));
     }
-    for (const window of windows) {
-      hits.push(await hitStore(memoryFallback, window.bucket, window.windowMs, window.limit, nowMs));
+    hits.length = 0;
+    try {
+      for (const window of windows) {
+        hits.push(await hitStore(fallback, window.bucket, window.windowMs, window.limit, nowMs));
+      }
+    } catch {
+      logUnavailable();
+      throw unavailableError();
     }
   }
 

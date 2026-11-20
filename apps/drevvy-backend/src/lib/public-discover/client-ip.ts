@@ -1,13 +1,20 @@
+function firstHop(header: string | null): string | null {
+  if (!header) return null;
+  const first = header.split(',')[0]?.trim();
+  return first ? first.slice(0, 64) : null;
+}
+
 /**
  * Client IP for anonymous rate limits.
- * On Vercel, x-forwarded-for is set by the platform. The first hop is the client.
+ * Vercel overwrites x-forwarded-for and sets x-vercel-forwarded-for to the
+ * connecting client. Prefer that platform header so a front proxy which
+ * rewrites x-forwarded-for cannot mint a fresh per-IP bucket.
  */
 export function discoverClientIp(headers: Headers): string {
-  const forwarded = headers.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first.slice(0, 64);
-  }
+  const platform = firstHop(headers.get('x-vercel-forwarded-for'));
+  if (platform) return platform;
+  const forwarded = firstHop(headers.get('x-forwarded-for'));
+  if (forwarded) return forwarded;
   const real = headers.get('x-real-ip')?.trim();
   if (real) return real.slice(0, 64);
   const cf = headers.get('cf-connecting-ip')?.trim();

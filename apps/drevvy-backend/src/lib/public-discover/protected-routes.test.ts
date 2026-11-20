@@ -74,5 +74,7 @@ test('public Discover routes do not require the shared inventory key or shopper 
   }
   const handlers = readApp('src/lib/public-discover/handlers.ts');
   assert.match(handlers, /enforceDiscoverRateLimit/);
+  assert.doesNotMatch(handlers, /headers\.get\(['"]x-drevvy-subject['"]\)/);
+  assert.doesNotMatch(handlers, /marketCheckSubject\(/);
   assert.doesNotMatch(handlers, /DemoRepository|demoListings|demo-vehicles/);
 });

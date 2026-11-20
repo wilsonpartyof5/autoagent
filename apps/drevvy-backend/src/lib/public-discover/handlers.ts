@@ -1,4 +1,4 @@
-import { marketCheckSubject, withMarketCheckContext } from '../marketcheck/context';
+import { withMarketCheckContext } from '../marketcheck/context';
 import {
   getVehicleDetailMcp,
   MarketCheckQuotaError,
@@ -31,6 +31,7 @@ export type DiscoverDetailPort = (listingId: string) => Promise<DetailResponse |
 export type DiscoverHandlerDeps = {
   nowMs?: number;
   rateLimitStore?: RateLimitStore;
+  rateLimitEnv?: NodeJS.ProcessEnv;
   search?: DiscoverSearchPort;
   detail?: DiscoverDetailPort;
   origin?: string;
@@ -124,6 +125,7 @@ export async function handleDiscoverSearch(request: Request, deps: DiscoverHandl
       route: 'search',
       nowMs: deps.nowMs,
       store: deps.rateLimitStore,
+      env: deps.rateLimitEnv,
     });
     rateHeaders = limited.headers;
 
@@ -196,14 +198,17 @@ export async function handleDiscoverListing(
       route: 'detail',
       nowMs: deps.nowMs,
       store: deps.rateLimitStore,
+      env: deps.rateLimitEnv,
     });
     rateHeaders = limited.headers;
 
     const listingId = parseListingId(listingIdRaw);
     const origin = deps.origin ?? new URL(request.url).origin;
 
+    // Ignore client x-drevvy-subject. This route has no shopper session, so the
+    // header cannot be checked and would let a caller spoof usage attribution.
     const detail = await withMarketCheckContext(
-      { origin, subject: marketCheckSubject(undefined, request.headers.get('x-drevvy-subject')) },
+      { origin },
       () => (deps.detail ?? defaultDetail)(listingId),
     );
     if (!detail) {
