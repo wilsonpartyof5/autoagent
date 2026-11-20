@@ -93,9 +93,11 @@ jspm_packages/
 .nuxt
 dist
 
-# Gatsby files
+# Gatsby / static-export output. Keep this scoped so Next.js
+# app/api/public routes are not ignored.
 .cache/
-public
+/public/
+apps/*/public/
 
 # Storybook build outputs
 .out
