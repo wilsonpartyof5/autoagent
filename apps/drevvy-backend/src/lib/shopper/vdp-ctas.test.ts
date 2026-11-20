@@ -33,22 +33,29 @@ test('off-network VDPs offer market intel and an OTD request, not conversation',
   assert.equal(set.network, 'off_network');
 });
 
-test('resolveVdpCtas uses onboarded rooftops and listing identity', async () => {
+test('resolveVdpCtas uses verified MarketCheck identity, not a client URL', async () => {
   const inNetwork = await resolveVdpCtas({ listingId: 'mc-listing-1' }, {
     listOnboardedRooftops: async () => [HONDA],
-    loadListingIdentity: async () => ({
-      listingId: 'mc-listing-1',
-      marketcheckDealerId: '1038994',
-      dealerWebsite: 'https://www.hondacarsorockhill.com',
+    lookupListingIdentity: async () => ({
+      status: 'found',
+      identity: {
+        listingId: 'mc-listing-1',
+        marketcheckDealerId: '1038994',
+        dealerWebsite: 'https://www.hondacarsorockhill.com',
+      },
     }),
   });
-  assert.equal(inNetwork.network, 'in_network');
-  assert.equal(inNetwork.match.matched, true);
+  assert.equal(inNetwork.state, 'in_network');
 
-  const offNetwork = await resolveVdpCtas({ listingUrl: 'https://www.cars.com/vehicledetail/x' }, {
-    listOnboardedRooftops: async () => [HONDA],
-  });
-  assert.equal(offNetwork.network, 'off_network');
+  const unknown = await resolveVdpCtas(
+    { listingUrl: 'https://www.cars.com/vehicledetail/x' },
+    {
+      listOnboardedRooftops: async () => [HONDA],
+      lookupListingIdentity: async () => ({ status: 'unavailable', reason: 'not_found' }),
+    },
+  );
+  assert.equal(unknown.state, 'unknown');
+  assert.deepEqual(unknown.ctas, []);
 });
 
 test('a listing identity body needs a listing id or URL', () => {

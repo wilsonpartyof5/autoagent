@@ -10,10 +10,12 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { ensureConsumerProfile } from '../consumer/auth';
 import {
   KEY_PACKS,
+  spendMarketSaveKey,
   STARTER_FREE_KEYS,
   STARTER_GRANT_EVENT_TYPE,
   STARTER_GRANT_IDEMPOTENCY_KEY,
 } from './credits';
+import type { MarketIntel } from './market-intel';
 import { unlockMarketAndSave } from './market-save';
 import type { SavedCarRepository, SavedCarRow } from './saved-cars';
 
@@ -90,6 +92,17 @@ function rpcClient(db: PGlite): SupabaseClient {
         };
       }
     },
+    from: (table: string) => ({
+      select: () => ({
+        eq: (_column: string, userId: string) => ({
+          maybeSingle: async () => {
+            if (table !== 'shopper_credits') return { data: null, error: null };
+            const result = await db.query('select * from public.shopper_credits where user_id = $1', [userId]);
+            return { data: result.rows[0] ?? null, error: null };
+          },
+        }),
+      }),
+    }),
   } as unknown as SupabaseClient;
 }
 
@@ -179,12 +192,56 @@ test('a new shopper gets 3 keys once, and that balance unlocks market details', 
   try {
     const admin = rpcClient(db);
     const repo = memoryRepo();
+    const unlocks = new Map<string, MarketIntel>();
+    const intel: MarketIntel = {
+      fairVehiclePrice: 30100,
+      lowPrice: 28000,
+      medianPrice: 30500,
+      highPrice: 33000,
+      comparablesCount: 8,
+      daysListedMedian: 21,
+      priceDrops: 1,
+      isNewCar: false,
+      msrp: null,
+      msrpDiscount: null,
+      listedPrice: 32995,
+      source: 'marketcheck',
+    };
     const deps = {
       repo,
       ownsDeal: async () => false,
       lookup: async () => null,
       now: new Date('2026-10-29T16:00:00.000Z'),
       supabase: admin,
+      profileZip: async () => null,
+      loadMarketIntel: async () => intel,
+      findUnlock: async (userId: string, listingId: string) => {
+        const market = unlocks.get(`${userId}:${listingId}`);
+        return market
+          ? { listingId, vin: null, unlockedAt: '2026-10-29T16:00:00.000Z', market }
+          : null;
+      },
+      commitUnlock: async (input: { userId: string; listingId: string; vin: string | null; market: MarketIntel }) => {
+        const spent = await spendMarketSaveKey(admin, input.userId, input.listingId);
+        if (!spent.success) {
+          return {
+            unlocked: false,
+            alreadyUnlocked: false,
+            charged: false,
+            balance: spent.newBalance,
+            market: null,
+            error: spent.error ?? 'no_credits' as const,
+          };
+        }
+        unlocks.set(`${input.userId}:${input.listingId}`, input.market);
+        return {
+          unlocked: true,
+          alreadyUnlocked: spent.alreadyConsumed,
+          charged: !spent.alreadyConsumed,
+          balance: spent.newBalance,
+          market: input.market,
+        };
+      },
     };
 
     const first = await ensureConsumerProfile(shopper(NEW_USER), admin);
