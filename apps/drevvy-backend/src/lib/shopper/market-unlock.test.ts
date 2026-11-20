@@ -17,6 +17,10 @@ const SQL = readFileSync(
   join(HERE, '../../../../../supabase/migrations/20261120180000_shopper_market_unlocks.sql'),
   'utf8',
 );
+const GUARD_SQL = readFileSync(
+  join(HERE, '../../../../../supabase/migrations/20261120201000_market_save_lookup_guards.sql'),
+  'utf8',
+);
 
 const SHOPPER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SHOPPER_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -245,6 +249,16 @@ test('unlock_market_intel_atomic charges once, isolates shoppers, and refuses an
     assert.equal(refunded.rows[0]?.refunded, true);
     assert.equal(refunded.rows[0]?.balance, 1);
     assert.equal(await eventCount(db, SHOPPER_A, 'mc-miss-1'), 0);
+    const trail = await db.query<{ event_type: string; idempotency_key: string }>(
+      `select event_type, idempotency_key
+         from public.shopper_credit_events
+        where user_id = $1 and listing_id = 'mc-miss-1'
+        order by event_type`,
+      [SHOPPER_A],
+    );
+    assert.deepEqual(trail.rows.map((row) => row.event_type), ['refund', 'use']);
+    assert.match(trail.rows[0]?.idempotency_key ?? '', /^refund:market_save:mc-miss-1:/);
+    assert.match(trail.rows[1]?.idempotency_key ?? '', /^use:market_save:mc-miss-1:reversed:/);
 
     const chargedAgain = await db.query<{ charged: boolean; unlocked: boolean; balance: number }>(
       'select * from public.unlock_market_intel_atomic($1, $2, $3, $4::jsonb)',
@@ -260,6 +274,166 @@ test('unlock_market_intel_atomic charges once, isolates shoppers, and refuses an
     assert.equal(kept.rows[0]?.refunded, false);
     assert.equal(kept.rows[0]?.balance, 0);
     assert.equal(await balance(db, SHOPPER_A), 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('a refund keeps the spend row, and the lookup guard caps paid retries', async () => {
+  assert.ok('20261120201000_market_save_lookup_guards.sql' > '20261120180000_shopper_market_unlocks.sql');
+  assert.match(GUARD_SQL, /set search_path = ''/);
+  assert.equal(GUARD_SQL.includes('delete from public.shopper_credit_events'), false);
+  assert.match(GUARD_SQL, /refund:market_save:/);
+  assert.match(GUARD_SQL, /claim_market_save_lookup/);
+  assert.equal(GUARD_SQL.includes('set search_path = public'), false);
+
+  const db = await boot();
+  const ip = 'ab'.repeat(32);
+  try {
+    await seed(db, SHOPPER_A, 1);
+    await db.query(
+      `insert into public.shopper_credit_events
+         (user_id, event_type, amount, listing_id, spend_kind, key_kind, idempotency_key)
+       values ($1, 'use', 1, 'mc-hold-1', 'market_save', 'market_intel', 'use:market_save:mc-hold-1')`,
+      [SHOPPER_A],
+    );
+    const held = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_A, ip, 'mc-hold-1'],
+    );
+    assert.equal(held.rows[0]?.action, 'proceed');
+    assert.equal(held.rows[0]?.hold, true);
+
+    await db.query('select public.remember_market_listing_miss($1)', ['mc-miss-cache']);
+    const missed = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_A, 'cd'.repeat(32), 'mc-miss-cache'],
+    );
+    assert.equal(missed.rows[0]?.action, 'cached_miss');
+    assert.equal(missed.rows[0]?.hold, false);
+
+    for (let index = 0; index < 5; index += 1) {
+      await db.query(
+        `insert into public.shopper_credit_events
+           (user_id, event_type, amount, listing_id, spend_kind, key_kind, idempotency_key)
+         values ($1, 'refund', 1, $2, 'market_save', 'market_intel', $3)`,
+        [SHOPPER_B, `mc-refund-${index}`, `refund:market_save:mc-refund-${index}:n${index}`],
+      );
+    }
+    await seed(db, SHOPPER_B, 1);
+    const capped = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_B, 'ef'.repeat(32), 'mc-fresh-1'],
+    );
+    assert.equal(capped.rows[0]?.action, 'refund_cap');
+    assert.equal(capped.rows[0]?.hold, false);
+
+    const slotUser = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    await seed(db, slotUser, 1);
+    for (let index = 0; index < 5; index += 1) {
+      const opened = await db.query<{ action: string }>(
+        'select * from public.claim_market_save_lookup($1, $2, $3)',
+        [slotUser, '22'.repeat(32), `mc-slot-${index}`],
+      );
+      assert.equal(opened.rows[0]?.action, 'proceed');
+    }
+    const reserved = await db.query<{ count: string }>(
+      'select count(*)::text as count from public.shopper_market_refund_slots where user_id = $1',
+      [slotUser],
+    );
+    assert.equal(reserved.rows[0]?.count, '5');
+    const sixth = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [slotUser, '22'.repeat(32), 'mc-slot-next'],
+    );
+    assert.equal(sixth.rows[0]?.action, 'refund_cap');
+    assert.equal(sixth.rows[0]?.hold, false);
+    const stillFive = await db.query<{ count: string }>(
+      'select count(*)::text as count from public.shopper_market_refund_slots where user_id = $1',
+      [slotUser],
+    );
+    assert.equal(stillFive.rows[0]?.count, '5');
+    const duplicate = await db.query<{ action: string }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [slotUser, '33'.repeat(32), 'mc-slot-0'],
+    );
+    assert.equal(duplicate.rows[0]?.action, 'rate_limited');
+
+    await db.query(
+      `insert into public.shopper_credit_events
+         (user_id, event_type, amount, listing_id, spend_kind, key_kind, idempotency_key)
+       values ($1, 'use', 1, 'mc-capped-hold', 'market_save', 'market_intel', 'use:market_save:mc-capped-hold')`,
+      [SHOPPER_B],
+    );
+    const cappedHold = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_B, '44'.repeat(32), 'mc-capped-hold'],
+    );
+    assert.equal(cappedHold.rows[0]?.action, 'refund_cap');
+    assert.equal(cappedHold.rows[0]?.hold, true);
+    const noSlot = await db.query<{ count: string }>(
+      `select count(*)::text as count from public.shopper_market_refund_slots
+       where user_id = $1 and listing_id = 'mc-capped-hold'`,
+      [SHOPPER_B],
+    );
+    assert.equal(noSlot.rows[0]?.count, '0');
+
+    await db.query('select public.remember_market_upstream_attempt($1, $2)', [SHOPPER_A, 'mc-burst']);
+    const burst = await db.query<{ action: string; scope: string | null }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_A, '55'.repeat(32), 'mc-burst'],
+    );
+    assert.equal(burst.rows[0]?.action, 'rate_limited');
+    assert.equal(burst.rows[0]?.scope, 'user');
+    const sharedMiss = await db.query<{ count: string }>(
+      `select count(*)::text as count from public.market_intel_listing_misses where listing_id = 'mc-burst'`,
+    );
+    assert.equal(sharedMiss.rows[0]?.count, '0');
+    const otherShopper = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    await seed(db, otherShopper, 1);
+    const notShared = await db.query<{ action: string }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [otherShopper, '66'.repeat(32), 'mc-burst'],
+    );
+    assert.equal(notShared.rows[0]?.action, 'proceed');
+
+    const rateUser = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    await seed(db, rateUser, 1);
+    const rateIp = '11'.repeat(32);
+    let blocked = '';
+    for (let index = 0; index < 12; index += 1) {
+      const claim = await db.query<{ action: string; scope: string | null }>(
+        'select * from public.claim_market_save_lookup($1, $2, $3)',
+        [rateUser, rateIp, `mc-rate-${index}`],
+      );
+      blocked = claim.rows[0]?.action ?? '';
+      if (blocked === 'proceed') {
+        await db.query('select public.release_market_save_refund_slot($1, $2)', [rateUser, `mc-rate-${index}`]);
+      }
+      if (blocked === 'rate_limited') {
+        assert.equal(claim.rows[0]?.scope, 'user');
+        assert.equal(index, 10);
+        break;
+      }
+    }
+    assert.equal(blocked, 'rate_limited');
+
+    const privileges = await db.query<{
+      anon_claim: boolean;
+      service_claim: boolean;
+      anon_attempt: boolean;
+      service_release: boolean;
+    }>(`
+      select
+        has_function_privilege('anon', 'public.claim_market_save_lookup(uuid, text, text)', 'execute') as anon_claim,
+        has_function_privilege('service_role', 'public.claim_market_save_lookup(uuid, text, text)', 'execute') as service_claim,
+        has_function_privilege('anon', 'public.remember_market_upstream_attempt(uuid, text)', 'execute') as anon_attempt,
+        has_function_privilege('service_role', 'public.release_market_save_refund_slot(uuid, text)', 'execute') as service_release
+    `);
+    assert.equal(privileges.rows[0]?.anon_claim, false);
+    assert.equal(privileges.rows[0]?.service_claim, true);
+    assert.equal(privileges.rows[0]?.anon_attempt, false);
+    assert.equal(privileges.rows[0]?.service_release, true);
   } finally {
     await db.close();
   }
@@ -418,6 +592,13 @@ function depsFor(repo: SavedCarRepository, ledger: Ledger, intel: MarketIntel): 
     now: new Date('2026-11-05T00:00:00.000Z'),
     supabase,
     profileZip: async () => null,
+    lookupGuard: {
+      claim: async () => ({ action: 'proceed' as const, scope: null, hold: false }),
+      rememberMiss: async () => undefined,
+      rememberUpstreamAttempt: async () => undefined,
+      releaseRefundSlot: async () => undefined,
+      noteRefund: async () => undefined,
+    },
     loadMarketIntel: async () => intel,
     findUnlock: async (userId, listingId) => {
       const market = await ledger.read(userId, listingId);
@@ -503,6 +684,7 @@ async function boot(): Promise<PGlite> {
     );
   `);
   await db.exec(SQL);
+  await db.exec(GUARD_SQL);
   return db;
 }
 

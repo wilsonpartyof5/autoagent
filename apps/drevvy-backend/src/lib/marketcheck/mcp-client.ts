@@ -45,6 +45,18 @@ export class McpRateLimitError extends Error {
   }
 }
 
+/** Timeout, 5xx, or a tool error. A strict caller refunds instead of treating this as "no listing". */
+export class MarketCheckUpstreamError extends Error {
+  readonly status: number | null;
+  constructor(message: string, status: number | null = null) {
+    super(message);
+    this.name = 'MarketCheckUpstreamError';
+    this.status = status;
+  }
+}
+
+export type McpCallOptions = { strict?: boolean };
+
 // --------------------------------------------------------------------------
 // MCP JSON-RPC types
 // --------------------------------------------------------------------------
@@ -91,22 +103,25 @@ let requestCounter = 0;
  * Call a MarketCheck MCP tool and return the parsed JSON result from the
  * first text content block.
  *
- * Returns null when the listing/resource is not found or a non-fatal error
- * occurs.  Throws McpQuotaError or McpRateLimitError for hard failures that
- * callers must surface to the user.
+ * Returns null when the listing/resource is not found. Throws McpQuotaError
+ * or McpRateLimitError for hard failures that callers must surface.
+ * With `strict`, a timeout, 5xx, or tool error throws MarketCheckUpstreamError
+ * instead of looking like a missing listing. Search stays non-strict.
  */
 export async function callMcpTool<T = unknown>(
   toolName: string,
   args: Record<string, unknown>,
   timeoutMs = 8000,
+  options?: McpCallOptions,
 ): Promise<T | null> {
   const key = stableStringify(args);
   const endpoint = policyEndpointForTool(toolName);
+  const load = () => callMcpToolNetwork<T>(toolName, args, timeoutMs, options);
   // Fair price is stored only by getMarketCheckPrice, keyed by VIN + ZIP area.
   if (!endpoint || endpoint === 'marketcheck_price') {
-    return dedupeInflight(`mcp:${toolName}:${key}`, () => callMcpToolNetwork<T>(toolName, args, timeoutMs));
+    return dedupeInflight(`mcp:${toolName}:${key}`, load);
   }
-  const { value } = await loadMarketCheck(endpoint, key, () => callMcpToolNetwork<T>(toolName, args, timeoutMs));
+  const { value } = await loadMarketCheck(endpoint, key, load);
   return value;
 }
 
@@ -114,6 +129,7 @@ async function callMcpToolNetwork<T = unknown>(
   toolName: string,
   args: Record<string, unknown>,
   timeoutMs = 8000,
+  options?: McpCallOptions,
 ): Promise<T | null> {
   const apiKey = marketCheckApiKey();
   if (!apiKey) {
@@ -175,21 +191,28 @@ async function callMcpToolNetwork<T = unknown>(
           body: redactSecrets(body.substring(0, 300)),
         }),
       );
+      if (options?.strict) {
+        throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed (${res.status})`, res.status);
+      }
       return null;
     }
 
     const contentType = res.headers.get('content-type') ?? '';
 
     if (contentType.includes('text/event-stream')) {
-      return await parseStreamingResponse<T>(res, toolName);
+      return await parseStreamingResponse<T>(res, toolName, options?.strict === true);
     }
 
     const json = (await res.json()) as McpJsonRpcResponse;
-    return extractContent<T>(json, toolName);
+    return extractContent<T>(json, toolName, options?.strict === true);
   } catch (err) {
     clearTimeout(tid);
 
-    if (err instanceof McpQuotaError || err instanceof McpRateLimitError) {
+    if (
+      err instanceof McpQuotaError
+      || err instanceof McpRateLimitError
+      || err instanceof MarketCheckUpstreamError
+    ) {
       throw err;
     }
 
@@ -207,6 +230,11 @@ async function callMcpToolNetwork<T = unknown>(
         error: redactSecrets(causeText ? `${message} ${causeText}` : message),
       }),
     );
+    if (options?.strict) {
+      throw new MarketCheckUpstreamError(
+        isTimeout ? `MarketCheck ${toolName} timed out` : `MarketCheck ${toolName} failed`,
+      );
+    }
     return null;
   }
 }
@@ -215,7 +243,7 @@ async function callMcpToolNetwork<T = unknown>(
 // Helpers
 // --------------------------------------------------------------------------
 
-function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null {
+function extractContent<T>(json: McpJsonRpcResponse, toolName: string, strict = false): T | null {
   if ('error' in json) {
     console.error(
       JSON.stringify({
@@ -225,6 +253,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null
         message: redactSecrets(json.error.message),
       }),
     );
+    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`);
     return null;
   }
 
@@ -234,6 +263,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null
   if (result.isError) {
     const msg = redactSecrets(result.content?.[0]?.text ?? 'unknown MCP tool error');
     console.error(JSON.stringify({ event: 'mc_mcp_tool_error', tool: toolName, msg }));
+    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`);
     return null;
   }
 
@@ -249,7 +279,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string): T | null
 }
 
 /** Collect the first data frame from an SSE response and parse it. */
-async function parseStreamingResponse<T>(res: Response, toolName: string): Promise<T | null> {
+async function parseStreamingResponse<T>(res: Response, toolName: string, strict = false): Promise<T | null> {
   const text = await res.text().catch(() => '');
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
@@ -258,10 +288,10 @@ async function parseStreamingResponse<T>(res: Response, toolName: string): Promi
     if (payload === '[DONE]') continue;
     try {
       const msg = JSON.parse(payload) as McpJsonRpcResponse;
-      const result = extractContent<T>(msg, toolName);
+      const result = extractContent<T>(msg, toolName, strict);
       if (result !== null) return result;
-    } catch {
-      continue;
+    } catch (error) {
+      if (error instanceof MarketCheckUpstreamError) throw error;
     }
   }
   return null;

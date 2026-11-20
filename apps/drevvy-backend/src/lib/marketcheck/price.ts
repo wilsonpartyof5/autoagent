@@ -42,6 +42,7 @@ export interface MarketCheckPrice {
 export async function getMarketCheckPrice(
   input: { vin: string; miles: number; zip: string },
   now: () => number = Date.now,
+  options?: { strict?: boolean },
 ): Promise<MarketCheckPrice | null> {
   const vin = input.vin.trim().toUpperCase();
   const zip = zipArea(input.zip);
@@ -54,7 +55,7 @@ export async function getMarketCheckPrice(
   const { value, fromCache } = await loadMarketCheck(
     'marketcheck_price',
     key,
-    () => fetchMarketCheckPrice(vin, miles, zip),
+    () => fetchMarketCheckPrice(vin, miles, zip, options),
     now,
   );
   if (!value) return null;
@@ -69,6 +70,7 @@ export async function getMarketCheckPrice(
 export async function loadFairPriceIfAllowed(
   trigger: string,
   vehicle: FairPriceVehicle,
+  options?: { strict?: boolean },
 ): Promise<FairPriceQuote | null> {
   if (!fairPriceTriggerAllowed(trigger)) return null;
   if (vehicle.condition === 'new') return null;
@@ -78,10 +80,11 @@ export async function loadFairPriceIfAllowed(
       vin: vehicle.vin,
       miles: vehicle.miles,
       zip: vehicle.zip,
-    });
+    }, Date.now, options);
     if (!quote) return null;
     return { price: quote.price, fromCache: quote.fromCache };
   } catch (error) {
+    if (options?.strict) throw error;
     console.error(JSON.stringify({
       event: 'marketcheck_price_failed',
       trigger,
@@ -95,8 +98,9 @@ async function fetchMarketCheckPrice(
   vin: string,
   miles: number,
   zip: string,
+  options?: { strict?: boolean },
 ): Promise<Omit<MarketCheckPrice, 'fromCache'> | null> {
-  const raw = await callMcpTool<unknown>('get_marketcheck_price', { vin, miles, zip });
+  const raw = await callMcpTool<unknown>('get_marketcheck_price', { vin, miles, zip }, 8000, options);
   const price = readPrice(raw);
   if (price == null) return null;
   return { vin, miles, zip, price };
