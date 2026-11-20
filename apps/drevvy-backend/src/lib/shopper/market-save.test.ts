@@ -9,6 +9,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ShopperDealError } from './deals';
 import { refundCredit, spendMarketSaveKey } from './credits';
 import type { MarketIntel } from './market-intel';
+import { MarketCheckUpstreamError } from '@/lib/marketcheck/mcp-client';
 import { createMemoryMarketLookupGuard } from './market-lookup-guard';
 import { unlockMarketAndSave, type MarketSaveDeps } from './market-save';
 import type { CommitMarketUnlockInput, StoredMarketUnlock } from './market-unlock-store';
@@ -318,7 +319,7 @@ test('five refunded lookups block the next paid call and a miss is not fetched a
   let cachedLoads = 0;
   cachedDeps.loadMarketIntel = async () => {
     cachedLoads += 1;
-    return null;
+    return { intel: null, listingFound: true, returnedListingId: 'mc-listing-9' };
   };
   await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-9' }, cachedDeps);
   await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-9' }, cachedDeps);
@@ -345,6 +346,8 @@ test('a closed limiter and a per-user rate limit do not call MarketCheck', async
   limited.lookupGuard = {
     claim: async () => ({ action: 'rate_limited', scope: 'user', hold: false }),
     rememberMiss: async () => undefined,
+    rememberUpstreamAttempt: async () => undefined,
+    releaseRefundSlot: async () => undefined,
     noteRefund: async () => undefined,
   };
   limited.loadMarketIntel = async () => {
@@ -367,6 +370,8 @@ test('a failed refund is finished by the next commit without a second charge', a
   deps.lookupGuard = {
     claim: async () => ({ action: 'proceed', scope: null, hold: true }),
     rememberMiss: async () => undefined,
+    rememberUpstreamAttempt: async () => undefined,
+    releaseRefundSlot: async () => undefined,
     noteRefund: async () => undefined,
   };
   let loads = 0;
@@ -392,6 +397,98 @@ test('a failed refund is finished by the next commit without a second charge', a
   assert.equal(recovered.market?.fairVehiclePrice, 30100);
   assert.equal(loads, 2);
   assert.equal(repo.rows.length, 1);
+});
+
+test('a MarketCheck timeout does not create a shared miss', async () => {
+  const repo = memoryRepo();
+  const guard = createMemoryMarketLookupGuard();
+  const deps = scriptedUnlock(memoryKeys(1), repo);
+  deps.lookupGuard = guard;
+  let loads = 0;
+  let misses = 0;
+  const originalRemember = guard.rememberMiss.bind(guard);
+  guard.rememberMiss = async (listingId, now) => {
+    misses += 1;
+    await originalRemember(listingId, now);
+  };
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    throw new MarketCheckUpstreamError('MarketCheck listing lookup timed out');
+  };
+
+  const failed = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(failed.spent, false);
+  assert.equal(failed.credits.balance, 1);
+  assert.equal(misses, 0);
+  await assert.rejects(
+    () => unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'rate_limited',
+  );
+  assert.equal(loads, 1);
+
+  const other = scriptedUnlock(memoryKeys(1), memoryRepo());
+  other.lookupGuard = guard;
+  let otherLoads = 0;
+  other.loadMarketIntel = async () => {
+    otherLoads += 1;
+    return { intel: null, listingFound: true, returnedListingId: 'mc-listing-1' };
+  };
+  const shared = await unlockMarketAndSave('shopper-2', { listingId: 'mc-listing-1' }, other);
+  assert.equal(shared.reason, 'market_unavailable');
+  assert.equal(otherLoads, 1);
+  assert.equal(misses, 1);
+});
+
+test('a client VIN cannot cache a miss for the listing', async () => {
+  const repo = memoryRepo();
+  const guard = createMemoryMarketLookupGuard();
+  const deps = scriptedUnlock(memoryKeys(2), repo);
+  deps.lookupGuard = guard;
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return { intel: null, listingFound: true, returnedListingId: 'mc-listing-1' };
+  };
+
+  const poisoned = await unlockMarketAndSave('shopper-1', {
+    listingId: 'mc-listing-1',
+    vin: '1GNSKCKD5RR123456',
+  }, deps);
+  assert.equal(poisoned.spent, false);
+  assert.equal(poisoned.credits.balance, 2);
+  const again = await unlockMarketAndSave('shopper-2', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(again.spent, false);
+  assert.equal(loads, 2);
+});
+
+test('a refund cap with a held key does not call MarketCheck', async () => {
+  const repo = memoryRepo();
+  const deps = scriptedUnlock(memoryKeys(1), repo);
+  let loads = 0;
+  let refunds = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return usedIntel();
+  };
+  deps.lookupGuard = {
+    claim: async () => ({ action: 'refund_cap', scope: null, hold: true }),
+    rememberMiss: async () => undefined,
+    rememberUpstreamAttempt: async () => undefined,
+    releaseRefundSlot: async () => undefined,
+    noteRefund: async () => undefined,
+  };
+  deps.refundKey = async () => {
+    refunds += 1;
+    return { refunded: true, balance: 1 };
+  };
+
+  await assert.rejects(
+    () => unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'market_lookup_limited',
+  );
+  assert.equal(loads, 0);
+  assert.equal(refunds, 1);
+  assert.equal(repo.rows.length, 0);
 });
 
 test('the market-save route spends a key and a heart save does not', () => {

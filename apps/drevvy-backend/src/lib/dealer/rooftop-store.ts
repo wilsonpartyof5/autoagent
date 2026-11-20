@@ -18,7 +18,7 @@ import {
  */
 export type ListingIdentityLookup =
   | { status: 'found'; identity: ListingDealerIdentity }
-  | { status: 'unavailable'; reason: 'not_found' | 'error' | 'timeout' };
+  | { status: 'unavailable'; reason: 'not_found' | 'mismatch' | 'error' | 'timeout' };
 
 export type RooftopDirectory = {
   listOnboardedRooftops: () => Promise<OnboardedRooftop[]>;
@@ -129,6 +129,12 @@ export async function lookupListingDealerIdentity(
       ? await searchListingByVin(vin)
       : await fetchMarketCheckListing(listingId) as RawListing | null;
     if (!listing) return { status: 'unavailable', reason: 'not_found' };
+    if (!vin) {
+      const returnedId = typeof listing.id === 'string' ? listing.id.trim() : '';
+      if (returnedId.length > 0 && returnedId !== listingId) {
+        return { status: 'unavailable', reason: 'mismatch' };
+      }
+    }
     const identity = identityFromMarketCheckListing(listing);
     if (!identity) return { status: 'unavailable', reason: 'not_found' };
     return {

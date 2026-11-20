@@ -6,6 +6,7 @@ import { hashMarketCheckSubject, withMarketCheckContext } from './context';
 import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
 
 import { marketCheckListingFromPayload } from './listing-car';
+import { MarketCheckUpstreamError } from './mcp-client';
 import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
 import { getMarketCheckPrice } from './price';
 import { containsSecret } from './secrets';
@@ -276,7 +277,7 @@ test('a VIN search keeps MarketCheck listing id and never adopts the caller id',
   });
 });
 
-test('a listing id lookup uses GET /v2/listing/car and keeps a mismatched id', async () => {
+test('a listing id lookup uses GET /v2/listing/car and rejects a mismatched id', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
   resetMarketCheckCacheForTests();
   const listing = {
@@ -311,13 +312,60 @@ test('a listing id lookup uses GET /v2/listing/car and keeps a mismatched id', a
     status: 200,
     headers: { 'content-type': 'application/json' },
   }), async () => {
-    const detail = await getVehicleDetailMcp('listing-1', undefined, ['listing']);
-    assert.equal(detail?.id, 'other-car');
-    assert.notEqual(detail?.id, 'listing-1');
+    const mismatched = await lookupListingDealerIdentity('listing-1');
+    assert.equal(mismatched.status, 'unavailable');
+    if (mismatched.status === 'unavailable') assert.equal(mismatched.reason, 'mismatch');
   });
 
+  const decoded = marketCheckListingFromPayload({
+    ...listing,
+    heading: '2025%20Eagle%20Dennis%20Proview',
+    exterior_color: '100%',
+    build: { ...listing.build, make: 'Eagle%20Dennis' },
+    media: { primary_photo_url: 'https://cdn.example/a%20b.jpg' },
+  });
+  assert.equal(decoded?.heading, '2025 Eagle Dennis Proview');
+  assert.equal(decoded?.exterior_color, '100%');
+  assert.equal((decoded?.build as { make?: string } | undefined)?.make, 'Eagle Dennis');
+  assert.equal(decoded?.price, 32000);
+  assert.equal((decoded?.media as { primary_photo_url?: string } | undefined)?.primary_photo_url, 'https://cdn.example/a%20b.jpg');
   assert.equal(marketCheckListingFromPayload({ data: { listings: [listing] } })?.id, 'listing-1');
   assert.equal(marketCheckListingFromPayload(listing)?.id, 'listing-1');
+});
+
+test('a listing outage throws and a search outage stays an empty envelope', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  resetMarketCheckCacheForTests();
+  await withFetch(() => new Response('upstream', { status: 500 }), async () => {
+    await assert.rejects(
+      () => getVehicleDetailMcp('listing-1', undefined, ['listing']),
+      (error: unknown) => error instanceof MarketCheckUpstreamError,
+    );
+  });
+  resetMarketCheckCacheForTests();
+  await withFetch(() => {
+    const abort = new Error('The operation was aborted');
+    abort.name = 'AbortError';
+    throw abort;
+  }, async () => {
+    await assert.rejects(
+      () => getVehicleDetailMcp('listing-1', undefined, ['listing']),
+      (error: unknown) => error instanceof MarketCheckUpstreamError && /timed out/.test(error.message),
+    );
+  });
+  resetMarketCheckCacheForTests();
+  await withFetch(() => new Response('upstream', { status: 500 }), async () => {
+    const empty = await searchActiveCarsMcp({ latitude: 34.9, longitude: -81.0, radiusMiles: 10 });
+    assert.deepEqual(empty.vehicles, []);
+    await assert.rejects(
+      () => searchActiveCarsMcp({ latitude: 34.9, longitude: -81.0, radiusMiles: 10 }, { strict: true }),
+      (error: unknown) => error instanceof MarketCheckUpstreamError && error.status === 500,
+    );
+    await assert.rejects(
+      () => getMarketCheckPrice({ vin: VIN, miles: 41000, zip: ZIP }, Date.now, { strict: true }),
+      (error: unknown) => error instanceof MarketCheckUpstreamError,
+    );
+  });
 });
 
 test('usage logs can be grouped by a hashed shopper id without PII', async () => {

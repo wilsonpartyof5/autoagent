@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { redactSecrets } from '@/lib/marketcheck/secrets';
+import { rateLimitIpKey } from './rate-limit-ip';
 
 /**
  * Bounds paid MarketCheck work on POST /api/consumer/keys/market-save.
@@ -18,6 +19,8 @@ export const MARKET_LOOKUP_IP_LIMIT = 30;
 export const MARKET_LOOKUP_WINDOW_MS = 10 * 60 * 1000;
 export const MARKET_REFUND_CAP = 5;
 export const MARKET_REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const MARKET_REFUND_SLOT_MS = 10 * 60 * 1000;
+export const MARKET_UPSTREAM_ATTEMPT_MS = 2 * 60 * 1000;
 export const MARKET_MISS_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type MarketLookupClaim = {
@@ -29,6 +32,8 @@ export type MarketLookupClaim = {
 export type MarketLookupGuard = {
   claim(input: { userId: string; ipHash: string; listingId: string; now: number }): Promise<MarketLookupClaim>;
   rememberMiss(listingId: string, now: number): Promise<void>;
+  rememberUpstreamAttempt(userId: string, listingId: string, now: number): Promise<void>;
+  releaseRefundSlot(userId: string, listingId: string): Promise<void>;
   noteRefund(userId: string, now: number): Promise<void>;
 };
 
@@ -48,14 +53,33 @@ export function shopperClientIp(headers: HeaderSource): string {
   return real || 'unknown';
 }
 
-export function hashShopperIp(ip: string): string {
-  return createHash('sha256').update(ip).digest('hex');
+let pepperWarningLogged = false;
+
+export function resetMarketIpPepperWarningForTests(): void {
+  pepperWarningLogged = false;
+}
+
+export function hashShopperIp(ip: string, env: NodeJS.ProcessEnv = process.env): string {
+  const key = rateLimitIpKey(ip);
+  const pepper = env.DREVVY_IP_HASH_PEPPER?.trim();
+  if (pepper) return createHmac('sha256', pepper).update(key).digest('hex');
+  if (!pepperWarningLogged) {
+    pepperWarningLogged = true;
+    console.error(JSON.stringify({
+      event: 'market_ip_hash_pepper_unset',
+      message: 'DREVVY_IP_HASH_PEPPER is unset. Market-save IP limits use unsalted sha256.',
+    }));
+  }
+  return createHash('sha256').update(key).digest('hex');
 }
 
 export function createMemoryMarketLookupGuard(): MarketLookupGuard {
   const hits: Array<{ userId: string; ipHash: string; at: number }> = [];
   const refunds: Array<{ userId: string; at: number }> = [];
   const misses = new Map<string, number>();
+  const slots = new Map<string, number>();
+  const upstream = new Map<string, number>();
+  const slotKey = (userId: string, listingId: string) => `${userId}\n${listingId}`;
 
   return {
     async claim(input) {
@@ -72,16 +96,36 @@ export function createMemoryMarketLookupGuard(): MarketLookupGuard {
       if (missedAt != null && input.now - missedAt < MARKET_MISS_TTL_MS) {
         return { action: 'cached_miss', scope: null, hold: false };
       }
+      const attemptAt = upstream.get(slotKey(input.userId, input.listingId));
+      if (attemptAt != null && input.now - attemptAt < MARKET_UPSTREAM_ATTEMPT_MS) {
+        return { action: 'rate_limited', scope: 'user', hold: false };
+      }
       const recentRefunds = refunds.filter((refund) => (
         refund.userId === input.userId && input.now - refund.at < MARKET_REFUND_WINDOW_MS
       ));
-      if (recentRefunds.length >= MARKET_REFUND_CAP) {
+      const openSlots = [...slots.entries()].filter(([key, at]) => (
+        key.startsWith(`${input.userId}\n`)
+        && !key.endsWith(`\n${input.listingId}`)
+        && input.now - at < MARKET_REFUND_SLOT_MS
+      ));
+      if (recentRefunds.length + openSlots.length >= MARKET_REFUND_CAP) {
         return { action: 'refund_cap', scope: null, hold: false };
       }
+      const ownSlot = slots.get(slotKey(input.userId, input.listingId));
+      if (ownSlot != null && input.now - ownSlot < MARKET_REFUND_SLOT_MS) {
+        return { action: 'rate_limited', scope: 'user', hold: false };
+      }
+      slots.set(slotKey(input.userId, input.listingId), input.now);
       return { action: 'proceed', scope: null, hold: false };
     },
     async rememberMiss(listingId, now) {
       misses.set(listingId, now);
+    },
+    async rememberUpstreamAttempt(userId, listingId, now) {
+      upstream.set(slotKey(userId, listingId), now);
+    },
+    async releaseRefundSlot(userId, listingId) {
+      slots.delete(slotKey(userId, listingId));
     },
     async noteRefund(userId, now) {
       refunds.push({ userId, at: now });
@@ -139,6 +183,42 @@ export async function rememberDurableMarketMiss(supabase: SupabaseClient, listin
   }
 }
 
+export async function rememberDurableUpstreamAttempt(
+  supabase: SupabaseClient,
+  userId: string,
+  listingId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('remember_market_upstream_attempt', {
+    p_user_id: userId,
+    p_listing_id: listingId,
+  });
+  if (error) {
+    console.error(JSON.stringify({
+      event: 'market_upstream_attempt_unrecorded',
+      listingId,
+      message: redactSecrets(error.message ?? 'unknown'),
+    }));
+  }
+}
+
+export async function releaseDurableRefundSlot(
+  supabase: SupabaseClient,
+  userId: string,
+  listingId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('release_market_save_refund_slot', {
+    p_user_id: userId,
+    p_listing_id: listingId,
+  });
+  if (error) {
+    console.error(JSON.stringify({
+      event: 'market_refund_slot_unreleased',
+      listingId,
+      message: redactSecrets(error.message ?? 'unknown'),
+    }));
+  }
+}
+
 export function durableMarketLookupGuard(
   supabase: SupabaseClient,
   options: { failClosed: boolean },
@@ -146,6 +226,8 @@ export function durableMarketLookupGuard(
   return {
     claim: (input) => claimDurableMarketLookup(supabase, input, options),
     rememberMiss: (listingId) => rememberDurableMarketMiss(supabase, listingId),
+    rememberUpstreamAttempt: (userId, listingId) => rememberDurableUpstreamAttempt(supabase, userId, listingId),
+    releaseRefundSlot: (userId, listingId) => releaseDurableRefundSlot(supabase, userId, listingId),
     noteRefund: async () => undefined,
   };
 }

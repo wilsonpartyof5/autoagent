@@ -19,6 +19,7 @@ import { toClientPhotoUrl } from './photos';
 import { redactSecrets } from './secrets';
 import {
   callMcpTool,
+  type McpCallOptions,
   McpQuotaError,
   McpRateLimitError,
 } from './mcp-client';
@@ -386,9 +387,19 @@ function buildSearchArgs(params: LiveSearchParams, rows: number, start: number):
   return args;
 }
 
-async function searchOnePage(params: LiveSearchParams, rows: number, start: number): Promise<LiveSearchResult> {
+async function searchOnePage(
+  params: LiveSearchParams,
+  rows: number,
+  start: number,
+  options?: McpCallOptions,
+): Promise<LiveSearchResult> {
   const t0 = Date.now();
-  const raw = await callMcpTool<MCSearchResponse>('search_active_cars', buildSearchArgs(params, rows, start));
+  const raw = await callMcpTool<MCSearchResponse>(
+    'search_active_cars',
+    buildSearchArgs(params, rows, start),
+    8000,
+    options,
+  );
   const latencyMs = Date.now() - t0;
 
   if (!raw) {
@@ -423,10 +434,13 @@ async function searchOnePage(params: LiveSearchParams, rows: number, start: numb
  * All filtering (including body type) is handled by the API using canonical
  * MarketCheck values. No client-side filtering or over-fetching needed.
  */
-export async function searchActiveCarsMcp(params: LiveSearchParams): Promise<LiveSearchResult> {
+export async function searchActiveCarsMcp(
+  params: LiveSearchParams,
+  options?: McpCallOptions,
+): Promise<LiveSearchResult> {
   const targetRows = Math.min(params.rows ?? 25, 50);
   const start = Math.max(params.start ?? 0, 0);
-  return searchOnePage(params, targetRows, start);
+  return searchOnePage(params, targetRows, start, options);
 }
 
 // --------------------------------------------------------------------------
@@ -481,27 +495,18 @@ function safeError(error: unknown): string {
 }
 
 async function loadListingShell(listingId: string, vin?: string): Promise<MCListing | null> {
-  try {
-    if (vin) {
-      const searchRes = await callMcpTool<MCSearchResponse>('search_active_cars', {
-        rows: 1,
-        start: 0,
-        include_build_object: true,
-        include_dealer_object: true,
-        vin,
-      });
-      return searchRes?.data?.listings?.[0] ?? null;
-    }
-    const listing = await fetchMarketCheckListing(listingId);
-    return listing as MCListing | null;
-  } catch (error) {
-    if (error instanceof McpQuotaError || error instanceof McpRateLimitError) throw error;
-    console.error(JSON.stringify({
-      event: vin ? 'mc_detail_search_threw' : 'mc_detail_listing_threw',
-      error: safeError(error),
-    }));
-    return null;
+  if (vin) {
+    const searchRes = await callMcpTool<MCSearchResponse>('search_active_cars', {
+      rows: 1,
+      start: 0,
+      include_build_object: true,
+      include_dealer_object: true,
+      vin,
+    }, 8000, { strict: true });
+    return searchRes?.data?.listings?.[0] ?? null;
   }
+  const listing = await fetchMarketCheckListing(listingId);
+  return listing as MCListing | null;
 }
 
 export async function getVehicleDetailMcp(

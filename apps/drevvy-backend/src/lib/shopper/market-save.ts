@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
 import { redactSecrets } from '@/lib/marketcheck/secrets';
 
 import { getShopperCredits } from './credits';
@@ -10,9 +11,11 @@ import {
   type MarketLookupGuard,
 } from './market-lookup-guard';
 import {
+  asMarketIntelLookup,
   loadMarketIntelFromMarketCheck,
   marketIntelHasValue,
   type MarketIntel,
+  type MarketIntelLookup,
 } from './market-intel';
 import {
   commitMarketUnlock,
@@ -50,7 +53,7 @@ export type MarketIntelLoader = (input: {
   listingId: string;
   vin: string | null;
   profileZip: string | null;
-}) => Promise<MarketIntel | null>;
+}) => Promise<MarketIntel | MarketIntelLookup | null>;
 
 export type MarketSaveDeps = SavedCarDeps & {
   supabase: SupabaseClient;
@@ -81,9 +84,11 @@ const UNLOCK_WAIT_MS = 25;
  * Unlocks Marketplace Intelligence and saves the listing.
  * The key is held before any paid MarketCheck call. A lookup that does not
  * return a real value refunds that key and writes a reversal, so the next
- * attempt is charged again. Refunded attempts are capped, and a listing
- * with no value is not looked up again for 24 hours. A repeat of a stored
- * unlock does not spend and does not call MarketCheck.
+ * attempt is charged again. The claim reserves a refund slot first. A
+ * listing with no value is not looked up again for 24 hours only when that
+ * listing was found, the ids match, the shopper sent no VIN, and MarketCheck
+ * did not fail. A 402, 429, or timeout is remembered for that shopper only.
+ * A repeat of a stored unlock does not spend and does not call MarketCheck.
  *
  * Before shopper_market_unlocks exists, this saves the car and does not
  * call MarketCheck Price or spend a key.
@@ -138,19 +143,16 @@ export async function unlockMarketAndSave(
     const credits = await getShopperCredits(deps.supabase, userId);
     return unavailableResult(credits.balance);
   }
-  if (claim.action === 'refund_cap' && !claim.hold) {
+  if (claim.action === 'refund_cap') {
+    if (claim.hold) await recoverHeldLookup(userId, input.listingId, refund, guard);
     throw new ShopperDealError(REFUND_CAP_MESSAGE, 429, 'market_lookup_limited');
   }
 
   const held = await reserve(userId, input.listingId);
   if (!held.ok) {
+    await guard.releaseRefundSlot(userId, input.listingId);
     if (held.failed) throw new ShopperDealError(CREDIT_FAILED_MESSAGE, 500, 'credit_failed');
     throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
-  }
-  if (claim.action === 'refund_cap' && !held.already) {
-    const restored = await refund(userId, input.listingId);
-    if (restored.refunded) await guard.noteRefund(userId, now);
-    throw new ShopperDealError(REFUND_CAP_MESSAGE, 429, 'market_lookup_limited');
   }
 
   if (held.already) {
@@ -175,27 +177,34 @@ export async function unlockMarketAndSave(
     }));
   }
 
-  let intel: MarketIntel | null = null;
+  let lookup = asMarketIntelLookup(null, input.listingId);
   let lookupThrew = false;
   try {
-    intel = await load({
+    lookup = asMarketIntelLookup(await load({
       listingId: input.listingId,
       vin: input.vin ?? null,
       profileZip,
-    });
+    }), input.listingId);
   } catch (error) {
     lookupThrew = true;
+    if (isShortLivedUpstreamAttempt(error)) {
+      await guard.rememberUpstreamAttempt(userId, input.listingId, now);
+    }
     console.error(JSON.stringify({
       event: 'market_intel_unavailable',
       listingId: input.listingId,
       message: redactSecrets(error instanceof Error ? error.message : 'unknown'),
     }));
-    intel = null;
+    lookup = asMarketIntelLookup(null, input.listingId);
   }
+  const intel = lookup.intel;
 
   if (!marketIntelHasValue(intel)) {
-    if (!lookupThrew) await guard.rememberMiss(input.listingId, now);
+    if (!lookupThrew && sharedMissAllowed(input, lookup)) {
+      await guard.rememberMiss(input.listingId, now);
+    }
     const restored = await refund(userId, input.listingId);
+    await guard.releaseRefundSlot(userId, input.listingId);
     if (restored.refunded) await guard.noteRefund(userId, now);
     return unavailableResult(
       restored.balance,
@@ -217,6 +226,7 @@ export async function unlockMarketAndSave(
     // this write did not store a snapshot. A stored unlock makes the refund
     // a no-op, so a lost response cannot double-credit a paid unlock.
     const restored = await refund(userId, input.listingId);
+    await guard.releaseRefundSlot(userId, input.listingId);
     if (restored.refunded) await guard.noteRefund(userId, now);
     if (isMissingMarketSchema(error)) return saveWithoutMarket(userId, body, deps);
     throw error;
@@ -224,6 +234,7 @@ export async function unlockMarketAndSave(
 
   if (!committed.unlocked || !committed.market) {
     const restored = await refund(userId, input.listingId);
+    await guard.releaseRefundSlot(userId, input.listingId);
     if (restored.refunded) await guard.noteRefund(userId, now);
     if (committed.error === 'no_value') {
       return unavailableResult(
@@ -237,8 +248,39 @@ export async function unlockMarketAndSave(
     throw new ShopperDealError(CREDIT_FAILED_MESSAGE, 500, 'credit_failed');
   }
 
+  await guard.releaseRefundSlot(userId, input.listingId);
   const car = await saveSavedCar(userId, body, deps);
   return unlockedResult(car, !held.already, committed.balance, committed.market);
+}
+
+function sharedMissAllowed(
+  input: { listingId: string; vin?: string | null },
+  lookup: MarketIntelLookup,
+): boolean {
+  const requestedId = input.listingId.trim();
+  const returnedId = (lookup.returnedListingId ?? '').trim();
+  const clientVin = (input.vin ?? '').trim();
+  return lookup.listingFound
+    && returnedId.length > 0
+    && returnedId === requestedId
+    && clientVin.length === 0;
+}
+
+function isShortLivedUpstreamAttempt(error: unknown): boolean {
+  if (error instanceof McpQuotaError || error instanceof McpRateLimitError) return true;
+  if (!(error instanceof MarketCheckUpstreamError)) return false;
+  if (error.status === 402 || error.status === 429) return true;
+  return /timed out|timeout/i.test(error.message);
+}
+
+async function recoverHeldLookup(
+  userId: string,
+  listingId: string,
+  refund: (userId: string, listingId: string) => Promise<MarketKeyRefund>,
+  guard: MarketLookupGuard,
+): Promise<void> {
+  await refund(userId, listingId);
+  await guard.releaseRefundSlot(userId, listingId);
 }
 
 /** Heart-save behavior used until the unlock table and zip column exist. */

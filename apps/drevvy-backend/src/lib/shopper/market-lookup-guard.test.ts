@@ -8,6 +8,7 @@ import {
   createMemoryMarketLookupGuard,
   hashShopperIp,
   marketLookupFailsClosed,
+  resetMarketIpPepperWarningForTests,
   shopperClientIp,
 } from './market-lookup-guard';
 
@@ -24,6 +25,7 @@ test('the lookup guard limits users, IPs, refunds, and repeated misses', async (
       now,
     });
     assert.equal(claim.action, 'proceed');
+    await guard.releaseRefundSlot('shopper-1', `mc-rate-${index}`);
   }
   const blocked = await guard.claim({
     userId: 'shopper-1',
@@ -81,6 +83,91 @@ test('the lookup guard limits users, IPs, refunds, and repeated misses', async (
     now: now + (24 * 60 * 60 * 1000) + 1,
   });
   assert.equal(later.action, 'proceed');
+});
+
+test('an open refund slot blocks the next listing and a timeout stays on that shopper', async () => {
+  const guard = createMemoryMarketLookupGuard();
+  const now = 1_700_000_000_000;
+  for (let index = 0; index < 5; index += 1) {
+    const claim = await guard.claim({
+      userId: 'shopper-1',
+      ipHash: hashShopperIp(`198.51.100.${index}`, { NODE_ENV: 'test' }),
+      listingId: `mc-slot-${index}`,
+      now,
+    });
+    assert.equal(claim.action, 'proceed');
+  }
+  const blocked = await guard.claim({
+    userId: 'shopper-1',
+    ipHash: hashShopperIp('198.51.100.20', { NODE_ENV: 'test' }),
+    listingId: 'mc-slot-next',
+    now,
+  });
+  assert.equal(blocked.action, 'refund_cap');
+  await guard.releaseRefundSlot('shopper-1', 'mc-slot-0');
+  const again = await guard.claim({
+    userId: 'shopper-1',
+    ipHash: hashShopperIp('198.51.100.21', { NODE_ENV: 'test' }),
+    listingId: 'mc-slot-next',
+    now,
+  });
+  assert.equal(again.action, 'proceed');
+  const duplicate = await guard.claim({
+    userId: 'shopper-1',
+    ipHash: hashShopperIp('198.51.100.22', { NODE_ENV: 'test' }),
+    listingId: 'mc-slot-next',
+    now,
+  });
+  assert.equal(duplicate.action, 'rate_limited');
+
+  const burst = createMemoryMarketLookupGuard();
+  await burst.rememberUpstreamAttempt('shopper-1', 'mc-timeout', now);
+  const retry = await burst.claim({
+    userId: 'shopper-1',
+    ipHash: hashShopperIp('198.51.100.30', { NODE_ENV: 'test' }),
+    listingId: 'mc-timeout',
+    now: now + 1_000,
+  });
+  assert.equal(retry.action, 'rate_limited');
+  const otherShopper = await burst.claim({
+    userId: 'shopper-2',
+    ipHash: hashShopperIp('198.51.100.31', { NODE_ENV: 'test' }),
+    listingId: 'mc-timeout',
+    now: now + 1_000,
+  });
+  assert.equal(otherShopper.action, 'proceed');
+  const later = await burst.claim({
+    userId: 'shopper-1',
+    ipHash: hashShopperIp('198.51.100.32', { NODE_ENV: 'test' }),
+    listingId: 'mc-timeout',
+    now: now + (2 * 60 * 1000) + 1,
+  });
+  assert.equal(later.action, 'proceed');
+});
+
+test('IPv6 /64 addresses share one hash and a pepper is optional', () => {
+  resetMarketIpPepperWarningForTests();
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map(String).join(' '));
+  };
+  try {
+    const env = { NODE_ENV: 'test' } as NodeJS.ProcessEnv;
+    const prefix = hashShopperIp('2001:db8:85a3::1', env);
+    assert.equal(prefix, hashShopperIp('2001:DB8:85a3:0:ffff:ffff:ffff:ffff', env));
+    assert.notEqual(prefix, hashShopperIp('2001:db8:85a4::1', env));
+    assert.equal(hashShopperIp('::ffff:203.0.113.10', env), hashShopperIp('203.0.113.10', env));
+    assert.equal(prefix.includes('2001'), false);
+    const peppered = hashShopperIp('203.0.113.10', { NODE_ENV: 'test', DREVVY_IP_HASH_PEPPER: 'dev-pepper' });
+    assert.notEqual(peppered, hashShopperIp('203.0.113.10', env));
+    assert.equal(peppered.length, 64);
+    assert.equal(errors.filter((line) => line.includes('market_ip_hash_pepper_unset')).length, 1);
+    hashShopperIp('198.51.100.40', env);
+    assert.equal(errors.filter((line) => line.includes('market_ip_hash_pepper_unset')).length, 1);
+  } finally {
+    console.error = original;
+  }
 });
 
 test('production fails closed and the client IP is hashed before it is stored', () => {

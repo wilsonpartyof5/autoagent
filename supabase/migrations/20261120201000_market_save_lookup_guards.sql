@@ -28,7 +28,7 @@ create table if not exists public.shopper_market_lookup_hits (
 );
 
 comment on table public.shopper_market_lookup_hits is
-  'Recent market-save claims. ip_hash is a sha256 of the client IP. The raw IP is not stored.';
+  'Recent market-save claims. ip_hash is an hmac-sha256 of the client IP prefix when DREVVY_IP_HASH_PEPPER is set, otherwise sha256. The raw IP is not stored.';
 
 create index if not exists shopper_market_lookup_hits_user_time
   on public.shopper_market_lookup_hits (user_id, created_at desc);
@@ -40,9 +40,41 @@ alter table public.shopper_market_lookup_hits force row level security;
 revoke all on public.shopper_market_lookup_hits from anon, authenticated, public;
 grant select, insert, update, delete on public.shopper_market_lookup_hits to service_role;
 
+create table if not exists public.shopper_market_refund_slots (
+  user_id uuid not null,
+  listing_id text not null check (listing_id ~ '^[A-Za-z0-9_-]{4,64}$'),
+  reserved_at timestamptz not null default pg_catalog.now(),
+  primary key (user_id, listing_id)
+);
+
+comment on table public.shopper_market_refund_slots is
+  'In-flight market-save lookups. Each slot counts toward the daily refund cap until the lookup finishes or the slot expires. A success releases it. A refund keeps the ledger row and drops the slot.';
+
+alter table public.shopper_market_refund_slots enable row level security;
+alter table public.shopper_market_refund_slots force row level security;
+revoke all on public.shopper_market_refund_slots from anon, authenticated, public;
+grant select, insert, update, delete on public.shopper_market_refund_slots to service_role;
+
+create table if not exists public.shopper_market_upstream_attempts (
+  user_id uuid not null,
+  listing_id text not null check (listing_id ~ '^[A-Za-z0-9_-]{4,64}$'),
+  recorded_at timestamptz not null default pg_catalog.now(),
+  primary key (user_id, listing_id)
+);
+
+comment on table public.shopper_market_upstream_attempts is
+  'Per-shopper short cache of a 402, 429, or timeout. Not shared across shoppers, and not a 24 hour listing miss.';
+
+alter table public.shopper_market_upstream_attempts enable row level security;
+alter table public.shopper_market_upstream_attempts force row level security;
+revoke all on public.shopper_market_upstream_attempts from anon, authenticated, public;
+grant select, insert, update, delete on public.shopper_market_upstream_attempts to service_role;
+
 -- 10 claims per user and 30 per IP hash in 10 minutes.
--- 5 market_save refunds per user in 24 hours.
--- A fresh miss blocks another paid call for that listing for 24 hours.
+-- 5 market_save refunds per user in 24 hours, counting in-flight slots.
+-- A reservation that fails does not call MarketCheck.
+-- A fresh shared miss blocks another paid call for that listing for 24 hours.
+-- A 402, 429, or timeout blocks only that shopper for 2 minutes.
 -- hold is true when the active market_save spend for this listing is still open.
 create or replace function public.claim_market_save_lookup(
   p_user_id uuid,
@@ -62,7 +94,9 @@ declare
   v_user_hits integer;
   v_ip_hits integer;
   v_refunds integer;
+  v_slots integer;
   v_hold boolean;
+  v_own_slot boolean;
 begin
   if p_user_id is null
     or p_ip_hash is null
@@ -78,6 +112,10 @@ begin
 
   delete from public.shopper_market_lookup_hits as h
   where h.created_at < pg_catalog.now() - interval '10 minutes';
+  delete from public.shopper_market_refund_slots as s
+  where s.reserved_at < pg_catalog.now() - interval '10 minutes';
+  delete from public.shopper_market_upstream_attempts as a
+  where a.recorded_at < pg_catalog.now() - interval '2 minutes';
 
   select count(*)::integer
     into v_user_hits
@@ -120,14 +158,6 @@ begin
     return;
   end if;
 
-  select count(*)::integer
-    into v_refunds
-  from public.shopper_credit_events as e
-  where e.user_id = p_user_id
-    and e.event_type = 'refund'
-    and e.spend_kind = 'market_save'
-    and e.created_at > pg_catalog.now() - interval '24 hours';
-
   select exists (
     select 1
     from public.shopper_credit_events as e
@@ -137,15 +167,50 @@ begin
       and e.spend_kind = 'market_save'
   ) into v_hold;
 
-  if coalesce(v_refunds, 0) >= 5 and coalesce(v_hold, false) = false then
-    return query select 'refund_cap'::text, null::text, false;
+  if exists (
+    select 1
+    from public.shopper_market_upstream_attempts as a
+    where a.user_id = p_user_id
+      and a.listing_id = p_listing_id
+      and a.recorded_at > pg_catalog.now() - interval '2 minutes'
+  ) then
+    return query select 'rate_limited'::text, 'user'::text, coalesce(v_hold, false);
     return;
   end if;
 
-  if coalesce(v_refunds, 0) >= 5 then
-    return query select 'refund_cap'::text, null::text, true;
+  select count(*)::integer
+    into v_refunds
+  from public.shopper_credit_events as e
+  where e.user_id = p_user_id
+    and e.event_type = 'refund'
+    and e.spend_kind = 'market_save'
+    and e.created_at > pg_catalog.now() - interval '24 hours';
+
+  select count(*)::integer
+    into v_slots
+  from public.shopper_market_refund_slots as s
+  where s.user_id = p_user_id
+    and s.listing_id <> p_listing_id;
+
+  select exists (
+    select 1
+    from public.shopper_market_refund_slots as s
+    where s.user_id = p_user_id
+      and s.listing_id = p_listing_id
+  ) into v_own_slot;
+
+  if coalesce(v_refunds, 0) + coalesce(v_slots, 0) >= 5 then
+    return query select 'refund_cap'::text, null::text, coalesce(v_hold, false);
     return;
   end if;
+
+  if coalesce(v_own_slot, false) then
+    return query select 'rate_limited'::text, 'user'::text, coalesce(v_hold, false);
+    return;
+  end if;
+
+  insert into public.shopper_market_refund_slots (user_id, listing_id, reserved_at)
+  values (p_user_id, p_listing_id, pg_catalog.now());
 
   return query select 'proceed'::text, null::text, coalesce(v_hold, false);
 end;
@@ -173,6 +238,51 @@ $$;
 
 revoke execute on function public.remember_market_listing_miss(text) from anon, authenticated, public;
 grant execute on function public.remember_market_listing_miss(text) to service_role;
+
+create or replace function public.remember_market_upstream_attempt(
+  p_user_id uuid,
+  p_listing_id text
+)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if p_user_id is null or p_listing_id is null or p_listing_id !~ '^[A-Za-z0-9_-]{4,64}$' then
+    return;
+  end if;
+  insert into public.shopper_market_upstream_attempts (user_id, listing_id, recorded_at)
+  values (p_user_id, p_listing_id, pg_catalog.now())
+  on conflict (user_id, listing_id) do update
+    set recorded_at = excluded.recorded_at;
+end;
+$$;
+
+revoke execute on function public.remember_market_upstream_attempt(uuid, text) from anon, authenticated, public;
+grant execute on function public.remember_market_upstream_attempt(uuid, text) to service_role;
+
+create or replace function public.release_market_save_refund_slot(
+  p_user_id uuid,
+  p_listing_id text
+)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if p_user_id is null or p_listing_id is null then
+    return;
+  end if;
+  delete from public.shopper_market_refund_slots as s
+  where s.user_id = p_user_id
+    and s.listing_id = p_listing_id;
+end;
+$$;
+
+revoke execute on function public.release_market_save_refund_slot(uuid, text) from anon, authenticated, public;
+grant execute on function public.release_market_save_refund_slot(uuid, text) to service_role;
 
 -- Returns the key and keeps both ledger rows. The spend event's idempotency
 -- key is archived so consume_market_save_atomic can charge the next attempt.
@@ -209,6 +319,10 @@ begin
   from public.shopper_credits c
   where c.user_id = p_user_id
   for update;
+
+  delete from public.shopper_market_refund_slots as s
+  where s.user_id = p_user_id
+    and s.listing_id = p_listing_id;
 
   if exists (
     select 1 from public.shopper_market_unlocks u

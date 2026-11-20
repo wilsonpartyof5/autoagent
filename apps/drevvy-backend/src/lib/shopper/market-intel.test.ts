@@ -183,19 +183,25 @@ test('listing facts keep the market ZIP and drop dealer contact fields', () => {
   }), null);
 });
 
-test('a listing is stored only when its id or VIN matches the request', () => {
+test('a supplied listing id is stored only when the returned id matches', () => {
   const matched = acceptedListingFacts(
     { listingId: 'mc-listing-1', vin: null },
     detail(),
   );
   assert.equal(matched?.id, 'mc-listing-1');
 
-  const vinMatch = acceptedListingFacts(
+  const vinOnly = acceptedListingFacts(
+    { listingId: '', vin: VIN },
+    { ...detail(), id: 'mc-real-listing' },
+  );
+  assert.equal(vinOnly?.id, 'mc-real-listing');
+  assert.equal(vinOnly?.vin, VIN);
+
+  const vinNotEnough = acceptedListingFacts(
     { listingId: 'caller-listing', vin: VIN },
     { ...detail(), id: 'mc-real-listing' },
   );
-  assert.equal(vinMatch?.id, 'mc-real-listing');
-  assert.equal(vinMatch?.vin, VIN);
+  assert.equal(vinNotEnough, null);
 
   const swapped = acceptedListingFacts(
     { listingId: 'mc-listing-1', vin: VIN },

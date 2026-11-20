@@ -1,4 +1,4 @@
-import { McpQuotaError, McpRateLimitError } from './mcp-client';
+import { MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from './mcp-client';
 import { redactSecrets } from './secrets';
 import { recordMarketCheckCall } from './usage';
 
@@ -13,7 +13,55 @@ import { recordMarketCheckCall } from './usage';
 
 export const LISTING_CAR_ENDPOINT = 'listing_detail';
 
+/** Identifiers and URLs stay as MarketCheck sent them. Display text is decoded. */
+const OPAQUE_LISTING_KEYS = new Set([
+  'id',
+  'vin',
+  'listing_id',
+  'photo_links',
+  'photo_links_cached',
+  'primary_photo_url',
+  'url',
+  'website',
+  'video_url',
+  'vdp_url',
+  'thumbnail',
+]);
+
+/** Percent-encoded display text. A string that is not valid encoding is left as-is. */
+export function decodeMarketCheckText(value: string): string {
+  if (!value.includes('%')) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function decodeListingText(value: unknown, key?: string): unknown {
+  if (key && OPAQUE_LISTING_KEYS.has(key)) return value;
+  if (typeof value === 'string') return decodeMarketCheckText(value);
+  if (Array.isArray(value)) return value.map((item) => decodeListingText(item));
+  if (value && typeof value === 'object') {
+    const decoded: Record<string, unknown> = {};
+    for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+      decoded[childKey] = decodeListingText(child, childKey);
+    }
+    return decoded;
+  }
+  return value;
+}
+
 export function marketCheckListingFromPayload(payload: unknown): Record<string, unknown> | null {
+  const listing = listingRecord(payload);
+  if (!listing) return null;
+  const decoded = decodeListingText(listing);
+  return decoded && typeof decoded === 'object' && !Array.isArray(decoded)
+    ? decoded as Record<string, unknown>
+    : null;
+}
+
+function listingRecord(payload: unknown): Record<string, unknown> | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const record = payload as Record<string, unknown>;
   const data = record.data;
@@ -55,20 +103,24 @@ export async function fetchMarketCheckListing(listingId: string): Promise<Record
     if (response.status === 404 || response.status === 422) return null;
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      throw new Error(`MarketCheck listing lookup failed (${response.status}) ${redactSecrets(body).slice(0, 180)}`);
+      throw new MarketCheckUpstreamError(
+        `MarketCheck listing lookup failed (${response.status}) ${redactSecrets(body).slice(0, 180)}`,
+        response.status,
+      );
     }
     return marketCheckListingFromPayload(await response.json());
   } catch (error) {
-    if (error instanceof McpQuotaError || error instanceof McpRateLimitError) throw error;
+    if (
+      error instanceof MarketCheckUpstreamError
+      || error instanceof McpQuotaError
+      || error instanceof McpRateLimitError
+    ) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
-      const timeout = new Error('MarketCheck listing lookup timed out');
-      timeout.name = 'TimeoutError';
-      throw timeout;
+      throw new MarketCheckUpstreamError('MarketCheck listing lookup timed out');
     }
-    if (error instanceof Error) {
-      throw new Error(redactSecrets(error.message));
-    }
-    throw new Error('MarketCheck listing lookup failed');
+    throw new MarketCheckUpstreamError(
+      redactSecrets(error instanceof Error ? error.message : 'MarketCheck listing lookup failed'),
+    );
   } finally {
     clearTimeout(timer);
   }
