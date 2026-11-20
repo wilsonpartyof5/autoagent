@@ -37,7 +37,7 @@ Future<void> main() async {
           .read(authControllerProvider)
           .currentSession();
       if (session != null) {
-        await DemoRepository.instance.pullSignedInBalance();
+        await DemoRepository.instance.refreshLiveAccount();
       }
     } catch (_) {
       // A missing keychain in demo mode must not block launch.

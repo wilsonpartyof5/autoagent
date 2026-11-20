@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withDealerApi } from '@/lib/dealer/desk-api';
+import { tryIsolatedDealerRead } from '@/lib/dealer/isolated-thread';
 import { presentLiveConversation } from '@/lib/dealer/live-store';
 import { conversationHttp } from '@/lib/dealer/mock';
 
@@ -11,6 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ leadId: string }> },
 ) {
   const { leadId } = await params;
+  const fixture = tryIsolatedDealerRead(leadId);
+  if (fixture) return NextResponse.json(fixture.body, { status: fixture.status });
   return withDealerApi(
     request,
     async (session) => {

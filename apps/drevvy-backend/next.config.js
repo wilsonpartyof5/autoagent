@@ -9,32 +9,28 @@ const nextConfig = {
     optimizePackageImports: ['lucide-react'],
   },
   images: {
+    // Exact hosts from src/lib/marketcheck/photos.ts. Credentialed MarketCheck
+    // images are served same-origin by /api/inventory/photo; the optimizer
+    // may still be asked for the public CDN or those upstream hosts.
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'vehicle-images.dealerinspire.com',
+        hostname: 'images.marketcheck.com',
         pathname: '/**',
       },
       {
         protocol: 'https',
-        hostname: '**.dealerinspire.com',
+        hostname: 'api.marketcheck.com',
         pathname: '/**',
       },
       {
         protocol: 'https',
-        hostname: '**.marketcheck.com',
+        hostname: 'mc-api.marketcheck.com',
         pathname: '/**',
       },
       {
         protocol: 'https',
-        hostname: '**.mc-api.marketcheck.com',
-        pathname: '/**',
-      },
-      // Allow any HTTPS image domain (more permissive for MarketCheck data)
-      // You can restrict this later if needed for security
-      {
-        protocol: 'https',
-        hostname: '**',
+        hostname: 'marketcheck-prod.apigee.net',
         pathname: '/**',
       },
     ],

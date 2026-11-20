@@ -1,7 +1,9 @@
 /**
  * Key-pack purchases. The client may send a key count; the server ignores it
  * and maps productId to the pack. Keys are granted only after RevenueCat
- * confirms the transaction, or from an authenticated RevenueCat webhook.
+ * confirms a sandbox transaction (is_sandbox === true), or from an
+ * authenticated webhook whose environment is exactly SANDBOX. Production,
+ * missing, and invalid flags grant nothing.
  * Retired car packs (drevvy_pack_1/3/5/10 and pack_1/3/5/10) grant nothing.
  */
 
@@ -46,6 +48,8 @@ export type RevenueCatPurchaseRecord = {
   id?: string | null;
   store_transaction_id?: string | null;
   transaction_id?: string | null;
+  /** Only the boolean true is a sandbox purchase. Missing or other values are not. */
+  is_sandbox?: unknown;
 };
 
 export type RevenueCatSubscriber = {
@@ -120,6 +124,7 @@ export function findVerifiedPurchase(
     for (const purchase of purchases ?? []) {
       const canonical = canonicalTransactionId(purchase);
       if (!canonical) continue;
+      if (purchase.is_sandbox !== true) continue;
       const aliases = [
         trimmedId(purchase.id),
         trimmedId(purchase.store_transaction_id),
@@ -170,6 +175,8 @@ export type RevenueCatWebhookEvent = {
   product_id?: string;
   transaction_id?: string;
   id?: string;
+  /** Grant path accepts only the exact string SANDBOX. */
+  environment?: unknown;
 };
 
 export type RevenueCatApplyResult = {
@@ -191,6 +198,9 @@ export async function applyRevenueCatEvent(
   }
 
   if (type === 'NON_RENEWING_PURCHASE') {
+    if (event.environment !== 'SANDBOX') {
+      return { applied: 'ignored', credits: null, retryable: false };
+    }
     const result = await purchaseCredits(supabase, userId, pack.size, pack.priceUsd, transactionId);
     if (!result.success) return { applied: 'ignored', credits: result.credits, retryable: true };
     if (!result.granted && !result.alreadyGranted) {

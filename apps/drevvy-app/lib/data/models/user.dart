@@ -17,11 +17,16 @@ class User extends Equatable {
     this.notificationPrefs = const NotificationPrefs(),
     this.locationState = LocationState.notAsked,
     this.zipCode,
+    this.nameIsKnown = true,
   });
 
   final String id;
   final String firstName;
   final String email;
+
+  /// False when the profile route did not include a given name.
+  /// The label then stays [firstName] as a neutral status, not a person.
+  final bool nameIsKnown;
   final Entitlement entitlement;
   final Usage usage;
   final UserPrefs? prefs;
@@ -36,8 +41,20 @@ class User extends Equatable {
   bool get canAddCar => isPro && usage.used < usage.cap;
   int get carsRemaining => usage.cap - usage.used;
 
+  /// "Dana W." when the profile included a name. Otherwise the neutral label.
+  String get accountLabel {
+    if (!nameIsKnown) return firstName;
+    final parts = firstName
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'Signed in';
+    if (parts.length == 1) return parts.first;
+    return '${parts.first} ${parts.last[0]}.';
+  }
+
   @override
-  List<Object?> get props => [id, email, entitlement];
+  List<Object?> get props => [id, email, entitlement, nameIsKnown, firstName];
 
   User copyWith({
     Entitlement? entitlement,
@@ -57,16 +74,13 @@ class User extends Equatable {
       notificationPrefs: notificationPrefs ?? this.notificationPrefs,
       locationState: locationState ?? this.locationState,
       zipCode: zipCode ?? this.zipCode,
+      nameIsKnown: nameIsKnown,
     );
   }
 }
 
 class Usage extends Equatable {
-  const Usage({
-    required this.used,
-    required this.cap,
-    required this.resetsOn,
-  });
+  const Usage({required this.used, required this.cap, required this.resetsOn});
 
   final int used;
   final int cap;
@@ -76,7 +90,20 @@ class Usage extends Equatable {
   String get resetsFormatted => 'resets ${_formatDate(resetsOn)}';
 
   static String _formatDate(DateTime d) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${months[d.month - 1]} ${d.day}';
   }
 
@@ -134,7 +161,8 @@ class NotificationPrefs extends Equatable {
   }) {
     return NotificationPrefs(
       enabled: enabled ?? this.enabled,
-      hidePricesOnLockScreen: hidePricesOnLockScreen ?? this.hidePricesOnLockScreen,
+      hidePricesOnLockScreen:
+          hidePricesOnLockScreen ?? this.hidePricesOnLockScreen,
       newOffers: newOffers ?? this.newOffers,
       priceDrops: priceDrops ?? this.priceDrops,
       addOnsRemoved: addOnsRemoved ?? this.addOnsRemoved,
@@ -145,14 +173,14 @@ class NotificationPrefs extends Equatable {
 
   @override
   List<Object?> get props => [
-        enabled,
-        hidePricesOnLockScreen,
-        newOffers,
-        priceDrops,
-        addOnsRemoved,
-        dealerResponses,
-        reminders,
-      ];
+    enabled,
+    hidePricesOnLockScreen,
+    newOffers,
+    priceDrops,
+    addOnsRemoved,
+    dealerResponses,
+    reminders,
+  ];
 }
 
 enum LocationState { notAsked, granted, denied, zipFallback }

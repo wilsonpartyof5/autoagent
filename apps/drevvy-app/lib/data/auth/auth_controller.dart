@@ -45,13 +45,17 @@ class AuthController {
 
   Future<AuthResult> signInWithApple() => _signIn(_apple, _api.signInWithApple);
 
-  Future<AuthResult> signInWithGoogle() => _signIn(_google, _api.signInWithGoogle);
+  Future<AuthResult> signInWithGoogle() =>
+      _signIn(_google, _api.signInWithGoogle);
 
   /// Null when the shopper is signed out. Demo data keeps working in that case.
   Future<ConsumerSession?> currentSession() async {
     final stored = await _store.read();
     if (stored == null) return null;
-    if (!stored.shouldRefresh(_now())) return stored;
+    if (!stored.shouldRefresh(_now())) {
+      _restoreShopper(stored);
+      return stored;
+    }
     try {
       final refreshed = await _api.refresh(stored.refreshToken);
       await _store.write(refreshed);
@@ -89,11 +93,18 @@ class AuthController {
 
   Future<AuthResult> _signIn(
     IdentityClient client,
-    Future<ConsumerSession> Function({required String identityToken, String? nonce}) exchange,
+    Future<ConsumerSession> Function({
+      required String identityToken,
+      String? nonce,
+    })
+    exchange,
   ) async {
     try {
       final identity = await client.signIn();
-      final session = await exchange(identityToken: identity.identityToken, nonce: identity.nonce);
+      final session = await exchange(
+        identityToken: identity.identityToken,
+        nonce: identity.nonce,
+      );
       await _api.fetchProfile(session.accessToken);
       await _store.write(session);
       await _publish(session);
@@ -108,14 +119,35 @@ class AuthController {
     }
   }
 
-  Future<void> _publish(ConsumerSession session) {
-    return ShopperSessionStore.instance.save(ShopperSession(
+  /// Puts a still-valid keychain session where the credit and saved-car
+  /// calls read it. Identity login stays on [_publish] after a new token.
+  void _restoreShopper(ConsumerSession session) {
+    ShopperSessionStore.instance.session = ShopperSession(
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
       expiresAt: session.expiresAt == null
           ? null
-          : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000, isUtc: true),
+          : DateTime.fromMillisecondsSinceEpoch(
+              session.expiresAt! * 1000,
+              isUtc: true,
+            ),
       consumerUserId: session.consumerUserId,
-    ));
+    );
+  }
+
+  Future<void> _publish(ConsumerSession session) {
+    return ShopperSessionStore.instance.save(
+      ShopperSession(
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresAt: session.expiresAt == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(
+                session.expiresAt! * 1000,
+                isUtc: true,
+              ),
+        consumerUserId: session.consumerUserId,
+      ),
+    );
   }
 }

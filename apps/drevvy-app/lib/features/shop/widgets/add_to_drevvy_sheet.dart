@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
@@ -39,10 +38,6 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
     ProductAnalytics.instance.screen('add_to_drevvy', {
       'listing_id': widget.listing.id,
     });
-  }
-
-  String _formatPrice(int price) {
-    return NumberFormat.currency(symbol: r'$', decimalDigits: 0).format(price);
   }
 
   Future<void> _handleAdd() async {
@@ -127,7 +122,7 @@ class _AddToDrevvySheetState extends State<AddToDrevvySheet> {
                         children: [
                           Text(listing.shortTitle, style: text.cardTitle),
                           Text(
-                            '${listing.milesFormatted} · ${_formatPrice(listing.price)}',
+                            '${listing.milesFormatted} · ${listing.priceFormatted}',
                             style: text.callout.copyWith(color: colors.muted),
                           ),
                         ],

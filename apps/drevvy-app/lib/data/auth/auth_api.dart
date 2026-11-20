@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config_exception.dart';
 import '../../core/config/drevvy_config.dart';
 import 'auth_exception.dart';
 import 'consumer_session.dart';
@@ -12,8 +13,8 @@ import 'consumer_session.dart';
 /// and `GET /api/consumer/profile`.
 class AuthApi {
   AuthApi({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? DrevvyConfig.apiBaseUrl;
+    : _client = client ?? http.Client(),
+      _baseUrl = baseUrl ?? DrevvyConfig.apiBaseUrl;
 
   final http.Client _client;
   final String _baseUrl;
@@ -22,14 +23,22 @@ class AuthApi {
     required String identityToken,
     String? nonce,
   }) {
-    return _exchange(DrevvyConfig.applePath, identityToken: identityToken, nonce: nonce);
+    return _exchange(
+      DrevvyConfig.applePath,
+      identityToken: identityToken,
+      nonce: nonce,
+    );
   }
 
   Future<ConsumerSession> signInWithGoogle({
     required String identityToken,
     String? nonce,
   }) {
-    return _exchange(DrevvyConfig.googlePath, identityToken: identityToken, nonce: nonce);
+    return _exchange(
+      DrevvyConfig.googlePath,
+      identityToken: identityToken,
+      nonce: nonce,
+    );
   }
 
   Future<ConsumerSession> refresh(String refreshToken) async {
@@ -56,6 +65,7 @@ class AuthApi {
   /// Confirms the access token against the profile route. Throws [AuthException]
   /// when the backend rejects it.
   Future<void> fetchProfile(String accessToken) async {
+    _requireBaseUrl();
     final response = await _client.get(
       _uri(DrevvyConfig.profilePath),
       headers: _headers(accessToken: accessToken),
@@ -79,6 +89,7 @@ class AuthApi {
     required Map<String, dynamic> body,
     String? accessToken,
   }) {
+    _requireBaseUrl();
     return _client.post(
       _uri(path),
       headers: _headers(accessToken: accessToken),
@@ -88,11 +99,21 @@ class AuthApi {
 
   Uri _uri(String path) => Uri.parse('$_baseUrl$path');
 
+  void _requireBaseUrl() {
+    if (_baseUrl.trim().isEmpty) {
+      throw const AuthException(
+        code: 'not_configured',
+        message: apiNotConfiguredMessage,
+      );
+    }
+  }
+
   Map<String, String> _headers({String? accessToken}) {
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      if (accessToken != null && accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+      if (accessToken != null && accessToken.isNotEmpty)
+        'Authorization': 'Bearer $accessToken',
     };
   }
 
@@ -153,7 +174,9 @@ AuthException authExceptionFromBody(Map<String, dynamic> body, int statusCode) {
     final message = error['message']?.toString();
     return AuthException(
       code: code == null || code.isEmpty ? 'http_$statusCode' : code,
-      message: message == null || message.isEmpty ? 'Drevvy could not finish sign-in.' : message,
+      message: message == null || message.isEmpty
+          ? 'Drevvy could not finish sign-in.'
+          : message,
     );
   }
   return AuthException(

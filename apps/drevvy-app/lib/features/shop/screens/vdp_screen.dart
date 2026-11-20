@@ -8,6 +8,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/providers/app_services.dart';
 import '../../../data/analytics/product_analytics.dart';
+import '../../../core/config/api_config_exception.dart';
+import '../../../data/discover/discover_catalog.dart';
+import '../../../data/discover/discover_client.dart';
+import '../../../data/discover/discover_config.dart';
+import '../../../data/discover/discover_exception.dart';
+import '../../../data/services/saved_cars_endpoint.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
@@ -25,13 +31,23 @@ import '../widgets/new_car_market_card.dart';
 import '../widgets/otd_request_sheet.dart';
 import '../widgets/unlock_paywall.dart';
 import '../widgets/vdp_cta_bar.dart';
+import '../widgets/live_discover_vdp.dart';
 
 /// Screens 12, 13, 16, 44: VDP (Vehicle Detail Page) - used and new car variants.
 /// v1.7: Uses key balance instead of a monthly subscription.
 class VdpScreen extends ConsumerStatefulWidget {
-  const VdpScreen({super.key, required this.listingId});
+  const VdpScreen({
+    super.key,
+    required this.listingId,
+    this.discoverConfig,
+    this.discoverCatalog,
+  });
 
   final String listingId;
+
+  /// Overrides the dart-define. Tests pass a live config with a fake catalog.
+  final DiscoverConfig? discoverConfig;
+  final DiscoverCatalog? discoverCatalog;
 
   @override
   ConsumerState<VdpScreen> createState() => _VdpScreenState();
@@ -58,7 +74,23 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   bool _marketIntelUnlocked = false;
   bool _conversationOpen = false;
   bool _otdRequested = false;
-  String _shopperFirstName = 'Dana';
+  String _shopperFirstName = '';
+  String? _liveError;
+
+  DiscoverConfig get _discoverConfig =>
+      widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
+
+  bool get _liveDiscover => _discoverConfig.isLive;
+
+  bool get _discoverUnconfigured => _discoverConfig.needsConfiguration;
+
+  DiscoverCatalog get _catalog =>
+      widget.discoverCatalog ??
+      HttpDiscoverCatalog(
+        client: DiscoverClient(
+          config: widget.discoverConfig ?? DiscoverConfig.fromEnvironment(),
+        ),
+      );
 
   @override
   void initState() {
@@ -67,6 +99,20 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_discoverUnconfigured) {
+      if (!mounted) return;
+      setState(() {
+        _listing = null;
+        _market = null;
+        _isLoading = false;
+        _liveError = apiNotConfiguredMessage;
+      });
+      return;
+    }
+    if (_liveDiscover) {
+      await _loadDiscover();
+      return;
+    }
     final listing = await _repo.getListingById(widget.listingId);
     final market = await _repo.getMarketContext(listing);
     final balance = await _repo.getCreditBalance();
@@ -91,7 +137,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       _marketIntelUnlocked = _repo.hasUnlockedMarketIntel(listing.id);
       _conversationOpen = _repo.hasStartedConversation(listing.id);
       _otdRequested = _repo.hasRequestedOtd(listing.id);
-      _shopperFirstName = user.firstName;
+      _shopperFirstName = user.nameIsKnown ? user.firstName : '';
       _isLoading = false;
     });
     ProductAnalytics.instance.track(AnalyticsEvents.carViewed, {
@@ -100,32 +146,73 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     });
   }
 
+  Future<void> _loadDiscover() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _liveError = null;
+      });
+    }
+    try {
+      final listing = await _catalog.listing(widget.listingId);
+      final network = _repo.isLive
+          ? await _repo.getRooftopMatch(listing)
+          : null;
+      if (!mounted) return;
+      setState(() {
+        _listing = listing;
+        _market = null;
+        _rooftopMatch = network;
+        _isLoading = false;
+        _liveError = null;
+      });
+    } on DiscoverException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _listing = null;
+        _market = null;
+        _rooftopMatch = null;
+        _isLoading = false;
+        _liveError = error.message;
+      });
+    }
+  }
+
   /// v1.8: Handle heart tap on VDP
   Future<void> _handleSaveToggle() async {
     if (_listing == null) return;
 
     HapticFeedback.lightImpact();
 
-    if (_isSaved) {
-      await _repo.unsaveByListingId(_listing!.id, source: 'car_detail');
+    try {
+      if (_isSaved) {
+        await _repo.unsaveByListingId(_listing!.id, source: 'car_detail');
+        if (!mounted) return;
+        setState(() => _isSaved = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Removed from Saved'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        await _repo.saveCar(_listing!, source: 'car_detail');
+        if (!mounted) return;
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved for later'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } on StaleAccountException {
+      if (!mounted || _listing == null) return;
+      setState(() => _isSaved = _repo.isListingSaved(_listing!.id));
+    } on SavedCarsException catch (error) {
       if (!mounted) return;
-      setState(() => _isSaved = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Removed from Saved'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      await _repo.saveCar(_listing!, source: 'car_detail');
-      if (!mounted) return;
-      setState(() => _isSaved = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved for later'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -157,7 +244,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   }
 
   /// Key A: market intel + save. Paywall only when the key balance is 0.
+  /// Live mode does not spend a key, because no real brief can be shown.
   void _handleMarketIntelTap() {
+    if (!_repo.marketIntelSpendEnabled) return;
     final listing = _listing;
     final balance = _creditBalance;
     if (listing == null || balance == null) return;
@@ -280,7 +369,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       stockNumber: listing.stockNo,
       listedPrice: listing.price,
       dom: listing.domActive,
-      shopperFirst: _shopperFirstName,
+      shopperFirst: _shopperFirstName.isEmpty ? null : _shopperFirstName,
     );
   }
 
@@ -308,6 +397,15 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_liveDiscover || _discoverUnconfigured) {
+      return LiveDiscoverVdp(
+        isLoading: _isLoading,
+        listing: _listing,
+        errorMessage: _liveError,
+        onRetry: _loadData,
+        network: _rooftopMatch,
+      );
+    }
     final colors = context.drevvy;
     final text = context.drevvyText;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -455,15 +553,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (listing.isNew)
-                              NewCarMarketCard(
-                                listing: listing,
-                                market: market,
-                              )
+                              NewCarMarketCard(listing: listing, market: market)
                             else
-                              MarketPriceBar(
-                                listing: listing,
-                                market: market,
-                              ),
+                              MarketPriceBar(listing: listing, market: market),
                             if (!listing.isNew) ...[
                               const SizedBox(height: DrevvySpace.s6),
                               _MarketTiles(listing: listing, market: market),
@@ -538,6 +630,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
               creditBalance: creditBalance,
               match: _rooftopMatch,
               marketIntelUnlocked: _marketIntelUnlocked,
+              marketIntelAvailable: _repo.marketIntelSpendEnabled,
               conversationOpen: _conversationOpen,
               otdRequested: _otdRequested,
               onMarketIntel: _handleMarketIntelTap,
@@ -710,7 +803,8 @@ class _HowDrevvyWorks extends StatelessWidget {
           ),
           _Step(
             number: '4',
-            text: 'If not, ask for the whole price for free. This is not a chat.',
+            text:
+                'If not, ask for the whole price for free. This is not a chat.',
           ),
         ],
       ),

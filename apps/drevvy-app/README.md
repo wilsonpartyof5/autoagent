@@ -31,6 +31,51 @@ flutter pub get
 dart run build_runner build
 ```
 
+## Demo and live data
+
+Auth, credits, key spend, rooftop match, and deal chips share one origin.
+There is no `www.drevvy.com` default.
+
+```bash
+# Demo (default). Labeled samples stay, including Matters step 6 Sample.
+# A base URL by itself does not turn Shop into live inventory.
+flutter run
+
+# Live inventory, credits, and rooftop. Both defines are required.
+# A missing URL or a failed credits/key-spend/rooftop call is an error.
+# It does not keep the seeded 6 keys, grant keys locally, stub listing_001,
+# or fill Shop with the demo catalog.
+flutter run \
+  --dart-define=DREVVY_DATA_MODE=live \
+  --dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com
+```
+
+`DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
+Discover, auth, credits, key spend, rooftop match, deal chips, profile, and
+saved cars read that same mode and the same origin. Live with an empty origin
+says it is not configured. Demo keeps the labeled catalog even when a URL is
+present.
+
+A live account uses `GET /api/consumer/profile` and `GET /api/consumer/credits`.
+The profile has no given name, so the account says "Signed in" and does not
+invent one. The key balance is the server number, including a starter grant
+the server already made. Saved cars are `GET`/`POST`/`DELETE /api/consumer/saved-cars`.
+A failed save or load shows an error and retry. Sign-out clears that account.
+Market intel has no price payload and no unlock read, so live mode shows it
+as unavailable and does not spend a key.
+
+Live dealer network is `POST /api/consumer/listings/network` with
+`{listingId}` only. `data.state` is `in_network`, `off_network`,
+`identity_unavailable`, or `unknown`. The response has no rooftop id and no
+dealer URL. `in_network` is accepted only when every CTA kind is
+`market_intel`, `dealer_conversation`, or `off_network_otd_request` and
+`dealer_conversation` is present. An unknown kind stays unavailable, and that
+classification does not open chat. Explicit `off_network` is the resolved
+miss. A missing `state`, including a legacy `match: null` body, stays
+unavailable. The screen does not submit `POST /api/consumer/otd-requests`.
+Email sign-in, Ask, and account deletion say they are unavailable. Demo keeps
+Dana, the labeled stubs, and Matters step 6 Sample.
+
 ## Two-key VDP review (simulators)
 
 Demo listings:

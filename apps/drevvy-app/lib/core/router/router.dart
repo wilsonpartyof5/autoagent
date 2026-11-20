@@ -71,7 +71,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return ShellScaffold(navigationShell: navigationShell);
         },
         branches: [
-          // Shop tab
+          // Shop tab. Index 0 is ShopBottomChromeMetrics.shopBranchIndex.
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -155,9 +155,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
     ],
-    errorBuilder: (context, state) => ErrorScreen(
-      code: 'NAV-404',
-      message: 'Page not found',
-    ),
+    errorBuilder: (context, state) =>
+        ErrorScreen(code: 'NAV-404', message: 'Page not found'),
   );
 });
