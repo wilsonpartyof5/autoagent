@@ -1,5 +1,9 @@
 -- Shopper Marketplace Intelligence unlock.
--- NOT APPLIED. Do not run this against production from this change.
+--
+-- The shopper API keeps working when this migration has not been applied.
+-- Profile reads fall back to the columns that already exist, and market-save
+-- stores the car without spending a key or calling MarketCheck Price.
+-- Zip, shopper_market_unlocks, and these functions turn that behavior on.
 --
 -- A heart save stays in saved_cars and does not spend a key.
 -- This table is the owner-only record that the shopper unlocked MI for a
@@ -67,7 +71,7 @@ returns table(
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_key text;
@@ -88,23 +92,23 @@ begin
   if p_listing_id is null or p_listing_id !~ '^[A-Za-z0-9_-]{4,64}$' then
     raise exception 'listing id is required';
   end if;
-  if p_market is null or jsonb_typeof(p_market) <> 'object' then
+  if p_market is null or pg_catalog.jsonb_typeof(p_market) <> 'object' then
     raise exception 'market intelligence has no value';
   end if;
 
-  v_vin := nullif(upper(btrim(coalesce(p_vin, ''))), '');
+  v_vin := nullif(pg_catalog.upper(pg_catalog.btrim(coalesce(p_vin, ''::text))), ''::text);
   if v_vin is not null and v_vin !~ '^[A-HJ-NPR-Z0-9]{11,17}$' then
     raise exception 'vin is not valid';
   end if;
 
-  v_fair := nullif(p_market->>'fairVehiclePrice', '')::integer;
-  v_low := nullif(p_market->>'lowPrice', '')::integer;
-  v_median := nullif(p_market->>'medianPrice', '')::integer;
-  v_high := nullif(p_market->>'highPrice', '')::integer;
-  v_comps := nullif(p_market->>'comparablesCount', '')::integer;
-  v_msrp := nullif(p_market->>'msrp', '')::integer;
-  v_listed := nullif(p_market->>'listedPrice', '')::integer;
-  v_new := coalesce(p_market->>'isNewCar', '') = 'true';
+  v_fair := nullif(p_market->>'fairVehiclePrice', ''::text)::integer;
+  v_low := nullif(p_market->>'lowPrice', ''::text)::integer;
+  v_median := nullif(p_market->>'medianPrice', ''::text)::integer;
+  v_high := nullif(p_market->>'highPrice', ''::text)::integer;
+  v_comps := nullif(p_market->>'comparablesCount', ''::text)::integer;
+  v_msrp := nullif(p_market->>'msrp', ''::text)::integer;
+  v_listed := nullif(p_market->>'listedPrice', ''::text)::integer;
+  v_new := coalesce(p_market->>'isNewCar', ''::text) = 'true';
 
   v_used_ok := v_fair is not null and v_fair > 0
     and coalesce(v_comps, 0) >= 3
@@ -160,13 +164,13 @@ begin
   )
   values (p_user_id, 'use', 1, p_listing_id, 'market_save', 'market_intel', v_key);
 
-  update public.shopper_credits
-  set balance = shopper_credits.balance - 1,
-      lifetime_used = shopper_credits.lifetime_used + 1,
-      updated_at = now()
-  where user_id = p_user_id
-    and shopper_credits.balance >= 1
-  returning shopper_credits.balance into v_balance;
+  update public.shopper_credits as c
+  set balance = c.balance - 1,
+      lifetime_used = c.lifetime_used + 1,
+      updated_at = pg_catalog.now()
+  where c.user_id = p_user_id
+    and c.balance >= 1
+  returning c.balance into v_balance;
 
   if not found then
     raise exception 'key was not consumed';
@@ -198,3 +202,75 @@ $$;
 
 revoke execute on function public.unlock_market_intel_atomic(uuid, text, text, jsonb) from anon, authenticated, public;
 grant execute on function public.unlock_market_intel_atomic(uuid, text, text, jsonb) to service_role;
+
+-- Returns a market_save key when the lookup failed and nothing was stored.
+-- Deletes the use event so the next attempt is charged again.
+-- A stored unlock is left alone: that key paid for a real value.
+create or replace function public.refund_unstored_market_save(
+  p_user_id uuid,
+  p_listing_id text
+)
+returns table(
+  refunded boolean,
+  balance integer
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_key text;
+  v_balance integer;
+  v_event_id uuid;
+begin
+  if p_listing_id is null or p_listing_id !~ '^[A-Za-z0-9_-]{4,64}$' then
+    raise exception 'listing id is required';
+  end if;
+
+  v_key := 'use:market_save:' || p_listing_id;
+
+  insert into public.shopper_credits (user_id)
+  values (p_user_id)
+  on conflict (user_id) do nothing;
+
+  select c.balance
+    into v_balance
+  from public.shopper_credits c
+  where c.user_id = p_user_id
+  for update;
+
+  if exists (
+    select 1 from public.shopper_market_unlocks u
+    where u.user_id = p_user_id and u.listing_id = p_listing_id
+  ) then
+    return query select false, coalesce(v_balance, 0);
+    return;
+  end if;
+
+  v_event_id := null;
+  delete from public.shopper_credit_events as e
+  where e.user_id = p_user_id
+    and e.idempotency_key = v_key
+    and e.event_type = 'use'
+    and e.spend_kind = 'market_save'
+  returning e.id into v_event_id;
+
+  if v_event_id is null then
+    return query select false, coalesce(v_balance, 0);
+    return;
+  end if;
+
+  update public.shopper_credits as c
+  set balance = c.balance + 1,
+      lifetime_used = case when c.lifetime_used > 0 then c.lifetime_used - 1 else 0 end,
+      lifetime_refunded = c.lifetime_refunded + 1,
+      updated_at = pg_catalog.now()
+  where c.user_id = p_user_id
+  returning c.balance into v_balance;
+
+  return query select true, coalesce(v_balance, 0);
+end;
+$$;
+
+revoke execute on function public.refund_unstored_market_save(uuid, text) from anon, authenticated, public;
+grant execute on function public.refund_unstored_market_save(uuid, text) to service_role;

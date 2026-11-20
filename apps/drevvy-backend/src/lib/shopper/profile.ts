@@ -85,8 +85,70 @@ export function readProfilePatch(body: unknown): ProfilePatch {
   return patch;
 }
 
-export function profileColumns(): string {
+export function profileColumns(options?: { zip?: boolean }): string {
+  if (options?.zip === false) return 'user_id, status, first_name, created_at, updated_at';
   return 'user_id, status, first_name, zip, created_at, updated_at';
+}
+
+type ProfileQueryError = { message?: string; code?: string } | null;
+type ProfileQueryResult = { data: unknown; error: ProfileQueryError };
+
+/** True when consumer_profiles.zip is not in this database yet. */
+export function isMissingZipColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as { message?: string; code?: string };
+  const code = record.code ?? '';
+  const message = (record.message ?? '').toLowerCase();
+  const missing = code === '42703'
+    || code === 'PGRST204'
+    || message.includes('does not exist')
+    || message.includes('schema cache')
+    || message.includes('could not find');
+  return missing && message.includes('zip');
+}
+
+/**
+ * Reads the shopper profile. A missing zip column is retried without it so
+ * GET /api/consumer/profile stays up before that migration is applied.
+ */
+export async function readProfileRow(
+  query: (columns: string) => PromiseLike<ProfileQueryResult>,
+): Promise<unknown> {
+  const first = await query(profileColumns());
+  if (first.error && isMissingZipColumn(first.error)) {
+    const second = await query(profileColumns({ zip: false }));
+    if (second.error) throw new Error(second.error.message ?? 'profile read failed');
+    return second.data;
+  }
+  if (first.error) throw new Error(first.error.message ?? 'profile read failed');
+  return first.data;
+}
+
+/**
+ * Writes first name and ZIP. If zip is not a column yet, the name is still
+ * saved and zip comes back null instead of failing the request.
+ */
+export async function writeProfileRow(
+  write: (values: Record<string, unknown>, columns: string) => PromiseLike<ProfileQueryResult>,
+  patch: ProfilePatch,
+): Promise<unknown> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if ('firstName' in patch) update.first_name = patch.firstName ?? null;
+  if ('zip' in patch) update.zip = patch.zip ?? null;
+
+  let result = await write(update, profileColumns());
+  if (result.error && isMissingZipColumn(result.error)) {
+    const withoutZip = { ...update };
+    delete withoutZip.zip;
+    result = await write(withoutZip, profileColumns({ zip: false }));
+  }
+  if (result.error) {
+    const message = result.error.message ?? '';
+    if (/zip/i.test(message)) throw new ProfileError('Enter a 5-digit ZIP.', 400, 'invalid_zip');
+    if (/first_name/i.test(message)) throw new ProfileError('Enter a first name.', 400, 'invalid_first_name');
+    throw new Error(message || 'profile update failed');
+  }
+  return result.data;
 }
 
 function parseFirstName(value: unknown): string | null {

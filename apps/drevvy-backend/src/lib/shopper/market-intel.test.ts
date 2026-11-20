@@ -166,7 +166,12 @@ test('an upstream failure is not a market value', async () => {
 
 test('listing facts keep the market ZIP and drop dealer contact fields', () => {
   const facts = listingFactsFromDetail('mc-listing-1', detail());
+  assert.equal(facts?.id, 'mc-listing-1');
   assert.equal(facts?.dealerZip, '62704');
+  const relabeled = listingFactsFromDetail('caller-listing', { ...detail(), id: 'mc-real-listing' });
+  assert.equal(relabeled?.id, 'mc-real-listing');
+  const unnamed = listingFactsFromDetail('caller-listing', { ...detail(), id: '' });
+  assert.equal(unnamed?.id, '');
   assert.equal(JSON.stringify(facts).includes('555-0100'), false);
   assert.equal(JSON.stringify(facts).includes('Secret Dealer'), false);
   assert.equal(listingFactsFromDetail('mc-listing-1', {

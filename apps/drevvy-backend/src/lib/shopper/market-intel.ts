@@ -172,7 +172,7 @@ export function listingFactsFromDetail(listingId: string, detail: DetailResponse
   if (!make || !model || make === 'Unknown' || model === 'Vehicle' || !detail.year) return null;
   const vin = detail.vin?.trim().toUpperCase() || null;
   return {
-    id: listingId,
+    id: detail.id.trim(),
     vin,
     year: detail.year,
     make,
@@ -313,7 +313,8 @@ export async function loadMarketIntelFromMarketCheck(input: {
 }
 
 function isSubject(comp: CompFact, facts: ListingFacts, listingId: string): boolean {
-  if (comp.id === listingId || comp.id === facts.id) return true;
+  const subjectId = facts.id.trim() || (facts.vin ? '' : listingId);
+  if (subjectId && comp.id === subjectId) return true;
   const vin = facts.vin?.toUpperCase();
   return Boolean(vin && comp.vin && comp.vin.toUpperCase() === vin);
 }

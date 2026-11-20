@@ -129,7 +129,10 @@ export async function lookupListingDealerIdentity(
     if (!identity) return { status: 'unavailable', reason: 'not_found' };
     return {
       status: 'found',
-      identity: { ...identity, listingId: identity.listingId ?? listingId },
+      identity: {
+        ...identity,
+        listingId: identity.listingId ?? (vin ? null : listingId),
+      },
     };
   } catch (error) {
     const reason = marketCheckFailureReason(error);

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { shopperDealErrorResponse, ShopperDealError, isShopperListingId } from '@/lib/shopper/deals';
 import { presentMarketIntel } from '@/lib/shopper/market-intel';
-import { findMarketUnlock } from '@/lib/shopper/market-unlock-store';
+import { findMarketUnlock, isMissingMarketSchema } from '@/lib/shopper/market-unlock-store';
 import { requireShopperAuth } from '@/lib/shopper/session';
 
 /**
@@ -26,7 +26,12 @@ export async function GET(
     if (!isShopperListingId(id)) {
       throw new ShopperDealError('A MarketCheck listing id is required.', 400, 'invalid_listing');
     }
-    const row = await findMarketUnlock(createAdminClient(), auth.userId, id);
+    let row = null;
+    try {
+      row = await findMarketUnlock(createAdminClient(), auth.userId, id);
+    } catch (error) {
+      if (!isMissingMarketSchema(error)) throw error;
+    }
     return NextResponse.json({
       success: true,
       data: {

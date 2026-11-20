@@ -14,7 +14,7 @@ import type { SavedCarRepository, SavedCarRow } from './saved-cars';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SQL = readFileSync(
-  join(HERE, '../../../../../supabase/migrations/20261105231000_shopper_market_unlocks.sql'),
+  join(HERE, '../../../../../supabase/migrations/20261120180000_shopper_market_unlocks.sql'),
   'utf8',
 );
 
@@ -46,13 +46,13 @@ test('parallel unlocks charge one key and a second shopper cannot read the snaps
   assert.equal(new Set(results.map((result) => result.market?.fairVehiclePrice)).size, 1);
   assert.equal(ledger.balance('shopper-1'), 4);
   assert.equal(repo.rows.length, 1);
-  assert.equal(loads, 8);
+  assert.equal(loads, 1);
 
   const repeat = await unlockMarketAndSave('shopper-1', { listingId: LISTING }, deps);
   assert.equal(repeat.spent, false);
   assert.equal(repeat.market?.fairVehiclePrice, 30100);
   assert.equal(ledger.balance('shopper-1'), 4);
-  assert.equal(loads, 8);
+  assert.equal(loads, 1);
 
   const other = await unlockMarketAndSave('shopper-2', { listingId: LISTING }, deps);
   assert.equal(other.spent, true);
@@ -107,6 +107,10 @@ test('unlock_market_intel_atomic charges once, isolates shoppers, and refuses an
   assert.match(SQL, /for update/);
   assert.match(SQL, /market intelligence has no value/);
   assert.match(SQL, /use:market_save:/);
+  assert.match(SQL, /set search_path = ''/);
+  assert.equal(SQL.includes('set search_path = public'), false);
+  assert.match(SQL, /pg_catalog\.now\(\)/);
+  assert.match(SQL, /refund_unstored_market_save/);
   const raiseAt = SQL.indexOf('market intelligence has no value');
   const chargeAt = SQL.indexOf('insert into public.shopper_credit_events');
   assert.ok(raiseAt > 0 && raiseAt < chargeAt);
@@ -196,15 +200,66 @@ test('unlock_market_intel_atomic charges once, isolates shoppers, and refuses an
       /consumer_profiles_zip_check|check constraint/,
     );
 
-    const privileges = await db.query<{ anon_exec: boolean; auth_exec: boolean; service_exec: boolean }>(`
+    const privileges = await db.query<{
+      anon_exec: boolean;
+      auth_exec: boolean;
+      service_exec: boolean;
+      anon_refund: boolean;
+      service_refund: boolean;
+    }>(`
       select
         has_function_privilege('anon', 'public.unlock_market_intel_atomic(uuid, text, text, jsonb)', 'execute') as anon_exec,
         has_function_privilege('authenticated', 'public.unlock_market_intel_atomic(uuid, text, text, jsonb)', 'execute') as auth_exec,
-        has_function_privilege('service_role', 'public.unlock_market_intel_atomic(uuid, text, text, jsonb)', 'execute') as service_exec
+        has_function_privilege('service_role', 'public.unlock_market_intel_atomic(uuid, text, text, jsonb)', 'execute') as service_exec,
+        has_function_privilege('anon', 'public.refund_unstored_market_save(uuid, text)', 'execute') as anon_refund,
+        has_function_privilege('service_role', 'public.refund_unstored_market_save(uuid, text)', 'execute') as service_refund
     `);
     assert.equal(privileges.rows[0]?.anon_exec, false);
     assert.equal(privileges.rows[0]?.auth_exec, false);
     assert.equal(privileges.rows[0]?.service_exec, true);
+    assert.equal(privileges.rows[0]?.anon_refund, false);
+    assert.equal(privileges.rows[0]?.service_refund, true);
+
+    await db.query(
+      `update public.shopper_credits
+         set balance = 1, lifetime_used = 0
+       where user_id = $1`,
+      [SHOPPER_A],
+    );
+    await db.query(
+      `insert into public.shopper_credit_events
+         (user_id, event_type, amount, listing_id, spend_kind, key_kind, idempotency_key)
+       values ($1, 'use', 1, 'mc-miss-1', 'market_save', 'market_intel', 'use:market_save:mc-miss-1')`,
+      [SHOPPER_A],
+    );
+    await db.query(
+      `update public.shopper_credits
+         set balance = 0, lifetime_used = 1
+       where user_id = $1`,
+      [SHOPPER_A],
+    );
+    const refunded = await db.query<{ refunded: boolean; balance: number }>(
+      'select * from public.refund_unstored_market_save($1, $2)',
+      [SHOPPER_A, 'mc-miss-1'],
+    );
+    assert.equal(refunded.rows[0]?.refunded, true);
+    assert.equal(refunded.rows[0]?.balance, 1);
+    assert.equal(await eventCount(db, SHOPPER_A, 'mc-miss-1'), 0);
+
+    const chargedAgain = await db.query<{ charged: boolean; unlocked: boolean; balance: number }>(
+      'select * from public.unlock_market_intel_atomic($1, $2, $3, $4::jsonb)',
+      [SHOPPER_A, 'mc-miss-1', VIN, JSON.stringify(usedIntel())],
+    );
+    assert.equal(chargedAgain.rows[0]?.unlocked, true);
+    assert.equal(chargedAgain.rows[0]?.charged, true);
+    assert.equal(chargedAgain.rows[0]?.balance, 0);
+    const kept = await db.query<{ refunded: boolean; balance: number }>(
+      'select * from public.refund_unstored_market_save($1, $2)',
+      [SHOPPER_A, 'mc-miss-1'],
+    );
+    assert.equal(kept.rows[0]?.refunded, false);
+    assert.equal(kept.rows[0]?.balance, 0);
+    assert.equal(await balance(db, SHOPPER_A), 0);
   } finally {
     await db.close();
   }
@@ -216,6 +271,7 @@ test('the unlock read is owner scoped and is not the heart save', () => {
   const heart = readFileSync(join(HERE, '../../app/api/consumer/saved-cars/route.ts'), 'utf8');
   assert.match(route, /requireShopperAuth/);
   assert.match(route, /findMarketUnlock/);
+  assert.match(route, /isMissingMarketSchema/);
   assert.match(store, /shopper_market_unlocks/);
   assert.match(store, /\.eq\('user_id', userId\)/);
   assert.equal(route.includes('/api/public'), false);
@@ -247,31 +303,63 @@ function pause(): Promise<void> {
 type Ledger = {
   balance: (userId: string) => number;
   read: (userId: string, listingId: string) => Promise<MarketIntel | null>;
+  reserve: (userId: string, listingId: string) => Promise<{ data: Array<Record<string, unknown>>; error: null }>;
+  refund: (userId: string, listingId: string) => Promise<{ data: Array<Record<string, unknown>>; error: null }>;
   commitUnlock: (input: CommitMarketUnlockInput) => Promise<CommitMarketUnlockResult>;
 };
 
 function exclusiveLedger(opening: Map<string, number>): Ledger {
   const balances = new Map(opening);
   const rows = new Map<string, MarketIntel>();
+  const events = new Set<string>();
   let chain = Promise.resolve();
+  const serialized = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = chain.then(work);
+    chain = run.then(() => undefined, () => undefined);
+    return run;
+  };
   return {
     balance: (userId) => balances.get(userId) ?? 0,
     read: async (userId, listingId) => rows.get(`${userId}:${listingId}`) ?? null,
-    commitUnlock: (input) => {
-      const run = chain.then(async () => {
-        await pause();
-        const key = `${input.userId}:${input.listingId}`;
-        const balance = balances.get(input.userId) ?? 0;
-        const existing = rows.get(key);
-        if (existing) {
-          return {
-            unlocked: true,
-            alreadyUnlocked: true,
-            charged: false,
-            balance,
-            market: existing,
-          };
-        }
+    reserve: (userId, listingId) => serialized(async () => {
+      const key = `${userId}:${listingId}`;
+      const balance = balances.get(userId) ?? 0;
+      if (events.has(key)) {
+        return { data: [{ consumed: true, already_consumed: true, balance }], error: null };
+      }
+      if (balance < 1) {
+        return { data: [{ consumed: false, already_consumed: false, balance }], error: null };
+      }
+      balances.set(userId, balance - 1);
+      events.add(key);
+      return { data: [{ consumed: true, already_consumed: false, balance: balance - 1 }], error: null };
+    }),
+    refund: (userId, listingId) => serialized(async () => {
+      const key = `${userId}:${listingId}`;
+      const balance = balances.get(userId) ?? 0;
+      if (rows.has(key) || !events.has(key)) {
+        return { data: [{ refunded: false, balance }], error: null };
+      }
+      events.delete(key);
+      balances.set(userId, balance + 1);
+      return { data: [{ refunded: true, balance: balance + 1 }], error: null };
+    }),
+    commitUnlock: (input) => serialized(async () => {
+      await pause();
+      const key = `${input.userId}:${input.listingId}`;
+      const balance = balances.get(input.userId) ?? 0;
+      const existing = rows.get(key);
+      if (existing) {
+        return {
+          unlocked: true,
+          alreadyUnlocked: true,
+          charged: false,
+          balance,
+          market: existing,
+        };
+      }
+      const held = events.has(key);
+      if (!held) {
         if (balance < 1) {
           return {
             unlocked: false,
@@ -283,18 +371,17 @@ function exclusiveLedger(opening: Map<string, number>): Ledger {
           };
         }
         balances.set(input.userId, balance - 1);
-        rows.set(key, input.market);
-        return {
-          unlocked: true,
-          alreadyUnlocked: false,
-          charged: true,
-          balance: balance - 1,
-          market: input.market,
-        };
-      });
-      chain = run.then(() => undefined, () => undefined);
-      return run;
-    },
+        events.add(key);
+      }
+      rows.set(key, input.market);
+      return {
+        unlocked: true,
+        alreadyUnlocked: held,
+        charged: !held,
+        balance: balances.get(input.userId) ?? 0,
+        market: input.market,
+      };
+    }),
   };
 }
 
@@ -316,7 +403,11 @@ function depsFor(repo: SavedCarRepository, ledger: Ledger, intel: MarketIntel): 
         }),
       }),
     }),
-    rpc: async () => {
+    rpc: async (fnName: string, params: { p_user_id?: string; p_listing_id?: string }) => {
+      const userId = params.p_user_id ?? '';
+      const listingId = params.p_listing_id ?? '';
+      if (fnName === 'consume_market_save_atomic') return ledger.reserve(userId, listingId);
+      if (fnName === 'refund_unstored_market_save') return ledger.refund(userId, listingId);
       throw new Error('production rpc is not used by this fixture');
     },
   } as unknown as SupabaseClient;

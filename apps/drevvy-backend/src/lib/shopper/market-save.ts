@@ -12,8 +12,13 @@ import {
 import {
   commitMarketUnlock,
   findMarketUnlock,
+  isMissingMarketSchema,
+  refundUnstoredMarketSave,
+  reserveMarketSaveKey,
   type CommitMarketUnlockInput,
   type CommitMarketUnlockResult,
+  type MarketKeyHold,
+  type MarketKeyRefund,
   type StoredMarketUnlock,
 } from './market-unlock-store';
 import { readSaveCarInput, saveSavedCar, type SavedCarDeps, type SavedCarView } from './saved-cars';
@@ -47,14 +52,25 @@ export type MarketSaveDeps = SavedCarDeps & {
   loadMarketIntel?: MarketIntelLoader;
   findUnlock?: (userId: string, listingId: string) => Promise<StoredMarketUnlock | null>;
   commitUnlock?: (input: CommitMarketUnlockInput) => Promise<CommitMarketUnlockResult>;
+  reserveKey?: (userId: string, listingId: string) => Promise<MarketKeyHold>;
+  refundKey?: (userId: string, listingId: string) => Promise<MarketKeyRefund>;
   profileZip?: (userId: string) => Promise<string | null>;
 };
 
+const NO_KEY_MESSAGE = 'You need a key to unlock market details and save this car. Buy a key pack to continue.';
+const CREDIT_FAILED_MESSAGE = 'Drevvy could not use a key to unlock market details and save this car.';
+const UNLOCK_WAIT_ATTEMPTS = 40;
+const UNLOCK_WAIT_MS = 25;
+
 /**
  * Unlocks Marketplace Intelligence and saves the listing.
- * One key per listing, and only after MarketCheck returns a real value.
- * A repeat returns the stored snapshot and does not spend again.
- * A heart save does not call this.
+ * The key is held before any paid MarketCheck call. A lookup that does not
+ * return a real value gives that key back and clears the idempotency key,
+ * so the next attempt is charged again. A repeat of a stored unlock does
+ * not spend and does not call MarketCheck. A heart save does not call this.
+ *
+ * Before shopper_market_unlocks exists, this saves the car and does not
+ * call MarketCheck Price or spend a key.
  */
 export async function unlockMarketAndSave(
   userId: string,
@@ -68,11 +84,36 @@ export async function unlockMarketAndSave(
   }
 
   const find = deps.findUnlock ?? ((ownerId, listingId) => findMarketUnlock(deps.supabase, ownerId, listingId));
-  const existing = await find(userId, input.listingId);
+  let existing: StoredMarketUnlock | null;
+  try {
+    existing = await find(userId, input.listingId);
+  } catch (error) {
+    if (isMissingMarketSchema(error)) return saveWithoutMarket(userId, body, deps);
+    throw error;
+  }
   if (existing) {
     const car = await saveSavedCar(userId, body, deps);
     const credits = await getShopperCredits(deps.supabase, userId);
     return unlockedResult(car, false, credits.balance, existing.market);
+  }
+
+  const reserve = deps.reserveKey ?? ((ownerId, listingId) => reserveMarketSaveKey(deps.supabase, ownerId, listingId));
+  const refund = deps.refundKey ?? ((ownerId, listingId) => refundUnstoredMarketSave(deps.supabase, ownerId, listingId));
+  const held = await reserve(userId, input.listingId);
+  if (!held.ok) {
+    if (held.failed) throw new ShopperDealError(CREDIT_FAILED_MESSAGE, 500, 'credit_failed');
+    throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
+  }
+
+  if (held.already) {
+    const raced = await waitForUnlock(find, userId, input.listingId);
+    if (raced) {
+      const car = await saveSavedCar(userId, body, deps);
+      const credits = await getShopperCredits(deps.supabase, userId);
+      return unlockedResult(car, false, credits.balance, raced.market);
+    }
+    const credits = await getShopperCredits(deps.supabase, userId);
+    return unavailableResult(credits.balance);
   }
 
   const load = deps.loadMarketIntel ?? loadMarketIntelFromMarketCheck;
@@ -105,39 +146,74 @@ export async function unlockMarketAndSave(
   }
 
   if (!marketIntelHasValue(intel)) {
-    const credits = await getShopperCredits(deps.supabase, userId);
-    return unavailableResult(credits.balance);
+    const restored = await refund(userId, input.listingId);
+    return unavailableResult(restored.balance);
   }
 
   const commit = deps.commitUnlock ?? ((unlock) => commitMarketUnlock(deps.supabase, unlock));
-  const committed = await commit({
-    userId,
-    listingId: input.listingId,
-    vin: input.vin ?? null,
-    market: intel,
-  });
-
-  if (committed.error === 'credit_failed' || (committed.unlocked && !committed.market)) {
-    throw new ShopperDealError(
-      'Drevvy could not use a key to unlock market details and save this car.',
-      500,
-      'credit_failed',
-    );
+  let committed: CommitMarketUnlockResult;
+  try {
+    committed = await commit({
+      userId,
+      listingId: input.listingId,
+      vin: input.vin ?? null,
+      market: intel,
+    });
+  } catch (error) {
+    // The hold already committed in its own call. Give the key back when
+    // this write did not store a snapshot. A stored unlock makes the refund
+    // a no-op, so a lost response cannot double-credit a paid unlock.
+    await refund(userId, input.listingId);
+    if (isMissingMarketSchema(error)) return saveWithoutMarket(userId, body, deps);
+    throw error;
   }
+
   if (!committed.unlocked || !committed.market) {
-    if (committed.error === 'no_value') {
-      const credits = await getShopperCredits(deps.supabase, userId);
-      return unavailableResult(credits.balance);
+    const restored = await refund(userId, input.listingId);
+    if (committed.error === 'no_value') return unavailableResult(restored.balance);
+    if (committed.error === 'no_credits') {
+      throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
     }
-    throw new ShopperDealError(
-      'You need a key to unlock market details and save this car. Buy a key pack to continue.',
-      402,
-      'no_credits',
-    );
+    throw new ShopperDealError(CREDIT_FAILED_MESSAGE, 500, 'credit_failed');
   }
 
   const car = await saveSavedCar(userId, body, deps);
-  return unlockedResult(car, committed.charged, committed.balance, committed.market);
+  return unlockedResult(car, true, committed.balance, committed.market);
+}
+
+/** Heart-save behavior used until the unlock table and zip column exist. */
+async function saveWithoutMarket(
+  userId: string,
+  body: unknown,
+  deps: MarketSaveDeps,
+): Promise<MarketSaveResult> {
+  const car = await saveSavedCar(userId, body, deps);
+  const credits = await getShopperCredits(deps.supabase, userId);
+  return {
+    car,
+    spent: false,
+    available: false,
+    unlocked: false,
+    reason: 'market_unavailable',
+    message: MARKET_UNAVAILABLE_MESSAGE,
+    credits: creditView(credits.balance),
+    market: null,
+  };
+}
+
+async function waitForUnlock(
+  find: (userId: string, listingId: string) => Promise<StoredMarketUnlock | null>,
+  userId: string,
+  listingId: string,
+): Promise<StoredMarketUnlock | null> {
+  for (let attempt = 0; attempt < UNLOCK_WAIT_ATTEMPTS; attempt += 1) {
+    const row = await find(userId, listingId);
+    if (row) return row;
+    if (attempt + 1 < UNLOCK_WAIT_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, UNLOCK_WAIT_MS));
+    }
+  }
+  return null;
 }
 
 async function readProfileZip(supabase: SupabaseClient, userId: string): Promise<string | null> {

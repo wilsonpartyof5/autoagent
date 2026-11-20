@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import { resetMarketCheckCacheForTests, marketCheckStoredKeyCount } from './cache-policy';
 import { hashMarketCheckSubject, withMarketCheckContext } from './context';
+import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
+
 import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
 import { getMarketCheckPrice } from './price';
 import { containsSecret } from './secrets';
@@ -25,6 +27,17 @@ function jsonRpc(payload: unknown): Response {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function vinSearchPayload(id: string) {
+  const payload = listingPayload('https://images.marketcheck.com/tahoe.jpg');
+  payload.data.listings[0].id = id;
+  payload.data.listings[0].dealer = {
+    ...payload.data.listings[0].dealer,
+    id: '1038994',
+    website: 'https://dealer.example',
+  } as typeof payload.data.listings[0]['dealer'];
+  return payload;
 }
 
 function listingPayload(photo: string) {
@@ -216,6 +229,49 @@ test('listing detail skips VIN decode and history until those sections are opene
     assert.equal(joined.includes('"endpoint":"get_car_history"'), true);
     assert.equal(containsSecret(joined), false);
     assert.equal(containsSecret(JSON.stringify(shell)), false);
+  });
+});
+
+test('a VIN search keeps MarketCheck listing id and never adopts the caller id', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  resetMarketCheckCacheForTests();
+
+  await withFetch((call) => {
+    const body = JSON.parse(call.body) as { params: { name: string; arguments: { vin?: string; listing_id?: string } } };
+    assert.equal(body.params.name, 'search_active_cars');
+    assert.equal(body.params.arguments.vin, VIN);
+    assert.equal(body.params.arguments.listing_id, undefined);
+    const payload = listingPayload('https://images.marketcheck.com/tahoe.jpg');
+    payload.data.listings[0].id = 'mc-real-listing';
+    return jsonRpc(payload);
+  }, async () => {
+    const detail = await getVehicleDetailMcp('caller-listing', VIN, ['listing']);
+    assert.equal(detail?.id, 'mc-real-listing');
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => {
+    const payload = listingPayload('https://images.marketcheck.com/tahoe.jpg');
+    payload.data.listings[0].id = '';
+    return jsonRpc(payload);
+  }, async () => {
+    const detail = await getVehicleDetailMcp('caller-listing', VIN, ['listing']);
+    assert.equal(detail?.id, '');
+    assert.notEqual(detail?.id, 'caller-listing');
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => jsonRpc(vinSearchPayload('mc-real-listing')), async () => {
+    const found = await lookupListingDealerIdentity('caller-listing', VIN);
+    assert.equal(found.status, 'found');
+    if (found.status === 'found') assert.equal(found.identity.listingId, 'mc-real-listing');
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => jsonRpc(vinSearchPayload('')), async () => {
+    const found = await lookupListingDealerIdentity('caller-listing', VIN);
+    assert.equal(found.status, 'found');
+    if (found.status === 'found') assert.equal(found.identity.listingId, null);
   });
 });
 

@@ -604,8 +604,13 @@ export async function getVehicleDetailMcp(
   const dealerSource = listing?.dealer;
   const dealerAddress = [dealerSource?.street ?? dealerSource?.address, dealerSource?.city, dealerSource?.state, dealerSource?.zip].filter(Boolean).join(', ') || undefined;
 
+  const returnedListingId = typeof listing?.id === 'string' ? listing.id.trim() : '';
+  // A VIN search must keep the id MarketCheck returned. The caller's id is
+  // only a label when the search itself was by that listing id.
+  const id = vin ? returnedListingId : (returnedListingId || listingId);
+
   const response: DetailResponse = {
-    id: listingId,
+    id,
     vin: listing?.vin ?? vin,
     year,
     make,

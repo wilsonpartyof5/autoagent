@@ -58,6 +58,17 @@ function memoryKeys(balance: number): SupabaseClient {
         row.lifetime_used += 1;
         return { data: [{ consumed: true, already_consumed: false, balance: row.balance }], error: null };
       }
+      if (fnName === 'refund_unstored_market_save') {
+        const spentKey = `use:market_save:${params.p_listing_id ?? ''}`;
+        if (!keys.has(spentKey)) {
+          return { data: [{ refunded: false, balance: row.balance }], error: null };
+        }
+        keys.delete(spentKey);
+        row.balance += 1;
+        row.lifetime_used = Math.max(0, row.lifetime_used - 1);
+        row.lifetime_refunded += 1;
+        return { data: [{ refunded: true, balance: row.balance }], error: null };
+      }
       if (fnName === 'refund_credit_atomic') {
         const refundKey = params.p_idempotency_key ?? '';
         if (keys.has(refundKey)) {
@@ -171,6 +182,106 @@ test('an empty market lookup does not spend a key or save the car', async () => 
   assert.equal(failed.credits.balance, 2);
   assert.equal(commits, 0);
   assert.equal(repo.rows.length, 0);
+});
+
+test('a shopper with no keys does not call MarketCheck', async () => {
+  const repo = memoryRepo();
+  const supabase = memoryKeys(0);
+  const deps = scriptedUnlock(supabase, repo);
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return usedIntel();
+  };
+
+  await assert.rejects(
+    () => unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps),
+    (error: unknown) => error instanceof ShopperDealError && error.code === 'no_credits',
+  );
+  assert.equal(loads, 0);
+  assert.equal(repo.rows.length, 0);
+});
+
+test('a failed lookup returns the key and the retry spends it', async () => {
+  const repo = memoryRepo();
+  const supabase = memoryKeys(1);
+  const deps = scriptedUnlock(supabase, repo);
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    throw new Error('marketcheck upstream failed');
+  };
+
+  const failed = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(loads, 1);
+  assert.equal(failed.spent, false);
+  assert.equal(failed.unlocked, false);
+  assert.equal(failed.available, false);
+  assert.equal(failed.credits.balance, 1);
+  assert.equal(failed.car, null);
+  assert.equal(repo.rows.length, 0);
+
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return usedIntel();
+  };
+  const retry = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(retry.spent, true);
+  assert.equal(retry.unlocked, true);
+  assert.equal(retry.credits.balance, 0);
+  assert.equal(retry.market?.fairVehiclePrice, 30100);
+  assert.equal(loads, 2);
+  assert.equal(repo.rows.length, 1);
+});
+
+test('a failed unlock write returns the key so the retry can spend it', async () => {
+  const repo = memoryRepo();
+  const supabase = memoryKeys(1);
+  const deps = scriptedUnlock(supabase, repo);
+  deps.commitUnlock = async () => {
+    throw new Error('unlock write failed');
+  };
+
+  await assert.rejects(
+    () => unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps),
+    (error: unknown) => error instanceof Error && error.message === 'unlock write failed',
+  );
+  assert.equal(repo.rows.length, 0);
+
+  deps.commitUnlock = scriptedUnlock(supabase, repo).commitUnlock;
+  const retry = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(retry.spent, true);
+  assert.equal(retry.unlocked, true);
+  assert.equal(retry.credits.balance, 0);
+  assert.equal(repo.rows.length, 1);
+});
+
+test('market save still saves the car when the unlock schema is missing', async () => {
+  const repo = memoryRepo();
+  const supabase = memoryKeys(2);
+  const deps = scriptedUnlock(supabase, repo);
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return usedIntel();
+  };
+  deps.findUnlock = async () => {
+    throw Object.assign(
+      new Error("Could not find the table 'public.shopper_market_unlocks' in the schema cache"),
+      { code: 'PGRST205' },
+    );
+  };
+
+  const saved = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1', vin: '1GNSKCKD5RR123456' }, deps);
+  assert.equal(loads, 0);
+  assert.equal(saved.spent, false);
+  assert.equal(saved.unlocked, false);
+  assert.equal(saved.available, false);
+  assert.equal(saved.reason, 'market_unavailable');
+  assert.equal(saved.market, null);
+  assert.equal(saved.car?.listingId, 'mc-listing-1');
+  assert.equal(saved.credits.balance, 2);
+  assert.equal(repo.rows.length, 1);
 });
 
 test('the market-save route spends a key and a heart save does not', () => {

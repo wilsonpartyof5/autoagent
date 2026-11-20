@@ -4,9 +4,10 @@ import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/a
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import {
   presentProfile,
-  profileColumns,
   ProfileError,
   readProfilePatch,
+  readProfileRow,
+  writeProfileRow,
 } from '@/lib/shopper/profile';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -23,12 +24,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireConsumerAuth(request);
-    const { data, error } = await auth.supabase
+    const data = await readProfileRow((columns) => auth.supabase
       .from('consumer_profiles')
-      .select(profileColumns())
+      .select(columns)
       .eq('user_id', auth.userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+      .maybeSingle());
     return NextResponse.json({ success: true, data: profileFromRow(auth.userId, data) });
   } catch (error) {
     return profileErrorResponse(error);
@@ -39,27 +39,15 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireConsumerAuth(request);
     const patch = readProfilePatch(await readRequestJson(request));
-    const update: { first_name?: string | null; zip?: string | null; updated_at: string } = {
-      updated_at: new Date().toISOString(),
-    };
-    if ('firstName' in patch) update.first_name = patch.firstName ?? null;
-    if ('zip' in patch) update.zip = patch.zip ?? null;
-
-    const { data, error } = await createAdminClient()
-      .from('consumer_profiles')
-      .update(update)
-      .eq('user_id', auth.userId)
-      .select(profileColumns())
-      .maybeSingle();
-    if (error) {
-      if (/zip/i.test(error.message)) {
-        throw new ProfileError('Enter a 5-digit ZIP.', 400, 'invalid_zip');
-      }
-      if (/first_name/i.test(error.message)) {
-        throw new ProfileError('Enter a first name.', 400, 'invalid_first_name');
-      }
-      throw new Error(error.message);
-    }
+    const data = await writeProfileRow(
+      (values, columns) => createAdminClient()
+        .from('consumer_profiles')
+        .update(values)
+        .eq('user_id', auth.userId)
+        .select(columns)
+        .maybeSingle(),
+      patch,
+    );
     if (!data) {
       throw new ProfileError('Profile not found.', 404, 'profile_missing');
     }
