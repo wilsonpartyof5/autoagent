@@ -8,30 +8,29 @@ import 'revenue_cat_identity.dart';
 import 'shopper_session_store.dart';
 import 'superwall_purchase_controller.dart';
 
-/// Configures Superwall, then RevenueCat, when public SDK keys exist.
+/// Configures the store SDKs only for a verified Test Store purchase path.
 ///
-/// With no keys this is a no-op and the app stays on the demo purchase service.
+/// A public `appl_` or `goog_` key is not configured. Those keys can complete
+/// a production store transaction, and this client cannot see the store
+/// account. Demo mode does not configure them either.
 class PurchaseBootstrap {
   static Future<void> start(PurchaseConfig config) async {
     ShopperSessionStore.instance.identity = RevenueCatIdentity(config: config);
+    if (!config.sandboxPurchasesEnabled) return;
     if (config.usesSuperwall) {
       await _startSuperwall(config);
     }
-    if (config.usesRevenueCat) {
-      await PurchasesFlutterStore(config).configure();
-    }
+    await PurchasesFlutterStore(config).configure();
   }
 
   static Future<void> _startSuperwall(PurchaseConfig config) async {
     final apiKey = config.superwallApiKeyFor(defaultTargetPlatform);
     if (apiKey == null) return;
 
-    final controller = config.usesRevenueCat
-        ? SuperwallPackPurchaseController(
-            purchase: DemoRepository.instance.purchasePack,
-            restore: DemoRepository.instance.restorePurchases,
-          )
-        : null;
+    final controller = SuperwallPackPurchaseController(
+      purchase: DemoRepository.instance.purchasePack,
+      restore: DemoRepository.instance.restorePurchases,
+    );
 
     Superwall.configure(apiKey, purchaseController: controller);
     try {

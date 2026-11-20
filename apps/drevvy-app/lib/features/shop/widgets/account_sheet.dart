@@ -167,7 +167,7 @@ class _AccountSheetState extends State<AccountSheet> {
         if (sheetContext.mounted) Navigator.pop(sheetContext);
         _showPurchaseMessage(
           host,
-          'Added ${result.creditsAdded == 1 ? '1 key' : '${result.creditsAdded} keys'}. Packs never expire.',
+          keysAddedMessage(added: result.creditsAdded, demo: !_repo.isLive),
         );
         return;
       }
@@ -195,15 +195,7 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   String _restoreMessage(RestoreResult result) {
-    return switch (result) {
-      RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-        creditsRestored == 1
-            ? 'Restored 1 key.'
-            : 'Restored $creditsRestored keys.',
-      RestoreSuccess() => 'Purchases restored.',
-      RestoreNoPurchases() => 'No purchases to restore.',
-      RestoreError(:final message) => message,
-    };
+    return restoreResultMessage(result, demo: !_repo.isLive);
   }
 
   void _showPurchaseMessage(BuildContext host, String message) {

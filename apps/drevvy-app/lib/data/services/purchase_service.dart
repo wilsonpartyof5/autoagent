@@ -103,10 +103,15 @@ class RestoreSuccess extends RestoreResult {
   const RestoreSuccess({
     required this.creditsRestored,
     this.transactions = const [],
+    this.countKnown = true,
   });
 
   final int creditsRestored;
   final List<RestoredTransaction> transactions;
+
+  /// False when the client cannot compare this account's loaded balance with
+  /// the balance the server just confirmed. The count is then not shown.
+  final bool countKnown;
 }
 
 class RestoreNoPurchases extends RestoreResult {
@@ -186,12 +191,58 @@ class FakePurchaseService implements PurchaseService {
   }
 }
 
-/// Live mode without a store SDK key. Purchases fail in the open instead of
-/// granting local keys.
-class UnavailablePurchaseService implements PurchaseService {
-  const UnavailablePurchaseService();
+const purchasesNotConfiguredMessage =
+    'Purchases are not configured for this build.';
 
-  static const _message = 'Purchases are not configured for this build.';
+/// A platform SDK key is present, but it is not a RevenueCat Test Store key.
+/// `appl_` and `goog_` keys can charge a production store account.
+const platformKeyNotSandboxMessage =
+    'Key purchases are off. A platform SDK key is not a verified sandbox.';
+
+/// Copy for a finished pack purchase. Demo keys are labeled as samples.
+/// A zero credit count does not say that keys were added.
+String keysAddedMessage({required int added, required bool demo}) {
+  if (added <= 0) {
+    return 'Purchase confirmed. No new keys were added.';
+  }
+  if (demo) {
+    return added == 1
+        ? 'Added 1 sample key in this demo.'
+        : 'Added $added sample keys in this demo.';
+  }
+  return added == 1
+      ? 'Added 1 key. Packs never expire.'
+      : 'Added $added keys. Packs never expire.';
+}
+
+/// Copy for restore. A known zero does not say keys were added. An unknown
+/// count does not say zero keys were added either.
+String restoreResultMessage(RestoreResult result, {required bool demo}) {
+  return switch (result) {
+    RestoreSuccess(:final countKnown) when !countKnown =>
+      'Purchases restored. Your key balance is updated.',
+    RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
+      demo
+          ? (creditsRestored == 1
+                ? 'Restored 1 sample key in this demo.'
+                : 'Restored $creditsRestored sample keys in this demo.')
+          : (creditsRestored == 1
+                ? 'Restored 1 key.'
+                : 'Restored $creditsRestored keys.'),
+    RestoreSuccess() => 'No new keys were added.',
+    RestoreNoPurchases() => 'No purchases to restore.',
+    RestoreError(:final message) => message,
+  };
+}
+
+/// Live mode without a verified sandbox store. Purchases fail in the open
+/// instead of granting local keys.
+class UnavailablePurchaseService implements PurchaseService {
+  const UnavailablePurchaseService({
+    this.message = purchasesNotConfiguredMessage,
+  });
+
+  final String message;
 
   @override
   Future<void> initialize() async {}
@@ -201,12 +252,12 @@ class UnavailablePurchaseService implements PurchaseService {
 
   @override
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
-    return const PurchaseError(message: _message, code: 'not_configured');
+    return PurchaseError(message: message, code: 'not_configured');
   }
 
   @override
   Future<RestoreResult> restorePurchases() async {
-    return const RestoreError(message: _message);
+    return RestoreError(message: message);
   }
 
   @override

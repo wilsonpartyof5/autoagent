@@ -99,7 +99,8 @@ class DemoRepository {
 
   /// True after a balance for this account was loaded or granted. A live
   /// zero from sign-out, a failed read, or a build that has not loaded
-  /// credits yet is not a confirmed balance.
+  /// credits yet is not a confirmed balance and is not a before-value for
+  /// a restore delta.
   bool _balanceKnown = true;
 
   static final DemoRepository instance = _createInstance();
@@ -185,6 +186,16 @@ class DemoRepository {
     return epoch.generation == current.generation &&
         epoch.userId == current.userId &&
         epoch.token == current.token;
+  }
+
+  /// Purchase and restore writes follow the same generation as the rest of
+  /// the account. Demo ignores the shared session token so an unrelated
+  /// sign-in does not drop a sample purchase. Live also requires the same
+  /// user and access token.
+  bool _billingStill(_AccountEpoch epoch) {
+    if (_accountGeneration != epoch.generation) return false;
+    if (!_live) return true;
+    return _accountStill(epoch);
   }
 
   static String? _sessionUserId(String? value) {
@@ -487,19 +498,58 @@ class DemoRepository {
   /// Get the purchase service.
   PurchaseService get purchaseService => _purchaseService;
 
-  /// Purchase a key pack. Grants server credits when that endpoint exists.
+  bool _purchaseBusy = false;
+
+  /// Purchase a key pack. A live purchase is success only after the credits
+  /// route returns a balance. Cancellation, a pending payment, a store error,
+  /// and a failed grant leave the previous balance in place.
   Future<PurchaseResult> purchasePack(CarPackType packType) async {
-    ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
-      'pack_id': packType.productId,
-      'pack_size': packType.cars,
-      'pack_mix': CarPackType.packMix,
-      'price': packType.priceUsd,
-      'currency': 'USD',
-      'stage': 'purchase',
-    });
-    await _purchaseService.initialize();
-    final result = await _purchaseService.purchasePack(packType);
-    if (result is PurchaseSuccess) {
+    if (_purchaseBusy) {
+      return const PurchaseError(
+        message: 'A purchase is already in progress.',
+        code: 'in_flight',
+      );
+    }
+    _purchaseBusy = true;
+    final epoch = _captureAccount();
+    try {
+      ProductAnalytics.instance.track(AnalyticsEvents.packSelected, {
+        'pack_id': packType.productId,
+        'pack_size': packType.cars,
+        'pack_mix': CarPackType.packMix,
+        'price': packType.priceUsd,
+        'currency': 'USD',
+        'stage': 'purchase',
+      });
+      await _purchaseService.initialize();
+      final result = await _purchaseService.purchasePack(packType);
+      if (!_billingStill(epoch)) {
+        return const PurchaseError(
+          message: 'The account changed before this purchase finished.',
+          code: 'stale_account',
+        );
+      }
+      if (result is! PurchaseSuccess) {
+        _trackPurchaseFailed(packType, result);
+        return result;
+      }
+      final confirmed = await _recordPurchase(result, epoch);
+      if (!_billingStill(epoch)) {
+        return const PurchaseError(
+          message: 'The account changed before this purchase finished.',
+          code: 'stale_account',
+        );
+      }
+      if (confirmed == null) {
+        _trackPurchaseFailed(
+          packType,
+          const PurchaseError(message: '', code: 'credits_unconfirmed'),
+        );
+        return PurchaseError(
+          message: _creditNotice ?? 'Drevvy could not add these keys.',
+          code: 'credits_unconfirmed',
+        );
+      }
       ProductAnalytics.instance.track(AnalyticsEvents.purchaseCompleted, {
         'pack_id': packType.productId,
         'pack_size': packType.cars,
@@ -507,21 +557,24 @@ class DemoRepository {
         'price': packType.priceUsd,
         'currency': 'USD',
       });
-      await _recordPurchase(result);
-    } else {
-      ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
-        'pack_id': packType.productId,
-        'pack_size': packType.cars,
-        'pack_mix': CarPackType.packMix,
-        'reason': switch (result) {
-          PurchaseCancelled() => 'cancelled',
-          PurchasePending() => 'pending',
-          PurchaseError() => 'store_error',
-          PurchaseSuccess() => 'store_error',
-        },
-      });
+      return confirmed;
+    } finally {
+      _purchaseBusy = false;
     }
-    return result;
+  }
+
+  void _trackPurchaseFailed(CarPackType packType, PurchaseResult result) {
+    ProductAnalytics.instance.track(AnalyticsEvents.purchaseFailed, {
+      'pack_id': packType.productId,
+      'pack_size': packType.cars,
+      'pack_mix': CarPackType.packMix,
+      'reason': switch (result) {
+        PurchaseCancelled() => 'cancelled',
+        PurchasePending() => 'pending',
+        PurchaseError(:final code) => code ?? 'store_error',
+        PurchaseSuccess() => 'store_error',
+      },
+    });
   }
 
   /// Spend the market-intelligence + save key (Key A).
@@ -768,36 +821,58 @@ class DemoRepository {
   }
 
   /// Record a store purchase. Server balance wins when the credits route exists.
-  Future<void> _recordPurchase(PurchaseSuccess result) async {
-    final epoch = _captureAccount();
-    if (_hasTransaction(result.transactionId)) return;
+  /// Returns null when live mode cannot confirm the grant. Demo mode still
+  /// records a local balance when that route is absent. A sign-out or account
+  /// switch before the grant returns leaves the current balance alone.
+  Future<PurchaseSuccess?> _recordPurchase(
+    PurchaseSuccess result,
+    _AccountEpoch epoch,
+  ) async {
+    if (!_billingStill(epoch)) return null;
+    final transactionId = result.transactionId.trim();
+    if (transactionId.isEmpty) return null;
+    if (_hasTransaction(transactionId)) {
+      return PurchaseSuccess(
+        packType: result.packType,
+        creditsAdded: 0,
+        transactionId: transactionId,
+      );
+    }
 
+    final before = _creditBalance.balance;
     final remote = await _readCredits(
       () => _credits.grantPurchase(
         productId: result.packType.productId,
-        transactionId: result.transactionId,
+        transactionId: transactionId,
       ),
       epoch,
     );
-    if (!_accountStill(epoch)) return;
+    if (!_billingStill(epoch)) return null;
     if (remote != null) {
+      final added = remote.balance - before;
       _rememberTransaction(
-        result.transactionId,
-        result.creditsAdded,
+        transactionId,
+        added < 0 ? 0 : added,
         result.packType,
       );
       _creditBalance = remote;
       _balanceKnown = true;
-      _reportBalance('purchase', result.creditsAdded);
-      return;
+      _reportBalance('purchase', added);
+      return PurchaseSuccess(
+        packType: result.packType,
+        creditsAdded: added < 0 ? 0 : added,
+        transactionId: transactionId,
+      );
     }
-    if (_live) return;
+    if (_live) return null;
+    if (!_billingStill(epoch)) return null;
     _addCredits(
       result.creditsAdded,
       CreditReason.purchase,
       packType: result.packType,
-      rcEventId: result.transactionId,
+      rcEventId: transactionId,
     );
+    return result;
   }
 
   bool _hasTransaction(String transactionId) {
@@ -868,27 +943,22 @@ class DemoRepository {
   }
 
   /// Restore purchases, then sync credits from the backend when that route exists.
+  ///
+  /// A live balance increase is the server balance minus the balance already
+  /// loaded for this same account. When that before-value was not loaded, the
+  /// result confirms the server balance and does not say zero keys were added.
   Future<RestoreResult> restorePurchases() async {
+    final epoch = _captureAccount();
     ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestoreStarted);
     await _purchaseService.initialize();
-    final result = await _purchaseService.restorePurchases();
-    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, {
-      'result': switch (result) {
-        RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-          'success',
-        RestoreSuccess() => 'empty',
-        RestoreNoPurchases() => 'empty',
-        RestoreError() => 'error',
-      },
-      'credits': switch (result) {
-        RestoreSuccess(:final creditsRestored) => creditsRestored,
-        _ => 0,
-      },
-    });
-    if (result is RestoreError) return result;
+    final storeResult = await _purchaseService.restorePurchases();
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
+    if (storeResult is RestoreError) {
+      _trackRestore(storeResult);
+      return storeResult;
+    }
 
-    final epoch = _captureAccount();
-    final transactions = switch (result) {
+    final transactions = switch (storeResult) {
       RestoreSuccess(:final transactions) => transactions,
       _ => const <RestoredTransaction>[],
     };
@@ -900,30 +970,35 @@ class DemoRepository {
       ),
       epoch,
     );
-    if (!_accountStill(epoch)) return const RestoreNoPurchases();
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
     if (remote != null) {
       for (final transaction in transactions) {
+        final transactionId = transaction.transactionId.trim();
+        if (transactionId.isEmpty) continue;
         _rememberTransaction(
-          transaction.transactionId,
+          transactionId,
           transaction.packType.cars,
           transaction.packType,
         );
       }
-      _creditBalance = remote;
-      _balanceKnown = true;
-      if (transactions.isEmpty) return const RestoreNoPurchases();
-      return RestoreSuccess(
-        creditsRestored: remote.balance,
-        transactions: transactions,
-      );
+      final reported = _restoreFromServerBalance(remote, transactions);
+      _trackRestore(reported);
+      return reported;
     }
 
+    if (!_billingStill(epoch)) return const RestoreNoPurchases();
     if (_live) {
-      return RestoreError(
+      final error = RestoreError(
         message: _creditNotice ?? 'Purchases were not restored. The credits service did not confirm them.',
       );
+      _trackRestore(error);
+      return error;
     }
-    if (transactions.isEmpty) return const RestoreNoPurchases();
+    if (transactions.isEmpty) {
+      const empty = RestoreNoPurchases();
+      _trackRestore(empty);
+      return empty;
+    }
 
     var added = 0;
     for (final transaction in transactions) {
@@ -936,7 +1011,60 @@ class DemoRepository {
       );
       added += _creditBalance.balance - before;
     }
+    final demo = RestoreSuccess(
+      creditsRestored: added,
+      transactions: transactions,
+    );
+    _trackRestore(demo);
+    return demo;
+  }
+
+  /// Applies a server restore balance for the account that started the call.
+  /// The caller has already checked that account.
+  RestoreResult _restoreFromServerBalance(
+    CarCreditBalance remote,
+    List<RestoredTransaction> transactions,
+  ) {
+    final known = _balanceKnown && _creditNotice == null;
+    final before = _creditBalance.balance;
+    _creditBalance = remote;
+    _creditNotice = null;
+    _balanceKnown = true;
+    if (transactions.isEmpty) return const RestoreNoPurchases();
+    if (!known) {
+      return RestoreSuccess(
+        creditsRestored: 0,
+        transactions: transactions,
+        countKnown: false,
+      );
+    }
+    final added = remote.balance - before;
+    if (added < 0) {
+      return RestoreSuccess(
+        creditsRestored: 0,
+        transactions: transactions,
+        countKnown: false,
+      );
+    }
     return RestoreSuccess(creditsRestored: added, transactions: transactions);
+  }
+
+  void _trackRestore(RestoreResult result) {
+    final label = switch (result) {
+      RestoreSuccess(:final creditsRestored, :final countKnown)
+          when countKnown && creditsRestored > 0 =>
+        'success',
+      RestoreSuccess(:final countKnown) when !countKnown => 'confirmed',
+      RestoreSuccess() => 'empty',
+      RestoreNoPurchases() => 'empty',
+      RestoreError() => 'error',
+    };
+    final payload = <String, Object>{'result': label};
+    if (result case RestoreSuccess(:final creditsRestored, :final countKnown)
+        when countKnown) {
+      payload['credits'] = creditsRestored;
+    }
+    ProductAnalytics.instance.track(AnalyticsEvents.purchasesRestored, payload);
   }
 
   // ============== LISTINGS ==============

@@ -58,6 +58,12 @@ Future<void> showUnlockPaywall({
             if (!sheetContext.mounted) return;
             if (result is PurchaseSuccess) {
               Navigator.pop(sheetContext);
+              showMessage(
+                keysAddedMessage(
+                  added: result.creditsAdded,
+                  demo: !repo.isLive,
+                ),
+              );
               await continueIfFunded();
               return;
             }
@@ -75,16 +81,7 @@ Future<void> showUnlockPaywall({
             final result = await repo.restorePurchases();
             if (!sheetContext.mounted) return;
             Navigator.pop(sheetContext);
-            final message = switch (result) {
-              RestoreSuccess(:final creditsRestored) when creditsRestored > 0 =>
-                creditsRestored == 1
-                    ? 'Restored 1 key.'
-                    : 'Restored $creditsRestored keys.',
-              RestoreSuccess() => 'Purchases restored.',
-              RestoreNoPurchases() => 'No purchases to restore.',
-              RestoreError(:final message) => message,
-            };
-            showMessage(message);
+            showMessage(restoreResultMessage(result, demo: !repo.isLive));
             await continueIfFunded();
           }
 

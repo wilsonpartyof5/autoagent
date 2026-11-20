@@ -116,7 +116,8 @@ void main() {
 
     expect((await repo.getCreditBalance()).balance, 0);
     final result = await repo.purchasePack(CarPackType.single);
-    expect(result, isA<PurchaseSuccess>());
+    expect(result, isA<PurchaseError>());
+    expect((result as PurchaseError).code, 'credits_unconfirmed');
     expect((await repo.getCreditBalance()).balance, 0);
     expect(repo.creditNotice, ApiConfigException.creditsUnavailable.message);
   });
