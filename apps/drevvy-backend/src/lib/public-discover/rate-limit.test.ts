@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { DISCOVER_LIMITS, PHOTO_LIMITS } from './constants';
 import { DiscoverApiError } from './errors';
@@ -159,6 +161,145 @@ test('IPv4-mapped IPv6 keeps the embedded address', async () => {
   );
   const other = await enforceDiscoverRateLimit({ ip: '::ffff:203.0.113.51', route: 'search', nowMs, store });
   assert.equal(other.headers['RateLimit-Remaining'], String(DISCOVER_LIMITS.search.ipPerMinute - 1));
+});
+
+function relationStore(code: string): RateLimitStore {
+  return {
+    async hit() {
+      const error = new Error('relation "public.public_discover_rate_limits" does not exist');
+      (error as Error & { code: string }).code = code;
+      throw error;
+    },
+  };
+}
+
+test('photo falls back to memory when the rate-limit relation is missing and keeps the same cap', async () => {
+  const fallback = new MemoryRateLimitStore();
+  const nowMs = 1_700_001_400_000;
+  const ip = '203.0.113.91';
+  for (let i = 0; i < PHOTO_LIMITS.ipPerMinute; i += 1) {
+    const ok = await enforcePhotoRateLimit({
+      ip,
+      nowMs,
+      store: relationStore('42P01'),
+      fallbackStore: fallback,
+      env: PRODUCTION_ENV,
+    });
+    assert.equal(ok.headers['RateLimit-Remaining'], String(PHOTO_LIMITS.ipPerMinute - (i + 1)));
+  }
+  await assert.rejects(
+    () => enforcePhotoRateLimit({
+      ip,
+      nowMs,
+      store: relationStore('42P01'),
+      fallbackStore: fallback,
+      env: PRODUCTION_ENV,
+    }),
+    (error: unknown) => error instanceof DiscoverApiError && error.code === 'RATE_LIMITED' && error.status === 429,
+  );
+});
+
+test('the photo missing-relation log is a static event name', () => {
+  const source = readFileSync(fileURLToPath(new URL('./rate-limit.ts', import.meta.url)), 'utf8');
+  const start = source.indexOf('function logPhotoMissingRelation');
+  const end = source.indexOf('type LimitWindow');
+  const fn = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(fn, /event: 'photo_rate_limit_missing_relation'/);
+  assert.equal(fn.includes('${'), false);
+  assert.equal(fn.includes('code'), false);
+});
+
+test('photo accepts each missing-relation code and rejects other store errors', async () => {
+  const nowMs = 1_700_001_460_000;
+  for (const code of ['42883', 'PGRST202', 'PGRST205']) {
+    const ok = await enforcePhotoRateLimit({
+      ip: `192.0.2.${code.length + 20}`,
+      nowMs,
+      store: relationStore(code),
+      fallbackStore: new MemoryRateLimitStore(),
+      env: PRODUCTION_ENV,
+    });
+    assert.equal(ok.headers['RateLimit-Limit'], String(PHOTO_LIMITS.ipPerMinute));
+  }
+
+  let fallbackHits = 0;
+  const fallback = new MemoryRateLimitStore();
+  const counting: RateLimitStore = {
+    async hit(bucket, windowStartMs, windowMs, limit, nowMs) {
+      fallbackHits += 1;
+      return fallback.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+    },
+  };
+  await assert.rejects(
+    () => enforcePhotoRateLimit({
+      ip: '203.0.113.92',
+      nowMs,
+      store: relationStore('08006'),
+      fallbackStore: counting,
+      env: PRODUCTION_ENV,
+    }),
+    (error: unknown) => {
+      assert.equal(error instanceof DiscoverApiError, true);
+      const unavailable = error as DiscoverApiError;
+      assert.equal(unavailable.code, 'RATE_LIMIT_UNAVAILABLE');
+      assert.equal(unavailable.status, 503);
+      assert.equal(unavailable.message.includes('relation'), false);
+      return true;
+    },
+  );
+  assert.equal(fallbackHits, 0);
+});
+
+test('photo stays 503 when Supabase env is missing in production', async () => {
+  let fallbackHits = 0;
+  const fallback = new MemoryRateLimitStore();
+  const counting: RateLimitStore = {
+    async hit(bucket, windowStartMs, windowMs, limit, nowMs) {
+      fallbackHits += 1;
+      return fallback.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+    },
+  };
+  await assert.rejects(
+    () => enforcePhotoRateLimit({
+      ip: '203.0.113.94',
+      nowMs: 1_700_001_580_000,
+      fallbackStore: counting,
+      env: PRODUCTION_ENV,
+    }),
+    (error: unknown) => error instanceof DiscoverApiError && error.code === 'RATE_LIMIT_UNAVAILABLE' && error.status === 503,
+  );
+  assert.equal(fallbackHits, 0);
+});
+
+test('discover stays 503 when the rate-limit table is missing', async () => {
+  let fallbackHits = 0;
+  const fallback = new MemoryRateLimitStore();
+  const counting: RateLimitStore = {
+    async hit(bucket, windowStartMs, windowMs, limit, nowMs) {
+      fallbackHits += 1;
+      return fallback.hit(bucket, windowStartMs, windowMs, limit, nowMs);
+    },
+  };
+  await assert.rejects(
+    () => enforceDiscoverRateLimit({
+      ip: '203.0.113.93',
+      route: 'search',
+      nowMs: 1_700_001_520_000,
+      store: relationStore('42P01'),
+      fallbackStore: counting,
+      env: PRODUCTION_ENV,
+    }),
+    (error: unknown) => {
+      assert.equal(error instanceof DiscoverApiError, true);
+      const unavailable = error as DiscoverApiError;
+      assert.equal(unavailable.code, 'RATE_LIMIT_UNAVAILABLE');
+      assert.equal(unavailable.status, 503);
+      assert.equal(unavailable.message.includes('relation'), false);
+      return true;
+    },
+  );
+  assert.equal(fallbackHits, 0);
 });
 
 test('photo limits are per IP and fail closed without calling a later window', async () => {

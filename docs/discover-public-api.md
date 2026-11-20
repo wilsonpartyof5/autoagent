@@ -161,7 +161,7 @@ Unknown fields, ZIP geocoding, filter arrays, and `bounds` are not accepted. Sen
 
 `inventory_type` is `new`, `used`, or `cpo` (certified). `dist` is miles from the request lat/lng. Listings without a VIN or id are dropped. Empty `listings` with `success: true` means no matches — not an error, and not demo data.
 
-Photo URLs never include `api_key`. Credentialed MarketCheck image hosts are rewritten to the signed proxy `/api/inventory/photo`. Those links last 24 hours and accept only `u`, `e`, and `s`. The proxy is limited per IP (240/minute, 4,000/day) and returns `503` without fetching when the durable counter is missing or errors. IPv6 clients share a /64.
+Photo URLs never include `api_key`. Credentialed MarketCheck image hosts are rewritten to the signed proxy `/api/inventory/photo`. Those links last 24 hours and accept only `u`, `e`, and `s`. The proxy is limited per IP (240/minute, 4,000/day). When the database reports the rate-limit table or function is missing (`42P01`, `42883`, `PGRST202`, `PGRST205`), that route uses the per-instance memory limiter with the same caps and logs `photo_rate_limit_missing_relation`. Missing Supabase env and every other limiter error still return `503` without fetching. Discover search and detail do not use this fallback. IPv6 clients share a /64.
 
 ## GET `/api/public/discover/listings/{id}`
 
@@ -270,7 +270,7 @@ The new routes read these **server** variables. None of them go in the app.
 
 Preview: if `MARKETCHECK_API_KEY` is missing, search and detail return `502 UPSTREAM_ERROR` only after the durable limiter allows the request. Do not copy production secrets into Preview from this change.
 
-Production (`NODE_ENV=production`) and Vercel preview/production return `503 RATE_LIMIT_UNAVAILABLE` when `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing, or when the durable counter errors. That includes a missing `public_discover_rate_limits` table. The 503 does not call MarketCheck. Local development (`NODE_ENV=development` or `test`) may use a process-local counter so one dev server still enforces the same caps. That counter is not multi-instance durable and is not used for production or preview traffic.
+Production (`NODE_ENV=production`) and Vercel preview/production return `503 RATE_LIMIT_UNAVAILABLE` when `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing, or when the durable counter errors. That includes a missing `public_discover_rate_limits` table on Discover search and detail. The 503 does not call MarketCheck. The photo proxy is the only route that may use the per-instance counter before that migration exists, and only for the missing-relation codes above. Local development (`NODE_ENV=development` or `test`) may use a process-local counter so one dev server still enforces the same caps. That counter is not multi-instance durable and is not used for production or preview Discover traffic.
 
 The counter migration is `supabase/migrations/20261120120000_public_discover_rate_limits.sql`. This change does not apply it.
 

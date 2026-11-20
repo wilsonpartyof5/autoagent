@@ -248,6 +248,33 @@ function unavailableStore(): RateLimitStore {
   };
 }
 
+test('discover search stays 503 when the rate-limit table is missing', async () => {
+  let calls = 0;
+  const response = await handleDiscoverSearch(
+    searchRequest({ latitude: 35.2271, longitude: -80.8431 }, '203.0.113.74'),
+    {
+      rateLimitEnv: PRODUCTION_ENV,
+      rateLimitStore: {
+        async hit() {
+          const error = new Error('relation "public.public_discover_rate_limits" does not exist');
+          (error as Error & { code: string }).code = '42P01';
+          throw error;
+        },
+      },
+      search: async () => {
+        calls += 1;
+        return searchResult();
+      },
+    },
+  );
+  const { status, body } = await readJson(response);
+  assert.equal(status, 503);
+  assert.equal((body.error as { code: string }).code, 'RATE_LIMIT_UNAVAILABLE');
+  assert.equal(calls, 0);
+  assert.equal(JSON.stringify(body).includes('42P01'), false);
+  assert.equal(JSON.stringify(body).includes('public_discover_rate_limits'), false);
+});
+
 test('production store errors are 503 and search does not call MarketCheck', async () => {
   let calls = 0;
   const response = await handleDiscoverSearch(

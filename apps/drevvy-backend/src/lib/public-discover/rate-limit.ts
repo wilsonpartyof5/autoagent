@@ -83,6 +83,10 @@ const memoryFallback = new MemoryRateLimitStore();
 let storeOverride: RateLimitStore | null = null;
 let loggedUnavailable = false;
 let loggedFallback = false;
+let loggedPhotoMissingRelation = false;
+
+/** Postgres and PostgREST codes for a missing rate-limit table or function. */
+const MISSING_RATE_LIMIT_RELATION_CODES = new Set(['42P01', '42883', 'PGRST202', 'PGRST205']);
 
 export function setDiscoverRateLimitStoreForTests(store: RateLimitStore | null): void {
   storeOverride = store;
@@ -92,6 +96,13 @@ export function resetDiscoverRateLimitFallbackForTests(): void {
   memoryFallback.reset();
   loggedUnavailable = false;
   loggedFallback = false;
+  loggedPhotoMissingRelation = false;
+}
+
+function isMissingRateLimitRelation(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && MISSING_RATE_LIMIT_RELATION_CODES.has(code);
 }
 
 export function supabaseConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -116,6 +127,12 @@ function logUnavailable(): void {
   if (loggedUnavailable) return;
   loggedUnavailable = true;
   console.error(JSON.stringify({ event: 'discover_rate_limit_unavailable' }));
+}
+
+function logPhotoMissingRelation(): void {
+  if (loggedPhotoMissingRelation) return;
+  loggedPhotoMissingRelation = true;
+  console.error(JSON.stringify({ event: 'photo_rate_limit_missing_relation' }));
 }
 
 type LimitWindow = { bucket: string; windowMs: number; limit: number };
@@ -256,12 +273,16 @@ export async function enforcePhotoRateLimit(input: {
   let hits: RateLimitHit[];
   try {
     hits = await consumeUntilBlocked(store, windows, nowMs);
-  } catch {
-    if (failClosed || store === fallback) {
+  } catch (error) {
+    // Only a missing table or function may use the per-instance counter.
+    // Missing Supabase env throws before this, and every other error stays 503.
+    const missingRelation = isMissingRateLimitRelation(error);
+    if (store === fallback || (failClosed && !missingRelation)) {
       logUnavailable();
       throw new DiscoverApiError('RATE_LIMIT_UNAVAILABLE', PHOTO_UNAVAILABLE_MESSAGE);
     }
-    if (!loggedFallback) {
+    if (missingRelation) logPhotoMissingRelation();
+    else if (!loggedFallback) {
       loggedFallback = true;
       console.error(JSON.stringify({ event: 'discover_rate_limit_fallback_memory' }));
     }

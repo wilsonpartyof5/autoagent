@@ -208,6 +208,43 @@ test('extra photo query keys are rejected and do not fetch', async () => {
   assert.equal(fetched, 0);
 });
 
+test('a missing photo rate-limit table falls back and still serves the image', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  const canonical = 'https://api.marketcheck.com/v2/image/cache/car/abc';
+  let fetched = 0;
+  const fetchImpl: typeof fetch = async () => {
+    fetched += 1;
+    return new Response(Uint8Array.from([7]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+  };
+  const missing: RateLimitStore = {
+    async hit() {
+      const error = new Error('relation "public.public_discover_rate_limits" does not exist');
+      (error as Error & { code: string }).code = '42P01';
+      throw error;
+    },
+  };
+  const nowMs = 1_700_001_640_000;
+  const deps = {
+    nowMs,
+    rateLimitStore: missing,
+    rateLimitEnv: { NODE_ENV: 'production', VERCEL_ENV: 'production' } as NodeJS.ProcessEnv,
+    lookup: async () => ['8.8.8.8'],
+    fetchImpl,
+  };
+  const served = await handleInventoryPhoto(photoRequest(canonical, '203.0.113.77', '', nowMs), deps);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get('content-type'), 'image/jpeg');
+  assert.equal(fetched, 1);
+
+  for (let i = 1; i < PHOTO_LIMITS.ipPerMinute; i += 1) {
+    const ok = await handleInventoryPhoto(photoRequest(canonical, '203.0.113.77', '', nowMs), deps);
+    assert.equal(ok.status, 200);
+  }
+  const blocked = await handleInventoryPhoto(photoRequest(canonical, '203.0.113.77', '', nowMs), deps);
+  assert.equal(blocked.status, 429);
+  assert.equal(fetched, PHOTO_LIMITS.ipPerMinute);
+});
+
 test('photo fetches stop at the per-IP cap and fail closed when the store errors', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
   const canonical = 'https://api.marketcheck.com/v2/image/cache/car/abc';
