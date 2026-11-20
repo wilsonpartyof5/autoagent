@@ -5,6 +5,11 @@ import { redactSecrets } from '@/lib/marketcheck/secrets';
 import { getShopperCredits } from './credits';
 import { ShopperDealError } from './deals';
 import {
+  durableMarketLookupGuard,
+  hashShopperIp,
+  type MarketLookupGuard,
+} from './market-lookup-guard';
+import {
   loadMarketIntelFromMarketCheck,
   marketIntelHasValue,
   type MarketIntel,
@@ -55,19 +60,30 @@ export type MarketSaveDeps = SavedCarDeps & {
   reserveKey?: (userId: string, listingId: string) => Promise<MarketKeyHold>;
   refundKey?: (userId: string, listingId: string) => Promise<MarketKeyRefund>;
   profileZip?: (userId: string) => Promise<string | null>;
+  lookupGuard?: MarketLookupGuard;
+  ipHash?: string;
+  /** Production refuses a paid lookup when the limiter cannot be checked. */
+  failClosed?: boolean;
+  unlockWaitAttempts?: number;
+  unlockWaitMs?: number;
 };
 
 const NO_KEY_MESSAGE = 'You need a key to unlock market details and save this car. Buy a key pack to continue.';
 const CREDIT_FAILED_MESSAGE = 'Drevvy could not use a key to unlock market details and save this car.';
+const RATE_LIMIT_MESSAGE = 'Too many market lookups. Try again in a few minutes.';
+const REFUND_CAP_MESSAGE = 'Market lookups are paused until tomorrow. A key was not used.';
+const GUARD_UNAVAILABLE_MESSAGE = 'Market details are unavailable right now.';
+const MARKET_HELD_MESSAGE = 'Market intelligence is not available yet. The next try finishes the unlock already on hold.';
 const UNLOCK_WAIT_ATTEMPTS = 40;
 const UNLOCK_WAIT_MS = 25;
 
 /**
  * Unlocks Marketplace Intelligence and saves the listing.
  * The key is held before any paid MarketCheck call. A lookup that does not
- * return a real value gives that key back and clears the idempotency key,
- * so the next attempt is charged again. A repeat of a stored unlock does
- * not spend and does not call MarketCheck. A heart save does not call this.
+ * return a real value refunds that key and writes a reversal, so the next
+ * attempt is charged again. Refunded attempts are capped, and a listing
+ * with no value is not looked up again for 24 hours. A repeat of a stored
+ * unlock does not spend and does not call MarketCheck.
  *
  * Before shopper_market_unlocks exists, this saves the car and does not
  * call MarketCheck Price or spend a key.
@@ -99,21 +115,51 @@ export async function unlockMarketAndSave(
 
   const reserve = deps.reserveKey ?? ((ownerId, listingId) => reserveMarketSaveKey(deps.supabase, ownerId, listingId));
   const refund = deps.refundKey ?? ((ownerId, listingId) => refundUnstoredMarketSave(deps.supabase, ownerId, listingId));
+  const guard = deps.lookupGuard ?? durableMarketLookupGuard(deps.supabase, { failClosed: deps.failClosed === true });
+  const now = Date.now();
+  const claim = await guard.claim({
+    userId,
+    ipHash: deps.ipHash ?? hashShopperIp('unknown'),
+    listingId: input.listingId,
+    now,
+  });
+  if (claim.action === 'unavailable') {
+    throw new ShopperDealError(GUARD_UNAVAILABLE_MESSAGE, 503, 'service_unavailable');
+  }
+  if (claim.action === 'rate_limited') {
+    throw new ShopperDealError(RATE_LIMIT_MESSAGE, 429, 'rate_limited');
+  }
+  if (claim.action === 'cached_miss') {
+    if (claim.hold) {
+      const restored = await refund(userId, input.listingId);
+      if (restored.refunded) await guard.noteRefund(userId, now);
+      return unavailableResult(restored.balance, restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE);
+    }
+    const credits = await getShopperCredits(deps.supabase, userId);
+    return unavailableResult(credits.balance);
+  }
+  if (claim.action === 'refund_cap' && !claim.hold) {
+    throw new ShopperDealError(REFUND_CAP_MESSAGE, 429, 'market_lookup_limited');
+  }
+
   const held = await reserve(userId, input.listingId);
   if (!held.ok) {
     if (held.failed) throw new ShopperDealError(CREDIT_FAILED_MESSAGE, 500, 'credit_failed');
     throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
   }
+  if (claim.action === 'refund_cap' && !held.already) {
+    const restored = await refund(userId, input.listingId);
+    if (restored.refunded) await guard.noteRefund(userId, now);
+    throw new ShopperDealError(REFUND_CAP_MESSAGE, 429, 'market_lookup_limited');
+  }
 
   if (held.already) {
-    const raced = await waitForUnlock(find, userId, input.listingId);
+    const raced = await waitForUnlock(find, userId, input.listingId, deps);
     if (raced) {
       const car = await saveSavedCar(userId, body, deps);
       const credits = await getShopperCredits(deps.supabase, userId);
       return unlockedResult(car, false, credits.balance, raced.market);
     }
-    const credits = await getShopperCredits(deps.supabase, userId);
-    return unavailableResult(credits.balance);
   }
 
   const load = deps.loadMarketIntel ?? loadMarketIntelFromMarketCheck;
@@ -130,6 +176,7 @@ export async function unlockMarketAndSave(
   }
 
   let intel: MarketIntel | null = null;
+  let lookupThrew = false;
   try {
     intel = await load({
       listingId: input.listingId,
@@ -137,6 +184,7 @@ export async function unlockMarketAndSave(
       profileZip,
     });
   } catch (error) {
+    lookupThrew = true;
     console.error(JSON.stringify({
       event: 'market_intel_unavailable',
       listingId: input.listingId,
@@ -146,8 +194,13 @@ export async function unlockMarketAndSave(
   }
 
   if (!marketIntelHasValue(intel)) {
+    if (!lookupThrew) await guard.rememberMiss(input.listingId, now);
     const restored = await refund(userId, input.listingId);
-    return unavailableResult(restored.balance);
+    if (restored.refunded) await guard.noteRefund(userId, now);
+    return unavailableResult(
+      restored.balance,
+      restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE,
+    );
   }
 
   const commit = deps.commitUnlock ?? ((unlock) => commitMarketUnlock(deps.supabase, unlock));
@@ -163,14 +216,21 @@ export async function unlockMarketAndSave(
     // The hold already committed in its own call. Give the key back when
     // this write did not store a snapshot. A stored unlock makes the refund
     // a no-op, so a lost response cannot double-credit a paid unlock.
-    await refund(userId, input.listingId);
+    const restored = await refund(userId, input.listingId);
+    if (restored.refunded) await guard.noteRefund(userId, now);
     if (isMissingMarketSchema(error)) return saveWithoutMarket(userId, body, deps);
     throw error;
   }
 
   if (!committed.unlocked || !committed.market) {
     const restored = await refund(userId, input.listingId);
-    if (committed.error === 'no_value') return unavailableResult(restored.balance);
+    if (restored.refunded) await guard.noteRefund(userId, now);
+    if (committed.error === 'no_value') {
+      return unavailableResult(
+        restored.balance,
+        restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE,
+      );
+    }
     if (committed.error === 'no_credits') {
       throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
     }
@@ -178,7 +238,7 @@ export async function unlockMarketAndSave(
   }
 
   const car = await saveSavedCar(userId, body, deps);
-  return unlockedResult(car, true, committed.balance, committed.market);
+  return unlockedResult(car, !held.already, committed.balance, committed.market);
 }
 
 /** Heart-save behavior used until the unlock table and zip column exist. */
@@ -205,12 +265,15 @@ async function waitForUnlock(
   find: (userId: string, listingId: string) => Promise<StoredMarketUnlock | null>,
   userId: string,
   listingId: string,
+  deps: MarketSaveDeps,
 ): Promise<StoredMarketUnlock | null> {
-  for (let attempt = 0; attempt < UNLOCK_WAIT_ATTEMPTS; attempt += 1) {
+  const attempts = deps.unlockWaitAttempts ?? UNLOCK_WAIT_ATTEMPTS;
+  const pauseMs = deps.unlockWaitMs ?? UNLOCK_WAIT_MS;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const row = await find(userId, listingId);
     if (row) return row;
-    if (attempt + 1 < UNLOCK_WAIT_ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, UNLOCK_WAIT_MS));
+    if (attempt + 1 < attempts && pauseMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, pauseMs));
     }
   }
   return null;
@@ -245,14 +308,14 @@ function unlockedResult(
   };
 }
 
-function unavailableResult(balance: number): MarketSaveResult {
+function unavailableResult(balance: number, message = MARKET_UNAVAILABLE_MESSAGE): MarketSaveResult {
   return {
     car: null,
     spent: false,
     available: false,
     unlocked: false,
     reason: 'market_unavailable',
-    message: MARKET_UNAVAILABLE_MESSAGE,
+    message,
     credits: creditView(balance),
     market: null,
   };

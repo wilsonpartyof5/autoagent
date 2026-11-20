@@ -5,6 +5,7 @@ import { resetMarketCheckCacheForTests, marketCheckStoredKeyCount } from './cach
 import { hashMarketCheckSubject, withMarketCheckContext } from './context';
 import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
 
+import { marketCheckListingFromPayload } from './listing-car';
 import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
 import { getMarketCheckPrice } from './price';
 import { containsSecret } from './secrets';
@@ -273,6 +274,50 @@ test('a VIN search keeps MarketCheck listing id and never adopts the caller id',
     assert.equal(found.status, 'found');
     if (found.status === 'found') assert.equal(found.identity.listingId, null);
   });
+});
+
+test('a listing id lookup uses GET /v2/listing/car and keeps a mismatched id', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  resetMarketCheckCacheForTests();
+  const listing = {
+    id: 'listing-1',
+    vin: VIN,
+    price: 32000,
+    miles: 41000,
+    inventory_type: 'used',
+    media: { photo_links: ['https://images.marketcheck.com/tahoe.jpg'] },
+    build: { year: 2021, make: 'Honda', model: 'Accord' },
+    dealer: { name: 'Example Dealer', city: 'Rock Hill', state: 'SC', website: 'https://dealer.example' },
+    vdp_url: 'https://dealer.example/vdp',
+  };
+
+  await withFetch((call) => {
+    assert.match(call.url, /\/v2\/listing\/car\/listing-1\?/);
+    assert.equal(call.url.includes('search'), false);
+    assert.equal(call.body, '');
+    return new Response(JSON.stringify(listing), { status: 200, headers: { 'content-type': 'application/json' } });
+  }, async (_calls, logs) => {
+    const detail = await getVehicleDetailMcp('listing-1', undefined, ['listing']);
+    assert.equal(detail?.id, 'listing-1');
+    assert.equal(detail?.vin, VIN);
+    assert.equal(logs.join('\n').includes(SECRET), false);
+    const found = await lookupListingDealerIdentity('listing-1');
+    assert.equal(found.status, 'found');
+    if (found.status === 'found') assert.equal(found.identity.listingId, 'listing-1');
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => new Response(JSON.stringify({ ...listing, id: 'other-car' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }), async () => {
+    const detail = await getVehicleDetailMcp('listing-1', undefined, ['listing']);
+    assert.equal(detail?.id, 'other-car');
+    assert.notEqual(detail?.id, 'listing-1');
+  });
+
+  assert.equal(marketCheckListingFromPayload({ data: { listings: [listing] } })?.id, 'listing-1');
+  assert.equal(marketCheckListingFromPayload(listing)?.id, 'listing-1');
 });
 
 test('usage logs can be grouped by a hashed shopper id without PII', async () => {

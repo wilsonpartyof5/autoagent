@@ -7,6 +7,7 @@
  *
  * Tool mapping:
  *   search    → search_active_cars
+ *   one listing by id → GET /v2/listing/car/{listing_id}
  *   vin info  → Basic VIN decoder (GET /v2/decode/car/{vin}/specs)
  *   history   → get_car_history
  *
@@ -21,6 +22,7 @@ import {
   McpQuotaError,
   McpRateLimitError,
 } from './mcp-client';
+import { fetchMarketCheckListing } from './listing-car';
 import { decodeVinBasic, type BasicVinSpecs } from './vin-decode';
 
 export { McpQuotaError as MarketCheckQuotaError, McpRateLimitError as MarketCheckRateLimitError };
@@ -442,7 +444,8 @@ export function boundsToRadiusMiles(bounds: { north: number; south: number; east
 
 // --------------------------------------------------------------------------
 // Public: getVehicleDetailMcp
-// The listing shell is search_active_cars. The Basic VIN decoder and
+// A listing id is loaded with GET /v2/listing/car/{listing_id}. A VIN-only
+// shell still uses search_active_cars. The Basic VIN decoder and
 // get_car_history run only when `sections` includes `vin` or `history`.
 // MarketCheck Price is not loaded here.
 // --------------------------------------------------------------------------
@@ -477,6 +480,30 @@ function safeError(error: unknown): string {
   return redactSecrets(error instanceof Error ? error.message : String(error));
 }
 
+async function loadListingShell(listingId: string, vin?: string): Promise<MCListing | null> {
+  try {
+    if (vin) {
+      const searchRes = await callMcpTool<MCSearchResponse>('search_active_cars', {
+        rows: 1,
+        start: 0,
+        include_build_object: true,
+        include_dealer_object: true,
+        vin,
+      });
+      return searchRes?.data?.listings?.[0] ?? null;
+    }
+    const listing = await fetchMarketCheckListing(listingId);
+    return listing as MCListing | null;
+  } catch (error) {
+    if (error instanceof McpQuotaError || error instanceof McpRateLimitError) throw error;
+    console.error(JSON.stringify({
+      event: vin ? 'mc_detail_search_threw' : 'mc_detail_listing_threw',
+      error: safeError(error),
+    }));
+    return null;
+  }
+}
+
 export async function getVehicleDetailMcp(
   listingId: string,
   vin?: string,
@@ -488,30 +515,15 @@ export async function getVehicleDetailMcp(
   const wantHistory = wanted.has('history');
   const t0 = Date.now();
 
-  // (a) search by listing ID / VIN to get current price, photos, dealer
+  // (a) one listing by id, or a VIN search when no listing id was used
   // (b) Basic VIN decode for specs-card fields (only when that section is open)
   // (c) car history for DOM and price changes (only when that section is open)
-  const searchArgs: Record<string, unknown> = {
-    rows: 1,
-    start: 0,
-    // Required to receive build.* and dealer.* objects in the response
-    include_build_object: true,
-    include_dealer_object: true,
-  };
-  if (vin) {
-    searchArgs.vin = vin;
-  } else {
-    searchArgs.listing_id = listingId;
-  }
 
   // Listing is the VDP shell. VIN decode and history run only when that
   // section was requested, so opening the page does not pay for them.
   const needListing = wantListing || (wantVin && !vin);
-  const [searchRes, vinSpecsFirst, historyRaw] = await Promise.all([
-    needListing ? callMcpTool<MCSearchResponse>('search_active_cars', searchArgs).catch((e) => {
-      console.error(JSON.stringify({ event: 'mc_detail_search_threw', error: safeError(e) }));
-      return null;
-    }) : Promise.resolve(null),
+  const [listingShell, vinSpecsFirst, historyRaw] = await Promise.all([
+    needListing ? loadListingShell(listingId, vin) : Promise.resolve(null),
     wantVin && vin ? decodeVinBasic(vin).catch((e) => {
       console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
       return null;
@@ -524,7 +536,7 @@ export async function getVehicleDetailMcp(
 
   let vinData: BasicVinSpecs | null = vinSpecsFirst;
   if (wantVin && !vin) {
-    const discovered = searchRes?.data?.listings?.[0]?.vin;
+    const discovered = typeof listingShell?.vin === 'string' ? listingShell.vin : undefined;
     if (discovered) {
       vinData = await decodeVinBasic(discovered).catch((e) => {
         console.error(JSON.stringify({ event: 'mc_detail_vin_threw', error: safeError(e) }));
@@ -534,7 +546,7 @@ export async function getVehicleDetailMcp(
   }
 
   // MCP wraps the search response in a `data` envelope. Basic decode is already mapped.
-  const listing: MCListing | null = searchRes?.data?.listings?.[0] ?? null;
+  const listing: MCListing | null = listingShell;
   // get_car_history returns a plain array (no wrapper)
   const historyList: MCCarHistoryEntry[] = Array.isArray(historyRaw) ? historyRaw : [];
 

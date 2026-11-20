@@ -6,6 +6,7 @@ import { payloadContainsSecret } from '@/lib/marketcheck/secrets';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
+import { hashShopperIp, marketLookupFailsClosed, shopperClientIp } from '@/lib/shopper/market-lookup-guard';
 import { unlockMarketAndSave } from '@/lib/shopper/market-save';
 import { shopperOwnsDeal, supabaseSavedCarRepository } from '@/lib/shopper/saved-car-store';
 import type { ListingLookup } from '@/lib/shopper/saved-cars';
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
         lookup: liveLookup,
         now: new Date(),
         supabase: createAdminClient(),
+        ipHash: hashShopperIp(shopperClientIp(request.headers)),
+        failClosed: marketLookupFailsClosed(),
       }),
     );
     const payload = {

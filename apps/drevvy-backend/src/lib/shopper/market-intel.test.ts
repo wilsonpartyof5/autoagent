@@ -10,7 +10,9 @@ import {
   MARKET_INTEL_KEYS,
   computeMarketIntel,
   countPriceDrops,
+  acceptedListingFacts,
   listingFactsFromDetail,
+  listingIdentityMatches,
   marketIntelHasValue,
   presentMarketIntel,
   type CompFact,
@@ -179,6 +181,39 @@ test('listing facts keep the market ZIP and drop dealer contact fields', () => {
     make: 'Unknown',
     model: 'Vehicle',
   }), null);
+});
+
+test('a listing is stored only when its id or VIN matches the request', () => {
+  const matched = acceptedListingFacts(
+    { listingId: 'mc-listing-1', vin: null },
+    detail(),
+  );
+  assert.equal(matched?.id, 'mc-listing-1');
+
+  const vinMatch = acceptedListingFacts(
+    { listingId: 'caller-listing', vin: VIN },
+    { ...detail(), id: 'mc-real-listing' },
+  );
+  assert.equal(vinMatch?.id, 'mc-real-listing');
+  assert.equal(vinMatch?.vin, VIN);
+
+  const swapped = acceptedListingFacts(
+    { listingId: 'mc-listing-1', vin: VIN },
+    { ...detail(), id: 'other-car', vin: '2GNSKCKD5RR123456' },
+  );
+  assert.equal(swapped, null);
+  assert.equal(listingIdentityMatches({
+    requestedListingId: 'mc-listing-1',
+    requestedVin: null,
+    returnedListingId: 'other-car',
+    returnedVin: VIN,
+  }), false);
+  assert.equal(listingIdentityMatches({
+    requestedListingId: 'mc-listing-1',
+    requestedVin: null,
+    returnedListingId: '',
+    returnedVin: null,
+  }), false);
 });
 
 function tracker() {

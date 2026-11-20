@@ -166,6 +166,34 @@ export function countPriceDrops(raw: unknown): number | null {
   return drops;
 }
 
+export function listingIdentityMatches(input: {
+  requestedListingId: string;
+  requestedVin: string | null;
+  returnedListingId: string;
+  returnedVin: string | null;
+}): boolean {
+  const requestedId = input.requestedListingId.trim();
+  const returnedId = input.returnedListingId.trim();
+  if (requestedId.length > 0 && returnedId.length > 0 && requestedId === returnedId) return true;
+  const requestedVin = (input.requestedVin ?? '').trim().toUpperCase();
+  const returnedVin = (input.returnedVin ?? '').trim().toUpperCase();
+  return requestedVin.length > 0 && requestedVin === returnedVin;
+}
+
+/** Drops a detail whose listing id and VIN both disagree with the request. */
+export function acceptedListingFacts(
+  requested: { listingId: string; vin: string | null },
+  detail: DetailResponse,
+): ListingFacts | null {
+  if (!listingIdentityMatches({
+    requestedListingId: requested.listingId,
+    requestedVin: requested.vin,
+    returnedListingId: detail.id,
+    returnedVin: detail.vin ?? null,
+  })) return null;
+  return listingFactsFromDetail(requested.listingId, detail);
+}
+
 export function listingFactsFromDetail(listingId: string, detail: DetailResponse): ListingFacts | null {
   const make = detail.make?.trim() ?? '';
   const model = detail.model?.trim() ?? '';
@@ -273,7 +301,7 @@ export async function loadMarketIntelFromMarketCheck(input: {
   return computeMarketIntel(input, {
     listing: async (listingId, vin) => {
       const detail = await getVehicleDetailMcp(listingId, vin ?? undefined, ['listing']);
-      return detail ? listingFactsFromDetail(listingId, detail) : null;
+      return detail ? acceptedListingFacts({ listingId, vin }, detail) : null;
     },
     fairPrice: async (vehicle) => {
       const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle);
