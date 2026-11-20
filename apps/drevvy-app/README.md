@@ -66,8 +66,11 @@ account already had a loaded balance, the restore reports that balance's
 increase. When the before-balance was not loaded for this account, the restore
 says the server confirmed it and does not say that zero keys were added. A
 demo purchase says the keys are sample keys. A restore whose known count is
-zero does not say keys were added. The server does not check a sandbox flag, so this client
-does not send a purchase from a platform SDK key.
+zero does not say keys were added. The server grants keys only after RevenueCat
+confirms a sandbox transaction (`is_sandbox` is true) or an authenticated
+webhook whose `environment` is exactly `SANDBOX`. Production, missing, and
+invalid flags grant nothing. This client still does not send a purchase from a
+platform SDK key.
 
 Discover, auth, credits, key spend, rooftop match, deal chips, profile, and
 saved cars read that same mode and the same origin. Live with an empty origin
