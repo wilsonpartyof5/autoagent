@@ -351,7 +351,9 @@ export function selectSender(input: {
       conversationId: null,
     };
   }
-  const phone = normalizePhone(input.channel === 'voice' ? (fallback.voice ?? fallback.sms) : fallback.sms);
+  // The caller ID and the reply text number are different numbers.
+  // Voice uses only the caller ID. Text uses only the text number.
+  const phone = normalizePhone(input.channel === 'voice' ? fallback.voice : fallback.sms);
   if (!phone) {
     return { error: input.channel === 'voice' ? 'Test mode needs a caller ID.' : 'Test mode needs DREVVY_TEXT_NUMBER.' };
   }
