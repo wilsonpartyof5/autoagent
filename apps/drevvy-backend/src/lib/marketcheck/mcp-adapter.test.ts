@@ -8,7 +8,7 @@ import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
 import { marketCheckListingFromPayload } from './listing-car';
 import { MarketCheckUpstreamError } from './mcp-client';
 import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
-import { getMarketCheckPrice } from './price';
+import { getMarketCheckPrice, resetFairPriceGuardsForTests } from './price';
 import { containsSecret } from './secrets';
 import { resetMarketCheckUsageForTests } from './usage';
 
@@ -361,10 +361,21 @@ test('a listing outage throws and a search outage stays an empty envelope', asyn
       () => searchActiveCarsMcp({ latitude: 34.9, longitude: -81.0, radiusMiles: 10 }, { strict: true }),
       (error: unknown) => error instanceof MarketCheckUpstreamError && error.status === 500,
     );
-    await assert.rejects(
-      () => getMarketCheckPrice({ vin: VIN, miles: 41000, zip: ZIP }, Date.now, { strict: true }),
-      (error: unknown) => error instanceof MarketCheckUpstreamError,
-    );
+    const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+    process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+    resetFairPriceGuardsForTests();
+    try {
+      await assert.rejects(
+        () => getMarketCheckPrice({ vin: VIN, miles: 41000, zip: ZIP }, Date.now, {
+          strict: true,
+          userId: 'shopper-price-test',
+        }),
+        (error: unknown) => error instanceof MarketCheckUpstreamError,
+      );
+    } finally {
+      if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+      else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
+    }
   });
 });
 
@@ -388,19 +399,29 @@ test('usage logs can be grouped by a hashed shopper id without PII', async () =>
 
 test('MarketCheck Price is cached for the same VIN and ZIP area', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   resetMarketCheckCacheForTests();
+  resetFairPriceGuardsForTests();
   resetMarketCheckUsageForTests();
   let calls = 0;
 
   await withFetch((call) => {
     calls += 1;
     const body = JSON.parse(call.body) as { params: { name: string; arguments: { zip: string } } };
-    assert.equal(body.params.name, 'get_marketcheck_price');
-    return jsonRpc({ data: { marketcheck_price: body.params.arguments.zip === ZIP ? 30100 : 28000 } });
+    assert.equal(body.params.name, 'predict_price_with_comparables');
+    return jsonRpc({
+      success: true,
+      data: {
+        marketcheck_price: body.params.arguments.zip === ZIP ? 30100 : 28000,
+        comparables: { listings: [] },
+      },
+    });
   }, async (_calls, logs) => {
-    const first = await getMarketCheckPrice({ vin: VIN, miles: 41000, zip: `${ZIP}-1234` });
-    const second = await getMarketCheckPrice({ vin: VIN.toLowerCase(), miles: 41000, zip: ZIP });
-    const otherArea = await getMarketCheckPrice({ vin: VIN, miles: 41000, zip: '94105' });
+    const paid = { userId: 'shopper-price-test' };
+    const first = await getMarketCheckPrice({ vin: VIN, miles: 41000, zip: `${ZIP}-1234` }, Date.now, paid);
+    const second = await getMarketCheckPrice({ vin: VIN.toLowerCase(), miles: 41000, zip: ZIP }, Date.now, paid);
+    const otherArea = await getMarketCheckPrice({ vin: VIN, miles: 41000, zip: '94105' }, Date.now, paid);
     assert.equal(first?.price, 30100);
     assert.equal(first?.fromCache, false);
     assert.equal(second?.fromCache, true);
@@ -412,10 +433,13 @@ test('MarketCheck Price is cached for the same VIN and ZIP area', async () => {
     const joined = logs.join('\n');
     assert.equal(joined.includes(VIN), false);
     assert.equal(joined.includes(ZIP), false);
-    assert.equal(joined.includes('"endpoint":"get_marketcheck_price"'), true);
+    assert.equal(joined.includes('"endpoint":"predict_price_with_comparables"'), true);
+    assert.equal(joined.includes('get_marketcheck_price'), false);
     assert.equal(containsSecret(joined), false);
     assert.equal(containsSecret(JSON.stringify(first)), false);
   });
+  if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
 });
 
 test('upstream errors that echo the API key are redacted in logs', async () => {

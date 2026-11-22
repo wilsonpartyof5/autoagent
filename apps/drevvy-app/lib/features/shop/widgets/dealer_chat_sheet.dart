@@ -42,6 +42,7 @@ class DealerChatSheet extends StatefulWidget {
     this.dealId,
     this.chipInputs,
     this.chipsEndpoint,
+    this.showInboxStub = true,
   });
 
   final Listing listing;
@@ -64,6 +65,9 @@ class DealerChatSheet extends StatefulWidget {
   final DealChipInputs? chipInputs;
 
   final DealChipsEndpoint? chipsEndpoint;
+
+  /// Demo preview of the dealer dashboard. Live chat does not show it.
+  final bool showInboxStub;
 
   @override
   State<DealerChatSheet> createState() => DealerChatSheetState();
@@ -269,11 +273,12 @@ class DealerChatSheetState extends State<DealerChatSheet> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: DrevvySpace.s4),
-                      DealerInboxStub(
-                        shopperFirstName: widget.shopperFirstName,
-                        listing: widget.listing,
-                        message: _selected?.message ?? _composer.text,
-                      ),
+                      if (widget.showInboxStub)
+                        DealerInboxStub(
+                          shopperFirstName: widget.shopperFirstName,
+                          listing: widget.listing,
+                          message: _selected?.message ?? _composer.text,
+                        ),
                       const SizedBox(height: DrevvySpace.s3),
                       Text(
                         KeySpend.dealerCloseNote,
@@ -307,10 +312,11 @@ class DealerChatSheetState extends State<DealerChatSheet> {
                         ),
                       ],
                       const SizedBox(height: DrevvySpace.s4),
-                      DealerInboxStub(
-                        shopperFirstName: widget.shopperFirstName,
-                        listing: widget.listing,
-                      ),
+                      if (widget.showInboxStub)
+                        DealerInboxStub(
+                          shopperFirstName: widget.shopperFirstName,
+                          listing: widget.listing,
+                        ),
                       const SizedBox(height: DrevvySpace.s5),
                       Wrap(
                         spacing: DrevvySpace.s2,

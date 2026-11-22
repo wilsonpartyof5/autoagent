@@ -60,9 +60,6 @@ export async function startDealerConversation(
   const listingUrl = body && typeof body === 'object' && !Array.isArray(body)
     ? optionalUrl((body as { listingUrl?: unknown }).listingUrl)
     : null;
-  const zip = body && typeof body === 'object' && !Array.isArray(body)
-    ? (body as { zip?: unknown }).zip
-    : undefined;
 
   const nowMs = deps.now.getTime();
   if (listingId) {
@@ -105,7 +102,7 @@ export async function startDealerConversation(
   const vdpMatchId = deps.supabase && listingId
     ? await recordInNetworkVdpMatch(deps.supabase, { listingId, listingUrl, match: namedMatch })
     : null;
-  const result = await addShopperCar(userId, { ...input, zip, vdpMatchId }, deps);
+  const result = await addShopperCar(userId, { ...input, vdpMatchId, rooftopId: match.rooftop.id }, deps);
   if (deps.supabase && listingId) {
     await recordInNetworkConversation(deps.supabase, {
       dealId: result.deal.id,

@@ -64,7 +64,7 @@ void main() {
     expect(find.text('Down \$1,705 from the last round'), findsOneWidget);
     expect(find.text('Down \$2,097 from the last round'), findsOneWidget);
     expect(find.text('Offer received'), findsWidgets);
-    expect(find.text('Finding your best price'), findsOneWidget);
+    expect(find.text('Waiting on price'), findsOneWidget);
     expect(find.text('No response'), findsOneWidget);
     expect(
       find.text('No written quote yet. Drevvy is still waiting on an itemized out-the-door price.'),

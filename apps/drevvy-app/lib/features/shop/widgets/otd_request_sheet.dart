@@ -19,7 +19,7 @@ class OtdRequestSheet extends StatefulWidget {
 
   final Listing listing;
   final bool alreadyRequested;
-  final Future<void> Function({String? note}) onConfirm;
+  final Future<bool> Function({String? note}) onConfirm;
 
   @override
   State<OtdRequestSheet> createState() => _OtdRequestSheetState();
@@ -47,11 +47,11 @@ class _OtdRequestSheetState extends State<OtdRequestSheet> {
   Future<void> _confirm() async {
     setState(() => _isLoading = true);
     final note = _note.text.trim();
-    await widget.onConfirm(note: note.isEmpty ? null : note);
+    final ok = await widget.onConfirm(note: note.isEmpty ? null : note);
     if (!mounted) return;
     setState(() {
       _isLoading = false;
-      _done = true;
+      _done = ok;
     });
   }
 

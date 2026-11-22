@@ -19,6 +19,7 @@ import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
 import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
+import '../../../data/services/shopper_session_store.dart';
 import '../../../data/services/cars_balance_placement.dart';
 import '../../../data/services/purchase_config.dart';
 import '../../../data/services/superwall_placement.dart';
@@ -41,6 +42,7 @@ class VdpScreen extends ConsumerStatefulWidget {
     required this.listingId,
     this.discoverConfig,
     this.discoverCatalog,
+    this.repository,
   });
 
   final String listingId;
@@ -48,13 +50,15 @@ class VdpScreen extends ConsumerStatefulWidget {
   /// Overrides the dart-define. Tests pass a live config with a fake catalog.
   final DiscoverConfig? discoverConfig;
   final DiscoverCatalog? discoverCatalog;
+  final DemoRepository? repository;
 
   @override
   ConsumerState<VdpScreen> createState() => _VdpScreenState();
 }
 
 class _VdpScreenState extends ConsumerState<VdpScreen> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo =
+      widget.repository ?? DemoRepository.instance;
   final CarsBalancePlacement _carsBalancePlacement = carsBalancePlacementFor(
     PurchaseConfig.fromEnvironment(),
   );
@@ -76,6 +80,8 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
   bool _otdRequested = false;
   String _shopperFirstName = '';
   String? _liveError;
+  bool _askingDealer = false;
+  String? _askMessage;
 
   DiscoverConfig get _discoverConfig =>
       widget.discoverConfig ?? DiscoverConfig.fromEnvironment();
@@ -155,14 +161,18 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     }
     try {
       final listing = await _catalog.listing(widget.listingId);
-      final network = _repo.isLive
-          ? await _repo.getRooftopMatch(listing)
-          : null;
+      RooftopMatch? network;
+      CarCreditBalance? balance;
+      if (_repo.isLive) {
+        network = await _repo.getRooftopMatch(listing);
+        balance = await _repo.getCreditBalance();
+      }
       if (!mounted) return;
       setState(() {
         _listing = listing;
         _market = null;
         _rooftopMatch = network;
+        if (balance != null) _creditBalance = balance;
         _isLoading = false;
         _liveError = null;
       });
@@ -285,6 +295,57 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     );
   }
 
+  /// In-network Ask. The server spends the key. Chat opens on success.
+  Future<void> _askThisDealer({bool allowPaywall = true}) async {
+    final listing = _listing;
+    final match = _rooftopMatch;
+    if (listing == null || match == null || !match.classifiedInNetwork) return;
+    if (_askingDealer) return;
+    if (ShopperSessionStore.instance.accessToken == null) {
+      setState(() => _askMessage = DealerConversationNotice.signedOut.plainCopy);
+      return;
+    }
+    setState(() {
+      _askingDealer = true;
+      _askMessage = null;
+    });
+    final deal = await _repo.startDealerConversation(listing, match);
+    if (!mounted) return;
+    if (deal != null) {
+      setState(() => _askingDealer = false);
+      context.push('/deals/${deal.id}/chat');
+      unawaited(_maybePromptNotifications());
+      return;
+    }
+    final notice = _repo.lastConversationNotice;
+    if (notice == DealerConversationNotice.needsKey && allowPaywall) {
+      final balance = await _repo.getCreditBalance();
+      if (!mounted) return;
+      setState(() {
+        _askingDealer = false;
+        _creditBalance = balance;
+      });
+      final shown = balance.canUnlock
+          ? const CarCreditBalance.withBalance(0)
+          : balance;
+      await showUnlockPaywall(
+        context: context,
+        listing: listing,
+        balance: shown,
+        repo: _repo,
+        avgSavings: _avgSavings,
+        placement: _carsBalancePlacement,
+        onCanUnlock: (_) => _askThisDealer(allowPaywall: false),
+      );
+      return;
+    }
+    setState(() {
+      _askingDealer = false;
+      _askMessage =
+          notice?.plainCopy ?? DealerConversationNotice.failed.plainCopy;
+    });
+  }
+
   /// Key B: in-network anonymous dealer chat.
   void _handleConversationTap() {
     final listing = _listing;
@@ -334,6 +395,7 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         dealId: dealId,
         chipInputs: inputs,
         chipsEndpoint: _repo.dealChips,
+        showInboxStub: !_repo.isLive,
         onSend: ({templateId, message}) async {
           final deal = await _repo.startDealerConversation(
             listing,
@@ -386,9 +448,20 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
           listing: listing,
           alreadyRequested: _otdRequested,
           onConfirm: ({note}) async {
-            await _repo.requestOtdNumber(listing, note: note);
-            if (!mounted) return;
+            final ok = await _repo.requestOtdNumber(listing, note: note);
+            if (!mounted) return false;
+            if (!ok) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'An out-the-door request is not available yet.',
+                  ),
+                ),
+              );
+              return false;
+            }
             setState(() => _otdRequested = true);
+            return true;
           },
         ),
       ),
@@ -404,6 +477,9 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         errorMessage: _liveError,
         onRetry: _loadData,
         network: _rooftopMatch,
+        asking: _askingDealer,
+        askMessage: _askMessage,
+        onAskDealer: _askingDealer ? null : () => unawaited(_askThisDealer()),
       );
     }
     final colors = context.drevvy;

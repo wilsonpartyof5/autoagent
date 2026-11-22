@@ -54,6 +54,7 @@ Future<bool> openDealDealerChat({
         firstName,
       ),
       chipsEndpoint: repo.dealChips,
+      showInboxStub: !repo.isLive,
       onSend: ({templateId, message}) async {
         await repo.startDealerConversation(
           listing,
