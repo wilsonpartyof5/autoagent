@@ -13,6 +13,10 @@ const HELD = readFileSync(
   join(ROOT, 'supabase/held/20261122210000_store_transaction_unique_grants.sql'),
   'utf8',
 );
+const GUARD = readFileSync(
+  join(ROOT, 'supabase/held/20261122220000_store_transaction_publication_guard.sql'),
+  'utf8',
+);
 
 const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '22222222-2222-4222-8222-222222222222';
@@ -412,5 +416,226 @@ describe('held store transaction grants', { concurrency: 1, timeout: 180_000 }, 
     assert.match(warning, /2 users/);
     assert.match(warning, new RegExp(USER_A));
     assert.match(warning, new RegExp(USER_B));
+  });
+});
+
+const SERVICE_USER = '33333333-3333-4333-8333-333333333333';
+
+type InventoryRow = { object_id: string; copies: number };
+
+async function inventory(db: PGlite): Promise<InventoryRow[]> {
+  const result = await db.query<InventoryRow>(`
+    with objects as (
+      select 'table:' || c.relname as object_id
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relkind = 'r'
+        and c.relname in ('store_transactions', 'store_transaction_aliases')
+      union all
+      select 'index:' || ic.relname
+      from pg_index i
+      join pg_class ic on ic.oid = i.indexrelid
+      join pg_class tc on tc.oid = i.indrelid
+      join pg_namespace n on n.oid = tc.relnamespace
+      where n.nspname = 'public'
+        and tc.relname in ('store_transactions', 'store_transaction_aliases')
+      union all
+      select 'function:' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname in ('purchase_credits_atomic', 'reverse_purchase_atomic')
+    ),
+    grants as (
+      select 'table-grant:' || c.relname || ':' || a.grantee::regrole::text || ':' || a.privilege_type as object_id
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      cross join lateral aclexplode(c.relacl) a
+      where n.nspname = 'public'
+        and c.relname in ('store_transactions', 'store_transaction_aliases')
+      union all
+      select 'function-grant:' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || '):'
+        || a.grantee::regrole::text || ':' || a.privilege_type
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      cross join lateral aclexplode(p.proacl) a
+      where n.nspname = 'public'
+        and p.proname in ('purchase_credits_atomic', 'reverse_purchase_atomic')
+    )
+    select object_id, count(*)::int as copies
+    from (
+      select object_id from objects
+      union all
+      select object_id from grants
+    ) listed
+    group by object_id
+    order by object_id
+  `);
+  return result.rows;
+}
+
+function assertSingleCopies(rows: InventoryRow[]): void {
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    assert.equal(row.copies, 1, row.object_id);
+  }
+}
+
+async function clearAbortedTransaction(db: PGlite): Promise<void> {
+  try {
+    await db.exec('rollback');
+  } catch {
+    // The failed guard already ended its transaction.
+  }
+}
+
+async function expectGuardRaise(db: PGlite, pattern: RegExp): Promise<void> {
+  let raised = false;
+  try {
+    await db.exec(GUARD);
+  } catch (error) {
+    raised = true;
+    assert.match(messageOf(error), pattern);
+  } finally {
+    await clearAbortedTransaction(db);
+  }
+  assert.equal(raised, true);
+}
+
+describe('held store transaction grants are idempotent and unpublished', { concurrency: 1, timeout: 180_000 }, () => {
+  let db: PGlite;
+  let afterFirst: InventoryRow[];
+
+  before(async () => {
+    db = new PGlite();
+    await prepare(db);
+    await applyMigrations(db);
+    await db.exec(`
+      insert into auth.users (id, email) values ('${SERVICE_USER}', 'service@example.com');
+      create publication supabase_realtime;
+      create publication drevvy_clickhouse;
+      create publication drevvy_clickpipes;
+    `);
+    await db.exec(HELD);
+    afterFirst = await inventory(db);
+    assertSingleCopies(afterFirst);
+    await db.exec(HELD);
+    const afterSecond = await inventory(db);
+    assert.deepEqual(afterSecond, afterFirst);
+    await db.exec(GUARD);
+    assert.deepEqual(await inventory(db), afterFirst);
+  });
+
+  test('service_role can insert, update, and delete both tables', async () => {
+    for (const table of TABLES) {
+      for (const priv of ['INSERT', 'UPDATE', 'DELETE'] as const) {
+        assert.equal(await privilege(db, 'service_role', table, priv), true, `${priv} ${table}`);
+      }
+    }
+    await db.exec('set role service_role');
+    try {
+      const who = await db.query<{ user: string }>(`select current_user as user`);
+      assert.equal(who.rows[0]?.user, 'service_role');
+      await db.exec(`
+        insert into public.store_transactions (
+          transaction_id, user_id, product_id, pack_size, pack_price_cents, aliases
+        ) values (
+          'direct_tx', '${SERVICE_USER}', 'drevvy_keys_5', 5, 1999, array['direct_tx']
+        );
+        update public.store_transactions
+        set pack_size = 10
+        where transaction_id = 'direct_tx';
+        insert into public.store_transaction_aliases (alias, transaction_id)
+        values ('direct_alias', 'direct_tx');
+        update public.store_transaction_aliases
+        set transaction_id = 'direct_tx'
+        where alias = 'direct_alias';
+      `);
+      const updated = await db.query<{ pack_size: number; alias: string }>(`
+        select s.pack_size, a.alias
+        from public.store_transactions s
+        join public.store_transaction_aliases a on a.transaction_id = s.transaction_id
+        where s.transaction_id = 'direct_tx' and a.alias = 'direct_alias'
+      `);
+      assert.equal(Number(updated.rows[0]?.pack_size), 10);
+      assert.equal(updated.rows[0]?.alias, 'direct_alias');
+      await db.exec(`
+        delete from public.store_transaction_aliases where alias = 'direct_alias';
+        delete from public.store_transactions where transaction_id = 'direct_tx';
+      `);
+    } finally {
+      await db.exec('reset role');
+    }
+    const left = await db.query<{ n: number }>(
+      `select count(*)::int as n from public.store_transactions where transaction_id = 'direct_tx'`,
+    );
+    assert.equal(left.rows[0]?.n, 0);
+    assert.deepEqual(await inventory(db), afterFirst);
+  });
+
+  test('service_role can execute the new purchase and reversal functions', async () => {
+    const purchasePrivilege = await db.query<{ ok: boolean }>(`
+      select has_function_privilege(
+        'service_role',
+        'public.purchase_credits_atomic(uuid,integer,integer,text,text,text,text[])',
+        'execute'
+      ) as ok
+    `);
+    const reversePrivilege = await db.query<{ ok: boolean }>(`
+      select has_function_privilege(
+        'service_role',
+        'public.reverse_purchase_atomic(uuid,integer,text,text)',
+        'execute'
+      ) as ok
+    `);
+    assert.equal(purchasePrivilege.rows[0]?.ok, true);
+    assert.equal(reversePrivilege.rows[0]?.ok, true);
+
+    await db.exec('set role service_role');
+    try {
+      const who = await db.query<{ user: string }>(`select current_user as user`);
+      assert.equal(who.rows[0]?.user, 'service_role');
+      const purchased = await grant(db, SERVICE_USER, 5, 1999, 'exec_tx', ['exec_tx', 'exec_alias']);
+      assert.equal(purchased.granted, true);
+      assert.equal(await balanceOf(db, SERVICE_USER), 5);
+      const reversed = await reverse(db, SERVICE_USER, 25, 'exec_alias');
+      assert.equal(reversed.reversed, true);
+      assert.equal(Number(reversed.lifetime_refunded), 5);
+      assert.equal(await balanceOf(db, SERVICE_USER), 0);
+    } finally {
+      await db.exec('reset role');
+    }
+  });
+
+  test('the guard raises when a table is added to a publication', async () => {
+    await db.exec('alter publication supabase_realtime add table public.store_transactions');
+    const listed = await db.query<{ tablename: string }>(`
+      select tablename
+      from pg_publication_tables
+      where schemaname = 'public' and tablename = 'store_transactions'
+    `);
+    assert.equal(listed.rows.length, 1);
+    await expectGuardRaise(db, /store_transactions or store_transaction_aliases is in a publication/);
+    await db.exec('alter publication supabase_realtime drop table public.store_transactions');
+    await db.exec(GUARD);
+  });
+
+  test('the guard raises when a publication is for all tables', async () => {
+    await db.exec('drop table public.store_transaction_aliases');
+    await db.exec('drop table public.store_transactions');
+    const absent = await db.query<{ n: number }>(`
+      select count(*)::int as n
+      from pg_publication_tables
+      where schemaname = 'public'
+        and tablename in ('store_transactions', 'store_transaction_aliases')
+    `);
+    assert.equal(absent.rows[0]?.n, 0);
+    await db.exec('create publication store_grants_all_tables for all tables');
+    const flags = await db.query<{ n: number }>(`
+      select count(*)::int as n from pg_publication where puballtables is true
+    `);
+    assert.equal(flags.rows[0]?.n, 1);
+    await expectGuardRaise(db, /a publication has puballtables = true/);
   });
 });

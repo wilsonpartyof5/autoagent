@@ -73,7 +73,13 @@ A completed purchase posts `{productId, transactionId}` to
 `POST /api/consumer/credits` and keeps the balance the server returns.
 Cancellation, a pending payment, a store error, and a failed grant do not add
 keys locally. Restore posts transaction ids to
-`POST /api/consumer/credits/restore` and uses that balance. When this account
+`POST /api/consumer/credits/restore` and uses that balance. The success body
+keeps `data` and adds `skipped`. Each skipped purchase is
+`{transactionId, reason}`. `transactionId` is the canonical store id, including
+when the client sent another alias. Reasons include `already_granted_elsewhere`,
+`refused`, `sandbox_not_allowed`, `sandbox_cap`, `test_store`, `promotional`,
+and `already_granted`. A purchase that grants is not listed. An id RevenueCat
+does not confirm is omitted. When this account
 already had a loaded balance, the restore reports that balance's increase.
 When the before-balance was not loaded for this account, the restore says the
 server confirmed it and does not say that zero keys were added. A demo
