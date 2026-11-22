@@ -7,6 +7,7 @@ import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
 import 'package:drevvy_app/data/services/cars_balance_placement.dart';
 import 'package:drevvy_app/data/services/credits_endpoint.dart';
+import 'package:drevvy_app/data/services/pack_offering.dart';
 import 'package:drevvy_app/data/services/purchase_config.dart';
 import 'package:drevvy_app/data/services/purchase_service.dart';
 import 'package:drevvy_app/data/services/purchase_service_factory.dart';
@@ -101,9 +102,211 @@ void main() {
       );
 
       expect(_liveOrigin.sandboxPurchasesEnabled, isTrue);
+      expect(_liveOrigin.storePurchasesEnabled, isTrue);
       expect(
         buildPurchaseService(_liveOrigin, gateway: _FakeStore()),
         isA<RevenueCatPurchaseService>(),
+      );
+    });
+
+    test('debug accepts a test_ key and ignores an appl_ key', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      const testStore = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        apiBaseUrl: 'https://api.drevvy.com',
+        revenueCatIosApiKey: 'test_store_key',
+        buildMode: PurchaseBuildMode.debug,
+      );
+      expect(testStore.buildMode, PurchaseBuildMode.debug);
+      expect(testStore.hasTestStoreKey, isTrue);
+      expect(testStore.storePurchasesEnabled, isTrue);
+      expect(
+        buildPurchaseService(testStore, gateway: _FakeStore()),
+        isA<RevenueCatPurchaseService>(),
+      );
+
+      const publicKey = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        apiBaseUrl: 'https://api.drevvy.com',
+        revenueCatIosApiKey: 'appl_public',
+        buildMode: PurchaseBuildMode.debug,
+      );
+      expect(publicKey.storePurchasesEnabled, isFalse);
+      expect(publicKey.sandboxPurchasesEnabled, isFalse);
+      final rejected = buildPurchaseService(publicKey, gateway: _FakeStore());
+      expect(rejected, isA<UnavailablePurchaseService>());
+      expect(
+        (rejected as UnavailablePurchaseService).message,
+        platformKeyNotSandboxMessage,
+      );
+    });
+
+    test('release and profile accept an appl_ key', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      for (final mode in const [
+        PurchaseBuildMode.release,
+        PurchaseBuildMode.profile,
+      ]) {
+        final config = PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: '  appl_public  ',
+          buildMode: mode,
+        );
+        expect(config.hasTestStoreKey, isFalse);
+        expect(config.sandboxPurchasesEnabled, isFalse);
+        expect(config.storePurchasesEnabled, isTrue);
+        expect(
+          buildPurchaseService(config, gateway: _FakeStore()),
+          isA<RevenueCatPurchaseService>(),
+        );
+      }
+    });
+
+    test('a missing key leaves purchases unavailable', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      for (final mode in PurchaseBuildMode.values) {
+        final missing = PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: '   ',
+          buildMode: mode,
+        );
+        expect(missing.usesRevenueCat, isFalse);
+        expect(missing.storePurchasesEnabled, isFalse);
+        final service = buildPurchaseService(missing, gateway: _FakeStore());
+        expect(service, isA<UnavailablePurchaseService>());
+        expect(
+          (service as UnavailablePurchaseService).message,
+          purchasesNotConfiguredMessage,
+        );
+        expect(service, isNot(isA<FakePurchaseService>()));
+      }
+    });
+
+    test('a wrong-prefix key leaves purchases unavailable', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      const cases = <PurchaseConfig>[
+        PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: 'test_store_key',
+          buildMode: PurchaseBuildMode.release,
+        ),
+        PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: 'goog_public',
+          buildMode: PurchaseBuildMode.release,
+        ),
+        PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: 'appl',
+          buildMode: PurchaseBuildMode.profile,
+        ),
+        PurchaseConfig(
+          mode: DrevvyDataMode.live,
+          apiBaseUrl: 'https://api.drevvy.com',
+          revenueCatIosApiKey: 'APPL_public',
+          buildMode: PurchaseBuildMode.release,
+        ),
+      ];
+
+      for (final config in cases) {
+        expect(
+          config.storePurchasesEnabled,
+          isFalse,
+          reason: config.revenueCatIosApiKey,
+        );
+        final service = buildPurchaseService(config, gateway: _FakeStore());
+        expect(service, isA<UnavailablePurchaseService>());
+        expect(
+          (service as UnavailablePurchaseService).message,
+          platformKeyNotSandboxMessage,
+        );
+      }
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      const androidRelease = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        apiBaseUrl: 'https://api.drevvy.com',
+        revenueCatAndroidApiKey: 'goog_public',
+        buildMode: PurchaseBuildMode.release,
+      );
+      expect(androidRelease.storePurchasesEnabled, isFalse);
+      expect(
+        buildPurchaseService(androidRelease, gateway: _FakeStore()),
+        isA<UnavailablePurchaseService>(),
+      );
+    });
+
+    test('release appl_ without an API origin does not open the store', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      const missingOrigin = PurchaseConfig(
+        mode: DrevvyDataMode.live,
+        revenueCatIosApiKey: 'appl_public',
+        buildMode: PurchaseBuildMode.release,
+      );
+      expect(missingOrigin.storePurchasesEnabled, isFalse);
+      final blocked = buildPurchaseService(missingOrigin);
+      expect(blocked, isA<UnavailablePurchaseService>());
+      expect(
+        (blocked as UnavailablePurchaseService).message,
+        apiNotConfiguredMessage,
+      );
+
+      const demo = PurchaseConfig(
+        revenueCatIosApiKey: 'appl_public',
+        buildMode: PurchaseBuildMode.release,
+      );
+      expect(demo.storePurchasesEnabled, isFalse);
+      expect(buildPurchaseService(demo), isA<FakePurchaseService>());
+    });
+  });
+
+  group('keys offering', () {
+    test('selects offering keys and ignores every other offering', () {
+      expect(
+        selectPackPackages<String>(
+          byOfferingId: {
+            'default': ['drevvy_keys_1'],
+            keysOfferingId: ['keys_1', 'keys_5', 'keys_10', 'keys_25'],
+          },
+        ),
+        ['keys_1', 'keys_5', 'keys_10', 'keys_25'],
+      );
+    });
+
+    test('a missing or empty keys offering selects nothing', () {
+      expect(selectPackPackages<String>(byOfferingId: {}), isEmpty);
+      expect(
+        selectPackPackages<String>(
+          byOfferingId: {
+            'default': ['drevvy_keys_1', 'drevvy_keys_5'],
+            'current': ['keys_10'],
+          },
+        ),
+        isEmpty,
+      );
+      expect(
+        selectPackPackages<String>(
+          byOfferingId: {
+            keysOfferingId: const <String>[],
+            'default': ['drevvy_keys_25'],
+          },
+        ),
+        isEmpty,
       );
     });
   });
@@ -291,6 +494,34 @@ void main() {
         expect(store.loggedOut, isTrue);
       },
     );
+
+    test('a release appl_ key logs in to RevenueCat', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final store = _FakeStore();
+      final session = ShopperSessionStore()
+        ..identity = RevenueCatIdentity(
+          config: const PurchaseConfig(
+            mode: DrevvyDataMode.live,
+            apiBaseUrl: 'https://api.drevvy.com',
+            revenueCatIosApiKey: 'appl_public',
+            buildMode: PurchaseBuildMode.release,
+          ),
+          gateway: store,
+        );
+
+      await session.save(
+        const ShopperSession(
+          accessToken: 'shopper-jwt',
+          consumerUserId: 'supabase-user-1',
+        ),
+      );
+      await session.clear();
+
+      expect(store.loggedInUserId, 'supabase-user-1');
+      expect(store.loggedOut, isTrue);
+    });
 
     test('a platform SDK key does not log in to RevenueCat', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

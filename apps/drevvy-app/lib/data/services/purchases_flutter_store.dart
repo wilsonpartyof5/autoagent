@@ -168,7 +168,6 @@ class PurchasesFlutterStore implements StoreGateway {
         for (final entry in offerings.all.entries)
           entry.key: entry.value.availablePackages,
       },
-      currentPackages: offerings.current?.availablePackages,
     );
   }
 

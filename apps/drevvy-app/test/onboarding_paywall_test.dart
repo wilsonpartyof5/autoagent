@@ -57,7 +57,6 @@ void main() {
           'default': ['other'],
           keysOfferingId: ['drevvy_keys_10'],
         },
-        currentPackages: ['current'],
       ),
       ['drevvy_keys_10'],
     );
@@ -66,9 +65,8 @@ void main() {
         byOfferingId: {
           'default': ['other'],
         },
-        currentPackages: ['current'],
       ),
-      ['current'],
+      isEmpty,
     );
   });
 
@@ -169,7 +167,10 @@ void main() {
     await tester.tap(find.text('Next · Meet the dealer'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Real dealers'), findsOneWidget);
-    expect(find.text('Your phone and email stay private. No calls.'), findsOneWidget);
+    expect(
+      find.text('Your phone and email stay private. No calls.'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Whole price'));
     await tester.pumpAndSettle();

@@ -52,25 +52,49 @@ flutter run \
 
 `DREVVY_DATA_MODE` accepts `demo` or `live`. Anything else stays demo.
 
-Key purchases stay on the labeled demo service unless the build is live, the
-API origin is set, and the current platform RevenueCat key is a Test Store key
-(`REVENUECAT_IOS_API_KEY` or `REVENUECAT_ANDROID_API_KEY` starting with
-`test_`). Public `appl_` and `goog_` keys are not treated as sandbox: the same
-key is used for store sandbox testers and for production, and the app cannot
-see the store account. Those builds leave purchases off. A Test Store purchase
-posts `{productId, transactionId}` to `POST /api/consumer/credits` and keeps
-the balance the server returns. Cancellation, a pending payment, a store
-error, and a failed grant do not add keys locally. Restore posts transaction
-ids to `POST /api/consumer/credits/restore` and uses that balance. When this
-account already had a loaded balance, the restore reports that balance's
-increase. When the before-balance was not loaded for this account, the restore
-says the server confirmed it and does not say that zero keys were added. A
-demo purchase says the keys are sample keys. A restore whose known count is
-zero does not say keys were added. The server grants keys only after RevenueCat
+Key purchases stay on the labeled demo service unless the build is live and
+`DREVVY_API_BASE_URL` is set.
+
+Debug builds accept only a RevenueCat Test Store key. `REVENUECAT_IOS_API_KEY`
+or `REVENUECAT_ANDROID_API_KEY` must start with `test_`. That key does not call
+StoreKit.
+
+Release and profile builds, including TestFlight, accept the RevenueCat iOS
+public SDK key. `REVENUECAT_IOS_API_KEY` must start with `appl_`. Pass it only
+with `--dart-define`. Do not commit a key. The app configures Purchases with
+that key and loads the RevenueCat offering `keys` (1 key $4.99, 5 keys $19.99,
+10 keys $34.99, 25 keys $74.99). The same `appl_` key is what StoreKit sandbox
+and App Store production use. A `goog_` key does not enable iOS purchases.
+
+A missing key, a blank key, or a key with the wrong prefix leaves purchases
+unavailable. The app does not crash and does not grant a local balance.
+
+A completed purchase posts `{productId, transactionId}` to
+`POST /api/consumer/credits` and keeps the balance the server returns.
+Cancellation, a pending payment, a store error, and a failed grant do not add
+keys locally. Restore posts transaction ids to
+`POST /api/consumer/credits/restore` and uses that balance. When this account
+already had a loaded balance, the restore reports that balance's increase.
+When the before-balance was not loaded for this account, the restore says the
+server confirmed it and does not say that zero keys were added. A demo
+purchase says the keys are sample keys. A restore whose known count is zero
+does not say keys were added. The server grants keys only after RevenueCat
 confirms a sandbox transaction (`is_sandbox` is true) or an authenticated
 webhook whose `environment` is exactly `SANDBOX`. Production, missing, and
-invalid flags grant nothing. This client still does not send a purchase from a
-platform SDK key.
+invalid flags grant nothing.
+
+### TestFlight
+
+```bash
+flutter build ipa \
+  --dart-define=DREVVY_DATA_MODE=live \
+  --dart-define=DREVVY_API_BASE_URL=https://api.drevvy.com \
+  --dart-define=REVENUECAT_IOS_API_KEY=appl_YOUR_PUBLIC_SDK_KEY
+```
+
+`flutter build ios --profile` uses those same three defines.
+`appl_YOUR_PUBLIC_SDK_KEY` is a placeholder. Debug (`flutter run`) still needs
+a `test_` key instead.
 
 Discover, auth, credits, key spend, rooftop match, deal chips, profile, and
 saved cars read that same mode and the same origin. Live with an empty origin
@@ -142,7 +166,7 @@ flutter run -d <device-id>
 ## Building
 
 ```bash
-# iOS (release)
+# iOS release / TestFlight. Required defines are in the TestFlight section.
 flutter build ios --release
 
 # Android APK (debug)
