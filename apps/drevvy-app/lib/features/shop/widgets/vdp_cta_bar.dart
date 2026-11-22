@@ -161,19 +161,10 @@ class VdpCtaBar extends StatelessWidget {
               style: text.callout.copyWith(color: colors.muted),
             ),
             const SizedBox(height: DrevvySpace.s3),
-            DrevvyButton(
-              label: otdRequested
-                  ? 'OTD number requested'
-                  : KeySpend.otdRequestCta,
-              icon: LucideIcons.receipt,
-              variant: DrevvyButtonVariant.secondary,
-              onPressed: onOtdRequest,
-              isFullWidth: true,
-            ),
-            const SizedBox(height: DrevvySpace.s1),
             Text(
-              '${KeySpend.otdRequestFreeBadge} · ${KeySpend.otdRequestNote}',
-              style: text.callout.copyWith(color: colors.muted),
+              'Coming soon',
+              key: const Key('otd-coming-soon'),
+              style: text.body.copyWith(color: colors.ink),
             ),
           ] else if (networkUnknown) ...[
             Text(

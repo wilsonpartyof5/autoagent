@@ -24,7 +24,6 @@ class LiveDiscoverVdp extends StatelessWidget {
     required this.onRetry,
     this.network,
     this.onAskDealer,
-    this.onOtdRequest,
     this.asking = false,
     this.askMessage,
   });
@@ -40,8 +39,6 @@ class LiveDiscoverVdp extends StatelessWidget {
   /// In-network only. Spends one key and opens the deal chat.
   final VoidCallback? onAskDealer;
 
-  /// Off-network whole-price request. This screen does not post it.
-  final VoidCallback? onOtdRequest;
   final bool asking;
   final String? askMessage;
 
@@ -64,7 +61,6 @@ class LiveDiscoverVdp extends StatelessWidget {
               listing: listing!,
               network: network,
               onAskDealer: onAskDealer,
-              onOtdRequest: onOtdRequest,
               asking: asking,
               askMessage: askMessage,
             ),
@@ -130,7 +126,6 @@ class _Body extends StatelessWidget {
     required this.listing,
     required this.network,
     required this.onAskDealer,
-    required this.onOtdRequest,
     required this.asking,
     required this.askMessage,
   });
@@ -138,7 +133,6 @@ class _Body extends StatelessWidget {
   final Listing listing;
   final RooftopMatch? network;
   final VoidCallback? onAskDealer;
-  final VoidCallback? onOtdRequest;
   final bool asking;
   final String? askMessage;
 
@@ -275,17 +269,10 @@ class _Body extends StatelessWidget {
         match.classifiedOffNetwork &&
         match.source == RooftopMatchSource.live) {
       return [
-        DrevvyButton(
-          key: const Key('ask-for-whole-price'),
-          label: KeySpend.otdRequestCta,
-          variant: DrevvyButtonVariant.secondary,
-          onPressed: onOtdRequest,
-          isFullWidth: true,
-        ),
-        const SizedBox(height: DrevvySpace.s1),
         Text(
-          '${KeySpend.otdRequestFreeBadge} · ${KeySpend.otdRequestNote}',
-          style: text.callout.copyWith(color: colors.muted),
+          'Coming soon',
+          key: const Key('otd-coming-soon'),
+          style: text.body.copyWith(color: colors.ink),
         ),
       ];
     }

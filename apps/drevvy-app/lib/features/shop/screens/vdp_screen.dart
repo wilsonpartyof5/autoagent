@@ -480,7 +480,6 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
         asking: _askingDealer,
         askMessage: _askMessage,
         onAskDealer: _askingDealer ? null : () => unawaited(_askThisDealer()),
-        onOtdRequest: _handleOtdRequestTap,
       );
     }
     final colors = context.drevvy;
