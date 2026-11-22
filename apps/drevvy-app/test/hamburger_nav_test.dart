@@ -209,6 +209,51 @@ void main() {
     expect(find.text('You used 1 key to text this dealer.'), findsNothing);
   });
 
+  testWidgets('demo deal chat can still send', (tester) async {
+    final repo = DemoRepository(networkDelay: Duration.zero);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: drevvyTheme(Brightness.light),
+        home: DealChatScreen(dealId: 'deal_001', repository: repo),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dealer chat is coming soon.'), findsNothing);
+    expect(find.byKey(const Key('deal-chat-composer')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('deal-chat-composer')),
+      'Is this still available?',
+    );
+    await tester.tap(find.byKey(const Key('deal-chat-send')));
+    await tester.pump();
+
+    expect(find.text('Is this still available?'), findsOneWidget);
+    expect(repo.dealThread('deal_001').single.body, 'Is this still available?');
+  });
+
+  testWidgets('live deal chat hides send until a dealer can get it', (
+    tester,
+  ) async {
+    final repo = DemoRepository(
+      config: const PurchaseConfig(mode: DrevvyDataMode.live),
+      networkDelay: Duration.zero,
+    );
+    await repo.addDeal(_listing, spend: false, id: 'deal_live_chat');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: drevvyTheme(Brightness.light),
+        home: DealChatScreen(dealId: 'deal_live_chat', repository: repo),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dealer chat is coming soon.'), findsOneWidget);
+    expect(find.byKey(const Key('deal-chat-composer')), findsNothing);
+    expect(find.byKey(const Key('deal-chat-send')), findsNothing);
+    expect(repo.dealThread('deal_live_chat'), isEmpty);
+  });
+
   testWidgets('a deal without savings does not invent a discount', (
     tester,
   ) async {

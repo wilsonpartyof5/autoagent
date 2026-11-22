@@ -10,9 +10,11 @@ import '../../shop/widgets/listing_photo.dart';
 
 /// Pushed child of Deals. Back returns to Deals. No hamburger.
 ///
-/// Texts already stored on the deal thread are shown. A send appends to
-/// that same in-memory thread. There is no dealer-reply transport here, so
-/// a send does not invent a reply and does not spend another key.
+/// Texts already stored on the deal thread are shown. In demo, a send
+/// appends to that same in-memory thread. There is no dealer-reply
+/// transport here, so a send does not invent a reply and does not spend
+/// another key. Live mode has no dealer delivery yet, so the composer
+/// stays hidden.
 class DealChatScreen extends StatefulWidget {
   const DealChatScreen({super.key, required this.dealId, this.repository});
 
@@ -82,6 +84,7 @@ class _DealChatScreenState extends State<DealChatScreen> {
   }
 
   void _send() {
+    if (_repo.isLive) return;
     final deal = _deal;
     final text = _controller.text.trim();
     if (deal == null || text.isEmpty) return;
@@ -200,7 +203,9 @@ class _DealChatScreenState extends State<DealChatScreen> {
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, safe + 8),
-          child: _Composer(controller: _controller, onSend: _send),
+          child: _repo.isLive
+              ? const _ComingSoon()
+              : _Composer(controller: _controller, onSend: _send),
         ),
       ],
     );
@@ -288,6 +293,23 @@ class _Bubble extends StatelessWidget {
   }
 }
 
+class _ComingSoon extends StatelessWidget {
+  const _ComingSoon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: const Key('deal-chat-coming-soon'),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Text(
+        'Dealer chat is coming soon.',
+        textAlign: TextAlign.center,
+        style: context.drevvyText.body.copyWith(color: context.drevvy.muted),
+      ),
+    );
+  }
+}
+
 class _Composer extends StatelessWidget {
   const _Composer({required this.controller, required this.onSend});
 
@@ -323,6 +345,7 @@ class _Composer extends StatelessWidget {
               ),
             ),
             Semantics(
+              key: const Key('deal-chat-send'),
               label: 'Send',
               button: true,
               child: Padding(
