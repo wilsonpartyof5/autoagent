@@ -74,13 +74,24 @@ function memoryDeals(seed: ShopperDealRow[] = []): ShopperDealRepository & { row
 function credits(
   balance: number,
   conversation: Record<string, unknown> | null = null,
-  charge: 'ok' | 'no_credits' = 'ok',
+  options: {
+    charge?: 'ok' | 'no_credits' | 'already_charged';
+    charged?: boolean;
+    conversationWrite?: 'ok' | 'fail';
+  } | 'ok' | 'no_credits' = {},
 ) {
+  const charge = typeof options === 'string' ? options : (options.charge ?? 'ok');
+  const charged = typeof options === 'string' ? false : options.charged === true;
+  const conversationWrite = typeof options === 'string' ? 'ok' : (options.conversationWrite ?? 'ok');
   let spends = 0;
+  let newKeys = 0;
   let writes = 0;
+  let refunds = 0;
   return {
     spends: () => spends,
+    newKeys: () => newKeys,
     writes: () => writes,
+    refunds: () => refunds,
     from(table: string) {
       if (table === 'consumer_profiles') {
         return {
@@ -96,8 +107,27 @@ function credits(
           }),
           upsert: async () => {
             writes += 1;
+            if (conversationWrite === 'fail') return { error: { message: 'connection reset' } };
             return { error: null };
           },
+        };
+      }
+      if (table === 'shopper_credit_events') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  in: () => ({
+                    limit: async () => ({
+                      data: charged ? [{ id: 'use-event' }] : [],
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
         };
       }
       if (table === 'drevvy_vdp_matches') {
@@ -126,16 +156,37 @@ function credits(
         }),
       };
     },
-    rpc: async () => {
+    rpc: async (fnName?: string) => {
+      if (fnName === 'refund_credit_atomic') {
+        refunds += 1;
+        return {
+          data: [{ refunded: false, already_refunded: false, new_balance: balance }],
+          error: null,
+        };
+      }
       spends += 1;
+      if (charge === 'already_charged') {
+        return {
+          data: [{
+            consumed: true,
+            already_consumed: true,
+            balance: 0,
+            lifetime_purchased: balance,
+            lifetime_used: 1,
+            lifetime_refunded: 0,
+          }],
+          error: null,
+        };
+      }
       const consumed = charge === 'ok';
+      if (consumed) newKeys += 1;
       return {
         data: [{
           consumed,
-          already_consumed: consumed,
+          already_consumed: false,
           balance: consumed ? balance : 0,
           lifetime_purchased: balance,
-          lifetime_used: 1,
+          lifetime_used: consumed ? 1 : 0,
           lifetime_refunded: 0,
         }],
         error: null,
@@ -166,7 +217,7 @@ function deps(
   deals = memoryDeals(),
   conversation: Record<string, unknown> | null = null,
   nowMs = NOW,
-  charge: 'ok' | 'no_credits' = 'ok',
+  charge: Parameters<typeof credits>[2] = 'ok',
 ): DealDeps & {
   rooftops: RooftopDirectory;
   rateLimitStore: MemoryRateLimitStore;
@@ -357,6 +408,105 @@ test('a failed charge does not leave a conversation row on an open deal', async 
   assert.equal(box.book.writes(), 0);
   assert.equal(box.book.spends(), 1);
   assert.equal(deals.rows.length, 1);
+});
+
+test('a conversation write that fails after the charge is not a successful start', async () => {
+  const store = new MemoryRateLimitStore();
+  const identity = {
+    status: 'found' as const,
+    identity: { listingId: 'mc-write-fail', marketcheckDealerId: HONDA.marketcheckDealerId },
+  };
+  const openId = '99999999-9999-4999-8999-999999999999';
+  const reusedDeals = memoryDeals([{
+    id: openId,
+    consumerUserId: 'shopper-write-fail',
+    listingId: 'mc-write-fail',
+    status: 'interested',
+    outreachLockedUntilPaid: true,
+    vehicle: VEHICLE,
+    createdAt: '2026-11-22T15:00:00.000Z',
+    updatedAt: '2026-11-22T15:00:00.000Z',
+  }]);
+  const reused = deps(
+    directory(async () => identity),
+    store,
+    1,
+    reusedDeals,
+    null,
+    NOW,
+    { conversationWrite: 'fail' },
+  );
+  await assert.rejects(
+    () => startDealerConversation('shopper-write-fail', {
+      listingId: 'mc-write-fail',
+      vehicle: VEHICLE,
+    }, reused),
+    (error: unknown) => error instanceof ShopperDealError
+      && error.status === 500
+      && error.code === 'conversation_unrecorded',
+  );
+  assert.equal(reused.book.writes(), 2);
+  assert.equal(reused.book.newKeys(), 1);
+  assert.equal(reused.book.refunds(), 0);
+
+  const created = deps(
+    directory(async () => ({
+      status: 'found',
+      identity: { listingId: 'mc-write-fail-new', marketcheckDealerId: HONDA.marketcheckDealerId },
+    })),
+    new MemoryRateLimitStore(),
+    1,
+    memoryDeals(),
+    null,
+    NOW,
+    { conversationWrite: 'fail' },
+  );
+  await assert.rejects(
+    () => startDealerConversation('shopper-write-fail-new', {
+      listingId: 'mc-write-fail-new',
+      vehicle: VEHICLE,
+    }, created),
+    (error: unknown) => error instanceof ShopperDealError
+      && error.status === 500
+      && error.code === 'conversation_unrecorded',
+  );
+  assert.equal(created.book.writes(), 2);
+  assert.equal(created.book.newKeys(), 1);
+  assert.equal(created.book.refunds(), 0);
+  assert.equal(created.deals.rows.length, 1);
+});
+
+test('a zero-key shopper retries a charged deal without spending a second key', async () => {
+  const store = new MemoryRateLimitStore();
+  const lookups = directory(async () => ({
+    status: 'found',
+    identity: { listingId: 'mc-retry', marketcheckDealerId: HONDA.marketcheckDealerId },
+  }));
+  const openId = '12121212-1212-4212-8212-121212121212';
+  const deals = memoryDeals([{
+    id: openId,
+    consumerUserId: 'shopper-retry',
+    listingId: 'mc-retry',
+    status: 'interested',
+    outreachLockedUntilPaid: true,
+    vehicle: VEHICLE,
+    createdAt: '2026-11-22T15:00:00.000Z',
+    updatedAt: '2026-11-22T15:00:00.000Z',
+  }]);
+  const box = deps(lookups, store, 0, deals, null, NOW, {
+    charge: 'already_charged',
+    charged: true,
+  });
+  const started = await startDealerConversation('shopper-retry', {
+    listingId: 'mc-retry',
+    vehicle: VEHICLE,
+  }, box);
+  assert.equal(started.deal.id, openId);
+  assert.equal(started.match.network, 'in_network');
+  assert.equal(box.book.spends(), 1);
+  assert.equal(box.book.newKeys(), 0);
+  assert.equal(box.book.writes(), 1);
+  assert.equal(box.book.refunds(), 0);
 });
 
 test('repeated off-network deal posts fetch the listing once, then use the cache', async () => {
