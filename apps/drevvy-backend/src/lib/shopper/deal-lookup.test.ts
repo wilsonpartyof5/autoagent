@@ -191,6 +191,7 @@ test('the deal route pays for an uncached listing lookup, not getVehicleDetailMc
   assert.equal(route.includes('getVehicleDetailMcp'), false);
   assert.equal(store.includes('getVehicleDetailMcp'), false);
   assert.equal(conversation.includes('getVehicleDetailMcp'), false);
+  assert.equal(conversation.includes('openDealMatch'), false);
   assert.match(store, /lookupListingIdentity: \(listingId\) => lookupListingDealerIdentity\(listingId\)/);
   assert.match(store, /fetchMarketCheckListing\(listingId\)/);
   assert.match(listing, /\/v2\/listing\/car\//);
@@ -248,6 +249,73 @@ test('a zero-key shopper and an open deal do not fetch a listing', async () => {
   assert.equal(reused.match.method, 'marketcheck_dealer_id');
   assert.equal(again.book.spends(), 1);
   assert.equal(openDeals.rows.length, 1);
+
+  const reuseStore = new MemoryRateLimitStore();
+  const reuseLookups = directory(async () => {
+    throw new Error('MarketCheck should not be called');
+  });
+  const reuseDeals = memoryDeals([{
+    id: openId,
+    consumerUserId: 'shopper-reuse-cap',
+    listingId: 'mc-reuse-cap',
+    status: 'interested',
+    outreachLockedUntilPaid: true,
+    vehicle: VEHICLE,
+    createdAt: '2026-11-22T15:00:00.000Z',
+    updatedAt: '2026-11-22T15:00:00.000Z',
+  }]);
+  const reuseBox = deps(reuseLookups, reuseStore, 0, reuseDeals, {
+    rooftop_id: HONDA.id,
+    match_method: 'marketcheck_dealer_id',
+    opener: 'Dana wants your best itemized out-the-door',
+  });
+  for (let i = 0; i < DEAL_POST_USER_PER_MINUTE; i += 1) {
+    const againOpen = await startDealerConversation('shopper-reuse-cap', {
+      listingId: 'mc-reuse-cap',
+      vehicle: VEHICLE,
+    }, { ...reuseBox, now: new Date(NOW) });
+    assert.equal(againOpen.deal.id, openId);
+  }
+  await assert.rejects(
+    () => startDealerConversation('shopper-reuse-cap', {
+      listingId: 'mc-reuse-cap',
+      vehicle: VEHICLE,
+    }, { ...reuseBox, now: new Date(NOW) }),
+    (error: unknown) => error instanceof ShopperDealError && error.status === 429,
+  );
+  assert.equal(reuseLookups.fetches(), 0);
+  assert.equal(reuseBox.book.spends(), DEAL_POST_USER_PER_MINUTE);
+});
+
+test('an open deal with no conversation row does not spend a key when the listing is off network', async () => {
+  const store = new MemoryRateLimitStore();
+  const lookups = directory(async () => ({
+    status: 'found',
+    identity: { listingId: 'mc-open-no-row', marketcheckDealerId: '999000', dealerWebsite: 'https://far-away.example' },
+  }));
+  const openId = '77777777-7777-4777-8777-777777777777';
+  const deals = memoryDeals([{
+    id: openId,
+    consumerUserId: 'shopper-no-row',
+    listingId: 'mc-open-no-row',
+    status: 'interested',
+    outreachLockedUntilPaid: true,
+    vehicle: VEHICLE,
+    createdAt: '2026-11-22T15:00:00.000Z',
+    updatedAt: '2026-11-22T15:00:00.000Z',
+  }]);
+  const box = deps(lookups, store, 2, deals, null);
+  await assert.rejects(
+    () => startDealerConversation('shopper-no-row', {
+      listingId: 'mc-open-no-row',
+      vehicle: VEHICLE,
+    }, box),
+    (error: unknown) => error instanceof ShopperDealError && error.status === 409 && error.code === 'off_network',
+  );
+  assert.equal(lookups.fetches(), 1);
+  assert.equal(box.book.spends(), 0);
+  assert.equal(deals.rows.length, 1);
+  assert.equal(deals.rows[0]?.id, openId);
 });
 
 test('repeated off-network deal posts fetch the listing once, then use the cache', async () => {

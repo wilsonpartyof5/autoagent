@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
 import { ShopperDealError, isShopperListingId } from './deals';
+import { readListingIdentityCache } from '@/lib/dealer/listing-rooftop-cache';
 import {
   resolveRooftopMatch,
   type RooftopDirectory,
@@ -11,6 +12,12 @@ import {
   normalizeMarketcheckDealerId,
   type ListingDealerIdentity,
 } from '@/lib/dealer/rooftop-match';
+import {
+  ListingCarLimitUnavailable,
+  ListingCarRateLimited,
+} from '@/lib/marketcheck/listing-car-limit';
+import type { RateLimitStore } from '@/lib/public-discover/rate-limit';
+import { enforceOtdPostLimit } from './off-network-lookup-limit';
 import {
   recordSubmittedAnalyticsSafely,
   type OtdAnalytics,
@@ -119,6 +126,8 @@ export async function requestOffNetworkOtd(
     repo: OtdRequestRepository;
     rooftops: RooftopDirectory;
     analytics?: OtdAnalytics;
+    rateLimitStore?: RateLimitStore;
+    rateLimitEnv?: NodeJS.ProcessEnv;
   },
 ): Promise<OtdRequestResult> {
   const identity = readListingIdentityBody(body);
@@ -127,7 +136,30 @@ export async function requestOffNetworkOtd(
     throw new ShopperDealError('A MarketCheck listing id is required.', 400, 'invalid_listing');
   }
 
-  const match = await resolveRooftopMatch(identity, deps.rooftops);
+  const nowMs = deps.now.getTime();
+  await enforceOtdPostLimit({
+    userId,
+    nowMs,
+    store: deps.rateLimitStore,
+    env: deps.rateLimitEnv,
+  });
+
+  let match;
+  try {
+    match = await resolveRooftopMatch(identity, deps.rooftops, { nowMs });
+  } catch (error) {
+    if (error instanceof ListingCarRateLimited) {
+      throw new ShopperDealError('Slow down a little. Try again tomorrow.', 429, 'rate_limited');
+    }
+    if (error instanceof ListingCarLimitUnavailable) {
+      throw new ShopperDealError(
+        'Drevvy could not check that dealership. Try again in a minute.',
+        503,
+        'rate_limit_unavailable',
+      );
+    }
+    throw error;
+  }
   if (match.matched) {
     throw new ShopperDealError(
       'This rooftop is on Drevvy. Use a conversation key to chat with the salesperson.',
@@ -139,9 +171,11 @@ export async function requestOffNetworkOtd(
   const existing = await deps.repo.find(userId, listingId);
   if (existing) return { request: existing, created: false };
 
-  const fetched = identity.listingId && deps.rooftops.loadListingIdentity
-    ? await deps.rooftops.loadListingIdentity(identity.listingId)
-    : null;
+  const cached = readListingIdentityCache(listingId, nowMs);
+  let fetched: ListingDealerIdentity | null = cached?.kind === 'found' ? cached.identity : null;
+  if (!cached && !deps.rooftops.lookupListingIdentity && deps.rooftops.loadListingIdentity) {
+    fetched = await deps.rooftops.loadListingIdentity(listingId);
+  }
   const merged: ListingDealerIdentity = {
     listingId,
     listingUrl: identity.listingUrl ?? fetched?.listingUrl ?? null,

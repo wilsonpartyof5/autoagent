@@ -1,4 +1,5 @@
 import { MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from './mcp-client';
+import { enforceListingCarDailyCap } from './listing-car-limit';
 import { redactSecrets } from './secrets';
 import { recordMarketCheckCall } from './usage';
 
@@ -82,6 +83,7 @@ function listingRecord(payload: unknown): Record<string, unknown> | null {
 export async function fetchMarketCheckListing(listingId: string): Promise<Record<string, unknown> | null> {
   const apiKey = process.env.MARKETCHECK_API_KEY ?? '';
   if (!apiKey) throw new Error('MARKETCHECK_API_KEY is not configured');
+  await enforceListingCarDailyCap();
 
   recordMarketCheckCall(LISTING_CAR_ENDPOINT);
   const base = (process.env.MARKETCHECK_BASE_URL ?? 'https://api.marketcheck.com').replace(/\/+$/, '');

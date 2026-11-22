@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { fetchMarketCheckListing } from '@/lib/marketcheck/listing-car';
+import { ListingCarLimitUnavailable, ListingCarRateLimited } from '@/lib/marketcheck/listing-car-limit';
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
 
 import {
@@ -154,6 +155,7 @@ export async function lookupListingDealerIdentity(
       },
     };
   } catch (error) {
+    if (error instanceof ListingCarRateLimited || error instanceof ListingCarLimitUnavailable) throw error;
     const reason = marketCheckFailureReason(error);
     console.error(JSON.stringify({ event: 'listing_identity_failed', reason }));
     return { status: 'unavailable', reason };

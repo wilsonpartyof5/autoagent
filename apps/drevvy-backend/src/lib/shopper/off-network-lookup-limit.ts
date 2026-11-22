@@ -7,12 +7,16 @@ import { ShopperDealError } from './deals';
 import { DurableRateLimitUnavailable, takeDurableLimits, type DurableWindow } from './durable-rate-limit';
 
 /**
- * POST /api/consumer/deals attempts for one shopper.
- * An open deal that is already on the list does not spend this.
+ * POST /api/consumer/deals and POST /api/consumer/keys/conversation.
+ * This runs before an open deal is reused, so reopening a chat spends it too.
  * Over the limit, no MarketCheck listing lookup runs.
  */
 export const DEAL_POST_USER_PER_MINUTE = 10;
 export const DEAL_POST_USER_PER_DAY = 60;
+
+/** POST out-the-door requests. Separate buckets from deal start. */
+export const OTD_POST_USER_PER_MINUTE = 10;
+export const OTD_POST_USER_PER_DAY = 60;
 
 const MINUTE_COPY = 'Slow down a little. Try again in a minute.';
 const DAY_COPY = 'Slow down a little. Try again tomorrow.';
@@ -30,6 +34,14 @@ export function dealPostLimitWindows(userId: string): DurableWindow[] {
   ];
 }
 
+export function otdPostLimitWindows(userId: string): DurableWindow[] {
+  const user = subjectKey(userId);
+  return [
+    { bucket: `otd:u:${user}:m`, windowMs: DISCOVER_MINUTE_MS, limit: OTD_POST_USER_PER_MINUTE },
+    { bucket: `otd:u:${user}:d`, windowMs: DISCOVER_DAY_MS, limit: OTD_POST_USER_PER_DAY },
+  ];
+}
+
 export async function enforceDealPostLimit(input: {
   userId: string;
   nowMs?: number;
@@ -37,6 +49,32 @@ export async function enforceDealPostLimit(input: {
   env?: NodeJS.ProcessEnv;
 }): Promise<void> {
   const windows = dealPostLimitWindows(input.userId);
+  let blocked: DurableWindow | null;
+  try {
+    blocked = await takeDurableLimits({
+      windows,
+      nowMs: input.nowMs ?? Date.now(),
+      store: input.store,
+      env: input.env,
+    });
+  } catch (error) {
+    if (error instanceof DurableRateLimitUnavailable) {
+      throw new ShopperDealError(UNAVAILABLE_COPY, 503, 'rate_limit_unavailable');
+    }
+    throw error;
+  }
+  if (!blocked) return;
+  const copy = blocked.windowMs >= DISCOVER_DAY_MS ? DAY_COPY : MINUTE_COPY;
+  throw new ShopperDealError(copy, 429, 'rate_limited');
+}
+
+export async function enforceOtdPostLimit(input: {
+  userId: string;
+  nowMs?: number;
+  store?: RateLimitStore;
+  env?: NodeJS.ProcessEnv;
+}): Promise<void> {
+  const windows = otdPostLimitWindows(input.userId);
   let blocked: DurableWindow | null;
   try {
     blocked = await takeDurableLimits({
