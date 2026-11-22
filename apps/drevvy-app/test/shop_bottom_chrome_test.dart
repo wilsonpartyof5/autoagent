@@ -145,34 +145,23 @@ void main() {
       final router = GoRouter(
         initialLocation: '/shop',
         routes: [
-          StatefulShellRoute.indexedStack(
-            builder: (context, state, navigationShell) {
-              return ShellScaffold(navigationShell: navigationShell);
+          ShellRoute(
+            builder: (context, state, child) {
+              final path = state.uri.path;
+              return ShellScaffold(
+                location: path,
+                onShop: path == '/shop',
+                child: child,
+              );
             },
-            branches: [
-              StatefulShellBranch(
-                routes: [
-                  GoRoute(
-                    path: '/shop',
-                    builder: (context, state) => _ShopProbe(listings: listings),
-                  ),
-                ],
+            routes: [
+              GoRoute(
+                path: '/shop',
+                builder: (context, state) => _ShopProbe(listings: listings),
               ),
-              StatefulShellBranch(
-                routes: [
-                  GoRoute(
-                    path: '/deals',
-                    builder: (context, state) => const _DealsProbe(),
-                  ),
-                ],
-              ),
-              StatefulShellBranch(
-                routes: [
-                  GoRoute(
-                    path: '/saved',
-                    builder: (context, state) => const SizedBox.shrink(),
-                  ),
-                ],
+              GoRoute(
+                path: '/deals',
+                builder: (context, state) => const _DealsProbe(),
               ),
             ],
           ),
@@ -201,6 +190,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The shell loads the shopper on the demo delay. That timer outlives
+      // the drawer's animation, so pumpAndSettle can return with it pending.
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
       expect(find.text('2024 Honda Civic'), findsWidgets);
       return router;
     }
@@ -221,29 +214,16 @@ void main() {
       expect(paddingOf().bottom, before.bottom);
     });
 
-    testWidgets('downscroll hides the pill and tab bar as one unit', (
-      tester,
-    ) async {
+    testWidgets('downscroll hides the ask pill', (tester) async {
       await pumpChrome(tester);
       final pillBefore = _top(tester, ShopBottomChromeMetrics.pillKey);
-      final tabsBefore = _top(tester, ShopBottomChromeMetrics.tabsKey);
 
       await _userScroll(tester, -180);
 
       final pillDelta =
           _top(tester, ShopBottomChromeMetrics.pillKey) - pillBefore;
-      final tabsDelta =
-          _top(tester, ShopBottomChromeMetrics.tabsKey) - tabsBefore;
       final travel = ShopBottomChromeMetrics.travel(34);
       expect(pillDelta, closeTo(travel, 1));
-      expect(tabsDelta, closeTo(pillDelta, 0.1));
-      expect(
-        _flag<ExcludeSemantics>(
-          tester,
-          ShopBottomChromeMetrics.tabsKey,
-        ).excluding,
-        isTrue,
-      );
       expect(
         _flag<IgnorePointer>(tester, ShopBottomChromeMetrics.pillKey).ignoring,
         isTrue,
@@ -255,10 +235,8 @@ void main() {
     ) async {
       await pumpChrome(tester);
       final pill = _top(tester, ShopBottomChromeMetrics.pillKey);
-      final tabs = _top(tester, ShopBottomChromeMetrics.tabsKey);
       await _userScroll(tester, -40);
       expect(_top(tester, ShopBottomChromeMetrics.pillKey), closeTo(pill, 1));
-      expect(_top(tester, ShopBottomChromeMetrics.tabsKey), closeTo(tabs, 1));
     });
 
     testWidgets('upscroll shows the chrome before the list reaches the top', (
@@ -269,7 +247,7 @@ void main() {
       await _userScroll(tester, -180);
       expect(
         _top(tester, ShopBottomChromeMetrics.pillKey),
-        greaterThan(shown + 100),
+        greaterThan(shown + ShopBottomChromeMetrics.travel(34) - 4),
       );
 
       await _userScroll(tester, 40);
@@ -281,11 +259,10 @@ void main() {
     testWidgets('the top of the list always shows the chrome', (tester) async {
       await pumpChrome(tester);
       final shown = _top(tester, ShopBottomChromeMetrics.pillKey);
-      final tabsShown = _top(tester, ShopBottomChromeMetrics.tabsKey);
       await _userScroll(tester, -180);
       expect(
         _top(tester, ShopBottomChromeMetrics.pillKey),
-        greaterThan(shown + 100),
+        greaterThan(shown + ShopBottomChromeMetrics.travel(34) - 4),
       );
 
       _shopPosition(tester).jumpTo(0);
@@ -293,10 +270,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_top(tester, ShopBottomChromeMetrics.pillKey), closeTo(shown, 1));
-      expect(
-        _top(tester, ShopBottomChromeMetrics.tabsKey),
-        closeTo(tabsShown, 1),
-      );
     });
 
     testWidgets('reaching the end of the list shows the chrome', (
@@ -328,20 +301,16 @@ void main() {
       expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
 
       final pill = _top(tester, ShopBottomChromeMetrics.pillKey);
-      final tabs = _top(tester, ShopBottomChromeMetrics.tabsKey);
       await _userScroll(tester, -220);
 
       expect(_top(tester, ShopBottomChromeMetrics.pillKey), closeTo(pill, 1));
-      expect(_top(tester, ShopBottomChromeMetrics.tabsKey), closeTo(tabs, 1));
       expect(
         _flag<IgnorePointer>(tester, ShopBottomChromeMetrics.pillKey).ignoring,
         isFalse,
       );
     });
 
-    testWidgets('keyboard docks the pill and hides only the tab bar', (
-      tester,
-    ) async {
+    testWidgets('keyboard docks the ask pill', (tester) async {
       await pumpChrome(tester);
       await tester.tap(find.byType(TextField));
       await tester.pump();
@@ -351,10 +320,9 @@ void main() {
 
       final keyboardTop = tester.view.physicalSize.height - 280;
       final pill = _rect(tester, ShopBottomChromeMetrics.pillKey);
-      final tabs = _rect(tester, ShopBottomChromeMetrics.tabsKey);
       expect(pill.bottom, lessThan(keyboardTop));
       expect(pill.top, greaterThan(keyboardTop - 160));
-      expect(tabs.top, greaterThanOrEqualTo(keyboardTop - 1));
+      expect(find.byKey(ShopBottomChromeMetrics.tabsKey), findsNothing);
 
       final pillAfterFocus = pill.top;
       await _userScroll(tester, -220);
@@ -372,7 +340,7 @@ void main() {
       await _userScroll(tester, -180);
       expect(
         _top(tester, ShopBottomChromeMetrics.pillKey),
-        greaterThan(shown + 100),
+        greaterThan(shown + ShopBottomChromeMetrics.travel(34) - 4),
       );
 
       final context = tester.element(find.byType(ShellScaffold));
@@ -384,49 +352,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(_top(tester, ShopBottomChromeMetrics.pillKey), closeTo(shown, 1));
       expect(
-        _flag<IgnorePointer>(tester, ShopBottomChromeMetrics.tabsKey).ignoring,
+        _flag<IgnorePointer>(tester, ShopBottomChromeMetrics.pillKey).ignoring,
         isFalse,
       );
-    });
-
-    testWidgets('Deals keeps its own tab-bar hide across a Shop visit', (
-      tester,
-    ) async {
-      await pumpChrome(tester);
-      final context = tester.element(find.byType(ShellScaffold));
-      GoRouter.of(context).go('/deals');
-      await tester.pumpAndSettle();
-
-      final before = tester.getTopLeft(find.text('Saved')).dy;
-      await _userScroll(
-        tester,
-        -120,
-        list: find.byKey(const Key('deals-scroll')),
-      );
-      final hidden = tester.getTopLeft(find.text('Saved')).dy;
-      expect(hidden, greaterThan(before + 40));
-
-      GoRouter.of(context).go('/shop');
-      await tester.pumpAndSettle();
-      expect(find.text('2024 Honda Civic'), findsWidgets);
-
-      GoRouter.of(context).go('/deals');
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(find.text('Saved')).dy, closeTo(hidden, 1));
     });
 
     testWidgets('screen reader mode never auto-hides', (tester) async {
       await pumpChrome(tester, accessible: true);
       final pill = _top(tester, ShopBottomChromeMetrics.pillKey);
-      final tabs = _top(tester, ShopBottomChromeMetrics.tabsKey);
       await _userScroll(tester, -240);
       expect(_top(tester, ShopBottomChromeMetrics.pillKey), closeTo(pill, 1));
-      expect(_top(tester, ShopBottomChromeMetrics.tabsKey), closeTo(tabs, 1));
       expect(
-        _flag<ExcludeSemantics>(
-          tester,
-          ShopBottomChromeMetrics.tabsKey,
-        ).excluding,
+        _flag<IgnorePointer>(tester, ShopBottomChromeMetrics.pillKey).ignoring,
         isFalse,
       );
     });
@@ -453,7 +390,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         _top(tester, ShopBottomChromeMetrics.pillKey),
-        greaterThan(before + 100),
+        greaterThan(before + ShopBottomChromeMetrics.travel(34) - 4),
       );
       expect(_opacity(tester), 0);
     });
@@ -493,21 +430,12 @@ class _DealsProbe extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NotificationListener<ScrollUpdateNotification>(
-      onNotification: (notification) {
-        final hideOnScroll = HideOnScroll.of(context);
-        if (hideOnScroll != null && notification.scrollDelta != null) {
-          hideOnScroll.setFromScroll(notification.scrollDelta!);
-        }
-        return false;
-      },
-      child: ListView(
-        key: const Key('deals-scroll'),
-        children: [
-          for (var i = 0; i < 40; i++)
-            SizedBox(height: 72, child: Text('Deal row $i')),
-        ],
-      ),
+    return ListView(
+      key: const Key('deals-scroll'),
+      children: [
+        for (var i = 0; i < 40; i++)
+          SizedBox(height: 72, child: Text('Deal row $i')),
+      ],
     );
   }
 }

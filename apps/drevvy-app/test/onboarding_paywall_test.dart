@@ -197,9 +197,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Your 3 free keys. Your choice.'), findsNothing);
-    expect(find.text('Deals'), findsOneWidget);
-    expect(find.text('Saved'), findsOneWidget);
-    expect(find.text('Shop'), findsWidgets);
+    expect(find.text('Ask me about cars'), findsOneWidget);
+    expect(find.byKey(const Key('nav-drawer')), findsNothing);
     expect(find.text('Create your account'), findsNothing);
     expect(find.textContaining(r'$4.99'), findsNothing);
   });

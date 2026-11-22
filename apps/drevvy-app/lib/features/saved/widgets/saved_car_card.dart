@@ -15,6 +15,7 @@ class SavedCarCard extends StatelessWidget {
     super.key,
     required this.savedCar,
     this.listing,
+    this.fairPrice,
     required this.onRemove,
     required this.onUnlock,
     required this.onFindSimilar,
@@ -23,6 +24,7 @@ class SavedCarCard extends StatelessWidget {
 
   final SavedCar savedCar;
   final Listing? listing;
+  final int? fairPrice;
   final VoidCallback onRemove;
   final VoidCallback onUnlock;
   final VoidCallback onFindSimilar;
@@ -39,7 +41,7 @@ class SavedCarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNoLongerListed = savedCar.isNoLongerListed || listing == null;
-    
+
     return Dismissible(
       key: Key(savedCar.id),
       direction: DismissDirection.endToStart,
@@ -70,10 +72,7 @@ class SavedCarCard extends StatelessWidget {
         children: [
           Icon(LucideIcons.trash2, color: Colors.white, size: 24),
           const SizedBox(height: 4),
-          Text(
-            'Remove',
-            style: text.label.copyWith(color: Colors.white),
-          ),
+          Text('Remove', style: text.label.copyWith(color: Colors.white)),
         ],
       ),
     );
@@ -135,9 +134,9 @@ class SavedCarCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(width: DrevvySpace.s3),
-                  
+
                   // Text content
                   Expanded(
                     child: Column(
@@ -175,12 +174,15 @@ class SavedCarCard extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // No longer listed tag
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: DrevvySpace.s3),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: colors.tile,
                   borderRadius: BorderRadius.circular(DrevvyRadius.xs),
@@ -191,9 +193,9 @@ class SavedCarCard extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: DrevvySpace.s3),
-            
+
             // Find similar button
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -206,6 +208,7 @@ class SavedCarCard extends StatelessWidget {
                 label: 'Find similar cars',
                 icon: LucideIcons.messageSquare,
                 variant: DrevvyButtonVariant.secondary,
+                isFullWidth: true,
                 onPressed: onFindSimilar,
               ),
             ),
@@ -255,27 +258,27 @@ class SavedCarCard extends StatelessWidget {
                       ),
                     ),
                     Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: colors.glassSolid.withValues(alpha: 0.9),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          LucideIcons.heart,
-                          size: 16,
-                          color: colors.danger,
+                      top: 0,
+                      right: 0,
+                      child: Semantics(
+                        button: true,
+                        label: 'Saved',
+                        child: GestureDetector(
+                          onTap: onRemove,
+                          behavior: HitTestBehavior.opaque,
+                          child: const SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Center(child: _FilledHeart()),
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(width: DrevvySpace.s3),
-                
+
                 // Text content
                 Expanded(
                   child: Column(
@@ -293,10 +296,7 @@ class SavedCarCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        listingData.priceFormatted,
-                        style: text.figureS,
-                      ),
+                      Text(listingData.priceFormatted, style: text.figureS),
                       Text(
                         '${listingData.distanceFormatted} · Dealer A · ${_formatDate(savedCar.savedAt)}',
                         style: text.callout.copyWith(color: colors.muted),
@@ -307,7 +307,7 @@ class SavedCarCard extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Price change chip (only show when there's actual data)
           if (hasPriceChange)
             Padding(
@@ -318,11 +318,9 @@ class SavedCarCard extends StatelessWidget {
                 wasPrice: savedCar.savedPrice!,
               ),
             ),
-          
-          if (hasPriceChange)
-            const SizedBox(height: DrevvySpace.s3),
-          
-          // Unlock my price button
+
+          if (hasPriceChange) const SizedBox(height: DrevvySpace.s3),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(
               DrevvySpace.s3,
@@ -330,7 +328,9 @@ class SavedCarCard extends StatelessWidget {
               DrevvySpace.s3,
               DrevvySpace.s3,
             ),
-            child: _UnlockButton(onPressed: onUnlock),
+            child: fairPrice != null
+                ? _FairPriceTag(price: fairPrice!)
+                : _UnlockButton(onPressed: onUnlock),
           ),
         ],
       ),
@@ -358,11 +358,16 @@ class _PriceChangeChip extends StatelessWidget {
     final colors = context.drevvy;
     final text = context.drevvyText;
 
-    final chipColor = isDrop ? colors.mintTint : colors.danger.withValues(alpha: 0.12);
+    final chipColor = isDrop
+        ? colors.mintTint
+        : colors.danger.withValues(alpha: 0.12);
     final textColor = isDrop ? colors.mint : colors.danger;
     final arrow = isDrop ? '↓' : '↑';
 
-    return Row(
+    return Wrap(
+      spacing: DrevvySpace.s2,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -371,19 +376,72 @@ class _PriceChangeChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(DrevvyRadius.xs),
           ),
           child: Text(
-            '$arrow ${_formatPrice(amount)} since you saved',
+            isDrop
+                ? '$arrow ${_formatPrice(amount)} since you saved'
+                : '${_formatPrice(amount)} more than when you saved',
             style: text.label.copyWith(
               color: textColor,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const SizedBox(width: DrevvySpace.s2),
-        Text(
-          'was ${_formatPrice(wasPrice)}',
-          style: text.callout.copyWith(color: colors.muted),
-        ),
+        if (isDrop)
+          Text(
+            'was ${_formatPrice(wasPrice)}',
+            style: text.callout.copyWith(color: colors.muted),
+          ),
       ],
+    );
+  }
+}
+
+class _FilledHeart extends StatelessWidget {
+  const _FilledHeart();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: colors.glassSolid.withValues(alpha: 0.92),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.favorite, size: 16, color: colors.danger),
+    );
+  }
+}
+
+class _FairPriceTag extends StatelessWidget {
+  const _FairPriceTag({required this.price});
+
+  final int price;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+    final label = NumberFormat.currency(
+      symbol: r'$',
+      decimalDigits: 0,
+    ).format(price);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.lilacTint,
+          borderRadius: BorderRadius.circular(DrevvyRadius.pill),
+        ),
+        child: Text(
+          'Fair price $label',
+          style: text.label.copyWith(
+            color: colors.violet,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -405,17 +463,22 @@ class _UnlockButton extends StatelessWidget {
           gradient: DrevvyColors.brandGradient,
           borderRadius: BorderRadius.circular(DrevvyRadius.pill),
         ),
-        child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(LucideIcons.plus, color: Colors.white, size: 16),
               const SizedBox(width: 6),
-              Text(
-                'Open listing',
-                style: text.label.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+              Flexible(
+                child: Text(
+                  'See the fair price · 1 key',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.label.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],

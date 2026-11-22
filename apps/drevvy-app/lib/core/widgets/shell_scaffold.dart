@@ -2,44 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/analytics/product_analytics.dart';
-import 'floating_tab_bar.dart';
+import '../../data/models/chat.dart';
+import '../../data/models/user.dart';
+import '../../data/repositories/demo_repository.dart';
+import '../../features/shop/widgets/get_more_keys.dart';
+import '../navigation/discover_intent.dart';
+import '../navigation/drevvy_nav_scope.dart';
+import '../theme/drevvy_tokens.dart';
 import 'canvas_background.dart';
+import 'nav_drawer.dart';
 import 'offline_banner.dart';
 import 'shop_bottom_chrome.dart';
-import '../theme/drevvy_tokens.dart';
 
-/// v1.8: InheritedWidget to share scroll visibility state with child screens.
-/// Screens can call HideOnScroll.of(context)?.hide() or .show() to control visibility.
-class HideOnScroll extends InheritedWidget {
-  const HideOnScroll({
+/// App shell. Discover is the home. Deals, Saves, and Profile open from
+/// the top-left drawer. There is no bottom tab bar.
+class ShellScaffold extends StatefulWidget {
+  const ShellScaffold({
     super.key,
-    required super.child,
-    required this.isVisible,
-    required this.show,
-    required this.hide,
-    required this.setFromScroll,
+    required this.child,
+    required this.location,
+    this.onShop = false,
   });
 
-  final bool isVisible;
-  final VoidCallback show;
-  final VoidCallback hide;
-  final void Function(double delta) setFromScroll;
-
-  static HideOnScroll? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<HideOnScroll>();
-  }
-
-  @override
-  bool updateShouldNotify(HideOnScroll oldWidget) =>
-      isVisible != oldWidget.isVisible;
-}
-
-/// Shell scaffold per spec §1.1/§6.5a: extendBody true, frosted tab bar pinned at bottom
-/// v1.8: Added hide-on-scroll behavior for tab bar.
-class ShellScaffold extends StatefulWidget {
-  const ShellScaffold({super.key, required this.navigationShell});
-
-  final StatefulNavigationShell navigationShell;
+  final Widget child;
+  final String location;
+  final bool onShop;
 
   @override
   State<ShellScaffold> createState() => _ShellScaffoldState();
@@ -48,30 +35,26 @@ class ShellScaffold extends StatefulWidget {
 class _ShellScaffoldState extends State<ShellScaffold>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _isOffline = false;
-
-  /// v1.8: Track whether the tab bar is visible (true) or hidden (false).
-  /// Deals and Saved still use this. Shop uses [ShopBottomChromeModel].
-  bool _isTabBarVisible = true;
-  late final AnimationController _tabBarAnimController;
-  late final Animation<Offset> _tabBarOffset;
   late final ShopBottomChromeModel _shopChrome;
+  late final AnimationController _drawerController;
+  late final DiscoverIntent _intent;
+  bool _drawerOpen = false;
+  List<ChatThread> _recent = const [];
+  bool _recentReady = false;
+  int? _keyCount;
+  User? _user;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _shopChrome = ShopBottomChromeModel(vsync: this);
-    _tabBarAnimController = AnimationController(
+    _drawerController = AnimationController(
       vsync: this,
-      duration: DrevvyMotion.tabSwitch.duration,
+      duration: const Duration(milliseconds: 250),
     );
-    _tabBarOffset = Tween<Offset>(begin: Offset.zero, end: const Offset(0, 1.5))
-        .animate(
-          CurvedAnimation(
-            parent: _tabBarAnimController,
-            curve: DrevvyMotion.tabSwitch.curve,
-          ),
-        );
+    _intent = DiscoverIntent();
+    _loadNav();
   }
 
   @override
@@ -83,12 +66,10 @@ class _ShellScaffoldState extends State<ShellScaffold>
   @override
   void didUpdateWidget(covariant ShellScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final previous = oldWidget.navigationShell.currentIndex;
-    final next = widget.navigationShell.currentIndex;
-    if (previous == next) return;
-    if (next == ShopBottomChromeMetrics.shopBranchIndex) {
+    if (oldWidget.onShop == widget.onShop) return;
+    if (widget.onShop) {
       _shopChrome.onShopTabShown();
-    } else if (previous == ShopBottomChromeMetrics.shopBranchIndex) {
+    } else {
       _shopChrome.onShopTabHidden();
     }
   }
@@ -114,8 +95,74 @@ class _ShellScaffoldState extends State<ShellScaffold>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _shopChrome.dispose();
-    _tabBarAnimController.dispose();
+    _drawerController.dispose();
+    _intent.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadNav() async {
+    final repo = DemoRepository.instance;
+    try {
+      final user = await repo.getCurrentUser();
+      final history = await repo.getChatHistory();
+      final balance = await repo.getCreditBalance();
+      if (!mounted) return;
+      setState(() {
+        _user = user;
+        _recent = history;
+        _keyCount = balance.balance;
+        _recentReady = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _recentReady = true);
+    }
+  }
+
+  void _openDrawer() {
+    ProductAnalytics.instance.track(AnalyticsEvents.historyOpened);
+    setState(() => _drawerOpen = true);
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    if (reduce) {
+      _drawerController.value = 1;
+    } else {
+      _drawerController.forward();
+    }
+    _loadNav();
+  }
+
+  void _closeDrawer() {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    if (reduce) {
+      _drawerController.value = 0;
+      setState(() => _drawerOpen = false);
+      return;
+    }
+    _drawerController.reverse().whenComplete(() {
+      if (mounted) setState(() => _drawerOpen = false);
+    });
+  }
+
+  void _go(String path) {
+    _closeDrawer();
+    if (widget.location == path) return;
+    context.go(path);
+  }
+
+  void _openRecent(ChatThread chat) {
+    _closeDrawer();
+    _intent.pendingChat = chat;
+    if (navPathIsDiscover(widget.location)) {
+      _intent.present(chat);
+      return;
+    }
+    context.go('/discover');
+  }
+
+  Future<void> _openKeys() async {
+    _closeDrawer();
+    await showGetMoreKeys(context);
+    await _loadNav();
   }
 
   void _simulateOffline() {
@@ -123,94 +170,105 @@ class _ShellScaffoldState extends State<ShellScaffold>
     setState(() => _isOffline = !_isOffline);
   }
 
-  void _showTabBar() {
-    if (!_isTabBarVisible) {
-      setState(() => _isTabBarVisible = true);
-      _tabBarAnimController.reverse();
-    }
-  }
-
-  void _hideTabBar() {
-    if (_isTabBarVisible) {
-      setState(() => _isTabBarVisible = false);
-      _tabBarAnimController.forward();
-    }
-  }
-
-  void _setFromScroll(double delta) {
-    if (delta > 8) {
-      _hideTabBar();
-    } else if (delta < -8) {
-      _showTabBar();
-    }
-  }
-
-  Widget _buildTabBar() {
-    return FloatingTabBar(
-      currentIndex: widget.navigationShell.currentIndex,
-      onTap: (index) {
-        const tabs = ['shop', 'deals', 'saved'];
-        final reselected = index == widget.navigationShell.currentIndex;
-        ProductAnalytics.instance.track(AnalyticsEvents.tabSelected, {
-          'tab': tabs[index],
-          'reselected': reselected,
-        });
-        ProductAnalytics.instance.recordLocation('/${tabs[index]}');
-        widget.navigationShell.goBranch(index, initialLocation: reselected);
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
-    final onShop =
-        widget.navigationShell.currentIndex ==
-        ShopBottomChromeMetrics.shopBranchIndex;
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final size = MediaQuery.sizeOf(context);
+    final width = navDrawerWidth(size);
+    final showDrawer = _drawerOpen || _drawerController.value > 0;
+    final selected = navDestinationFor(widget.location);
 
     return ShopBottomChromeScope(
       model: _shopChrome,
-      child: HideOnScroll(
-        isVisible: _isTabBarVisible,
-        show: _showTabBar,
-        hide: _hideTabBar,
-        setFromScroll: _setFromScroll,
-        child: Scaffold(
-          extendBody: true,
-          body: Stack(
-            children: [
-              const CanvasBackground(),
-              widget.navigationShell,
-              Positioned(
-                left: DrevvySpace.tabBarSideInset,
-                right: DrevvySpace.tabBarSideInset,
-                bottom:
-                    DrevvySpace.tabBarBottomInset +
-                    MediaQuery.of(context).padding.bottom,
-                child: onShop
-                    ? ShopChromeMotion(
-                        key: ShopBottomChromeMetrics.tabsKey,
-                        part: ShopChromePart.tabs,
-                        child: _buildTabBar(),
-                      )
-                    : SlideTransition(
-                        position: _tabBarOffset,
-                        child: _buildTabBar(),
+      child: DrevvyNavScope(
+        intent: _intent,
+        openDrawer: _openDrawer,
+        closeDrawer: _closeDrawer,
+        drawerOpen: _drawerOpen,
+        child: PopScope(
+          canPop: !_drawerOpen,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _drawerOpen) _closeDrawer();
+          },
+          child: Scaffold(
+            body: Stack(
+              children: [
+                const CanvasBackground(),
+                widget.child,
+                if (showDrawer) ...[
+                  Positioned.fill(
+                    child: Semantics(
+                      label: 'Close menu',
+                      button: true,
+                      child: GestureDetector(
+                        key: const Key('nav-scrim'),
+                        onTap: _closeDrawer,
+                        child: const ColoredBox(color: Color(0x7514172B)),
                       ),
-              ),
-              if (_isOffline)
-                Positioned(
-                  top: topPadding + DrevvySpace.s2,
-                  left: DrevvySpace.gutter,
-                  right: DrevvySpace.gutter,
-                  child: OfflineBanner(
-                    lastSyncedAt: DateTime.now().subtract(
-                      const Duration(minutes: 5),
                     ),
-                    onRetry: _simulateOffline,
                   ),
-                ),
-            ],
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: width,
+                    child: AnimatedBuilder(
+                      animation: _drawerController,
+                      builder: (context, child) {
+                        final t = reduce
+                            ? (_drawerOpen ? 1.0 : 0.0)
+                            : _drawerController.value;
+                        return Transform.translate(
+                          offset: Offset(reduce ? 0 : -width * (1 - t), 0),
+                          child: Opacity(
+                            opacity: reduce ? (_drawerOpen ? 1 : 0) : 1,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.horizontal(
+                          right: Radius.circular(28),
+                        ),
+                        child: GestureDetector(
+                          key: const Key('nav-drawer'),
+                          onHorizontalDragEnd: (details) {
+                            final velocity = details.primaryVelocity ?? 0;
+                            if (velocity < -200) _closeDrawer();
+                          },
+                          child: DrevvyNavDrawer(
+                            selected: selected,
+                            recent: _recent,
+                            recentReady: _recentReady,
+                            keyCount: _keyCount,
+                            user: _user,
+                            onDiscover: () => _go('/discover'),
+                            onDeals: () => _go('/deals'),
+                            onSaves: () => _go('/saves'),
+                            onRecent: _openRecent,
+                            onKeys: () => _openKeys(),
+                            onProfile: () => _go('/profile'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (_isOffline)
+                  Positioned(
+                    top: topPadding + DrevvySpace.s2,
+                    left: DrevvySpace.gutter,
+                    right: DrevvySpace.gutter,
+                    child: OfflineBanner(
+                      lastSyncedAt: DateTime.now().subtract(
+                        const Duration(minutes: 5),
+                      ),
+                      onRetry: _simulateOffline,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

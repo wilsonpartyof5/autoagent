@@ -9,8 +9,9 @@ import 'package:drevvy_app/core/theme/drevvy_tokens.dart';
 
 void main() {
   group('DrevvyApp Tests', () {
-    testWidgets('DrevvyApp renders with tab bar', (WidgetTester tester) async {
-      // Using runAsync to handle repository timers properly
+    testWidgets('DrevvyApp opens on Discover with no tab bar', (
+      WidgetTester tester,
+    ) async {
       await tester.runAsync(() async {
         await tester.pumpWidget(
           ProviderScope(
@@ -21,37 +22,15 @@ void main() {
           ),
         );
 
-        // Allow async operations to complete
         await Future.delayed(const Duration(milliseconds: 600));
         await tester.pump();
       });
 
-      // Verify tab bar is present with all three tabs
-      // "Shop" appears twice (screen + tab), "Deals" and "Saved" only in tab bar
-      // v1.8: Profile tab renamed to Saved
-      expect(find.text('Shop'), findsWidgets);
-      expect(find.text('Deals'), findsOneWidget);
-      expect(find.text('Saved'), findsOneWidget);
-    });
-
-    testWidgets('App launches on Shop tab (v1.6.1)', (WidgetTester tester) async {
-      await tester.runAsync(() async {
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              onboardingCompleteProvider.overrideWith((ref) => true),
-            ],
-            child: const DrevvyApp(),
-          ),
-        );
-
-        // Allow async operations to complete
-        await Future.delayed(const Duration(milliseconds: 600));
-        await tester.pump();
-      });
-
-      // Shop tab should be active - Ask|Shop toggle visible
-      expect(find.text('Ask'), findsOneWidget);
+      expect(find.text('Ask me about cars'), findsOneWidget);
+      expect(find.byKey(const Key('nav-menu')), findsOneWidget);
+      expect(find.byKey(const Key('nav-drawer')), findsNothing);
+      expect(find.text('Deals'), findsNothing);
+      expect(find.text('Saves'), findsNothing);
     });
   });
 

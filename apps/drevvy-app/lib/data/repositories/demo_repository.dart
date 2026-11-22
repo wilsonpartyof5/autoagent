@@ -214,9 +214,12 @@ class DemoRepository {
     savedDealsTick.value++;
   }
 
-  // Simulated delay for realistic loading states
+  // Simulated delay for realistic loading states.
+  // A zero wait must not schedule a timer. Tests that build a screen and
+  // stop would otherwise fail with a pending zero-duration timer.
   Future<T> _delay<T>(T value, [Duration? duration]) async {
-    await Future.delayed(duration ?? _networkDelay);
+    final wait = duration ?? _networkDelay;
+    if (wait > Duration.zero) await Future.delayed(wait);
     return value;
   }
 

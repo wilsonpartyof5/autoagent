@@ -108,9 +108,6 @@ void main() {
     );
     await _flushDelays(tester);
 
-    await tester.tap(find.text('Shop'));
-    await _flushDelays(tester);
-
     expect(find.text('Live inventory is not configured'), findsOneWidget);
     expect(find.text(apiNotConfiguredMessage), findsOneWidget);
     expect(find.text('See price'), findsNothing);
@@ -130,12 +127,9 @@ void main() {
     );
     await _flushDelays(tester);
 
-    await tester.tap(find.text('Shop'));
-    await _flushDelays(tester);
-
     expect(find.text('Live inventory is not configured'), findsNothing);
-    expect(find.text('2024 Toyota RAV4'), findsOneWidget);
-    expect(find.text('Reaching out'), findsWidgets);
+    expect(find.text('Ask me about cars'), findsOneWidget);
+    expect(find.text('2024 Toyota RAV4 Hybrid'), findsOneWidget);
   });
 
   testWidgets(

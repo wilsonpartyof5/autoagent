@@ -301,8 +301,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 800));
 
-      expect(find.text('BACK TO YOUR SEARCH'), findsOneWidget);
-      await tester.tap(find.text('BACK TO YOUR SEARCH'));
+      expect(find.text('Cars under \$25k'), findsOneWidget);
+      await tester.tap(find.text('Cars under \$25k'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
