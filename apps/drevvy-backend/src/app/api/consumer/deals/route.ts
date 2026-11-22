@@ -16,15 +16,16 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * Create body:
  * {
  *   "listingId": "mc-listing-1",
- *   "vehicle": { "year": 2024, "make": "Chevrolet", "model": "Tahoe", "price": 52900 },
- *   "zip": "29730"
+ *   "vehicle": { "year": 2024, "make": "Chevrolet", "model": "Tahoe", "price": 52900 }
  * }
  *
  * Creating a deal spends a dealer-conversation key only when the listing matches
  * an onboarded rooftop. Off-network listings return 409 off_network — use
  * POST /api/consumer/otd-requests. Market details and save are a separate key.
- * `zip` is used for MarketCheck Price and is not stored. Listing deals does not
- * load fair price.
+ * Fair price uses the onboarded rooftop ZIP (`dealerships.marketcheck_zip`),
+ * then the shopper profile ZIP. A zip on the body is ignored and is not
+ * stored. Listing detail is not fetched to learn the ZIP. Listing deals
+ * does not load fair price.
  *
  * Deal JSON includes listing id, status, outreachLockedUntilPaid, and the
  * vehicle snapshot. It does not include dealer name, phone, email, website,
