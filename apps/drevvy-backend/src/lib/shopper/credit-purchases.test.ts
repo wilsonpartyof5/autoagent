@@ -1339,53 +1339,81 @@ test('the sandbox allowlist is trimmed and the daily cap resets on the UTC day',
   assert.equal(policy.includes('console.'), false);
 });
 
-test('a grant falls back when the database still has the old purchase RPC', async () => {
-  let calls = 0;
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: null, error: null }),
-        }),
-      }),
-    }),
-    rpc: async (_name: string, params: { p_aliases?: string[] | null; p_product_id?: string | null }) => {
-      calls += 1;
-      if (calls === 1) {
-        assert.equal(Object.prototype.hasOwnProperty.call(params, 'p_aliases'), true);
-        return {
-          data: null,
-          error: { code: 'PGRST202', message: 'Could not find the function purchase_credits_atomic' },
-        };
-      }
-      assert.equal(Object.prototype.hasOwnProperty.call(params, 'p_aliases'), false);
-      assert.equal(Object.prototype.hasOwnProperty.call(params, 'p_product_id'), false);
-      return {
-        data: [{
-          granted: true,
-          already_granted: false,
-          balance: 5,
-          lifetime_purchased: 5,
-          lifetime_used: 0,
-          lifetime_refunded: 0,
-        }],
-        error: null,
-      };
-    },
+test('the old purchase RPC does not grant production, and the new RPC still does', async () => {
+  const purchase = { id: 'rc_prod', store_transaction_id: 'store_prod', is_sandbox: false, store: 'app_store' };
+  const legacy = legacyPurchaseRpc('PGRST202', 'Could not find the function purchase_credits_atomic');
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (line?: unknown) => {
+    logs.push(String(line));
   };
-  const result = await purchaseCredits(
-    supabase as never,
-    TEST_USER,
-    5,
-    19.99,
-    'store_old',
-    'drevvy_keys_5',
-    ['store_old', 'rc_old'],
+  let claimStatus = 0;
+  let restoreStatus = 0;
+  let claimBody: { success?: boolean; data?: unknown; error?: { code?: string; message?: string } } = {};
+  try {
+    const claim = await handleCreditPurchase(
+      creditPurchaseRequest('store_prod'),
+      creditRouteDeps(legacy.client, [purchase]),
+    );
+    claimStatus = claim.status;
+    claimBody = await claim.json() as typeof claimBody;
+    const restore = await handleCreditRestore(
+      creditRestoreRequest(['store_prod']),
+      creditRouteDeps(legacy.client, [purchase]),
+    );
+    restoreStatus = restore.status;
+  } finally {
+    console.error = original;
+  }
+  assert.equal(claimStatus, 503);
+  assert.equal(claimBody.success, false);
+  assert.equal(claimBody.data, undefined);
+  assert.equal(claimBody.error?.code, 'purchases_unavailable');
+  assert.equal(claimBody.error?.message, 'purchases temporarily unavailable');
+  assert.equal(restoreStatus, 503);
+  assert.equal(legacy.calls(), 2);
+  assert.equal((await readBalance(legacy.client, TEST_USER)).balance, 0);
+  const line = logs.find((entry) => entry.includes('store_transactions_not_applied'));
+  assert.ok(line);
+  const parsed = JSON.parse(line!) as { event: string; message: string };
+  assert.equal(parsed.event, 'store_transactions_not_applied');
+  assert.equal(parsed.message, 'store_transactions is not applied');
+  assert.equal(line!.includes(TEST_USER), false);
+  assert.equal(line!.includes('store_prod'), false);
+  assert.equal(line!.includes('secret'), false);
+
+  const schemaCache = legacyPurchaseRpc('PGRST204', 'purchase_credits_atomic was not found in the schema cache');
+  const hook = await handleRevenueCatWebhook(jsonRequest({
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: TEST_USER,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  }), { ...productionHookDeps(schemaCache.client, [purchase]) });
+  assert.equal(hook.status, 500);
+  assert.equal(schemaCache.calls(), 1);
+  assert.equal((await readBalance(schemaCache.client, TEST_USER)).balance, 0);
+
+  const current = acceptingPurchaseRpc();
+  const granted = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(current.client, [purchase]),
   );
-  assert.equal(calls, 2);
-  assert.equal(result.granted, true);
-  assert.equal(result.alreadyGrantedElsewhere, false);
-  assert.equal(result.credits.balance, 5);
+  assert.equal(granted.status, 200);
+  assert.equal(current.calls(), 1);
+  assert.deepEqual(await granted.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+
+  const sandboxPurchase = { id: 'rc_sbx', store_transaction_id: 'store_sbx', is_sandbox: true, store: 'app_store' };
+  const sandboxLegacy = legacyPurchaseRpc('PGRST202', 'Could not find the function purchase_credits_atomic');
+  const sandboxClaim = await handleCreditPurchase(
+    creditPurchaseRequest('store_sbx'),
+    creditRouteDeps(sandboxLegacy.client, [sandboxPurchase]),
+  );
+  assert.equal(sandboxClaim.status, 200);
+  assert.equal(sandboxLegacy.calls(), 2);
+  assert.equal((await readBalance(sandboxLegacy.client, TEST_USER)).balance, 5);
 });
 
 test('held store-transaction sql stays out of supabase/migrations', () => {
@@ -1495,6 +1523,89 @@ async function readBalance(supabase: SupabaseClient, userId: string) {
     data: { balance: number; lifetimePurchased: number; lifetimeUsed: number; lifetimeRefunded: number };
   };
   return body.data;
+}
+
+function legacyPurchaseRpc(code: string, message: string) {
+  let calls = 0;
+  let balance = 0;
+  const client = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: balance === 0 ? null : {
+              user_id: TEST_USER,
+              balance,
+              lifetime_purchased: balance,
+              lifetime_used: 0,
+              lifetime_refunded: 0,
+            },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+    rpc: async (name: string, params: { p_aliases?: string[] | null; p_product_id?: string | null; p_pack_size?: number }) => {
+      if (name !== 'purchase_credits_atomic') return { data: null, error: { message: 'unknown rpc' } };
+      calls += 1;
+      if (params.p_aliases != null || params.p_product_id != null) {
+        return { data: null, error: { code, message } };
+      }
+      balance += params.p_pack_size ?? 0;
+      return {
+        data: [{
+          granted: true,
+          already_granted: false,
+          balance,
+          lifetime_purchased: balance,
+          lifetime_used: 0,
+          lifetime_refunded: 0,
+        }],
+        error: null,
+      };
+    },
+  };
+  return { client: client as unknown as SupabaseClient, calls: () => calls };
+}
+
+function acceptingPurchaseRpc() {
+  let calls = 0;
+  let balance = 0;
+  const client = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: balance === 0 ? null : {
+              user_id: TEST_USER,
+              balance,
+              lifetime_purchased: balance,
+              lifetime_used: 0,
+              lifetime_refunded: 0,
+            },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+    rpc: async (name: string, params: { p_pack_size?: number }) => {
+      if (name !== 'purchase_credits_atomic') return { data: null, error: { message: 'unknown rpc' } };
+      calls += 1;
+      balance += params.p_pack_size ?? 0;
+      return {
+        data: [{
+          granted: true,
+          already_granted: false,
+          balance,
+          lifetime_purchased: balance,
+          lifetime_used: 0,
+          lifetime_refunded: 0,
+        }],
+        error: null,
+      };
+    },
+  };
+  return { client: client as unknown as SupabaseClient, calls: () => calls };
 }
 
 function memoryCredits(): SupabaseClient {

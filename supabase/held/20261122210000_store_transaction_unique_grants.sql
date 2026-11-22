@@ -1,10 +1,10 @@
 -- HELD. Do not move this file into supabase/migrations.
 -- The Supabase GitHub integration applies files in supabase/migrations on merge.
--- Apply this file by hand on the hosted database BEFORE deploying the backend
--- that reads already_granted_elsewhere. Deploying the backend first does not
--- crash: a missing p_product_id or p_aliases argument is retried without it,
--- and a missing already_granted_elsewhere column is treated as not granted
--- elsewhere. The cross-account hole stays open until this file is applied.
+-- Apply this file by hand BEFORE production purchases can grant.
+-- Until it is applied, a production claim or restore returns 503 and a
+-- PRODUCTION webhook returns 500. Neither grants keys. Allowlisted sandbox
+-- grants may still use the previous purchase function. Refunds still call
+-- reverse_purchase_atomic, which keeps its previous signature.
 --
 -- One App Store / RevenueCat transaction grants keys to one shopper.
 -- The table, not a partial unique index, is the source of truth because a

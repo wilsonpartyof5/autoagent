@@ -86,7 +86,15 @@ export async function handleCreditPurchase(request: Request, deps: CreditPurchas
     const decision = decideClaimGrant(auth.userId, verified, env, cap, now);
     if (!decision.ok) return claimError(decision.status, decision.code, decision.message);
 
-    const granted = await grantVerifiedPurchase(deps.supabase ?? createAdminClient(), auth.userId, verified);
+    const granted = await grantVerifiedPurchase(
+      deps.supabase ?? createAdminClient(),
+      auth.userId,
+      verified,
+      { allowLegacyRpc: decision.sandbox },
+    );
+    if (granted.unavailable) {
+      return claimError(503, 'purchases_unavailable', 'purchases temporarily unavailable');
+    }
     if (!granted.success) {
       return NextResponse.json(
         { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not add these keys.' } },

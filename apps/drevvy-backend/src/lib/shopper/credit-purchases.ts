@@ -215,6 +215,7 @@ export async function grantVerifiedPurchase(
   supabase: SupabaseClient,
   userId: string,
   verified: VerifiedCreditPurchase,
+  options?: { allowLegacyRpc?: boolean },
 ) {
   return purchaseCredits(
     supabase,
@@ -224,6 +225,7 @@ export async function grantVerifiedPurchase(
     verified.transactionId,
     verified.productId,
     verified.aliases,
+    options?.allowLegacyRpc === true,
   );
 }
 
@@ -421,6 +423,7 @@ export async function applyRevenueCatEvent(
     verified.transactionId,
     verified.productId,
     verified.aliases,
+    sandbox,
   );
   if (!result.success) return { applied: 'ignored', credits: result.credits, retryable: true };
   if (result.alreadyGrantedElsewhere || (!result.granted && !result.alreadyGranted)) {

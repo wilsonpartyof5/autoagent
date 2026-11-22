@@ -306,6 +306,24 @@ function creditsFromAtomicRow(userId: string, row: AtomicCreditRow): ShopperCred
   };
 }
 
+export type PurchaseCreditsResult = {
+  success: boolean;
+  credits: ShopperCredits;
+  granted: boolean;
+  alreadyGranted: boolean;
+  alreadyGrantedElsewhere: boolean;
+  /** True when production cannot grant because store_transactions is not applied. */
+  unavailable: boolean;
+  error?: string;
+};
+
+function logStoreTransactionsMissing() {
+  console.error(JSON.stringify({
+    event: 'store_transactions_not_applied',
+    message: 'store_transactions is not applied',
+  }));
+}
+
 export async function purchaseCredits(
   supabase: SupabaseClient,
   userId: string,
@@ -314,7 +332,8 @@ export async function purchaseCredits(
   transactionId: string,
   productId?: string,
   aliases?: string[],
-): Promise<{ success: boolean; credits: ShopperCredits; granted: boolean; alreadyGranted: boolean; alreadyGrantedElsewhere: boolean; error?: string }> {
+  allowLegacyRpc = false,
+): Promise<PurchaseCreditsResult> {
   const args = {
     p_user_id: userId,
     p_pack_size: packSize,
@@ -328,6 +347,18 @@ export async function purchaseCredits(
     withStoreFields ? { ...args, p_product_id: productId ?? null, p_aliases: aliases ?? null } : args,
   );
   if (response.error && withStoreFields && rpcMissingProductArg(response.error)) {
+    if (!allowLegacyRpc) {
+      logStoreTransactionsMissing();
+      const credits = await getShopperCredits(supabase, userId);
+      return {
+        success: false,
+        credits,
+        granted: false,
+        alreadyGranted: false,
+        alreadyGrantedElsewhere: false,
+        unavailable: true,
+      };
+    }
     response = await supabase.rpc('purchase_credits_atomic', args);
   }
 
@@ -339,6 +370,7 @@ export async function purchaseCredits(
       granted: false,
       alreadyGranted: false,
       alreadyGrantedElsewhere: false,
+      unavailable: false,
       error: response.error.message,
     };
   }
@@ -350,6 +382,7 @@ export async function purchaseCredits(
     granted: row.granted === true,
     alreadyGranted: row.already_granted === true,
     alreadyGrantedElsewhere: row.already_granted_elsewhere === true,
+    unavailable: false,
   };
 }
 

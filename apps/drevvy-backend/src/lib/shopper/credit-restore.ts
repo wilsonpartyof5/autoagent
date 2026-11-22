@@ -78,7 +78,15 @@ export async function handleCreditRestore(request: Request, deps: CreditRestoreD
           { status: decision.status },
         );
       }
-      const granted = await grantVerifiedPurchase(admin, auth.userId, verified);
+      const granted = await grantVerifiedPurchase(admin, auth.userId, verified, {
+        allowLegacyRpc: decision.sandbox,
+      });
+      if (granted.unavailable) {
+        return NextResponse.json(
+          { success: false, error: { code: 'purchases_unavailable', message: 'purchases temporarily unavailable' } },
+          { status: 503 },
+        );
+      }
       if (!granted.success) {
         return NextResponse.json(
           { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not restore these keys.' } },
