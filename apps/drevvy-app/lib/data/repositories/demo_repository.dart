@@ -187,6 +187,16 @@ class DemoRepository {
     return null;
   }
 
+  /// Deal already opened for this listing. A second Ask must not post again.
+  Deal? _dealForStartedListing(String listingId) {
+    final id = dealIdForListing(listingId);
+    if (id == null) return null;
+    for (final deal in _deals) {
+      if (deal.id == id) return deal;
+    }
+    return null;
+  }
+
   List<DealThreadMessage> dealThread(String dealId) {
     return List<DealThreadMessage>.unmodifiable(
       _dealThreads[dealId] ?? const [],
@@ -739,6 +749,9 @@ class DemoRepository {
           ? DealerConversationNotice.offNetwork
           : DealerConversationNotice.failed;
       return null;
+    }
+    if (hasStartedConversation(listing.id)) {
+      return _dealForStartedListing(listing.id);
     }
     final epoch = _captureAccount();
     final remote = await _keySpend.startConversation(

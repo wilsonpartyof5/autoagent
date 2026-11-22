@@ -172,15 +172,12 @@ void main() {
           errorMessage: null,
           onRetry: () {},
           network: offNetwork,
-          onOtdRequest: () {},
         ),
       ),
     );
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('ask-for-whole-price')),
-      200,
-    );
-    expect(find.text(KeySpend.otdRequestCta), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Coming soon'), 200);
+    expect(find.byKey(const Key('otd-coming-soon')), findsOneWidget);
+    expect(find.text(KeySpend.otdRequestCta), findsNothing);
     expect(find.byKey(const Key('ask-this-dealer')), findsNothing);
 
     await tester.pumpWidget(
@@ -258,6 +255,104 @@ void main() {
     expect(find.textContaining('secret-rooftop'), findsNothing);
     expect(find.textContaining('555'), findsNothing);
     expect((await repo.getCreditBalance()).balance, 2);
+  });
+
+  test('a second Ask reopens the same deal and does not post again', () async {
+    var creates = 0;
+    final repo = _repo(
+      initialBalance: const CarCreditBalance.withBalance(4),
+      handler: (request) async {
+        if (request.url.path.endsWith('/listings/network')) {
+          return _json(200, _inNetworkBody);
+        }
+        creates += 1;
+        return _json(200, {
+          'success': true,
+          'data': {'id': 'deal_live_1'},
+          'credits': {'balance': 3},
+        });
+      },
+    );
+    final match = RooftopMatch.parseNetworkResponse(_inNetworkBody);
+    final first = await repo.startDealerConversation(_listing, match);
+    final second = await repo.startDealerConversation(_listing, match);
+
+    expect(creates, 1);
+    expect(second?.id, first?.id);
+    expect(second?.id, 'deal_live_1');
+    expect(repo.hasStartedConversation(_listing.id), isTrue);
+    expect((await repo.getCreditBalance()).balance, 3);
+  });
+
+  testWidgets('Ask again opens the same chat without a second post', (
+    tester,
+  ) async {
+    var creates = 0;
+    final repo = _repo(
+      handler: (request) async {
+        if (request.url.path.endsWith('/listings/network')) {
+          return _json(200, _inNetworkBody);
+        }
+        if (request.method == 'POST' && request.url.path.endsWith('/deals')) {
+          creates += 1;
+          return _json(200, {
+            'success': true,
+            'data': {'id': 'deal_live_1'},
+            'credits': {'balance': 2},
+          });
+        }
+        return _json(500, {'success': false});
+      },
+    );
+
+    await _pumpVdp(tester, repo);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ask-this-dealer')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('ask-this-dealer')));
+    await tester.pumpAndSettle();
+    expect(find.text('opened deal_live_1'), findsOneWidget);
+    expect(creates, 1);
+
+    tester.state<NavigatorState>(find.byType(Navigator).last).pop();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ask-this-dealer')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('ask-this-dealer')));
+    await tester.pumpAndSettle();
+
+    expect(creates, 1);
+    expect(find.text('opened deal_live_1'), findsOneWidget);
+    expect((await repo.getCreditBalance()).balance, 2);
+  });
+
+  testWidgets('a live off-network bar says coming soon', (tester) async {
+    final offNetwork = RooftopMatch.parseNetworkResponse(const {
+      'success': true,
+      'data': {'state': 'off_network', 'ctas': []},
+    });
+    await tester.pumpWidget(
+      _frame(
+        VdpCtaBar(
+          listing: _listing,
+          creditBalance: const CarCreditBalance.withBalance(2),
+          match: offNetwork,
+          marketIntelUnlocked: false,
+          conversationOpen: false,
+          otdRequested: false,
+          onMarketIntel: () {},
+          onConversation: () {},
+          onOtdRequest: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text(KeySpend.otdRequestCta), findsNothing);
+    expect(find.text('This dealer is off Drevvy.'), findsOneWidget);
   });
 
   testWidgets('an off-network refusal keeps the key and uses plain copy', (
