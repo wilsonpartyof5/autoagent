@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/drevvy_theme.dart';
@@ -10,22 +12,49 @@ import '../../shop/widgets/listing_photo.dart';
 
 /// Pushed child of Deals. Back returns to Deals. No hamburger.
 ///
-/// Texts already stored on the deal thread are shown. In demo, a send
-/// appends to that same in-memory thread. There is no dealer-reply
-/// transport here, so a send does not invent a reply and does not spend
-/// another key. Live mode has no dealer delivery yet, so the composer
-/// stays hidden.
+/// Texts already stored on the deal thread are shown. Demo sends stay
+/// on this device. A deal the server created posts each shopper line and
+/// polls for salesperson lines while this screen is visible. A live deal
+/// that was not created through the server keeps the composer hidden.
 class DealChatScreen extends StatefulWidget {
-  const DealChatScreen({super.key, required this.dealId, this.repository});
+  const DealChatScreen({
+    super.key,
+    required this.dealId,
+    this.repository,
+    this.pollInterval = const Duration(seconds: 4),
+    this.maxPollInterval = const Duration(seconds: 30),
+  });
 
   final String dealId;
   final DemoRepository? repository;
+
+  /// How often a visible server thread asks for new lines.
+  final Duration pollInterval;
+
+  /// Longest wait after a failed poll.
+  final Duration maxPollInterval;
 
   @override
   State<DealChatScreen> createState() => _DealChatScreenState();
 }
 
-class _DealChatScreenState extends State<DealChatScreen> {
+/// Next poll wait. A failure doubles the wait up to [max]. A success
+/// returns to [base].
+Duration nextDealPollDelay(
+  Duration current, {
+  required bool failed,
+  required Duration base,
+  required Duration max,
+}) {
+  if (!failed) return base;
+  final doubled = current * 2;
+  if (doubled > max) return max;
+  if (doubled < base) return base;
+  return doubled;
+}
+
+class _DealChatScreenState extends State<DealChatScreen>
+    with WidgetsBindingObserver {
   late final DemoRepository _repo =
       widget.repository ?? DemoRepository.instance;
   final _controller = TextEditingController();
@@ -34,11 +63,19 @@ class _DealChatScreenState extends State<DealChatScreen> {
   bool _loading = true;
   bool _missing = false;
   bool _keySpent = false;
+  bool _sending = false;
+  bool _appResumed = true;
+  String? _sendError;
+  String? _threadError;
   int _loadGeneration = 0;
+  int _pollGeneration = 0;
+  Timer? _pollTimer;
+  late Duration _pollDelay = widget.pollInterval;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
@@ -50,12 +87,65 @@ class _DealChatScreenState extends State<DealChatScreen> {
 
   @override
   void dispose() {
+    _pollGeneration++;
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+    _considerPoll();
+  }
+
+  bool get _serverThread => _deal?.serverThread == true;
+
+  bool get _shouldPoll {
+    if (!mounted || !_serverThread || !_appResumed || _loading) return false;
+    final route = ModalRoute.of(context);
+    return route == null || route.isCurrent;
+  }
+
+  void _considerPoll() {
+    if (!_shouldPoll) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      return;
+    }
+    if (_pollTimer != null) return;
+    _pollTimer = Timer(_pollDelay, () => unawaited(_onPoll()));
+  }
+
+  Future<void> _onPoll() async {
+    _pollTimer = null;
+    final deal = _deal;
+    if (!mounted || deal == null || !_shouldPoll) return;
+    final generation = _pollGeneration;
+    final result = await _repo.refreshDealThread(deal.id);
+    if (!mounted || generation != _pollGeneration || deal.id != _deal?.id) {
+      return;
+    }
+    final failed = result.error != null;
+    setState(() {
+      if (!_sending) _messages = result.messages;
+      _threadError = result.error;
+      _pollDelay = nextDealPollDelay(
+        _pollDelay,
+        failed: failed,
+        base: widget.pollInterval,
+        max: widget.maxPollInterval,
+      );
+    });
+    _considerPoll();
+  }
+
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    _pollGeneration++;
+    _pollTimer?.cancel();
+    _pollTimer = null;
     final deals = await _repo.getDeals();
     if (!mounted || generation != _loadGeneration) return;
     Deal? match;
@@ -74,27 +164,58 @@ class _DealChatScreenState extends State<DealChatScreen> {
       });
       return;
     }
+    var messages = _repo.dealThread(match.id);
+    String? threadError;
+    if (match.serverThread) {
+      final refreshed = await _repo.refreshDealThread(match.id);
+      if (!mounted || generation != _loadGeneration) return;
+      messages = refreshed.messages;
+      threadError = refreshed.error;
+    }
     setState(() {
       _deal = match;
-      _messages = _repo.dealThread(match!.id);
-      _keySpent = _repo.hasStartedConversation(match.listingId);
+      _messages = messages;
+      _threadError = threadError;
+      _keySpent = match!.serverThread || _repo.hasStartedConversation(match.listingId);
       _loading = false;
       _missing = false;
+      _pollDelay = widget.pollInterval;
     });
+    _considerPoll();
   }
 
   void _send() {
-    if (_repo.isLive) return;
+    unawaited(_sendMessage());
+  }
+
+  Future<void> _sendMessage() async {
     final deal = _deal;
     final text = _controller.text.trim();
-    if (deal == null || text.isEmpty) return;
-    _repo.rememberDealMessage(deal.id, author: 'shopper', body: text);
-    _controller.clear();
-    setState(() => _messages = _repo.dealThread(deal.id));
+    if (deal == null || text.isEmpty || _sending) return;
+    if (_repo.isLive && !deal.serverThread) return;
+    setState(() {
+      _sending = true;
+      _sendError = null;
+    });
+    final error = await _repo.sendDealThreadMessage(deal.id, text);
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      _sendError = error;
+      if (error == null) {
+        _controller.clear();
+        _messages = _repo.dealThread(deal.id);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_serverThread) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _considerPoll();
+      });
+    }
     final colors = context.drevvy;
     final text = context.drevvyText;
     final deal = _deal;
@@ -121,6 +242,16 @@ class _DealChatScreenState extends State<DealChatScreen> {
   }
 
   String _title(Deal deal) => dealPartyLabel(deal);
+
+  String _bubbleLabel(DealThreadMessage message, String dealerLabel) {
+    final author = message.author?.trim().toLowerCase() ?? '';
+    return switch (author) {
+      'salesperson' => 'Salesperson',
+      'drevvy' => 'Drevvy',
+      'shopper' || '' => '',
+      _ => dealerLabel,
+    };
+  }
 
   Widget _thread(
     BuildContext context,
@@ -195,7 +326,7 @@ class _DealChatScreenState extends State<DealChatScreen> {
                   ),
                 ),
               for (final message in _messages) ...[
-                _Bubble(message: message, dealerLabel: who),
+                _Bubble(message: message, label: _bubbleLabel(message, who)),
                 const SizedBox(height: 10),
               ],
             ],
@@ -203,9 +334,36 @@ class _DealChatScreenState extends State<DealChatScreen> {
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, safe + 8),
-          child: _repo.isLive
+          child: _repo.isLive && !_serverThread
               ? const _ComingSoon()
-              : _Composer(controller: _controller, onSend: _send),
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_threadError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          _threadError!,
+                          textAlign: TextAlign.center,
+                          style: text.body.copyWith(color: colors.muted),
+                        ),
+                      ),
+                    if (_sendError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          _sendError!,
+                          key: const Key('deal-chat-send-error'),
+                          textAlign: TextAlign.center,
+                          style: text.body.copyWith(color: colors.ink),
+                        ),
+                      ),
+                    _Composer(
+                      controller: _controller,
+                      onSend: _sending ? () {} : _send,
+                    ),
+                  ],
+                ),
         ),
       ],
     );
@@ -233,10 +391,10 @@ class _Missing extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.dealerLabel});
+  const _Bubble({required this.message, required this.label});
 
   final DealThreadMessage message;
-  final String dealerLabel;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -267,11 +425,14 @@ class _Bubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!mine)
+                if (!mine && label.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 3),
                     child: Text(
-                      dealerLabel,
+                      label,
+                      key: label == 'Salesperson'
+                          ? const Key('deal-chat-salesperson')
+                          : null,
                       style: text.micro.copyWith(
                         color: colors.violet,
                         fontWeight: FontWeight.w800,
