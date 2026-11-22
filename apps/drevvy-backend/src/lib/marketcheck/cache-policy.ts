@@ -117,6 +117,15 @@ export function resetMarketCheckCacheForTests(): void {
   inflight.clear();
 }
 
+/** Read a stored value without loading. Expired and missing keys return null. */
+export function peekMarketCheck<T>(endpoint: MarketCheckCacheEndpoint, key: string, now: () => number): T | null {
+  const policy = MARKETCHECK_CACHE_POLICY[endpoint];
+  if (!policy.allowed || policy.ttlMs <= 0) return null;
+  const hit = stored.get(`${endpoint}:${key}`);
+  if (!hit || now() >= hit.expiresAt) return null;
+  return hit.value as T;
+}
+
 export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
   if (value && typeof value === 'object') {

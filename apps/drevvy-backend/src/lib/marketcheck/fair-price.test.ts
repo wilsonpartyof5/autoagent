@@ -5,6 +5,7 @@ import { marketCheckStoredKeyCount, resetMarketCheckCacheForTests } from './cach
 import {
   fairPriceTriggerAllowed,
   loadFairPriceIfAllowed,
+  resetFairPriceGuardsForTests,
 } from './price';
 import { containsSecret } from './secrets';
 import { resetMarketCheckUsageForTests } from './usage';
@@ -15,7 +16,10 @@ const ZIP = '29730';
 
 test('fair price loads only for unlock with agent or opening a deal, then uses the 24 hour cache', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   resetMarketCheckCacheForTests();
+  resetFairPriceGuardsForTests();
   resetMarketCheckUsageForTests();
   const logs: string[] = [];
   const originalFetch = globalThis.fetch;
@@ -50,13 +54,14 @@ test('fair price loads only for unlock with agent or opening a deal, then uses t
     assert.equal(fairPriceTriggerAllowed('vin'), false);
 
     const vehicle = { vin: VIN, miles: 41000, zip: ZIP, condition: 'used' as const };
-    assert.equal(await loadFairPriceIfAllowed('listing', vehicle), null);
-    assert.equal(await loadFairPriceIfAllowed('unlock_with_agent', { ...vehicle, condition: 'new' }), null);
-    assert.equal(await loadFairPriceIfAllowed('open_deal', { ...vehicle, zip: undefined }), null);
+    const paid = { userId: 'shopper-fair-price' };
+    assert.equal(await loadFairPriceIfAllowed('listing', vehicle, paid), null);
+    assert.equal(await loadFairPriceIfAllowed('unlock_with_agent', { ...vehicle, condition: 'new' }, paid), null);
+    assert.equal(await loadFairPriceIfAllowed('open_deal', { ...vehicle, zip: undefined }, paid), null);
     assert.equal(calls, 0);
 
-    const unlocked = await loadFairPriceIfAllowed('unlock_with_agent', vehicle);
-    const opened = await loadFairPriceIfAllowed('open_deal', { ...vehicle, zip: `${ZIP}-1234` });
+    const unlocked = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, paid);
+    const opened = await loadFairPriceIfAllowed('open_deal', { ...vehicle, zip: `${ZIP}-1234` }, paid);
     assert.equal(unlocked?.price, 30100);
     assert.equal(unlocked?.fromCache, false);
     assert.equal(opened?.price, 30100);
@@ -75,5 +80,7 @@ test('fair price loads only for unlock with agent or opening a deal, then uses t
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
   }
 });

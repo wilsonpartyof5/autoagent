@@ -1,6 +1,7 @@
-import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
+import { getVehicleDetailMcp, searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
 import {
   loadFairPriceIfAllowed,
+  type FairPriceLoadOptions,
   type FairPriceQuote,
   type FairPriceTrigger,
   type FairPriceVehicle,
@@ -73,7 +74,18 @@ export type DealDeps = {
   notify?: (push: ShopperPush) => Promise<void>;
   supabase?: SupabaseClient;
   /** Defaults to MarketCheck Price, allowed only for unlock and open-deal. */
-  loadFairPrice?: (trigger: FairPriceTrigger, vehicle: FairPriceVehicle) => Promise<FairPriceQuote | null>;
+  loadFairPrice?: (
+    trigger: FairPriceTrigger,
+    vehicle: FairPriceVehicle,
+    options?: FairPriceLoadOptions,
+  ) => Promise<FairPriceQuote | null>;
+  /** Dealer ZIP and dealer type from listing detail. Client ZIP is not used. */
+  listingDealerZip?: (
+    listingId: string,
+    vin: string | null,
+  ) => Promise<{ dealerZip: string | null; dealerType?: string | null } | null>;
+  /** Shopper profile ZIP. Used only when the listing has no dealer ZIP. */
+  profileZip?: (userId: string) => Promise<string | null>;
   /** Shopper-facing note when the verified trim disagrees with MarketCheck. */
   trimNotice?: (dealId: string) => Promise<string | null>;
 };
@@ -91,7 +103,7 @@ function getAdminClient(deps: DealDeps): SupabaseClient {
 
 export async function shopperDeps(_userId: string): Promise<DealDeps> {
   const now = new Date();
-  return {
+  const deps: DealDeps = {
     deals: supabaseShopperDealRepository(),
     lifecycle: getLifecycleRepository(),
     now,
@@ -100,6 +112,9 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
     notify: (push) => deliverShopperPushLive(push).then(() => undefined),
     trimNotice: (dealId) => readShopperTrimNotice(dealId),
   };
+  deps.listingDealerZip = dealerAreaForListing;
+  deps.profileZip = (ownerId) => readDealProfileZip(ownerId, deps);
+  return deps;
 }
 
 export async function addShopperCar(
@@ -116,7 +131,7 @@ export async function addShopperCar(
       await chargeDeal(supabase, userId, deal.id, false, deps, input.vdpMatchId);
       const records = await deps.lifecycle.listForShopper(userId);
       return {
-        deal: await withFairPrice(presentDeal(deal, findRecord(records, deal.id)), 'unlock_with_agent', input.zip, deps),
+        deal: await withFairPrice(userId, presentDeal(deal, findRecord(records, deal.id)), 'unlock_with_agent', deps),
         credits: await creditSummaryFor(supabase, userId),
       };
     }
@@ -145,12 +160,12 @@ export async function addShopperCar(
 
   return {
     deal: await withFairPrice(
+      userId,
       presentDeal(
         provisioned.deal,
         (await deps.lifecycle.get(userId, provisioned.deal.id)) ?? blankLifecycle(provisioned.deal, userId),
       ),
       'unlock_with_agent',
-      input.zip,
       deps,
     ),
     credits: await creditSummaryFor(supabase, userId),
@@ -180,12 +195,11 @@ export async function getShopperCar(
   userId: string,
   dealId: string,
   deps: DealDeps,
-  options?: { zip?: unknown },
 ): Promise<PresentedDeal> {
   const deal = await requireDeal(userId, dealId, deps);
   const record = await deps.lifecycle.get(userId, deal.id);
   const notice = deps.trimNotice ? await deps.trimNotice(deal.id) : null;
-  return withFairPrice(presentDeal(deal, record, notice), 'open_deal', options?.zip, deps);
+  return withFairPrice(userId, presentDeal(deal, record, notice), 'open_deal', deps);
 }
 
 export async function removeShopperCar(
@@ -455,19 +469,22 @@ export async function readRequestJson(request: Request): Promise<unknown> {
 }
 
 async function withFairPrice(
+  userId: string,
   deal: PresentedDeal,
   trigger: FairPriceTrigger,
-  zip: unknown,
   deps: DealDeps,
 ): Promise<PresentedDeal> {
   const load = deps.loadFairPrice ?? loadFairPriceIfAllowed;
+  const area = await resolveDealPriceArea(userId, deal, deps);
+  if (!area.zip) return deal;
   try {
     const quote = await load(trigger, {
       vin: deal.vehicle.vin,
       miles: deal.vehicle.miles,
       condition: deal.vehicle.condition,
-      zip: typeof zip === 'string' ? zip : undefined,
-    });
+      zip: area.zip,
+      dealerType: area.dealerType,
+    }, { userId, purpose: 'deal' });
     if (!quote) return deal;
     return { ...deal, fairPrice: { price: quote.price, fromCache: quote.fromCache } };
   } catch (error) {
@@ -478,6 +495,84 @@ async function withFairPrice(
     }));
     return deal;
   }
+}
+
+/**
+ * Price ZIP is the listing's dealer ZIP, then the shopper profile ZIP.
+ * `input.zip` and `?zip` are not read here.
+ */
+async function resolveDealPriceArea(
+  userId: string,
+  deal: PresentedDeal,
+  deps: DealDeps,
+): Promise<{ zip: string | null; dealerType: string | null }> {
+  let dealerType: string | null = null;
+  if (deps.listingDealerZip) {
+    try {
+      const found = await deps.listingDealerZip(deal.listingId, deal.vehicle.vin ?? null);
+      dealerType = found?.dealerType ?? null;
+      const dealerZip = fiveDigitZip(found?.dealerZip);
+      if (dealerZip) return { zip: dealerZip, dealerType };
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'marketcheck_dealer_zip_failed',
+        error: redactSecrets(error instanceof Error ? error.message : String(error)),
+      }));
+    }
+  }
+  const profile = await resolveProfileZip(userId, deps);
+  return { zip: fiveDigitZip(profile), dealerType };
+}
+
+async function resolveProfileZip(userId: string, deps: DealDeps): Promise<string | null> {
+  if (deps.profileZip) return deps.profileZip(userId);
+  if (!deps.supabase) return null;
+  return readDealProfileZip(userId, deps);
+}
+
+async function readDealProfileZip(userId: string, deps: DealDeps): Promise<string | null> {
+  try {
+    const supabase = getAdminClient(deps);
+    const { data, error } = await supabase
+      .from('consumer_profiles')
+      .select('zip')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data || typeof data.zip !== 'string') return null;
+    return data.zip;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'marketcheck_profile_zip_failed',
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return null;
+  }
+}
+
+async function dealerAreaForListing(
+  listingId: string,
+  vin: string | null,
+): Promise<{ dealerZip: string | null; dealerType: string | null } | null> {
+  try {
+    const detail = await getVehicleDetailMcp(listingId, vin ?? undefined, ['listing']);
+    if (!detail) return null;
+    return {
+      dealerZip: detail.location?.dealerZip ?? null,
+      dealerType: detail.dealerType ?? null,
+    };
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'marketcheck_dealer_zip_failed',
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return null;
+  }
+}
+
+function fiveDigitZip(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{5})(?:-\d{4})?$/);
+  return match?.[1] ?? null;
 }
 
 async function requireDeal(userId: string, dealId: string, deps: DealDeps): Promise<ShopperDeal> {

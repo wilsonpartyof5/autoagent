@@ -53,6 +53,7 @@ export type MarketIntelLoader = (input: {
   listingId: string;
   vin: string | null;
   profileZip: string | null;
+  userId?: string;
 }) => Promise<MarketIntel | MarketIntelLookup | null>;
 
 export type MarketSaveDeps = SavedCarDeps & {
@@ -184,6 +185,7 @@ export async function unlockMarketAndSave(
       listingId: input.listingId,
       vin: input.vin ?? null,
       profileZip,
+      userId,
     }), input.listingId);
   } catch (error) {
     lookupThrew = true;

@@ -14,12 +14,18 @@ import type { SavedCarRepository, SavedCarRow } from '@/lib/shopper/saved-cars';
 import { marketCheckStoredKeyCount, resetMarketCheckCacheForTests } from './cache-policy';
 import { MarketCheckUpstreamError } from './mcp-client';
 import {
+  FAIR_PRICE_DAILY_CAP,
+  FAIR_PRICE_NEGATIVE_TTL_MS,
   FAIR_PRICE_SOURCE,
+  FAIR_PRICE_UPSTREAM_TTL_MS,
   PREMIUM_PRICE_TOOL,
   REST_BASE_PRICE_ENDPOINT,
+  type FairPriceLoadOptions,
+  fairPriceSpendEnabled,
   getMarketCheckPrice,
   loadFairPriceIfAllowed,
   readPremiumPrice,
+  resetFairPriceGuardsForTests,
 } from './price';
 import { containsSecret } from './secrets';
 import { resetMarketCheckUsageForTests } from './usage';
@@ -28,6 +34,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SECRET = 'test-marketcheck-key-do-not-ship';
 const VIN = '1HGCM82633A004352';
 const ZIP = '29720';
+const PRICE_USER = 'shopper-price-test';
+const ACTIVE_VIN = '1FTEW1EP5MFA00001';
+const SECOND_VIN = '1FTEW1EP5MFA00002';
+const RECENT_VIN = '1FTEW1EP5MFA00003';
+
+function priceOptions(extra: FairPriceLoadOptions = {}): FairPriceLoadOptions {
+  return { userId: PRICE_USER, ...extra };
+}
 const FIXTURE = JSON.parse(readFileSync(
   join(HERE, 'fixtures/predict-price-with-comparables.json'),
   'utf8',
@@ -57,14 +71,20 @@ test('the captured premium response maps the fair price and active comps only', 
   assert.ok(parsed);
   assert.equal(parsed.price, 54926);
   assert.equal(parsed.comparables.length, 2);
-  assert.equal(parsed.comparables[0]?.id, '1GNSKSKD1PR295511-20b08425-7090');
+  assert.equal(parsed.comparables[0]?.id, `${ACTIVE_VIN}-aaaabbbb-1111`);
+  assert.equal(parsed.comparables[0]?.vin, ACTIVE_VIN);
   assert.equal(parsed.comparables[0]?.daysOnMarket, 239);
-  assert.equal(parsed.comparables[1]?.id, '1GNSKSKD4PR203985-89c74a07-72be');
+  assert.equal(parsed.comparables[1]?.id, `${SECOND_VIN}-ccccdddd-2222`);
   assert.equal(parsed.comparables[1]?.daysOnMarket, 29);
   assert.equal(parsed.comparables[1]?.price, 43776);
-  const recentOnly = FIXTURE.data.recent_comparables.listings.find((listing) => listing.vin === '1GNSKSKD1PR172047');
+  const fixtureText = readFileSync(join(HERE, 'fixtures/predict-price-with-comparables.json'), 'utf8');
+  assert.match(fixtureText, /example\.com/);
+  assert.equal(fixtureText.includes('1GNSKSKD'), false);
+  assert.equal(fixtureText.includes('lancastermotor'), false);
+  assert.equal(fixtureText.includes('hendrick'), false);
+  const recentOnly = FIXTURE.data.recent_comparables.listings.find((listing) => listing.vin === RECENT_VIN);
   assert.ok(recentOnly);
-  assert.equal(parsed.comparables.some((comp) => comp.vin === '1GNSKSKD1PR172047'), false);
+  assert.equal(parsed.comparables.some((comp) => comp.vin === RECENT_VIN), false);
 
   const days = readPremiumPrice({
     success: true,
@@ -105,8 +125,8 @@ test('one premium call returns the fair price and comps and does not search', as
     });
     return jsonRpc(FIXTURE);
   }, async (calls, logs) => {
-    const first = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP });
-    const second = await getMarketCheckPrice({ vin: vinLower(), miles: 30000.4, zip: `${ZIP}-1234` });
+    const first = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions());
+    const second = await getMarketCheckPrice({ vin: vinLower(), miles: 30000.4, zip: `${ZIP}-1234` }, Date.now, priceOptions());
     assert.equal(first?.price, 54926);
     assert.equal(first?.fromCache, false);
     assert.equal(first?.comparables?.length, 2);
@@ -130,8 +150,8 @@ test('a cached premium quote makes no further network call, including for comps'
     calls += 1;
     return jsonRpc(FIXTURE);
   }, async () => {
-    await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP });
-    const hit = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP });
+    await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions());
+    const hit = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions());
     assert.equal(hit?.fromCache, true);
     assert.equal(hit?.comparables?.length, 2);
     assert.equal(calls, 1);
@@ -150,8 +170,8 @@ test('simultaneous premium quotes share one in-flight call', async () => {
     return jsonRpc(FIXTURE);
   }, async () => {
     const pending = Promise.all([
-      getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }),
-      getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }),
+      getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions()),
+      getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions()),
     ]);
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
@@ -175,31 +195,37 @@ test('an unknown price tool yields null and does not fall back to a listing sear
       miles: 30000,
       zip: ZIP,
       condition: 'used',
-    });
+    }, priceOptions());
     assert.equal(quote, null);
     assert.deepEqual(names, [PREMIUM_PRICE_TOOL]);
     await assert.rejects(
-      () => getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, { strict: true }),
+      () => getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions({ strict: true })),
       (error: unknown) => error instanceof MarketCheckUpstreamError,
     );
+    assert.equal(names.length, 1);
     assert.equal(names.includes('search_active_cars'), false);
     assert.equal(marketCheckStoredKeyCount(), 0);
   });
 });
 
-test('a negative or malformed premium price is not a quote and is not cached', async () => {
+test('a negative or malformed premium price is not a quote and is not fetched again', async () => {
   let calls = 0;
+  let nowMs = Date.parse('2026-11-22T12:00:00.000Z');
   await withFetch(() => {
     calls += 1;
     return jsonRpc({
       success: true,
-      data: { marketcheck_price: calls === 1 ? -20 : '54926', comparables: { listings: [] } },
+      data: { marketcheck_price: -20, comparables: { listings: [] } },
     });
   }, async () => {
-    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }), null);
-    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }), null);
-    assert.equal(calls, 2);
+    const now = () => nowMs;
+    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, now, priceOptions()), null);
+    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, now, priceOptions()), null);
+    assert.equal(calls, 1);
     assert.equal(marketCheckStoredKeyCount(), 0);
+    nowMs += FAIR_PRICE_NEGATIVE_TTL_MS;
+    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, now, priceOptions()), null);
+    assert.equal(calls, 2);
   });
 });
 
@@ -225,7 +251,7 @@ test('the base-price selector calls REST and leaves comps to search', async () =
       miles: 30000,
       zip: ZIP,
       dealerType: 'independent',
-    }, Date.now, { source: 'rest_base_plus_search' });
+    }, Date.now, priceOptions({ source: 'rest_base_plus_search' }));
     assert.equal(quote?.price, 25000);
     assert.equal(quote?.fromCache, false);
     assert.equal(quote?.comparables, undefined);
@@ -241,7 +267,7 @@ test('the base-price selector calls REST and leaves comps to search', async () =
       miles: 30000,
       zip: ZIP,
       dealerType: 'franchise',
-    }, Date.now, { source: 'rest_base_plus_search' });
+    }, Date.now, priceOptions({ source: 'rest_base_plus_search' }));
     assert.equal(again?.fromCache, true);
     assert.equal(again?.comparables, undefined);
     assert.equal(names.length, 1);
@@ -256,7 +282,7 @@ test('the base-price selector calls REST and leaves comps to search', async () =
       vin: VIN,
       miles: 12000,
       zip: ZIP,
-    }, Date.now, { source: 'rest_base_plus_search' }), null);
+    }, Date.now, priceOptions({ source: 'rest_base_plus_search' })), null);
   });
 });
 
@@ -268,6 +294,7 @@ test('market intel uses the premium comps from one call and does not search', as
       listingId: 'subject-listing',
       vin: null,
       profileZip: null,
+      userId: PRICE_USER,
     });
     assert.equal(lookup.listingFound, true);
     assert.ok(lookup.intel);
@@ -290,6 +317,7 @@ test('market intel uses the premium comps from one call and does not search', as
       listingId: 'subject-listing',
       vin: null,
       profileZip: null,
+      userId: PRICE_USER,
     });
     assert.equal(cached.intel?.fairVehiclePrice, 54926);
     assert.equal(cached.intel?.comparablesCount, 3);
@@ -335,6 +363,149 @@ test('an unknown price tool refunds the key instead of saving a basic listing', 
   });
 });
 
+test('spend stays off unless the env is exactly true, and then no price call is made', async () => {
+  let calls = 0;
+  await withFetch(() => {
+    calls += 1;
+    return jsonRpc(FIXTURE);
+  }, async () => {
+    const vehicle = { vin: VIN, miles: 30000, zip: ZIP, condition: 'used' as const };
+    for (const value of [undefined, '', 'TRUE', '1', 'false', ' true', 'true ']) {
+      if (value === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+      else process.env.FAIR_PRICE_SPEND_ENABLED = value;
+      assert.equal(fairPriceSpendEnabled(), false);
+      assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions()), null);
+      assert.equal(await loadFairPriceIfAllowed('open_deal', vehicle, priceOptions({ purpose: 'deal' })), null);
+      assert.equal(await loadFairPriceIfAllowed('unlock_with_agent', vehicle, priceOptions({ purpose: 'deal' })), null);
+      assert.equal(await loadFairPriceIfAllowed('unlock_with_agent', vehicle, priceOptions({
+        purpose: 'market_intel',
+        strict: true,
+      })), null);
+    }
+    const lookup = await loadMarketIntelFromMarketCheck({
+      listingId: 'subject-listing',
+      vin: null,
+      profileZip: null,
+      userId: PRICE_USER,
+    });
+    assert.equal(lookup.intel, null);
+    assert.equal(calls, 0);
+
+    process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+    assert.equal(await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }), null);
+    assert.equal(calls, 0);
+    const paid = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions());
+    assert.equal(paid?.price, 54926);
+    assert.equal(calls, 1);
+    delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    const fromCache = await getMarketCheckPrice({ vin: VIN, miles: 30000, zip: ZIP }, Date.now, priceOptions({ purpose: 'deal' }));
+    assert.equal(fromCache?.price, 54926);
+    assert.equal(fromCache?.fromCache, true);
+    assert.equal(await getMarketCheckPrice({
+      vin: VIN,
+      miles: 30000,
+      zip: ZIP,
+    }, Date.now, priceOptions({ purpose: 'market_intel' })), null);
+    assert.equal(calls, 1);
+  }, { spend: false });
+});
+
+test('a shopper over the daily cap and a repeat upstream failure make no further price call', async () => {
+  let calls = 0;
+  let nowMs = Date.parse('2026-11-22T12:00:00.000Z');
+  const now = () => nowMs;
+  await withFetch(() => {
+    calls += 1;
+    if (calls === 1) return new Response('upstream', { status: 500 });
+    return jsonRpc({
+      success: true,
+      data: { marketcheck_price: 25000, comparables: { listings: [] } },
+    });
+  }, async () => {
+    const upstream = priceOptions({ userId: 'shopper-upstream', strict: true });
+    await assert.rejects(
+      () => getMarketCheckPrice({ vin: VIN, miles: 1, zip: ZIP }, now, upstream),
+      (error: unknown) => error instanceof MarketCheckUpstreamError,
+    );
+    assert.equal(calls, 1);
+    await assert.rejects(
+      () => getMarketCheckPrice({ vin: VIN, miles: 1, zip: ZIP }, now, upstream),
+      (error: unknown) => error instanceof MarketCheckUpstreamError,
+    );
+    assert.equal(calls, 1);
+    assert.equal(await getMarketCheckPrice({
+      vin: VIN,
+      miles: 1,
+      zip: ZIP,
+    }, now, priceOptions({ userId: 'shopper-upstream' })), null);
+    assert.equal(calls, 1);
+    nowMs += FAIR_PRICE_UPSTREAM_TTL_MS;
+    const recovered = await getMarketCheckPrice({
+      vin: VIN,
+      miles: 1,
+      zip: ZIP,
+    }, now, priceOptions({ userId: 'shopper-upstream' }));
+    assert.equal(recovered?.price, 25000);
+    assert.equal(calls, 2);
+
+    for (let miles = 1; miles <= FAIR_PRICE_DAILY_CAP; miles += 1) {
+      const quote = await getMarketCheckPrice({ vin: VIN, miles, zip: '30301' }, now, priceOptions());
+      assert.equal(quote?.price, 25000);
+    }
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP + 2);
+    const blocked = await getMarketCheckPrice({ vin: VIN, miles: 500, zip: '30301' }, now, priceOptions());
+    assert.equal(blocked, null);
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP + 2);
+    const hit = await getMarketCheckPrice({ vin: VIN, miles: 1, zip: '30301' }, now, priceOptions());
+    assert.equal(hit?.fromCache, true);
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP + 2);
+    const otherUser = await getMarketCheckPrice({
+      vin: VIN,
+      miles: 500,
+      zip: '30301',
+    }, now, priceOptions({ userId: 'shopper-other' }));
+    assert.equal(otherUser?.price, 25000);
+    nowMs = Date.parse('2026-11-23T00:00:00.000Z');
+    const nextDay = await getMarketCheckPrice({ vin: VIN, miles: 501, zip: '30301' }, now, priceOptions());
+    assert.equal(nextDay?.price, 25000);
+  });
+});
+
+test('market intel over the daily cap does not call the price tool', async () => {
+  const names: string[] = [];
+  const nowMs = Date.parse('2026-11-22T12:00:00.000Z');
+  await withFetch((call) => {
+    if (call.url.includes('/v2/listing/car/')) {
+      names.push('listing_detail');
+      return json(listingPayload());
+    }
+    const tool = toolCall(call);
+    names.push(tool?.name ?? call.url);
+    if (tool?.name === 'search_active_cars') throw new Error('comps search was called');
+    if (tool?.name === PREMIUM_PRICE_TOOL) {
+      return jsonRpc({
+        success: true,
+        data: { marketcheck_price: 25000, comparables: { listings: [] } },
+      });
+    }
+    throw new Error(`unexpected call ${tool?.name ?? call.url}`);
+  }, async () => {
+    for (let miles = 1; miles <= FAIR_PRICE_DAILY_CAP; miles += 1) {
+      assert.ok(await getMarketCheckPrice({ vin: VIN, miles, zip: '10001' }, () => nowMs, priceOptions()));
+    }
+    const priceCalls = names.filter((name) => name === PREMIUM_PRICE_TOOL).length;
+    const lookup = await loadMarketIntelFromMarketCheck({
+      listingId: 'subject-listing',
+      vin: null,
+      profileZip: null,
+      userId: PRICE_USER,
+    });
+    assert.equal(lookup.intel, null);
+    assert.equal(names.filter((name) => name === PREMIUM_PRICE_TOOL).length, priceCalls);
+    assert.equal(names.includes('search_active_cars'), false);
+  });
+});
+
 function premiumPayload(): unknown {
   const payload = structuredClone(FIXTURE);
   payload.data.comparables.listings.push({
@@ -345,7 +516,7 @@ function premiumPayload(): unknown {
   });
   payload.data.comparables.listings.push({
     id: 'extra-comp',
-    vin: '2GNSKSKD1PR295511',
+    vin: '2FTEW1EP5MFA00009',
     price: 47000,
     dom_active: 12,
   });
@@ -441,9 +612,14 @@ function vinLower(): string {
 async function withFetch(
   impl: (call: FetchCall) => Promise<Response> | Response,
   run: (calls: FetchCall[], logs: string[]) => Promise<void>,
+  options?: { spend?: boolean },
 ) {
   process.env.MARKETCHECK_API_KEY = SECRET;
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  if (options?.spend === false) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   resetMarketCheckCacheForTests();
+  resetFairPriceGuardsForTests();
   resetMarketCheckUsageForTests();
   const calls: FetchCall[] = [];
   const logs: string[] = [];
@@ -467,6 +643,8 @@ async function withFetch(
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.error = originalError;
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
   }
 }
 

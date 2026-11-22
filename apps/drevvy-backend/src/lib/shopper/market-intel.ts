@@ -1,5 +1,5 @@
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
-import { loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
+import { fairPriceSpendEnabled, loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
 import {
   getVehicleDetailMcp,
   searchActiveCarsMcp,
@@ -336,7 +336,11 @@ export async function loadMarketIntelFromMarketCheck(input: {
   listingId: string;
   vin: string | null;
   profileZip: string | null;
+  userId?: string | null;
 }): Promise<MarketIntelLookup> {
+  if (!fairPriceSpendEnabled()) {
+    return { intel: null, listingFound: false, returnedListingId: null };
+  }
   const detail = await getVehicleDetailMcp(input.listingId, input.vin ?? undefined, ['listing']);
   if (!detail) return { intel: null, listingFound: false, returnedListingId: null };
   const returnedListingId = detail.id.trim();
@@ -351,7 +355,11 @@ export async function loadMarketIntelFromMarketCheck(input: {
   const intel = await computeMarketIntel(input, {
     listing: async () => facts,
     fairPrice: async (vehicle) => {
-      const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, { strict: true });
+      const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, {
+        strict: true,
+        userId: input.userId,
+        purpose: 'market_intel',
+      });
       if (!quote || quote.price <= 0) return null;
       if (Array.isArray(quote.comparables)) {
         return { price: quote.price, comparables: quote.comparables };

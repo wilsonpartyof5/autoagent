@@ -1,4 +1,4 @@
-import { loadMarketCheck, marketCheckPriceCacheKey, zipArea } from './cache-policy';
+import { loadMarketCheck, marketCheckPriceCacheKey, peekMarketCheck, zipArea } from './cache-policy';
 import { callMcpTool, MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from './mcp-client';
 import { redactSecrets } from './secrets';
 import { recordMarketCheckCall } from './usage';
@@ -40,6 +40,14 @@ import { recordMarketCheckCall } from './usage';
  *   with search_active_cars.
  *   Cost: Price US USED Base $0.07 + that comps search (~$0.002 in the Math
  *   & P&L) ≈ $0.072, plus the same history and listing-detail calls.
+ *
+ * Paid calls stay off unless FAIR_PRICE_SPEND_ENABLED is the exact string
+ * "true" at request time. Unset or any other value is off. Deal opens then
+ * read this cache only. A market-intel unlock returns no price, so the key
+ * is refunded. FAIR_PRICE_DAILY_CAP counts network calls per user per UTC
+ * day in this process only. An empty lookup is remembered for
+ * FAIR_PRICE_NEGATIVE_TTL_MS. A 5xx or transport failure is remembered only
+ * for FAIR_PRICE_UPSTREAM_TTL_MS.
  */
 
 export const FAIR_PRICE_SOURCES = ['mcp_premium_with_comparables', 'rest_base_plus_search'] as const;
@@ -80,11 +88,97 @@ export type FairPriceVehicle = {
   dealerType?: string | null;
 };
 
+export type FairPricePurpose = 'deal' | 'market_intel';
+
 export type FairPriceLoadOptions = {
   strict?: boolean;
   /** Tests only. Shopper calls use FAIR_PRICE_SOURCE. */
   source?: FairPriceSource;
+  /** Signed-in shopper. A paid call without one is refused. */
+  userId?: string | null;
+  /**
+   * Deal reads the cache when spend is off. Market intel returns no price
+   * when spend is off, including a cache hit, so the key is refunded.
+   */
+  purpose?: FairPricePurpose;
 };
+
+/** Network price calls per user per UTC day. In-memory, so each instance counts alone. */
+export const FAIR_PRICE_DAILY_CAP = 20;
+/** Empty or failed price lookups. Repeats are not billed again. */
+export const FAIR_PRICE_NEGATIVE_TTL_MS = 6 * 60 * 60 * 1000;
+/** 5xx and transport failures. Short so a blip can be retried. */
+export const FAIR_PRICE_UPSTREAM_TTL_MS = 2 * 60 * 1000;
+
+/** True only when the process env is exactly the string "true". Read on each call. */
+export function fairPriceSpendEnabled(): boolean {
+  return process.env.FAIR_PRICE_SPEND_ENABLED === 'true';
+}
+
+type NegativeKind = 'miss' | 'tool' | 'upstream';
+
+type NegativeEntry = {
+  kind: NegativeKind;
+  expiresAt: number;
+  error?: unknown;
+};
+
+class FairPriceCapped extends Error {
+  constructor() {
+    super('fair price daily cap');
+    this.name = 'FairPriceCapped';
+  }
+}
+
+const negativeCache = new Map<string, NegativeEntry>();
+const dailyCalls = new Map<string, { day: string; count: number }>();
+
+export function resetFairPriceGuardsForTests(): void {
+  negativeCache.clear();
+  dailyCalls.clear();
+}
+
+function rememberNegative(key: string, kind: NegativeKind, nowMs: number, error?: unknown): void {
+  const ttl = kind === 'upstream' ? FAIR_PRICE_UPSTREAM_TTL_MS : FAIR_PRICE_NEGATIVE_TTL_MS;
+  negativeCache.set(key, { kind, expiresAt: nowMs + ttl, error });
+}
+
+function readNegative(key: string, nowMs: number): NegativeEntry | null {
+  const entry = negativeCache.get(key);
+  if (!entry) return null;
+  if (nowMs >= entry.expiresAt) {
+    negativeCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function negativeKindFor(error: unknown): NegativeKind {
+  if (error instanceof MarketCheckUpstreamError) {
+    if (error.kind === 'tool') return 'tool';
+    if (error.kind === 'timeout' || error.kind === 'transport') return 'upstream';
+    if (error.kind === 'http' && (error.status ?? 0) >= 500) return 'upstream';
+  }
+  return 'upstream';
+}
+
+/** Counts one network call. False when this user is already at the daily cap. */
+function tryConsumeFairPriceCall(userId: string, nowMs: number): boolean {
+  const day = new Date(nowMs).toISOString().slice(0, 10);
+  if (dailyCalls.size > 1000) {
+    for (const [id, row] of dailyCalls) {
+      if (row.day !== day) dailyCalls.delete(id);
+    }
+  }
+  const row = dailyCalls.get(userId);
+  if (!row || row.day !== day) {
+    dailyCalls.set(userId, { day, count: 1 });
+    return true;
+  }
+  if (row.count >= FAIR_PRICE_DAILY_CAP) return false;
+  row.count += 1;
+  return true;
+}
 
 export function fairPriceTriggerAllowed(trigger: string): trigger is FairPriceTrigger {
   return (FAIR_PRICE_TRIGGERS as readonly string[]).includes(trigger);
@@ -117,17 +211,56 @@ export async function getMarketCheckPrice(
     return null;
   }
 
+  const purpose = options?.purpose ?? 'deal';
   const source = options?.source ?? FAIR_PRICE_SOURCE;
   const dealerType = fairPriceDealerType(input.dealerType);
   const key = marketCheckPriceCacheKey(vin, zip, miles);
-  const { value, fromCache } = await loadMarketCheck(
-    'marketcheck_price',
-    key,
-    () => fetchMarketCheckPrice(vin, miles, zip, dealerType, source, options?.strict === true),
-    now,
-  );
-  if (!value) return null;
-  return { ...value, fromCache };
+  const spendOn = fairPriceSpendEnabled();
+
+  if (!spendOn && purpose === 'market_intel') return null;
+
+  const cached = peekMarketCheck<Omit<MarketCheckPrice, 'fromCache'>>('marketcheck_price', key, now);
+  if (cached) return { ...cached, fromCache: true };
+  if (!spendOn) return null;
+
+  const blocked = readNegative(key, now());
+  if (blocked) {
+    if (blocked.kind !== 'miss' && options?.strict) {
+      throw blocked.error instanceof Error
+        ? blocked.error
+        : new MarketCheckUpstreamError('MarketCheck price lookup failed');
+    }
+    return null;
+  }
+
+  const userId = typeof options?.userId === 'string' ? options.userId.trim() : '';
+  if (!userId) return null;
+
+  try {
+    const { value, fromCache } = await loadMarketCheck(
+      'marketcheck_price',
+      key,
+      async () => {
+        if (!tryConsumeFairPriceCall(userId, now())) throw new FairPriceCapped();
+        return fetchMarketCheckPrice(vin, miles, zip, dealerType, source, true);
+      },
+      now,
+    );
+    if (!value) {
+      rememberNegative(key, 'miss', now());
+      return null;
+    }
+    return { ...value, fromCache };
+  } catch (error) {
+    if (error instanceof FairPriceCapped) return null;
+    rememberNegative(key, negativeKindFor(error), now(), error);
+    if (options?.strict) throw error;
+    console.error(JSON.stringify({
+      event: 'marketcheck_price_failed',
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return null;
+  }
 }
 
 /**
@@ -234,7 +367,11 @@ async function fetchRestBasePrice(
         body: redactSecrets(body).slice(0, 300),
       }));
       if (strict) {
-        throw new MarketCheckUpstreamError(`MarketCheck ${REST_BASE_PRICE_ENDPOINT} failed (${response.status})`, response.status);
+        throw new MarketCheckUpstreamError(
+          `MarketCheck ${REST_BASE_PRICE_ENDPOINT} failed (${response.status})`,
+          response.status,
+          'http',
+        );
       }
       return null;
     }
@@ -254,6 +391,8 @@ async function fetchRestBasePrice(
     if (strict) {
       throw new MarketCheckUpstreamError(
         isTimeout ? `MarketCheck ${REST_BASE_PRICE_ENDPOINT} timed out` : `MarketCheck ${REST_BASE_PRICE_ENDPOINT} failed`,
+        null,
+        isTimeout ? 'timeout' : 'transport',
       );
     }
     return null;
