@@ -33,7 +33,7 @@ const TOOL_ENDPOINT: Record<string, MarketCheckCacheEndpoint> = {
   get_incentives: 'incentives',
   // Fair price uses marketCheckPriceCacheKey (VIN + ZIP area + miles) in
   // getMarketCheckPrice. A generic args key must not become a second store.
-  get_marketcheck_price: 'marketcheck_price',
+  predict_price_with_comparables: 'marketcheck_price',
 };
 
 type Stored = { value: unknown; expiresAt: number };

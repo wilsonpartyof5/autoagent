@@ -306,13 +306,18 @@ test('fair price loads on unlock with agent and when a deal is opened', async ()
   const box = harness();
   box.deps.loadFairPrice = async (trigger, vehicle) => {
     calls.push(`${trigger}:${vehicle.condition ?? ''}:${vehicle.vin ?? ''}:${vehicle.zip ?? ''}`);
-    return { price: 30100, fromCache: calls.length > 1 };
+    return {
+      price: 30100,
+      fromCache: calls.length > 1,
+      comparables: [{ id: 'comp-1', vin: null, price: 28000, daysOnMarket: 4 }],
+    };
   };
   const vin = '1HGCM82633A004352';
   const vehicle = { ...VEHICLE, vin, miles: 41000, condition: 'used' as const, zip: 'should-not-stick' };
   const created = await addShopperCar('shopper-1', { listingId: 'mc-fair-1', vehicle, zip: '29730' }, box.deps);
   assert.equal(created.deal.fairPrice?.price, 30100);
   assert.equal(created.deal.fairPrice?.fromCache, false);
+  assert.equal('comparables' in (created.deal.fairPrice ?? {}), false);
   assert.deepEqual(calls, [`unlock_with_agent:used:${vin}:29730`]);
   const stored = box.deals.rows[0]?.vehicle as { zip?: string; fairPrice?: unknown; vin?: string };
   assert.equal(stored.zip, undefined);

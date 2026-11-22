@@ -8,8 +8,10 @@ import {
 
 /**
  * Marketplace Intelligence computed from MarketCheck.
- * Fair price is MarketCheck's quote. The band is other live comps.
- * Nothing here invents a fee, a percent, or an out-the-door number.
+ * Fair price is MarketCheck's quote. The band is the active comps that
+ * arrived with that quote, or other live comps when the price source
+ * does not include them. Nothing here invents a fee, a percent, or an
+ * out-the-door number.
  */
 
 export const MARKET_INTEL_KEYS = [
@@ -55,6 +57,7 @@ export type ListingFacts = {
   latitude: number | null;
   longitude: number | null;
   dealerZip: string | null;
+  dealerType?: 'franchise' | 'independent' | null;
 };
 
 export type CompFact = {
@@ -71,7 +74,8 @@ export type MarketIntelSources = {
     miles: number;
     zip: string;
     condition: 'used' | 'certified';
-  }) => Promise<{ price: number } | null>;
+    dealerType?: 'franchise' | 'independent' | null;
+  }) => Promise<{ price: number; comparables?: CompFact[] } | null>;
   comparables: (query: {
     latitude: number;
     longitude: number;
@@ -240,6 +244,9 @@ export function listingFactsFromDetail(listingId: string, detail: DetailResponse
     latitude: typeof detail.location?.latitude === 'number' ? detail.location.latitude : null,
     longitude: typeof detail.location?.longitude === 'number' ? detail.location.longitude : null,
     dealerZip: fiveDigitZip(detail.location?.dealerZip),
+    dealerType: detail.dealerType === 'independent' || detail.dealerType === 'franchise'
+      ? detail.dealerType
+      : null,
   };
 }
 
@@ -279,17 +286,21 @@ export async function computeMarketIntel(
     miles: facts.miles,
     zip,
     condition: facts.condition === 'certified' ? 'certified' : 'used',
+    dealerType: facts.dealerType,
   });
   if (!quote || quote.price <= 0) return null;
 
-  const comps = (await sources.comparables({
-    latitude: facts.latitude,
-    longitude: facts.longitude,
-    year: facts.year,
-    make: facts.make,
-    model: facts.model,
-    condition: facts.condition,
-  }))
+  const found = Array.isArray(quote.comparables)
+    ? quote.comparables
+    : await sources.comparables({
+      latitude: facts.latitude,
+      longitude: facts.longitude,
+      year: facts.year,
+      make: facts.make,
+      model: facts.model,
+      condition: facts.condition,
+    });
+  const comps = found
     .filter((comp) => comp.price > 0 && !isSubject(comp, facts, input.listingId));
 
   if (comps.length < MIN_COMPS) return null;
@@ -341,7 +352,11 @@ export async function loadMarketIntelFromMarketCheck(input: {
     listing: async () => facts,
     fairPrice: async (vehicle) => {
       const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, { strict: true });
-      return quote && quote.price > 0 ? { price: quote.price } : null;
+      if (!quote || quote.price <= 0) return null;
+      if (Array.isArray(quote.comparables)) {
+        return { price: quote.price, comparables: quote.comparables };
+      }
+      return { price: quote.price };
     },
     comparables: async (query) => {
       const result = await searchActiveCarsMcp({

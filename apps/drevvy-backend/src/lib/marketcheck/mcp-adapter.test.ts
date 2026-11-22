@@ -395,8 +395,14 @@ test('MarketCheck Price is cached for the same VIN and ZIP area', async () => {
   await withFetch((call) => {
     calls += 1;
     const body = JSON.parse(call.body) as { params: { name: string; arguments: { zip: string } } };
-    assert.equal(body.params.name, 'get_marketcheck_price');
-    return jsonRpc({ data: { marketcheck_price: body.params.arguments.zip === ZIP ? 30100 : 28000 } });
+    assert.equal(body.params.name, 'predict_price_with_comparables');
+    return jsonRpc({
+      success: true,
+      data: {
+        marketcheck_price: body.params.arguments.zip === ZIP ? 30100 : 28000,
+        comparables: { listings: [] },
+      },
+    });
   }, async (_calls, logs) => {
     const first = await getMarketCheckPrice({ vin: VIN, miles: 41000, zip: `${ZIP}-1234` });
     const second = await getMarketCheckPrice({ vin: VIN.toLowerCase(), miles: 41000, zip: ZIP });
@@ -412,7 +418,8 @@ test('MarketCheck Price is cached for the same VIN and ZIP area', async () => {
     const joined = logs.join('\n');
     assert.equal(joined.includes(VIN), false);
     assert.equal(joined.includes(ZIP), false);
-    assert.equal(joined.includes('"endpoint":"get_marketcheck_price"'), true);
+    assert.equal(joined.includes('"endpoint":"predict_price_with_comparables"'), true);
+    assert.equal(joined.includes('get_marketcheck_price'), false);
     assert.equal(containsSecret(joined), false);
     assert.equal(containsSecret(JSON.stringify(first)), false);
   });

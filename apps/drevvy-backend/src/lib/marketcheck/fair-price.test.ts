@@ -26,12 +26,18 @@ test('fair price loads only for unlock with agent or opening a deal, then uses t
   };
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     calls += 1;
-    const body = JSON.parse(String(init?.body ?? '{}')) as { params: { name: string } };
-    assert.equal(body.params.name, 'get_marketcheck_price');
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      params: { name: string; arguments: { dealer_type?: string } };
+    };
+    assert.equal(body.params.name, 'predict_price_with_comparables');
+    assert.equal(body.params.arguments.dealer_type, 'franchise');
     return new Response(JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
-      result: { content: [{ type: 'text', text: JSON.stringify({ data: { marketcheck_price: 30100 } }) }] },
+      result: { content: [{ type: 'text', text: JSON.stringify({
+        success: true,
+        data: { marketcheck_price: 30100, comparables: { listings: [] } },
+      }) }] },
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
 
@@ -59,9 +65,10 @@ test('fair price loads only for unlock with agent or opening a deal, then uses t
     assert.equal(marketCheckStoredKeyCount(), 1);
 
     const joined = logs.join('\n');
-    assert.equal(joined.includes('"endpoint":"get_marketcheck_price"'), true);
+    assert.equal(joined.includes('"endpoint":"predict_price_with_comparables"'), true);
     assert.equal(joined.includes('"count":1'), true);
-    assert.equal((joined.match(/"endpoint":"get_marketcheck_price"/g) ?? []).length, 1);
+    assert.equal((joined.match(/"endpoint":"predict_price_with_comparables"/g) ?? []).length, 1);
+    assert.equal(joined.includes('get_marketcheck_price'), false);
     assert.equal(joined.includes(VIN), false);
     assert.equal(joined.includes(ZIP), false);
     assert.equal(containsSecret(joined), false);

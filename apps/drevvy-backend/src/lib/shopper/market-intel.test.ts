@@ -181,6 +181,73 @@ test('listing facts keep the market ZIP and drop dealer contact fields', () => {
     make: 'Unknown',
     model: 'Vehicle',
   }), null);
+  assert.equal(listingFactsFromDetail('mc-listing-1', {
+    ...detail(),
+    dealerType: 'independent',
+  })?.dealerType, 'independent');
+});
+
+test('premium comps are the band, and a thin or failed price does not search', async () => {
+  const calls = tracker();
+  const intel = await computeMarketIntel(
+    { listingId: 'mc-listing-1', vin: VIN, profileZip: '62701' },
+    sources(calls, {
+      bundledComps: [
+        comp('mc-listing-1', VIN, 100, 1),
+        comp('mc-other-1', '2GNSKCKD5RR123456', 28000, 10),
+        comp('mc-other-2', '3GNSKCKD5RR123456', 29000, 20),
+        comp('mc-other-3', '4GNSKCKD5RR123456', 30500, 30),
+        comp('mc-other-4', '5GNSKCKD5RR123456', 33000, 40),
+      ],
+    }),
+  );
+  assert.ok(intel);
+  assert.equal(intel.fairVehiclePrice, 30100);
+  assert.equal(intel.comparablesCount, 4);
+  assert.equal(intel.lowPrice, 28750);
+  assert.equal(intel.medianPrice, 29750);
+  assert.equal(intel.highPrice, 31125);
+  assert.equal(calls.comps, 0);
+  assert.equal(calls.drops, 1);
+
+  const thin = tracker();
+  const missing = await computeMarketIntel(
+    { listingId: 'mc-listing-1', vin: VIN, profileZip: '62701' },
+    sources(thin, {
+      bundledComps: [
+        comp('mc-other-1', '2GNSKCKD5RR123456', 28000, 10),
+        comp('mc-listing-1', VIN, 100, 1),
+      ],
+    }),
+  );
+  assert.equal(missing, null);
+  assert.equal(thin.comps, 0);
+  assert.equal(thin.drops, 0);
+
+  const failed = tracker();
+  await assert.rejects(
+    () => computeMarketIntel(
+      { listingId: 'mc-listing-1', vin: VIN, profileZip: '62701' },
+      sources(failed, { fail: 'fair' }),
+    ),
+    /price failed/,
+  );
+  assert.equal(failed.fair, 1);
+  assert.equal(failed.comps, 0);
+});
+
+test('a used car forwards the listing dealer type into the fair price', async () => {
+  let dealerType: string | null = 'missing';
+  await computeMarketIntel(
+    { listingId: 'mc-listing-1', vin: VIN, profileZip: '62701' },
+    sources(tracker(), {
+      dealerType: 'independent',
+      onDealer: (value) => {
+        dealerType = value;
+      },
+    }),
+  );
+  assert.equal(dealerType, 'independent');
 });
 
 test('a supplied listing id is stored only when the returned id matches', () => {
@@ -240,8 +307,11 @@ function sources(
     price?: number;
     msrp?: number | null;
     miles?: number | null;
-    fail?: 'comps' | 'drops';
+    fail?: 'comps' | 'drops' | 'fair';
     onFair?: (zip: string) => void;
+    onDealer?: (dealerType: 'franchise' | 'independent' | null) => void;
+    bundledComps?: CompFact[];
+    dealerType?: 'franchise' | 'independent' | null;
   } = {},
 ): MarketIntelSources {
   const listing = options.listing === undefined ? facts(options) : options.listing;
@@ -250,6 +320,9 @@ function sources(
     fairPrice: async (vehicle) => {
       calls.fair += 1;
       options.onFair?.(vehicle.zip);
+      options.onDealer?.(vehicle.dealerType ?? null);
+      if (options.fail === 'fair') throw new Error('price failed');
+      if (options.bundledComps) return { price: 30100, comparables: options.bundledComps };
       return { price: 30100 };
     },
     comparables: async () => {
@@ -276,6 +349,7 @@ function facts(options: {
   price?: number;
   msrp?: number | null;
   miles?: number | null;
+  dealerType?: 'franchise' | 'independent' | null;
 }): ListingFacts {
   return {
     id: 'mc-listing-1',
@@ -290,6 +364,7 @@ function facts(options: {
     latitude: 39.8,
     longitude: -89.6,
     dealerZip: options.dealerZip === undefined ? '62704' : options.dealerZip,
+    dealerType: options.dealerType,
   };
 }
 

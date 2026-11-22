@@ -469,7 +469,7 @@ async function withFairPrice(
       zip: typeof zip === 'string' ? zip : undefined,
     });
     if (!quote) return deal;
-    return { ...deal, fairPrice: quote };
+    return { ...deal, fairPrice: { price: quote.price, fromCache: quote.fromCache } };
   } catch (error) {
     console.error(JSON.stringify({
       event: 'marketcheck_price_failed',
