@@ -28,6 +28,9 @@ export async function handleRevenueCatWebhook(
   const result = await applyRevenueCatEvent(deps.supabase, event, {
     apiKey: deps.apiKey,
     fetchImpl: deps.fetchImpl,
+    env: deps.env,
+    sandboxCap: deps.sandboxCap,
+    now: deps.now,
   });
   if (result.retryable) {
     return NextResponse.json({ error: 'Credit update failed' }, { status: 500 });
