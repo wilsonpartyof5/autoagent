@@ -22,9 +22,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * Creating a deal spends a dealer-conversation key only when the listing matches
  * an onboarded rooftop. Off-network listings return 409 off_network — use
  * POST /api/consumer/otd-requests. Market details and save are a separate key.
- * Fair price uses the listing's dealer ZIP, then the shopper profile ZIP.
- * A zip on the body is ignored and is not stored. Listing deals does not
- * load fair price.
+ * Fair price uses the onboarded rooftop ZIP (`dealerships.marketcheck_zip`),
+ * then the shopper profile ZIP. A zip on the body is ignored and is not
+ * stored. Listing detail is not fetched to learn the ZIP. Listing deals
+ * does not load fair price.
  *
  * Deal JSON includes listing id, status, outreachLockedUntilPaid, and the
  * vehicle snapshot. It does not include dealer name, phone, email, website,

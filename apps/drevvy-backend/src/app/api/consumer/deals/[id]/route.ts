@@ -11,8 +11,10 @@ import { requireShopperAuth } from '@/lib/shopper/session';
  * Returns one deal owned by the signed-in shopper. Another shopper's deal
  * is not found. Dealer identity is not included. `visit` is included only
  * after the official offer is forwarded. Opening this deal may load
- * MarketCheck Price for a used or CPO car. The ZIP is the listing's dealer
- * ZIP, then the shopper profile ZIP. `?zip` is not used for pricing.
+ * MarketCheck Price for a used or CPO car when fair-price spend is enabled.
+ * The ZIP is the onboarded rooftop's stored ZIP, then the shopper profile
+ * ZIP. `?zip` is not used for pricing, and listing detail is not fetched
+ * to learn it.
  * DELETE removes the car from the shopper's list. It does not return a key,
  * including a cancel inside 30 minutes before outreach.
  */

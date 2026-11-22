@@ -304,6 +304,8 @@ test('adding a deal consumes one dealer-conversation key and repeating that list
 });
 
 test('fair price loads on unlock with agent and when a deal is opened', async () => {
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   const calls: string[] = [];
   const box = harness();
   box.deps.listingDealerZip = async () => ({ dealerZip: '29730', dealerType: 'franchise' });
@@ -366,9 +368,13 @@ test('fair price loads on unlock with agent and when a deal is opened', async ()
     (error: unknown) => error instanceof ShopperDealError && error.code === 'no_credits',
   );
   assert.equal(calls.includes('blocked'), false);
+  if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
 });
 
 test('deal price uses the profile ZIP when the listing has none and skips a call when both are missing', async () => {
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   const calls: string[] = [];
   const box = harness();
   box.deps.listingDealerZip = async () => ({ dealerZip: null, dealerType: 'independent' });
@@ -398,6 +404,10 @@ test('deal price uses the profile ZIP when the listing has none and skips a call
   const createdRoute = readFileSync(join(here, '../../app/api/consumer/deals/route.ts'), 'utf8');
   assert.equal(opened.includes("searchParams.get('zip')"), false);
   assert.equal(createdRoute.includes('zip is used for MarketCheck Price'), false);
+  const actions = readFileSync(join(here, 'deal-actions.ts'), 'utf8');
+  assert.equal(actions.includes('getVehicleDetailMcp'), false);
+  if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
 });
 
 test('varying the client zip does not make another paid price call', async () => {
@@ -445,6 +455,110 @@ test('varying the client zip does not make another paid price call', async () =>
     await getShopperCar('shopper-1', missed.deal.id, off.deps);
     await addShopperCar('shopper-1', { listingId: 'mc-fair-off', vehicle, zip: '90210' }, off.deps);
     assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = original;
+    if (previousKey === undefined) delete process.env.MARKETCHECK_API_KEY;
+    else process.env.MARKETCHECK_API_KEY = previousKey;
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
+    resetMarketCheckCacheForTests();
+    resetFairPriceGuardsForTests();
+  }
+});
+
+test('spend off makes no MarketCheck call on create, open, or an existing deal', async () => {
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response('unused', { status: 500 });
+  }) as typeof fetch;
+  try {
+    const vehicle = { ...VEHICLE, vin: '1HGCM82633A004352', miles: 41000, condition: 'used' as const };
+    const box = harness();
+    box.deps.listingDealerZip = async () => {
+      calls += 1;
+      return { dealerZip: '29730', dealerType: 'franchise' };
+    };
+    const created = await addShopperCar('shopper-1', { listingId: 'mc-off-any', vehicle, zip: '94105' }, box.deps);
+    assert.equal(created.deal.fairPrice, undefined);
+    await getShopperCar('shopper-1', created.deal.id, box.deps);
+    await addShopperCar('shopper-1', { listingId: 'mc-off-any', vehicle, zip: '10001' }, box.deps);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = original;
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
+  }
+});
+
+test('a stored rooftop ZIP prices the car without a listing-detail call', async () => {
+  const previousKey = process.env.MARKETCHECK_API_KEY;
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.MARKETCHECK_API_KEY = 'test-marketcheck-key-do-not-ship';
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+  resetMarketCheckCacheForTests();
+  resetFairPriceGuardsForTests();
+  const calls: Array<{ url: string; body: string }> = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), body: String(init?.body ?? '') });
+    return new Response(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            data: { marketcheck_price: 30100, comparables: { listings: [] } },
+          }),
+        }],
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  try {
+    const box = harness();
+    const supabase = box.deps.supabase as unknown as {
+      from: (table: string) => {
+        select: () => { eq: (col: string, val: string) => { maybeSingle: () => Promise<{ data: unknown; error: null }> } };
+      };
+    };
+    const originalFrom = supabase.from.bind(supabase);
+    supabase.from = (table: string) => {
+      if (table === 'shopper_dealer_conversations') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { rooftop_id: 'roof-1' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'dealerships') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { marketcheck_zip: '29730' }, error: null }),
+            }),
+          }),
+        };
+      }
+      return originalFrom(table);
+    };
+    const vehicle = { ...VEHICLE, vin: '1HGCM82633A004352', miles: 22000, condition: 'used' as const };
+    const created = await addShopperCar('shopper-1', { listingId: 'mc-stored-zip', vehicle, zip: '94105' }, box.deps);
+    assert.equal(created.deal.fairPrice?.price, 30100);
+    await getShopperCar('shopper-1', created.deal.id, box.deps);
+    await addShopperCar('shopper-1', { listingId: 'mc-stored-zip', vehicle, zip: '10001' }, box.deps);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.url.includes('/v2/listing/car/'), false);
+    assert.equal(calls[0]?.body.includes('predict_price_with_comparables'), true);
+    assert.equal(calls[0]?.body.includes('29730'), true);
+    assert.equal(calls[0]?.body.includes('94105'), false);
+    assert.equal(calls[0]?.body.includes('10001'), false);
   } finally {
     globalThis.fetch = original;
     if (previousKey === undefined) delete process.env.MARKETCHECK_API_KEY;

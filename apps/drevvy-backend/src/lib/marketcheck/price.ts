@@ -42,9 +42,10 @@ import { recordMarketCheckCall } from './usage';
  *   & P&L) ≈ $0.072, plus the same history and listing-detail calls.
  *
  * Paid calls stay off unless FAIR_PRICE_SPEND_ENABLED is the exact string
- * "true" at request time. Unset or any other value is off. Deal opens then
- * read this cache only. A market-intel unlock returns no price, so the key
- * is refunded. FAIR_PRICE_DAILY_CAP counts network calls per user per UTC
+ * "true" at request time. Unset or any other value is off. A deal open
+ * returns before any ZIP lookup, so it makes no MarketCheck call. A
+ * market-intel unlock returns no price, so the key is refunded.
+ * FAIR_PRICE_DAILY_CAP counts network calls per user per UTC
  * day in this process only. An empty lookup is remembered for
  * FAIR_PRICE_NEGATIVE_TTL_MS. A 5xx or transport failure is remembered only
  * for FAIR_PRICE_UPSTREAM_TTL_MS.
@@ -97,8 +98,8 @@ export type FairPriceLoadOptions = {
   /** Signed-in shopper. A paid call without one is refused. */
   userId?: string | null;
   /**
-   * Deal reads the cache when spend is off. Market intel returns no price
-   * when spend is off, including a cache hit, so the key is refunded.
+   * Market intel returns no price when spend is off, including a cache hit,
+   * so the key is refunded. Deal opens do not call this while spend is off.
    */
   purpose?: FairPricePurpose;
 };
@@ -123,10 +124,11 @@ type NegativeEntry = {
   error?: unknown;
 };
 
-class FairPriceCapped extends Error {
+/** Daily cap or a missing shopper. Strict callers throw this and do not cache it. */
+export class FairPriceCappedError extends Error {
   constructor() {
     super('fair price daily cap');
-    this.name = 'FairPriceCapped';
+    this.name = 'FairPriceCappedError';
   }
 }
 
@@ -234,16 +236,16 @@ export async function getMarketCheckPrice(
   }
 
   const userId = typeof options?.userId === 'string' ? options.userId.trim() : '';
-  if (!userId) return null;
+  if (!userId || !tryConsumeFairPriceCall(userId, now())) {
+    if (options?.strict) throw new FairPriceCappedError();
+    return null;
+  }
 
   try {
     const { value, fromCache } = await loadMarketCheck(
       'marketcheck_price',
       key,
-      async () => {
-        if (!tryConsumeFairPriceCall(userId, now())) throw new FairPriceCapped();
-        return fetchMarketCheckPrice(vin, miles, zip, dealerType, source, true);
-      },
+      () => fetchMarketCheckPrice(vin, miles, zip, dealerType, source, true),
       now,
     );
     if (!value) {
@@ -252,7 +254,10 @@ export async function getMarketCheckPrice(
     }
     return { ...value, fromCache };
   } catch (error) {
-    if (error instanceof FairPriceCapped) return null;
+    if (error instanceof FairPriceCappedError) {
+      if (options?.strict) throw error;
+      return null;
+    }
     rememberNegative(key, negativeKindFor(error), now(), error);
     if (options?.strict) throw error;
     console.error(JSON.stringify({

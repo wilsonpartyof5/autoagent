@@ -1,5 +1,5 @@
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
-import { fairPriceSpendEnabled, loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
+import { FairPriceCappedError, fairPriceSpendEnabled, loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
 import {
   getVehicleDetailMcp,
   searchActiveCarsMcp,
@@ -352,7 +352,9 @@ export async function loadMarketIntelFromMarketCheck(input: {
       returnedListingId: returnedListingId || null,
     };
   }
-  const intel = await computeMarketIntel(input, {
+  let intel: MarketIntel | null;
+  try {
+    intel = await computeMarketIntel(input, {
     listing: async () => facts,
     fairPrice: async (vehicle) => {
       const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, {
@@ -399,6 +401,12 @@ export async function loadMarketIntelFromMarketCheck(input: {
       return countPriceDrops(raw);
     },
   });
+  } catch (error) {
+    if (error instanceof FairPriceCappedError) {
+      return { intel: null, listingFound: false, returnedListingId: null };
+    }
+    throw error;
+  }
   return { intel, listingFound: true, returnedListingId: facts.id };
 }
 

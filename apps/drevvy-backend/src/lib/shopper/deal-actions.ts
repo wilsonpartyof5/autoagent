@@ -1,5 +1,6 @@
-import { getVehicleDetailMcp, searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
+import { searchActiveCarsMcp } from '@/lib/marketcheck/mcp-adapter';
 import {
+  fairPriceSpendEnabled,
   loadFairPriceIfAllowed,
   type FairPriceLoadOptions,
   type FairPriceQuote,
@@ -79,12 +80,15 @@ export type DealDeps = {
     vehicle: FairPriceVehicle,
     options?: FairPriceLoadOptions,
   ) => Promise<FairPriceQuote | null>;
-  /** Dealer ZIP and dealer type from listing detail. Client ZIP is not used. */
+  /**
+   * Stored dealer ZIP already on hand (tests, or a rooftop row the caller
+   * loaded). This must not call MarketCheck.
+   */
   listingDealerZip?: (
     listingId: string,
     vin: string | null,
   ) => Promise<{ dealerZip: string | null; dealerType?: string | null } | null>;
-  /** Shopper profile ZIP. Used only when the listing has no dealer ZIP. */
+  /** Shopper profile ZIP. Used when the rooftop row has no ZIP. */
   profileZip?: (userId: string) => Promise<string | null>;
   /** Shopper-facing note when the verified trim disagrees with MarketCheck. */
   trimNotice?: (dealId: string) => Promise<string | null>;
@@ -112,14 +116,19 @@ export async function shopperDeps(_userId: string): Promise<DealDeps> {
     notify: (push) => deliverShopperPushLive(push).then(() => undefined),
     trimNotice: (dealId) => readShopperTrimNotice(dealId),
   };
-  deps.listingDealerZip = dealerAreaForListing;
   deps.profileZip = (ownerId) => readDealProfileZip(ownerId, deps);
   return deps;
 }
 
 export async function addShopperCar(
   userId: string,
-  input: { listingId: unknown; vehicle: unknown; zip?: unknown; vdpMatchId?: string | null },
+  input: {
+    listingId: unknown;
+    vehicle: unknown;
+    zip?: unknown;
+    vdpMatchId?: string | null;
+    rooftopId?: string | null;
+  },
   deps: DealDeps,
 ): Promise<{ deal: PresentedDeal; credits: CreditSummary }> {
   const supabase = getAdminClient(deps);
@@ -131,7 +140,13 @@ export async function addShopperCar(
       await chargeDeal(supabase, userId, deal.id, false, deps, input.vdpMatchId);
       const records = await deps.lifecycle.listForShopper(userId);
       return {
-        deal: await withFairPrice(userId, presentDeal(deal, findRecord(records, deal.id)), 'unlock_with_agent', deps),
+        deal: await withFairPrice(
+          userId,
+          presentDeal(deal, findRecord(records, deal.id)),
+          'unlock_with_agent',
+          deps,
+          input.rooftopId,
+        ),
         credits: await creditSummaryFor(supabase, userId),
       };
     }
@@ -167,6 +182,7 @@ export async function addShopperCar(
       ),
       'unlock_with_agent',
       deps,
+      input.rooftopId,
     ),
     credits: await creditSummaryFor(supabase, userId),
   };
@@ -473,9 +489,11 @@ async function withFairPrice(
   deal: PresentedDeal,
   trigger: FairPriceTrigger,
   deps: DealDeps,
+  rooftopId?: string | null,
 ): Promise<PresentedDeal> {
+  if (!fairPriceSpendEnabled()) return deal;
   const load = deps.loadFairPrice ?? loadFairPriceIfAllowed;
-  const area = await resolveDealPriceArea(userId, deal, deps);
+  const area = await resolveDealPriceArea(userId, deal, deps, rooftopId ?? null);
   if (!area.zip) return deal;
   try {
     const quote = await load(trigger, {
@@ -498,13 +516,15 @@ async function withFairPrice(
 }
 
 /**
- * Price ZIP is the listing's dealer ZIP, then the shopper profile ZIP.
+ * Price ZIP comes from stored data: an injected dealer ZIP, the onboarded
+ * rooftop's marketcheck_zip, then the shopper profile. No MarketCheck call.
  * `input.zip` and `?zip` are not read here.
  */
 async function resolveDealPriceArea(
   userId: string,
   deal: PresentedDeal,
   deps: DealDeps,
+  rooftopId: string | null,
 ): Promise<{ zip: string | null; dealerType: string | null }> {
   let dealerType: string | null = null;
   if (deps.listingDealerZip) {
@@ -520,8 +540,35 @@ async function resolveDealPriceArea(
       }));
     }
   }
+  const rooftopZip = fiveDigitZip(await readDealershipZip(deps, deal.id, rooftopId));
+  if (rooftopZip) return { zip: rooftopZip, dealerType };
   const profile = await resolveProfileZip(userId, deps);
   return { zip: fiveDigitZip(profile), dealerType };
+}
+
+async function readDealershipZip(
+  deps: DealDeps,
+  dealId: string,
+  rooftopId: string | null,
+): Promise<string | null> {
+  try {
+    const supabase = deps.supabase ?? getAdminClient(deps);
+    const id = rooftopId ?? await rooftopIdForDeal(supabase, dealId);
+    if (!id) return null;
+    const { data, error } = await supabase
+      .from('dealerships')
+      .select('marketcheck_zip')
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !data || typeof data.marketcheck_zip !== 'string') return null;
+    return data.marketcheck_zip;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'marketcheck_dealer_zip_failed',
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    }));
+    return null;
+  }
 }
 
 async function resolveProfileZip(userId: string, deps: DealDeps): Promise<string | null> {
@@ -543,26 +590,6 @@ async function readDealProfileZip(userId: string, deps: DealDeps): Promise<strin
   } catch (error) {
     console.error(JSON.stringify({
       event: 'marketcheck_profile_zip_failed',
-      error: redactSecrets(error instanceof Error ? error.message : String(error)),
-    }));
-    return null;
-  }
-}
-
-async function dealerAreaForListing(
-  listingId: string,
-  vin: string | null,
-): Promise<{ dealerZip: string | null; dealerType: string | null } | null> {
-  try {
-    const detail = await getVehicleDetailMcp(listingId, vin ?? undefined, ['listing']);
-    if (!detail) return null;
-    return {
-      dealerZip: detail.location?.dealerZip ?? null,
-      dealerType: detail.dealerType ?? null,
-    };
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: 'marketcheck_dealer_zip_failed',
       error: redactSecrets(error instanceof Error ? error.message : String(error)),
     }));
     return null;

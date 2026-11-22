@@ -21,6 +21,7 @@ import {
   PREMIUM_PRICE_TOOL,
   REST_BASE_PRICE_ENDPOINT,
   type FairPriceLoadOptions,
+  FairPriceCappedError,
   fairPriceSpendEnabled,
   getMarketCheckPrice,
   loadFairPriceIfAllowed,
@@ -468,6 +469,49 @@ test('a shopper over the daily cap and a repeat upstream failure make no further
     nowMs = Date.parse('2026-11-23T00:00:00.000Z');
     const nextDay = await getMarketCheckPrice({ vin: VIN, miles: 501, zip: '30301' }, now, priceOptions());
     assert.equal(nextDay?.price, 25000);
+  });
+});
+
+test('a strict cap or a missing shopper throws and does not block the next shopper', async () => {
+  let calls = 0;
+  const nowMs = Date.parse('2026-11-22T15:00:00.000Z');
+  await withFetch(() => {
+    calls += 1;
+    return jsonRpc({
+      success: true,
+      data: { marketcheck_price: 25000, comparables: { listings: [] } },
+    });
+  }, async () => {
+    await assert.rejects(
+      () => getMarketCheckPrice({ vin: VIN, miles: 9, zip: '44114' }, () => nowMs, { strict: true }),
+      (error: unknown) => error instanceof FairPriceCappedError,
+    );
+    assert.equal(calls, 0);
+    for (let miles = 1; miles <= FAIR_PRICE_DAILY_CAP; miles += 1) {
+      assert.ok(await getMarketCheckPrice({
+        vin: VIN,
+        miles,
+        zip: '44114',
+      }, () => nowMs, priceOptions({ userId: 'shopper-capped' })));
+    }
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP);
+    await assert.rejects(
+      () => getMarketCheckPrice({
+        vin: VIN,
+        miles: 80,
+        zip: '44114',
+      }, () => nowMs, priceOptions({ userId: 'shopper-capped', strict: true })),
+      (error: unknown) => error instanceof FairPriceCappedError,
+    );
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP);
+    const second = await getMarketCheckPrice({
+      vin: VIN,
+      miles: 80,
+      zip: '44114',
+    }, () => nowMs, priceOptions({ userId: 'shopper-next' }));
+    assert.equal(second?.price, 25000);
+    assert.equal(second?.fromCache, false);
+    assert.equal(calls, FAIR_PRICE_DAILY_CAP + 1);
   });
 });
 
