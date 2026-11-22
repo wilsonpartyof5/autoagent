@@ -1,14 +1,17 @@
 import type { Metadata, Viewport } from 'next';
 import React from 'react';
-import { Manrope } from 'next/font/google';
+import localFont from 'next/font/local';
 import Script from 'next/script';
 
 import { marketingAuthCodeScript } from '@/lib/dealer/auth-redirect';
 import './globals.css';
 
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['500', '600', '700', '800'],
+// Vendored latin Manrope (OFL). next/font/google fetches CSS and woff2 at
+// build time, and Next 15.5.9 throws when a Google URL does not end in a
+// font extension. The file is the variable face used for weights 500–800.
+const manrope = localFont({
+  src: '../fonts/manrope-latin.woff2',
+  weight: '200 800',
   display: 'swap',
   variable: '--font-sans',
 });
