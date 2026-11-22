@@ -11,10 +11,12 @@ import '../../features/onboarding/screens/paywall_screen.dart';
 import '../../features/shop/screens/shop_screen.dart';
 import '../../features/shop/screens/vdp_screen.dart';
 import '../../features/deals/screens/deals_screen.dart';
+import '../../features/deals/screens/deal_chat_screen.dart';
 import '../../features/deals/screens/deal_detail_screen.dart';
 import '../../features/deals/screens/deal_timeline_screen.dart';
 import '../../features/deals/screens/official_offer_screen.dart';
 import '../../features/deals/screens/done_screen.dart';
+import '../../features/profile/screens/profile_screen.dart';
 import '../../features/saved/screens/saved_screen.dart';
 import '../../features/common/screens/error_screen.dart';
 import '../widgets/shell_scaffold.dart';
@@ -38,14 +40,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       final done = ref.read(onboardingCompleteProvider);
       final location = state.matchedLocation;
       if (location == '/open' || location == '/') {
-        return done ? '/shop' : '/onboarding';
+        return done ? '/discover' : '/onboarding';
       }
       // Retired v4 first-run paths. Live flow is Matters v5 at /onboarding.
       if (location.startsWith('/onboarding/')) return '/onboarding';
       final inFirstRun =
           location == '/onboarding' || location == '/account/create';
       if (!done && !inFirstRun) return '/onboarding';
-      if (done && location == '/onboarding') return '/shop';
+      if (done && location == '/onboarding') return '/discover';
       return null;
     },
     routes: [
@@ -65,43 +67,54 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CreateAccountScreen(),
       ),
 
-      // Main shell with tabs
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) {
-          return ShellScaffold(navigationShell: navigationShell);
+      // Discover is the home. Deals, Saves, and Profile open from the drawer.
+      // /shop and /saved stay so older links still land on those surfaces.
+      ShellRoute(
+        builder: (context, state, child) {
+          final path = state.uri.path;
+          return ShellScaffold(
+            location: path,
+            onShop: path == '/discover' || path == '/shop',
+            child: child,
+          );
         },
-        branches: [
-          // Shop tab. Index 0 is ShopBottomChromeMetrics.shopBranchIndex.
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/shop',
-                builder: (context, state) => const ShopScreen(),
-              ),
-            ],
+        routes: [
+          GoRoute(
+            path: '/discover',
+            builder: (context, state) => const ShopScreen(),
           ),
-          // Deals tab
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/deals',
-                builder: (context, state) => const DealsScreen(),
-              ),
-            ],
+          GoRoute(
+            path: '/shop',
+            builder: (context, state) => const ShopScreen(),
           ),
-          // Saved tab (v1.8: replaces Profile)
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/saved',
-                builder: (context, state) => const SavedScreen(),
-              ),
-            ],
+          GoRoute(
+            path: '/deals',
+            builder: (context, state) => const DealsScreen(),
+          ),
+          GoRoute(
+            path: '/saves',
+            builder: (context, state) => const SavedScreen(),
+          ),
+          GoRoute(
+            path: '/saved',
+            builder: (context, state) => const SavedScreen(),
+          ),
+          GoRoute(
+            path: '/profile',
+            builder: (context, state) => const ProfileScreen(),
           ),
         ],
       ),
 
       // Pushed routes (outside shell, no tab bar)
+      GoRoute(
+        path: '/deals/:dealId/chat',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final dealId = state.pathParameters['dealId']!;
+          return DealChatScreen(dealId: dealId);
+        },
+      ),
       GoRoute(
         path: '/vdp/:listingId',
         parentNavigatorKey: _rootNavigatorKey,

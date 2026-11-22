@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/navigation/discover_intent.dart';
+import '../../../core/navigation/drevvy_nav_scope.dart';
+import '../../../core/widgets/nav_top_bar.dart';
 import '../../../core/widgets/shop_bottom_chrome.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/analytics/search_analytics.dart';
@@ -20,17 +23,13 @@ import '../../../data/models/models.dart';
 import '../../../data/notifications/local_flags.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/shopper_session_store.dart';
-import '../widgets/chat_header.dart';
-import '../widgets/chat_empty.dart';
 import '../widgets/chat_messages.dart';
+import '../widgets/discover_home.dart';
 import '../widgets/shop_composer_overlay.dart';
 import '../widgets/shop_results.dart';
 import '../widgets/discover_filter_sheet.dart';
 import '../widgets/discover_location_sheet.dart';
 import '../widgets/discover_shop_pane.dart';
-import '../widgets/chat_history_drawer.dart';
-import '../widgets/account_sheet.dart';
-import '../../account/widgets/recent_searches_sheet.dart';
 
 /// Screens 07-11, 17, 51-52: Shop tab with Ask/Shop toggle and history drawer (v1.6.1)
 /// v1.8: Added save/heart support on inventory cards.
@@ -62,7 +61,7 @@ class ShopScreen extends StatefulWidget {
 
 class _ShopScreenState extends State<ShopScreen> {
   late final DemoRepository _repo;
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  DiscoverIntent? _intent;
   late final bool _liveDiscover;
   late final bool _discoverUnconfigured;
   DiscoverShopController? _discover;
@@ -72,12 +71,9 @@ class _ShopScreenState extends State<ShopScreen> {
 
   ChatMode _mode = ChatMode.ask;
   ChatThread? _thread;
-  List<ChatThread> _chatHistory = [];
   List<Listing>? _listings;
   bool _isLoading = false;
   bool _isSearching = false;
-  User? _user;
-  List<StarterCard>? _starters;
   SearchProfile? _searchProfile;
   Set<String>? _enabledMemoryIds;
   int _memoryRevision = 0;
@@ -85,6 +81,8 @@ class _ShopScreenState extends State<ShopScreen> {
   /// v1.8: Track saved and deals listing IDs
   Set<String> _savedListingIds = {};
   Set<String> _dealsListingIds = {};
+  List<Listing> _nearby = const [];
+  bool _nearbyLoading = false;
   int _heartGeneration = 0;
   bool _reportedShopEmpty = false;
   late final ShopperAccountWatch _accountWatch;
@@ -116,13 +114,41 @@ class _ShopScreenState extends State<ShopScreen> {
     _repo.onSavedSearchRun = _handleSavedSearchRun;
     _repo.savedDealsTick.addListener(_refreshSavedAndDeals);
     _accountWatch = ShopperAccountWatch(_onAccountSessionChanged)..bind();
+    if (!_liveDiscover && !_discoverUnconfigured) {
+      _nearbyLoading = true;
+    }
     _loadData();
+    if (_liveDiscover) {
+      _ensureDiscover();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = DrevvyNavScope.maybeOf(context)?.intent;
+    if (!identical(next, _intent)) {
+      _intent?.removeListener(_applyDiscoverIntent);
+      _intent = next;
+      _intent?.addListener(_applyDiscoverIntent);
+    }
+    _applyDiscoverIntent();
+  }
+
+  void _applyDiscoverIntent() {
+    final intent = _intent;
+    if (intent == null || !mounted) return;
+    final chat = intent.pendingChat;
+    if (chat == null) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    intent.pendingChat = null;
+    _selectChat(chat);
   }
 
   void _onAccountSessionChanged() {
     if (!mounted) return;
     setState(() {
-      _user = null;
       _isLoading = false;
       _isSearching = false;
     });
@@ -141,6 +167,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (identical(_repo.onSavedSearchRun, _handleSavedSearchRun)) {
       _repo.onSavedSearchRun = null;
     }
+    _intent?.removeListener(_applyDiscoverIntent);
     _repo.savedDealsTick.removeListener(_refreshSavedAndDeals);
     _accountWatch.dispose();
     _discover?.removeListener(_onDiscoverChanged);
@@ -168,28 +195,32 @@ class _ShopScreenState extends State<ShopScreen> {
     final account = _accountWatch.capture();
     try {
       final thread = await _repo.getChatThread();
-      final user = await _repo.getCurrentUser();
-      final history = await _repo.getChatHistory();
-      final starters = await _repo.getStarters();
       final searchProfile = await _repo.getSearchProfile();
 
       // v1.8: Load saved and deals listing IDs for heart state
       final heartGeneration = ++_heartGeneration;
       final savedCars = await _repo.getSavedCars();
       final deals = await _repo.getDeals();
+      List<Listing> nearby = _nearby;
+      if (!_liveDiscover && !_discoverUnconfigured) {
+        nearby = await _repo.searchListings(query: '');
+        nearby.sort(
+          (a, b) => (a.dist ?? 1e9).compareTo(b.dist ?? 1e9),
+        );
+        nearby = nearby.take(4).toList();
+      }
       if (!mounted || !_accountWatch.same(account)) return;
 
       setState(() {
         _thread = thread;
-        _user = user;
-        _chatHistory = history;
-        _starters = starters;
         _searchProfile = searchProfile;
         _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
         if (heartGeneration == _heartGeneration) {
           _savedListingIds = savedCars.map((sc) => sc.listingId).toSet();
           _dealsListingIds = deals.map((d) => d.listingId).toSet();
         }
+        _nearby = nearby;
+        _nearbyLoading = false;
       });
     } on ApiConfigException catch (error) {
       _showStaleAccountError(account, error.message);
@@ -334,73 +365,6 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
-  Future<void> _reloadSearchProfile() async {
-    if (!mounted) return;
-    final account = _accountWatch.capture();
-    try {
-      final profile = await _repo.getSearchProfile();
-      final starters = await _repo.getStarters();
-      if (!_sameAccount(account)) return;
-      setState(() {
-        final previousIds =
-            _searchProfile?.items.map((item) => item.id).toSet() ?? {};
-        final nextIds = profile.items.map((item) => item.id).toSet();
-        final enabled = _enabledMemoryIds ?? previousIds;
-        _enabledMemoryIds = {
-          ...enabled.where(nextIds.contains),
-          ...nextIds.where((id) => !previousIds.contains(id)),
-        };
-        _searchProfile = profile;
-        _starters = starters;
-      });
-    } on ApiConfigException catch (error) {
-      _showStaleAccountError(account, error.message);
-    } catch (_) {
-      if (!_sameAccount(account)) return;
-    }
-  }
-
-  Future<void> _openRecentSearches() async {
-    if (!mounted) return;
-    final account = _accountWatch.capture();
-    final searches = List<SavedSearch>.from(
-      _searchProfile?.searches ?? const [],
-    );
-    await RecentSearchesSheet.show(
-      context,
-      searches: searches,
-      onRun: (search) {
-        _repo.markSavedSearchRun(search.id);
-      },
-      onDelete: (search) {
-        _repo.deleteSavedSearch(search.id);
-      },
-      onRestore: (search, index) {
-        _repo.restoreSavedSearch(search, index);
-      },
-      onClearAll: _repo.clearSavedSearches,
-    );
-    if (!_sameAccount(account)) return;
-    await _reloadSearchProfile();
-  }
-
-  void _switchMode(ChatMode mode) {
-    ProductAnalytics.instance.track(AnalyticsEvents.modeSwitched, {
-      'mode': mode == ChatMode.ask ? 'ask' : 'shop',
-    });
-    ProductAnalytics.instance.screen(
-      mode == ChatMode.ask ? 'ask_chat' : 'shop_results',
-    );
-    setState(() => _mode = mode);
-    ShopBottomChromeScope.read(context)?.show(force: true);
-    if (mode != ChatMode.shop || _discoverUnconfigured) return;
-    if (_liveDiscover) {
-      _ensureDiscover();
-    } else if (_listings == null) {
-      _search('', userInitiated: false);
-    }
-  }
-
   Future<void> _ensureDiscover() async {
     final discover = _discover;
     if (discover == null || _discoverBooted || !mounted) return;
@@ -450,10 +414,12 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
-  void _openHistoryDrawer() {
-    ProductAnalytics.instance.track(AnalyticsEvents.historyOpened);
-    ProductAnalytics.instance.screen('chat_history');
-    _scaffoldKey.currentState?.openDrawer();
+  void _onHomeChip(String label) {
+    if (label == 'Is this a fair price?') {
+      _sendMessage(label, source: 'starter');
+      return;
+    }
+    _search(label, source: 'starter');
   }
 
   void _startNewChat() {
@@ -483,16 +449,7 @@ class _ShopScreenState extends State<ShopScreen> {
     });
   }
 
-  void _deleteChat(String chatId) {
-    ProductAnalytics.instance.track(AnalyticsEvents.chatDeleted);
-    setState(() {
-      _chatHistory = _chatHistory.where((c) => c.id != chatId).toList();
-      if (_thread?.id == chatId) {
-        _startNewChat();
-      }
-    });
-  }
-
+  /// Heart save does not spend a key.
   /// v1.8: Handle heart tap on inventory card
   Future<void> _handleSaveToggle(Listing listing, bool isSaved) async {
     HapticFeedback.lightImpact();
@@ -531,124 +488,25 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
-  void _renameChat(String chatId, String newTitle) {
-    ProductAnalytics.instance.track(AnalyticsEvents.chatRenamed);
-    setState(() {
-      _chatHistory = _chatHistory.map((c) {
-        if (c.id == chatId) {
-          return c.copyWith(title: newTitle);
-        }
-        return c;
-      }).toList();
-      if (_thread?.id == chatId) {
-        _thread = _thread?.copyWith(title: newTitle);
-      }
-    });
-  }
-
-  /// v1.8: Show Account sheet
-  Future<void> _showAccountSheet() async {
-    final account = _accountWatch.capture();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const AccountSheet(),
-    );
-    if (!_sameAccount(account)) return;
-    await _reloadSearchProfile();
-  }
-
   @override
   Widget build(BuildContext context) {
     final isEmpty = _thread?.isEmpty ?? true;
+    final discover = _discover;
 
     return Scaffold(
-      key: _scaffoldKey,
       backgroundColor: Colors.transparent,
-      drawer: ChatHistoryDrawer(
-        chats: _chatHistory,
-        currentChatId: _thread?.id,
-        onNewChat: _startNewChat,
-        onSelectChat: _selectChat,
-        onDeleteChat: _deleteChat,
-        onRenameChat: _renameChat,
-        onRecentSearches: () {
-          _openRecentSearches();
-        },
-        recentSearchCount: _searchProfile?.searches.length,
-      ),
       body: Stack(
         children: [
           Column(
             children: [
-              ChatHeader(
-                mode: _mode,
-                onModeChanged: _switchMode,
-                onMenuTap: _openHistoryDrawer,
-                onAvatarTap: () {
-                  _showAccountSheet();
-                },
+              NavTopBar(
+                showNewChat: true,
+                onNewChat: _startNewChat,
+                repository: _repo,
               ),
-
-              Expanded(
-                child: _mode == ChatMode.ask
-                    ? isEmpty
-                          ? ChatEmpty(
-                              userName: _user?.nameIsKnown == true
-                                  ? _user!.firstName
-                                  : 'there',
-                              onPromptTap: (prompt) =>
-                                  _sendMessage(prompt, source: 'starter'),
-                              onShopTap: (query) =>
-                                  _search(query, source: 'starter'),
-                              starters: _starters,
-                              hasHistory:
-                                  _searchProfile?.personalize == true &&
-                                  (_searchProfile?.searches.isNotEmpty ==
-                                          true ||
-                                      _searchProfile?.items.isNotEmpty == true),
-                            )
-                          : ChatMessages(
-                              thread: _thread!,
-                              isLoading: _isLoading,
-                              onShopTap: (query) =>
-                                  _search(query, source: 'ask_handoff'),
-                              memoryItems: _searchProfile?.personalize == true
-                                  ? _searchProfile?.items
-                                  : null,
-                              enabledMemoryIds: _enabledMemoryIds,
-                              onMemoryItemsChanged: _onMemoryItemsChanged,
-                            )
-                    : _discoverUnconfigured
-                    ? const DiscoverUnavailable(
-                        message: apiNotConfiguredMessage,
-                      )
-                    : _liveDiscover
-                    ? DiscoverShopPane(
-                        controller: _discover!,
-                        onOpen: (listing) {
-                          context.push('/vdp/${listing.id}');
-                        },
-                        onLocation: _pickLocation,
-                        onFilters: _pickFilters,
-                      )
-                    : ShopResults(
-                        listings: _listings,
-                        isLoading: _isSearching,
-                        // v1.7: hasCredits for future A/B testing (always false for now)
-                        hasCredits: false,
-                        savedListingIds: _savedListingIds,
-                        dealsListingIds: _dealsListingIds,
-                        onSaveToggle: _handleSaveToggle,
-                        onListingTap: (listing) {
-                          context.push('/vdp/${listing.id}');
-                        },
-                      ),
-              ),
+              Expanded(child: _homeBody(isEmpty, discover)),
             ],
           ),
-
           ShopComposerOverlay(
             mode: _mode,
             onSend: _mode == ChatMode.ask ? _sendMessage : _search,
@@ -656,6 +514,69 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _homeBody(bool isEmpty, DiscoverShopController? discover) {
+    if (_mode == ChatMode.ask && isEmpty) {
+      return DiscoverHome(
+        cars: _liveDiscover ? (discover?.listings ?? const []) : _nearby,
+        loading: _liveDiscover
+            ? discover?.phase == DiscoverShopPhase.loading
+            : _nearbyLoading,
+        savedIds: _savedListingIds,
+        onChip: _onHomeChip,
+        onOpen: (listing) => context.push('/vdp/${listing.id}'),
+        onSave: _handleSaveToggle,
+        unavailableTitle: _discoverUnconfigured
+            ? 'Live inventory is not configured'
+            : null,
+        unavailableMessage: _discoverUnconfigured
+            ? apiNotConfiguredMessage
+            : null,
+        locationPrompt:
+            _liveDiscover &&
+                !_discoverUnconfigured &&
+                discover?.phase == DiscoverShopPhase.needsLocation
+            ? 'Set a location to see cars near you.'
+            : null,
+        onLocation: _pickLocation,
+        emptyMessage: _liveDiscover && discover?.errorMessage != null
+            ? discover!.errorMessage
+            : null,
+      );
+    }
+    if (_mode == ChatMode.ask) {
+      return ChatMessages(
+        thread: _thread!,
+        isLoading: _isLoading,
+        onShopTap: (query) => _search(query, source: 'ask_handoff'),
+        memoryItems: _searchProfile?.personalize == true
+            ? _searchProfile?.items
+            : null,
+        enabledMemoryIds: _enabledMemoryIds,
+        onMemoryItemsChanged: _onMemoryItemsChanged,
+      );
+    }
+    if (_discoverUnconfigured) {
+      return const DiscoverUnavailable(message: apiNotConfiguredMessage);
+    }
+    if (_liveDiscover) {
+      return DiscoverShopPane(
+        controller: _discover!,
+        onOpen: (listing) => context.push('/vdp/${listing.id}'),
+        onLocation: _pickLocation,
+        onFilters: _pickFilters,
+      );
+    }
+    return ShopResults(
+      listings: _listings,
+      isLoading: _isSearching,
+      hasCredits: false,
+      savedListingIds: _savedListingIds,
+      dealsListingIds: _dealsListingIds,
+      onSaveToggle: _handleSaveToggle,
+      onListingTap: (listing) => context.push('/vdp/${listing.id}'),
     );
   }
 }

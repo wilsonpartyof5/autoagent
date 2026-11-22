@@ -199,7 +199,6 @@ void main() {
   test('inbox and deal-detail Ask route through openDealDealerChat', () {
     const files = [
       'lib/features/deals/screens/deal_detail_screen.dart',
-      'lib/features/deals/screens/deals_screen.dart',
       'lib/features/deals/widgets/deal_dealer_chat.dart',
     ];
     for (final path in files) {
@@ -222,8 +221,9 @@ void main() {
     expect(detail.contains('AskDrevvySheet'), isTrue);
     final inbox = File('lib/features/deals/screens/deals_screen.dart')
         .readAsStringSync();
-    expect(inbox.contains('onAsk:'), isTrue);
-    expect(inbox.contains('_openDealChat'), isTrue);
+    expect(inbox.toLowerCase().contains('negotiate'), isFalse);
+    expect(inbox.contains('openDealDealerChat'), isFalse);
+    expect(inbox.contains("context.push('/deals/\${deal.id}/chat')"), isTrue);
   });
 }
 

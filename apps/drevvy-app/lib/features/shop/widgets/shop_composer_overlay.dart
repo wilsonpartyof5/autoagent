@@ -39,11 +39,15 @@ class ShopComposerOverlay extends StatelessWidget {
             child: composer,
           );
     if (model == null) {
+      final inset = MediaQuery.viewInsetsOf(context).bottom;
+      final bottom = inset > 0
+          ? inset + ShopBottomChromeMetrics.keyboardGap
+          : ShopBottomChromeMetrics.restingComposerBottom(safeBottom);
       return AnimatedPositioned(
         duration: Duration.zero,
         left: DrevvySpace.gutter,
         right: DrevvySpace.gutter,
-        bottom: ShopBottomChromeMetrics.restingComposerBottom(safeBottom),
+        bottom: bottom,
         child: child,
       );
     }

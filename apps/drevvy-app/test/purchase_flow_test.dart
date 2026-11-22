@@ -51,6 +51,10 @@ void main() {
       final service = buildPurchaseService(ios, gateway: _FakeStore());
       expect(service, isA<UnavailablePurchaseService>());
       expect(
+        platformKeyNotSandboxMessage,
+        "Purchases aren't available in this version.",
+      );
+      expect(
         (service as UnavailablePurchaseService).message,
         platformKeyNotSandboxMessage,
       );
