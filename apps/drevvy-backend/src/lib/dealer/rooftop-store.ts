@@ -1,8 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { fetchMarketCheckListing } from '@/lib/marketcheck/listing-car';
+import { ListingCarLimitUnavailable, ListingCarRateLimited } from '@/lib/marketcheck/listing-car-limit';
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
 
+import {
+  identityForCache,
+  LISTING_IDENTITY_NEGATIVE_TTL_MS,
+  LISTING_IDENTITY_POSITIVE_TTL_MS,
+  readListingIdentityCache,
+  shareListingIdentityLookup,
+  writeListingIdentityCache,
+  type CachedListingIdentity,
+} from './listing-rooftop-cache';
 import {
   matchOnboardedRooftop,
   mergeListingIdentity,
@@ -145,6 +155,7 @@ export async function lookupListingDealerIdentity(
       },
     };
   } catch (error) {
+    if (error instanceof ListingCarRateLimited || error instanceof ListingCarLimitUnavailable) throw error;
     const reason = marketCheckFailureReason(error);
     console.error(JSON.stringify({ event: 'listing_identity_failed', reason }));
     return { status: 'unavailable', reason };
@@ -165,16 +176,78 @@ export async function fetchListingDealerIdentity(
   return { listingId };
 }
 
+export type RooftopResolveOptions = {
+  nowMs?: number;
+  /** Runs only when a paid listing lookup is about to start. Cache hits skip it. */
+  beforePaidLookup?: () => Promise<void>;
+};
+
 export async function resolveRooftopMatch(
   input: ListingDealerIdentity,
   deps: RooftopDirectory,
+  options?: RooftopResolveOptions,
 ): Promise<RooftopMatch> {
-  const fetched = input.listingId && deps.loadListingIdentity
-    ? await deps.loadListingIdentity(input.listingId)
+  const listingId = typeof input.listingId === 'string' && input.listingId.length > 0
+    ? input.listingId
     : null;
-  const identity = mergeListingIdentity(fetched, input);
+  if (!listingId || !deps.lookupListingIdentity) {
+    const fetched = listingId && deps.loadListingIdentity
+      ? await deps.loadListingIdentity(listingId)
+      : null;
+    const identity = mergeListingIdentity(fetched, input);
+    const rooftops = await deps.listOnboardedRooftops();
+    return matchOnboardedRooftop(identity, rooftops);
+  }
+  return resolveCachedListing(listingId, input, deps, options ?? {});
+}
+
+async function resolveCachedListing(
+  listingId: string,
+  input: ListingDealerIdentity,
+  deps: RooftopDirectory,
+  options: RooftopResolveOptions,
+): Promise<RooftopMatch> {
+  const lookup = deps.lookupListingIdentity;
+  if (!lookup) return matchOnboardedRooftop(input, []);
   const rooftops = await deps.listOnboardedRooftops();
-  return matchOnboardedRooftop(identity, rooftops);
+  if (rooftops.length === 0) return matchOnboardedRooftop(input, rooftops);
+
+  const nowMs = options.nowMs ?? Date.now();
+  const cached = await loadCachedIdentity(listingId, input, rooftops, lookup, options, nowMs);
+  const fetched = cached.kind === 'found' ? cached.identity : { listingId };
+  return matchOnboardedRooftop(mergeListingIdentity(fetched, input), rooftops);
+}
+
+async function loadCachedIdentity(
+  listingId: string,
+  input: ListingDealerIdentity,
+  rooftops: readonly OnboardedRooftop[],
+  lookup: (listingId: string) => Promise<ListingIdentityLookup>,
+  options: RooftopResolveOptions,
+  nowMs: number,
+): Promise<CachedListingIdentity> {
+  const hit = readListingIdentityCache(listingId, nowMs);
+  if (hit) return hit;
+  return shareListingIdentityLookup(listingId, async () => {
+    const again = readListingIdentityCache(listingId, nowMs);
+    if (again) return again;
+    if (options.beforePaidLookup) await options.beforePaidLookup();
+    const looked = await lookup(listingId);
+    if (looked.status === 'unavailable' && looked.reason !== 'not_found') {
+      return { kind: 'negative' };
+    }
+    if (looked.status === 'unavailable') {
+      const negative: CachedListingIdentity = { kind: 'negative' };
+      writeListingIdentityCache(listingId, negative, LISTING_IDENTITY_NEGATIVE_TTL_MS, nowMs);
+      return negative;
+    }
+    const identity = identityForCache(looked.identity, listingId);
+    const match = matchOnboardedRooftop(mergeListingIdentity(identity, input), rooftops);
+    const ttl = match.matched ? LISTING_IDENTITY_POSITIVE_TTL_MS : LISTING_IDENTITY_NEGATIVE_TTL_MS;
+    const found: CachedListingIdentity = { kind: 'found', identity };
+    writeListingIdentityCache(listingId, found, ttl, nowMs);
+    return found;
+  });
 }
 
 function firstText(...values: Array<string | null | undefined>): string | null {
