@@ -122,31 +122,22 @@ export async function startDealerConversation(
   const vdpMatchId = deps.supabase && listingId
     ? await recordInNetworkVdpMatch(deps.supabase, { listingId, listingUrl, match: namedMatch })
     : null;
-  if (openDealId && deps.supabase && listingId) {
+  const result = await addShopperCar(userId, { ...input, vdpMatchId, rooftopId: match.rooftop.id }, deps);
+  if (deps.supabase && listingId) {
     const wrote = await recordInNetworkConversation(deps.supabase, {
-      dealId: openDealId,
+      dealId: openDealId ?? result.deal.id,
       userId,
       listingId,
       match: namedMatch,
       shopperFirstName,
     });
-    if (!wrote) {
+    if (openDealId && !wrote) {
       throw new ShopperDealError(
         'Drevvy could not open that dealer conversation.',
         500,
         'conversation_unrecorded',
       );
     }
-  }
-  const result = await addShopperCar(userId, { ...input, vdpMatchId, rooftopId: match.rooftop.id }, deps);
-  if (!openDealId && deps.supabase && listingId) {
-    await recordInNetworkConversation(deps.supabase, {
-      dealId: result.deal.id,
-      userId,
-      listingId,
-      match: namedMatch,
-      shopperFirstName,
-    });
   }
   return { ...result, match: namedMatch, shopperFirstName };
 }

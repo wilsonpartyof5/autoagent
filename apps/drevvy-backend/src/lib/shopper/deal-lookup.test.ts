@@ -71,10 +71,16 @@ function memoryDeals(seed: ShopperDealRow[] = []): ShopperDealRepository & { row
   };
 }
 
-function credits(balance: number, conversation: Record<string, unknown> | null = null) {
+function credits(
+  balance: number,
+  conversation: Record<string, unknown> | null = null,
+  charge: 'ok' | 'no_credits' = 'ok',
+) {
   let spends = 0;
+  let writes = 0;
   return {
     spends: () => spends,
+    writes: () => writes,
     from(table: string) {
       if (table === 'consumer_profiles') {
         return {
@@ -88,7 +94,10 @@ function credits(balance: number, conversation: Record<string, unknown> | null =
           select: () => ({
             eq: () => ({ maybeSingle: async () => ({ data: conversation, error: null }) }),
           }),
-          upsert: async () => ({ error: null }),
+          upsert: async () => {
+            writes += 1;
+            return { error: null };
+          },
         };
       }
       if (table === 'drevvy_vdp_matches') {
@@ -119,11 +128,12 @@ function credits(balance: number, conversation: Record<string, unknown> | null =
     },
     rpc: async () => {
       spends += 1;
+      const consumed = charge === 'ok';
       return {
         data: [{
-          consumed: true,
-          already_consumed: true,
-          balance,
+          consumed,
+          already_consumed: consumed,
+          balance: consumed ? balance : 0,
           lifetime_purchased: balance,
           lifetime_used: 1,
           lifetime_refunded: 0,
@@ -156,13 +166,14 @@ function deps(
   deals = memoryDeals(),
   conversation: Record<string, unknown> | null = null,
   nowMs = NOW,
+  charge: 'ok' | 'no_credits' = 'ok',
 ): DealDeps & {
   rooftops: RooftopDirectory;
   rateLimitStore: MemoryRateLimitStore;
   deals: ReturnType<typeof memoryDeals>;
   book: ReturnType<typeof credits>;
 } {
-  const book = credits(balance, conversation);
+  const book = credits(balance, conversation, charge);
   return {
     deals,
     lifecycle: createMemoryLifecycleRepository(),
@@ -318,6 +329,36 @@ test('an open deal with no conversation row does not spend a key when the listin
   assert.equal(deals.rows[0]?.id, openId);
 });
 
+test('a failed charge does not leave a conversation row on an open deal', async () => {
+  const store = new MemoryRateLimitStore();
+  const lookups = directory(async () => ({
+    status: 'found',
+    identity: { listingId: 'mc-charge-fail', marketcheckDealerId: HONDA.marketcheckDealerId },
+  }));
+  const openId = '88888888-8888-4888-8888-888888888888';
+  const deals = memoryDeals([{
+    id: openId,
+    consumerUserId: 'shopper-charge-fail',
+    listingId: 'mc-charge-fail',
+    status: 'interested',
+    outreachLockedUntilPaid: true,
+    vehicle: VEHICLE,
+    createdAt: '2026-11-22T15:00:00.000Z',
+    updatedAt: '2026-11-22T15:00:00.000Z',
+  }]);
+  const box = deps(lookups, store, 1, deals, null, NOW, 'no_credits');
+  await assert.rejects(
+    () => startDealerConversation('shopper-charge-fail', {
+      listingId: 'mc-charge-fail',
+      vehicle: VEHICLE,
+    }, box),
+    (error: unknown) => error instanceof ShopperDealError && error.status === 402 && error.code === 'no_credits',
+  );
+  assert.equal(box.book.writes(), 0);
+  assert.equal(box.book.spends(), 1);
+  assert.equal(deals.rows.length, 1);
+});
+
 test('repeated off-network deal posts fetch the listing once, then use the cache', async () => {
   const store = new MemoryRateLimitStore();
   const lookups = directory(async () => ({ status: 'found', identity: { ...OFF_IDENTITY, listingId: 'mc-off-repeat' } }));
@@ -460,7 +501,7 @@ async function requireOff(rooftops: RooftopDirectory, nowMs: number) {
   return requireInNetworkMatch({ listingId: 'mc-negative' }, rooftops, { nowMs });
 }
 
-test('chip reads allow fifteen polls a minute and then say to wait', async () => {
+test('chip reads allow sixty a minute and then say to wait', async () => {
   const store = new MemoryRateLimitStore();
   const deals: Pick<ShopperDealRepository, 'get'> = {
     async get(userId, dealId) {

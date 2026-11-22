@@ -7,11 +7,12 @@ import { discoverLimiterFailsClosed, type RateLimitStore } from '@/lib/public-di
 import { DurableRateLimitUnavailable, takeDurableLimits } from '@/lib/shopper/durable-rate-limit';
 
 /**
- * Paid GET /v2/listing/car calls share one process only for the identity cache.
- * These buckets use the existing Discover counter so a second instance cannot
- * keep paying after the daily caps. No new table or RPC.
+ * Paid GET /v2/listing/car calls from deal start and out-the-door only.
+ * Discover detail, inventory detail, and the network lookup do not enter
+ * this context, so they keep their own limits. Buckets are separate from
+ * those routes. No new table or RPC.
  *
- * 2,000 global calls is about $4 at $0.002. 100 per IP is about $0.20.
+ * 2,000 shopper calls is about $4 at $0.002. 100 per IP is about $0.20.
  */
 export const LISTING_CAR_GLOBAL_PER_DAY = 2_000;
 export const LISTING_CAR_IP_PER_DAY = 100;
@@ -48,12 +49,12 @@ export function withListingCarLimits<T>(
 
 export function listingCarLimitWindows(ip: string | null | undefined): { bucket: string; windowMs: number; limit: number }[] {
   const windows = [
-    { bucket: 'mc:car:g:d', windowMs: DISCOVER_DAY_MS, limit: LISTING_CAR_GLOBAL_PER_DAY },
+    { bucket: 'mc:car:shop:g:d', windowMs: DISCOVER_DAY_MS, limit: LISTING_CAR_GLOBAL_PER_DAY },
   ];
   if (ip && ip.trim()) {
     const hashed = createHash('sha256').update(rateLimitIpKey(ip)).digest('hex');
     windows.push({
-      bucket: `mc:car:ip:${hashed}:d`,
+      bucket: `mc:car:shop:ip:${hashed}:d`,
       windowMs: DISCOVER_DAY_MS,
       limit: LISTING_CAR_IP_PER_DAY,
     });
@@ -62,13 +63,14 @@ export function listingCarLimitWindows(ip: string | null | undefined): { bucket:
 }
 
 /**
- * Runs only when a store is passed or production fail-closed is on.
- * Tests that do not opt in do not share a global counter with this cap.
+ * No context means this call is not a deal or OTD lookup.
+ * Those calls return before any bucket is touched.
  */
 export async function enforceListingCarDailyCap(): Promise<void> {
   const context = contexts.getStore();
-  const env = context?.env ?? process.env;
-  if (!context?.store && !discoverLimiterFailsClosed(env)) return;
+  if (!context) return;
+  const env = context.env ?? process.env;
+  if (!context.store && !discoverLimiterFailsClosed(env)) return;
 
   const windows = listingCarLimitWindows(context?.ip);
   try {

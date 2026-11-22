@@ -8,6 +8,7 @@ import {
   type LiveSearchResult,
   type DetailResponse,
 } from '../marketcheck/mcp-adapter';
+import { ListingCarRateLimited } from '../marketcheck/listing-car-limit';
 import { payloadContainsSecret, redactSecrets } from '../marketcheck/secrets';
 
 import { publicListingFromDetail, publicListingFromSearchVehicle, publicListingsContainForbiddenKey, assertPublicListing } from './allowlist';
@@ -90,6 +91,9 @@ async function readJson(request: Request): Promise<unknown> {
 
 function mapUpstream(error: unknown): DiscoverApiError {
   if (error instanceof DiscoverApiError) return error;
+  if (error instanceof ListingCarRateLimited) {
+    return new DiscoverApiError('RATE_LIMITED', 'Inventory is busy. Please wait and try again.');
+  }
   if (error instanceof MarketCheckRateLimitError) {
     const retry: Record<string, string> = {};
     if (error.retryAfter) retry['Retry-After'] = String(error.retryAfter);

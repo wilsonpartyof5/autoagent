@@ -60,10 +60,12 @@ export async function takeDurableLimits(input: {
 }): Promise<DurableWindow | null> {
   const env = input.env ?? process.env;
   const failClosed = discoverLimiterFailsClosed(env);
-  const store = input.store ?? (await resolveDiscoverRateLimitStore(env));
+  let store: RateLimitStore | undefined;
   try {
+    store = input.store ?? (await resolveDiscoverRateLimitStore(env));
     return await takeFrom(store, input.windows, input.nowMs);
-  } catch {
+  } catch (error) {
+    if (error instanceof DurableRateLimitUnavailable) throw error;
     if (input.store || failClosed || store === memoryFallback) {
       logUnavailable();
       throw new DurableRateLimitUnavailable();

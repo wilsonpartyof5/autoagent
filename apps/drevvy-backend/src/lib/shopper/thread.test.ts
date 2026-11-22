@@ -303,7 +303,7 @@ test('a shopper message day limit stops the insert', async () => {
   assert.equal(dana.inserts.length, SHOPPER_MESSAGE_USER_PER_DAY);
 });
 
-test('reading a thread allows about fifteen polls a minute and then says to wait', async () => {
+test('reading a thread allows sixty polls a minute and then says to wait', async () => {
   assert.equal(SHOPPER_READ_PER_MINUTE, 60);
   const window = shopperReadLimitWindow(USER, 'messages');
   assert.equal(window.limit, 60);

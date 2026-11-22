@@ -6,6 +6,7 @@ import {
   MarketCheckQuotaError,
   MarketCheckRateLimitError,
 } from '@/lib/marketcheck/mcp-adapter';
+import { ListingCarRateLimited } from '@/lib/marketcheck/listing-car-limit';
 import { payloadContainsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
 import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
@@ -121,6 +122,13 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: { code: error.code, message: error.message } },
         { status: 503 },
+      );
+    }
+
+    if (error instanceof ListingCarRateLimited) {
+      return NextResponse.json(
+        { success: false, error: { code: 'RATE_LIMITED', message: 'Slow down a little. Try again tomorrow.' } },
+        { status: 429 },
       );
     }
 
