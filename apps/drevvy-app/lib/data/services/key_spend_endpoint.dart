@@ -19,6 +19,8 @@ class KeySpendResult {
     this.dealId,
     this.source = KeySpendSource.stub,
     this.message,
+    this.errorCode,
+    this.statusCode,
   });
 
   final bool ok;
@@ -27,20 +29,28 @@ class KeySpendResult {
   final KeySpendSource source;
   final String? message;
 
+  /// Server `error.code` when the response included one. Null on success.
+  final String? errorCode;
+
+  /// HTTP status. `0` means the request never got a response.
+  final int? statusCode;
+
   const KeySpendResult.unavailable()
     : ok = false,
       balance = null,
       dealId = null,
       source = KeySpendSource.missing,
-      message = null;
+      message = null,
+      errorCode = null,
+      statusCode = null;
 
   /// Live mode refused a local spend. [ok] is false.
-  const KeySpendResult.blocked(String message)
+  const KeySpendResult.blocked(this.message, {this.errorCode})
     : ok = false,
       balance = null,
       dealId = null,
       source = KeySpendSource.blocked,
-      message = message;
+      statusCode = null;
 }
 
 enum KeySpendSource { live, stub, missing, blocked }
@@ -48,7 +58,7 @@ enum KeySpendSource { live, stub, missing, blocked }
 /// Live spend routes from backend PRs, with a missing-route fallback.
 ///
 /// - Key A: `POST /api/consumer/keys/market-save` `{listingId, vin}`
-/// - Key B: `POST /api/consumer/deals` `{listingId, rooftopId, templateId?}`
+/// - Key B: `POST /api/consumer/deals` `{listingId, vehicle: {year, make, model, price}}`
 /// - Off-network OTD is `POST /api/consumer/otd-requests`. This client does
 ///   not send it. Submission stays unavailable until that hold is cleared.
 abstract class KeySpendEndpoint {
@@ -167,21 +177,20 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     String? templateId,
     String? message,
   }) {
-    final vdpUrl = listing.vdpUrl;
+    // The server writes the opener. A chip id or a draft message is not
+    // part of the create body, and neither is a rooftop id or listing URL.
+    final vehicle = _conversationVehicle(listing);
+    if (vehicle == null) {
+      return Future.value(
+        const KeySpendResult.blocked(
+          'This car has no listed price yet.',
+          errorCode: 'invalid_vehicle',
+        ),
+      );
+    }
     return _post(
       '/api/consumer/deals',
-      {
-        'listingId': listing.id,
-        'vin': listing.vin,
-        'vehicle': _vehicleSnapshot(listing),
-        if (vdpUrl != null &&
-            (vdpUrl.startsWith('https://') || vdpUrl.startsWith('http://')))
-          'listingUrl': vdpUrl,
-        'rooftopId': match.rooftopId,
-        if (templateId != null) 'templateId': templateId,
-        if (message != null) 'message': message,
-        'spendKind': 'dealer_conversation',
-      },
+      {'listingId': listing.id, 'vehicle': vehicle},
       surface: 'dealer_conversation',
       requiresSignIn: true,
       conversation: true,
@@ -198,36 +207,16 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     );
   }
 
-  /// Year, make, model, and price are what `POST /api/consumer/deals` requires.
-  Map<String, Object?> _vehicleSnapshot(Listing listing) {
-    final build = listing.build;
-    final location = listing.carLocation;
-    final city = location?.city;
-    final state = location?.state;
-    final latitude = location?.latitude;
-    final longitude = location?.longitude;
-    return {
-      'year': build.year,
-      'make': build.make,
-      'model': build.model,
-      'price': listing.price,
-      if (build.trim != null && build.trim!.isNotEmpty) 'trim': build.trim,
-      if (build.bodyType != null && build.bodyType!.isNotEmpty)
-        'bodyType': build.bodyType,
-      if (listing.vin.isNotEmpty) 'vin': listing.vin,
-      if (listing.miles != null) 'miles': listing.miles,
-      if (listing.msrp != null) 'msrp': listing.msrp,
-      if (listing.domActive != null) 'daysOnMarket': listing.domActive,
-      if (city != null && city.isNotEmpty) 'city': city,
-      if (state != null && state.isNotEmpty) 'state': state,
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
-      'condition': listing.isCpo
-          ? 'certified'
-          : listing.isNew
-          ? 'new'
-          : 'used',
-    };
+  /// Year, make, model, and price. Nothing else is sent.
+  /// A missing price, year, make, or model does not post.
+  Map<String, Object>? _conversationVehicle(Listing listing) {
+    final year = listing.build.year;
+    final make = listing.build.make.trim();
+    final model = listing.build.model.trim();
+    final price = listing.price;
+    if (year < 1980 || year > 2100) return null;
+    if (make.isEmpty || model.isEmpty || price == null) return null;
+    return {'year': year, 'make': make, 'model': model, 'price': price};
   }
 
   Future<KeySpendResult> _post(
@@ -239,7 +228,10 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
   }) async {
     if (requiresSignIn && _sessionStore.accessToken == null) {
       if (strict) {
-        return const KeySpendResult.blocked('Sign in to use a key.');
+        return const KeySpendResult.blocked(
+          'Sign in to use a key.',
+          errorCode: 'signed_out',
+        );
       }
       return const KeySpendResult.unavailable();
     }
@@ -267,6 +259,8 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
           ok: false,
           source: KeySpendSource.live,
           message: 'Could not complete this key spend.',
+          errorCode: _errorCode(response.body),
+          statusCode: response.statusCode,
         );
       }
       return _parse(response.body, conversation: conversation);
@@ -280,6 +274,8 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
           ok: false,
           source: KeySpendSource.live,
           message: 'Drevvy could not reach the server.',
+          errorCode: 'unreachable',
+          statusCode: 0,
         );
       }
       return const KeySpendResult.unavailable();
@@ -386,5 +382,20 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
 
   bool _endpointMissing(int statusCode) {
     return statusCode == 404 || statusCode == 405 || statusCode == 501;
+  }
+
+  String? _errorCode(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final error = decoded['error'];
+      if (error is Map && error['code'] is String) {
+        final code = (error['code'] as String).trim();
+        if (code.isNotEmpty) return code;
+      }
+    } on FormatException {
+      return null;
+    }
+    return null;
   }
 }

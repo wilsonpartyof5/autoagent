@@ -22,10 +22,12 @@ class RooftopMatch extends Equatable {
   /// Explicit `data.state` from the network route. Null on demo stubs.
   final RooftopNetworkState? networkState;
 
-  /// A conversation can start only when this client has a rooftop id.
-  /// The public network body does not include one, so a verified
-  /// `in_network` state does not open chat.
-  bool get isInNetwork => matched && rooftopId != null && rooftopId!.isNotEmpty;
+  /// Verified `in_network` is enough. The public network body has no
+  /// rooftop id, and this client does not invent one. Demo stubs still
+  /// match when they carry a rooftop id.
+  bool get isInNetwork =>
+      classifiedInNetwork ||
+      (matched && rooftopId != null && rooftopId!.isNotEmpty);
 
   bool get classifiedInNetwork => networkState == RooftopNetworkState.inNetwork;
 

@@ -55,7 +55,7 @@ void main() {
     );
     expect(match.source, RooftopMatchSource.live);
     expect(match.classifiedInNetwork, isTrue);
-    expect(match.isInNetwork, isFalse);
+    expect(match.isInNetwork, isTrue);
     expect(match.rooftopId, isNull);
     expect(match.vdpUrl, isNull);
   });
@@ -446,7 +446,7 @@ void main() {
     hold.gate = Completer<void>()..complete();
     final current = await repo.getRooftopMatch(networkListing);
     expect(current.classifiedInNetwork, isTrue);
-    expect(current.isInNetwork, isFalse);
+    expect(current.isInNetwork, isTrue);
   });
 }
 

@@ -180,8 +180,16 @@ void main() {
     expect(requests.calls.single.method, 'POST');
     expect(requests.calls.single.url.path, '/api/consumer/deals');
     final body = jsonDecode(requests.calls.single.body) as Map<String, dynamic>;
+    expect(body.keys.toSet(), {'listingId', 'vehicle'});
+    expect(body.containsKey('rooftopId'), isFalse);
+    expect(body.containsKey('listingUrl'), isFalse);
     expect(body.containsKey('fairPrice'), isFalse);
-    expect(body['spendKind'], 'dealer_conversation');
+    final vehicle = body['vehicle'] as Map<String, dynamic>;
+    expect(vehicle.keys.toSet(), {'year', 'make', 'model', 'price'});
+    expect(vehicle['year'], 2024);
+    expect(vehicle['make'], 'Toyota');
+    expect(vehicle['model'], 'RAV4');
+    expect(vehicle['price'], 32995);
   });
 
   testWidgets(

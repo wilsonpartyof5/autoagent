@@ -14,14 +14,17 @@ import '../widgets/stat_hero.dart';
 /// Screens 20-25: Deals list with stat hero
 /// v1.8: Added avatar button to header.
 class DealsScreen extends StatefulWidget {
-  const DealsScreen({super.key});
+  const DealsScreen({super.key, this.repository});
+
+  final DemoRepository? repository;
 
   @override
   State<DealsScreen> createState() => _DealsScreenState();
 }
 
 class _DealsScreenState extends State<DealsScreen> {
-  final _repo = DemoRepository.instance;
+  late final DemoRepository _repo =
+      widget.repository ?? DemoRepository.instance;
   List<Deal>? _deals;
   DealStats? _stats;
   bool _isLoading = true;
@@ -87,10 +90,10 @@ class _DealsScreenState extends State<DealsScreen> {
       backgroundColor: colors.canvas,
       body: Column(
         children: [
-          NavTopBar(title: 'Deals', repository: DemoRepository.instance),
+          NavTopBar(title: 'Deals', repository: _repo),
           Expanded(
             child: deals.isEmpty
-                ? _EmptyDeals(stats: _stats)
+                ? _EmptyDeals(stats: _stats, loadError: _repo.dealsLoadError)
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(
                       DrevvySpace.gutter,
@@ -105,6 +108,15 @@ class _DealsScreenState extends State<DealsScreen> {
                           color: colors.muted,
                         ),
                       ),
+                      if (_repo.dealsLoadError != null) ...[
+                        const SizedBox(height: DrevvySpace.s3),
+                        Text(
+                          _repo.dealsLoadError!,
+                          style: context.drevvyText.body.copyWith(
+                            color: colors.ink,
+                          ),
+                        ),
+                      ],
                       if (endedDeal != null) ...[
                         const SizedBox(height: DrevvySpace.s4),
                         _EndedBanner(
@@ -119,7 +131,8 @@ class _DealsScreenState extends State<DealsScreen> {
                           dealerPreview: latestDealerPreview(
                             _repo.dealThread(deal.id),
                           ),
-                          onOpenDeal: () => context.push('/deal/${deal.id}'),
+                          onOpenDeal: () =>
+                              context.push('/deals/${deal.id}/chat'),
                           onOpenChat: () =>
                               context.push('/deals/${deal.id}/chat'),
                         ),
@@ -135,9 +148,10 @@ class _DealsScreenState extends State<DealsScreen> {
 }
 
 class _EmptyDeals extends StatelessWidget {
-  const _EmptyDeals({this.stats});
+  const _EmptyDeals({this.stats, this.loadError});
 
   final DealStats? stats;
+  final String? loadError;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +165,10 @@ class _EmptyDeals extends StatelessWidget {
             'Cars you are already talking about with a dealer.',
             style: text.body.copyWith(color: colors.muted),
           ),
+          if (loadError != null) ...[
+            const SizedBox(height: DrevvySpace.s3),
+            Text(loadError!, style: text.body.copyWith(color: colors.ink)),
+          ],
           const SizedBox(height: DrevvySpace.s6),
 
           // Mini stat hero (0/10)

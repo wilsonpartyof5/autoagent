@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
+import '../services/consumer_deals_endpoint.dart';
 import '../services/credits_endpoint.dart';
 import '../services/deal_chips_endpoint.dart';
 import '../services/key_spend_endpoint.dart';
@@ -23,6 +24,36 @@ class StaleAccountException implements Exception {
 
   @override
   String toString() => 'The account changed before this request finished.';
+}
+
+/// Why [DemoRepository.startDealerConversation] did not open a chat.
+enum DealerConversationNotice {
+  offNetwork,
+  needsKey,
+  unreachable,
+  failed,
+  signedOut,
+}
+
+extension DealerConversationNoticeCopy on DealerConversationNotice {
+  String get plainCopy => switch (this) {
+    DealerConversationNotice.offNetwork =>
+      'This dealer is not on Drevvy. Your key was not used.',
+    DealerConversationNotice.needsKey => 'You need a key to text this dealer.',
+    DealerConversationNotice.unreachable =>
+      'Drevvy could not reach the dealer. Try again.',
+    DealerConversationNotice.failed =>
+      'Drevvy could not start this chat. Try again.',
+    DealerConversationNotice.signedOut => 'Sign in to text this dealer.',
+  };
+}
+
+/// Messages from one thread read, plus a plain error when the read failed.
+class DealThreadRefresh {
+  const DealThreadRefresh({required this.messages, this.error});
+
+  final List<DealThreadMessage> messages;
+  final String? error;
 }
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
@@ -46,6 +77,7 @@ class DemoRepository {
     DealChipsEndpoint? dealChips,
     SavedCarsEndpoint? savedCars,
     ShopperProfileEndpoint? profile,
+    ConsumerDealsEndpoint? consumerDeals,
     http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
@@ -67,6 +99,9 @@ class DemoRepository {
     _profile =
         profile ??
         ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
+    _consumerDeals =
+        consumerDeals ??
+        ConsumerDealsEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
       _balanceKnown = true;
@@ -120,6 +155,18 @@ class DemoRepository {
   late final DealChipsEndpoint _dealChips;
   late final SavedCarsEndpoint _savedCarsEndpoint;
   late final ShopperProfileEndpoint _profile;
+  late final ConsumerDealsEndpoint _consumerDeals;
+
+  /// Set when the last [startDealerConversation] did not open a chat.
+  DealerConversationNotice? _lastConversationNotice;
+  DealerConversationNotice? get lastConversationNotice =>
+      _lastConversationNotice;
+
+  /// Last live deals-list failure. Null after a successful read.
+  String? _dealsLoadError;
+  String? get dealsLoadError => _dealsLoadError;
+
+  bool get _loadsRemoteDeals => _consumerDeals is HttpConsumerDealsEndpoint;
 
   /// Chips route for an in-network deal. Missing base URL keeps the opener pair.
   DealChipsEndpoint get dealChips => _dealChips;
@@ -331,6 +378,8 @@ class DemoRepository {
     _dealThreads.clear();
     _deals = [];
     _dealsSeeded = true;
+    _dealsLoadError = null;
+    _lastConversationNotice = null;
   }
 
   Future<User> updateUser(User user) async {
@@ -684,7 +733,13 @@ class DemoRepository {
     String? templateId,
     String? message,
   }) async {
-    if (!_mayStartConversation(match)) return null;
+    _lastConversationNotice = null;
+    if (!_mayStartConversation(match)) {
+      _lastConversationNotice = match.classifiedOffNetwork
+          ? DealerConversationNotice.offNetwork
+          : DealerConversationNotice.failed;
+      return null;
+    }
     final epoch = _captureAccount();
     final remote = await _keySpend.startConversation(
       listing: listing,
@@ -694,7 +749,10 @@ class DemoRepository {
     );
     if (!_accountStill(epoch)) return null;
     if (_refusesLocalKeySpend(remote)) {
-      if (!remote.ok) return null;
+      if (!remote.ok || remote.dealId == null || remote.dealId!.isEmpty) {
+        _lastConversationNotice = _noticeFor(remote);
+        return null;
+      }
       _conversationStarted.add(listing.id);
       if (remote.balance != null) _creditBalance = remote.balance!;
       ProductAnalytics.instance.track(
@@ -708,7 +766,12 @@ class DemoRepository {
       );
       final Deal created;
       try {
-        created = await addDeal(listing, spend: false, id: remote.dealId);
+        created = await addDeal(
+          listing,
+          spend: false,
+          id: remote.dealId,
+          serverThread: true,
+        );
       } on StaleAccountException {
         return null;
       }
@@ -755,8 +818,22 @@ class DemoRepository {
     return true;
   }
 
+  DealerConversationNotice _noticeFor(KeySpendResult remote) {
+    final code = remote.errorCode;
+    if (code == 'off_network') return DealerConversationNotice.offNetwork;
+    if (code == 'no_credits' || remote.statusCode == 402) {
+      return DealerConversationNotice.needsKey;
+    }
+    if (code == 'signed_out') return DealerConversationNotice.signedOut;
+    if (code == 'unreachable' || remote.statusCode == 0) {
+      return DealerConversationNotice.unreachable;
+    }
+    return DealerConversationNotice.failed;
+  }
+
   /// In-network is not enough in live mode. A stub match and an unavailable
   /// match must not post a conversation or fall through to the local ledger.
+  /// A verified `in_network` classification does not need a rooftop id.
   bool _mayStartConversation(RooftopMatch match) {
     if (!match.isInNetwork) return false;
     if (_live && match.source != RooftopMatchSource.live) return false;
@@ -786,6 +863,7 @@ class DemoRepository {
       changedOffer: deal.changedOffer,
       tryOnceMoreUsed: deal.tryOnceMoreUsed,
       dealerTimelines: deal.dealerTimelines,
+      serverThread: deal.serverThread,
     );
   }
 
@@ -1432,6 +1510,7 @@ class DemoRepository {
   }
 
   Future<List<Deal>> getDeals() async {
+    if (_loadsRemoteDeals) return _loadLiveDeals();
     final epoch = _captureAccount();
     _ensureDealsLoaded();
     await _delay(null);
@@ -1439,12 +1518,83 @@ class DemoRepository {
     return List<Deal>.unmodifiable(_deals);
   }
 
+  Future<List<Deal>> _loadLiveDeals() async {
+    final epoch = _captureAccount();
+    try {
+      final page = await _consumerDeals.list();
+      if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+      final remoteIds = page.deals.map((deal) => deal.id).toSet();
+      final kept = [
+        for (final deal in _deals)
+          if (deal.serverThread && !remoteIds.contains(deal.id)) deal,
+      ];
+      _deals = [...page.deals, ...kept];
+      _dealsSeeded = true;
+      _dealsLoadError = null;
+      if (page.balance != null) {
+        _creditBalance = _creditBalance.copyWith(balance: page.balance);
+        _balanceKnown = true;
+        _creditNotice = null;
+      }
+      return List<Deal>.unmodifiable(_deals);
+    } on ConsumerDealsException catch (error) {
+      if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+      _dealsLoadError = error.message;
+      return List<Deal>.unmodifiable(_deals);
+    }
+  }
+
+  /// Loads the server thread for a deal the API created.
+  /// Demo and local deals return the in-memory lines.
+  Future<DealThreadRefresh> refreshDealThread(String dealId) async {
+    if (!_isServerThread(dealId)) {
+      return DealThreadRefresh(messages: dealThread(dealId));
+    }
+    try {
+      final messages = await _consumerDeals.readThread(dealId);
+      _dealThreads[dealId] = messages;
+      return DealThreadRefresh(messages: dealThread(dealId));
+    } on ConsumerDealsException catch (error) {
+      return DealThreadRefresh(messages: dealThread(dealId), error: error.message);
+    }
+  }
+
+  /// Posts one shopper line. Server threads send `{body}` only.
+  /// Returns plain copy when the send fails, or null when it lands.
+  Future<String?> sendDealThreadMessage(String dealId, String body) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return null;
+    if (!_isServerThread(dealId)) {
+      rememberDealMessage(dealId, author: 'shopper', body: trimmed);
+      return null;
+    }
+    try {
+      final messages = await _consumerDeals.postMessage(dealId, trimmed);
+      _dealThreads[dealId] = messages;
+      return null;
+    } on ConsumerDealsException catch (error) {
+      return error.message;
+    }
+  }
+
+  bool _isServerThread(String dealId) {
+    for (final deal in _deals) {
+      if (deal.id == dealId) return deal.serverThread;
+    }
+    return false;
+  }
+
   Future<Deal> getDealById(String id) async {
     final deals = await getDeals();
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing, {bool spend = true, String? id}) async {
+  Future<Deal> addDeal(
+    Listing listing, {
+    bool spend = true,
+    String? id,
+    bool serverThread = false,
+  }) async {
     final epoch = _captureAccount();
     _ensureDealsLoaded();
     if (!_accountStill(epoch)) throw const StaleAccountException();
@@ -1453,8 +1603,13 @@ class DemoRepository {
         final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        final next = _dropSyntheticMarket(renamed);
-        if (next.id != deal.id || next.marketContext != deal.marketContext) {
+        final marked = serverThread
+            ? renamed.copyWith(serverThread: true)
+            : renamed;
+        final next = _dropSyntheticMarket(marked);
+        if (next.id != deal.id ||
+            next.marketContext != deal.marketContext ||
+            next.serverThread != deal.serverThread) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -1486,6 +1641,7 @@ class DemoRepository {
       addedAt: DateTime.now(),
       listing: listing,
       marketContext: _live ? null : await getMarketContext(listing),
+      serverThread: serverThread,
     );
     if (!_accountStill(epoch)) throw const StaleAccountException();
     _deals = [..._deals, newDeal];
