@@ -4,15 +4,12 @@ const keysOfferingId = 'keys';
 /// Backward-compatible alias. Prefer [keysOfferingId].
 const packsOfferingId = keysOfferingId;
 
-/// Prefers the `keys` offering, then the current offering, then everything else.
-List<T> selectPackPackages<T>({
-  required Map<String, List<T>> byOfferingId,
-  List<T>? currentPackages,
-}) {
+/// Packages on the RevenueCat offering [keysOfferingId].
+///
+/// Other offerings are ignored. A missing or empty `keys` offering returns
+/// an empty list so the paywall does not show packs from a different offering.
+List<T> selectPackPackages<T>({required Map<String, List<T>> byOfferingId}) {
   final packs = byOfferingId[keysOfferingId];
-  if (packs != null && packs.isNotEmpty) return packs;
-  if (currentPackages != null && currentPackages.isNotEmpty) {
-    return currentPackages;
-  }
-  return [for (final packages in byOfferingId.values) ...packages];
+  if (packs == null || packs.isEmpty) return List<T>.empty();
+  return packs;
 }

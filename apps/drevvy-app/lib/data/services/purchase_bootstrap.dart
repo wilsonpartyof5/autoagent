@@ -8,15 +8,16 @@ import 'revenue_cat_identity.dart';
 import 'shopper_session_store.dart';
 import 'superwall_purchase_controller.dart';
 
-/// Configures the store SDKs only for a verified Test Store purchase path.
+/// Configures Purchases when [PurchaseConfig.storePurchasesEnabled] is true.
 ///
-/// A public `appl_` or `goog_` key is not configured. Those keys can complete
-/// a production store transaction, and this client cannot see the store
-/// account. Demo mode does not configure them either.
+/// Debug configures a Test Store key (`test_`). Release and profile,
+/// including TestFlight, configure the iOS public SDK key (`appl_`). A
+/// missing or rejected key is left unconfigured. Demo mode does not
+/// configure the store either.
 class PurchaseBootstrap {
   static Future<void> start(PurchaseConfig config) async {
     ShopperSessionStore.instance.identity = RevenueCatIdentity(config: config);
-    if (!config.sandboxPurchasesEnabled) return;
+    if (!config.storePurchasesEnabled) return;
     if (config.usesSuperwall) {
       await _startSuperwall(config);
     }

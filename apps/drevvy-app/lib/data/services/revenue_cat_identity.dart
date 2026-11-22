@@ -14,9 +14,10 @@ class RevenueCatIdentity {
 
   /// Called after the shopper signs in. [supabaseUserId] becomes `Purchases.logIn`.
   ///
-  /// Identity login configures the SDK, so it runs only for a Test Store key.
+  /// Identity login configures the SDK, so it runs only when this build
+  /// accepts its RevenueCat key.
   Future<void> onSignedIn(String supabaseUserId) async {
-    if (!config.sandboxPurchasesEnabled) return;
+    if (!config.storePurchasesEnabled) return;
     final appUserId = supabaseUserId.trim();
     if (appUserId.isEmpty) return;
     try {
@@ -29,7 +30,7 @@ class RevenueCatIdentity {
 
   /// Called when the shopper signs out.
   Future<void> onSignedOut() async {
-    if (!config.sandboxPurchasesEnabled) return;
+    if (!config.storePurchasesEnabled) return;
     try {
       await _gateway.logOut();
     } on Exception catch (error) {
