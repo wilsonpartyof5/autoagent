@@ -21,7 +21,7 @@ enum DealStatus {
 extension DealStatusX on DealStatus {
   String get label => switch (this) {
         DealStatus.reachingOut => 'Reaching out',
-        DealStatus.findingBestPrice => 'Finding your best price',
+        DealStatus.findingBestPrice => 'Waiting on price',
         DealStatus.offerReceived => 'Offer received',
         DealStatus.accepted => 'Accepted',
         DealStatus.officialOfferReceived => 'Official offer received',

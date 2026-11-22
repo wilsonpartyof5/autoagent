@@ -246,8 +246,8 @@ class HttpConsumerDealsEndpoint extends ConsumerDealsEndpoint {
 ///   and `vehicle` `{year, make, model, price}`. Optional vehicle fields
 ///   kept for the card are trim, vin, miles, city, state, condition, and
 ///   an https `thumbnailUrl`.
-/// - `interested` is shown as Reaching out. `negotiating` is Finding your
-///   best price. `accepted` is Accepted. `closed` is No response.
+/// - `interested` is shown as Reaching out. `negotiating` is Waiting on
+///   price. `accepted` is Accepted. `closed` is No response.
 /// - `endState` `sold` is No longer listed. `ended_no_response`,
 ///   `dealer_declined`, and `removed` are No response. Any other end state
 ///   uses `status`. A missing end state is treated as still open.
