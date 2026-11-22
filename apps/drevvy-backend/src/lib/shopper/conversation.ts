@@ -20,7 +20,7 @@ import {
   ListingCarRateLimited,
 } from '@/lib/marketcheck/listing-car-limit';
 import { addShopperCar, type CreditSummary, type DealDeps } from './deal-actions';
-import { checkCanAddCar } from './credits';
+import { checkCanAddCar, dealerConversationAlreadyCharged } from './credits';
 import { ShopperDealError, isShopperListingId, readCreateDealInput } from './deals';
 import { enforceDealPostLimit } from './off-network-lookup-limit';
 import type { PresentedDeal } from './lifecycle';
@@ -105,7 +105,7 @@ export async function startDealerConversation(
     }
   }
 
-  if (deps.supabase) {
+  if (deps.supabase && !(await dealAlreadyCharged(deps.supabase, userId, openDealId))) {
     const creditCheck = await checkCanAddCar(deps.supabase, userId);
     if (!creditCheck.canAdd) {
       throw new ShopperDealError(
@@ -131,7 +131,10 @@ export async function startDealerConversation(
       match: namedMatch,
       shopperFirstName,
     });
-    if (openDealId && !wrote) {
+    if (!wrote) {
+      // refund_credit_atomic only accepts no_reply_7d, sold, dealer_declined,
+      // dealer_opted_out, and admin. conversation_unrecorded is rejected, so
+      // the key stays spent and the shopper retries this start.
       throw new ShopperDealError(
         'Drevvy could not open that dealer conversation.',
         500,
@@ -169,6 +172,29 @@ async function loadShopperFirstName(supabase: SupabaseClient, userId: string): P
   return shopperFirstNameOnly(typeof data?.first_name === 'string' ? data.first_name : null);
 }
 
+/**
+ * Skip the balance check only when this open deal was already charged.
+ * consume_credit_atomic spends a key on the first call, so running it before
+ * the in-network match would charge an off-network listing. The charge stays
+ * after the match and is a no-op when the use event already exists.
+ */
+async function dealAlreadyCharged(
+  supabase: SupabaseClient,
+  userId: string,
+  openDealId: string | null,
+): Promise<boolean> {
+  if (!openDealId) return false;
+  const charged = await dealerConversationAlreadyCharged(supabase, userId, openDealId);
+  if (charged === 'unreadable') {
+    throw new ShopperDealError(
+      'Drevvy could not check that key. Try again in a minute.',
+      503,
+      'credits_unreadable',
+    );
+  }
+  return charged === 'charged';
+}
+
 async function recordInNetworkConversation(
   supabase: SupabaseClient,
   input: {
@@ -179,26 +205,27 @@ async function recordInNetworkConversation(
     shopperFirstName: string | null;
   },
 ): Promise<boolean> {
-  const { error } = await supabase.from('shopper_dealer_conversations').upsert({
-    deal_id: input.dealId,
-    consumer_user_id: input.userId,
-    listing_id: input.listingId,
-    rooftop_id: input.match.rooftop.id,
-    match_method: input.match.method,
-    channel: input.match.channel,
-    shopper_known: true,
-    shopper_first_name: input.shopperFirstName,
-    opener: input.match.opener,
-  }, { onConflict: 'deal_id' });
-  if (error) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { error } = await supabase.from('shopper_dealer_conversations').upsert({
+      deal_id: input.dealId,
+      consumer_user_id: input.userId,
+      listing_id: input.listingId,
+      rooftop_id: input.match.rooftop.id,
+      match_method: input.match.method,
+      channel: input.match.channel,
+      shopper_known: true,
+      shopper_first_name: input.shopperFirstName,
+      opener: input.match.opener,
+    }, { onConflict: 'deal_id' });
+    if (!error) return true;
     console.error(JSON.stringify({
       event: 'in_network_conversation_record_failed',
       dealId: input.dealId,
+      attempt,
       message: error.message,
     }));
-    return false;
   }
-  return true;
+  return false;
 }
 
 const MATCH_METHODS: readonly MatchMethod[] = ['marketcheck_dealer_id', 'listing_url', 'dealer_domain'];

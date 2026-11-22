@@ -56,6 +56,8 @@ test('the stamp migration writes Analytics key_kind, vdp_match_id, and refund_re
   assert.match(STAMP_SQL, /dealer_opted_out/);
   assert.match(STAMP_SQL, /p_vdp_match_id uuid default null/);
   assert.match(STAMP_SQL, /p_refund_reason text default null/);
+  assert.match(STAMP_SQL, /invalid refund reason/);
+  assert.equal(STAMP_SQL.includes("'conversation_unrecorded'"), false);
 });
 
 test('Analytics key_kind and refund_reason match the applied prod checks', () => {
