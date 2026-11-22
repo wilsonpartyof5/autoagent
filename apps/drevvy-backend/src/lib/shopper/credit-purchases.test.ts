@@ -459,10 +459,299 @@ test('a sandbox purchase grants once on credits, restore, and the webhook', asyn
   });
 });
 
-test('production, missing, invalid, and unverified purchases grant nothing', async () => {
+test('a production purchase grants once on claim, restore, and the webhook', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const purchase = { id: 'rc_prod', store_transaction_id: 'store_prod', is_sandbox: false };
+  const event = {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  };
+
+  assert.equal(findVerifiedPurchase({
+    non_subscriptions: { drevvy_keys_5: [purchase] },
+  }, 'store_prod', 'drevvy_keys_5')?.transactionId, 'store_prod');
+
+  const creditsDb = memoryCredits();
+  const firstPurchase = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(creditsDb, [purchase]),
+  );
+  const replayedPurchase = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(creditsDb, [purchase]),
+  );
+  assert.equal(firstPurchase.status, 200);
+  assert.equal(replayedPurchase.status, 200);
+  assert.deepEqual(await firstPurchase.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+  assert.deepEqual(await replayedPurchase.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+
+  const restoreDb = memoryCredits();
+  const firstRestore = await handleCreditRestore(
+    creditRestoreRequest(['store_prod']),
+    creditRouteDeps(restoreDb, [purchase]),
+  );
+  const replayedRestore = await handleCreditRestore(
+    creditRestoreRequest(['store_prod']),
+    creditRouteDeps(restoreDb, [purchase]),
+  );
+  assert.equal(firstRestore.status, 200);
+  assert.equal(replayedRestore.status, 200);
+  assert.deepEqual(await firstRestore.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+  assert.deepEqual(await replayedRestore.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+
+  const webhookDb = memoryCredits();
+  const firstHook = await handleRevenueCatWebhook(
+    jsonRequest(event),
+    productionHookDeps(webhookDb, [purchase]),
+  );
+  const replayedHook = await handleRevenueCatWebhook(
+    jsonRequest(event),
+    productionHookDeps(webhookDb, [purchase]),
+  );
+  assert.equal(firstHook.status, 200);
+  assert.equal(replayedHook.status, 200);
+  assert.deepEqual(await readBalance(webhookDb, userId), {
+    balance: 5,
+    lifetimePurchased: 5,
+    lifetimeUsed: 0,
+    lifetimeRefunded: 0,
+  });
+});
+
+test('a production claim and webhook share one store transaction', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const purchase = {
+    id: 'rc_prod',
+    store_transaction_id: 'store_prod',
+    transaction_id: 'apple_prod',
+    is_sandbox: false,
+  };
+  const event = {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'rc_prod',
+    environment: 'PRODUCTION',
+  };
+  const expected = {
+    balance: 5,
+    lifetimePurchased: 5,
+    lifetimeUsed: 0,
+    lifetimeRefunded: 0,
+  };
+
+  const claimFirst = memoryCredits();
+  const claimed = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(claimFirst, [purchase]),
+  );
+  assert.equal(claimed.status, 200);
+  const hookAfterClaim = await handleRevenueCatWebhook(
+    jsonRequest(event),
+    productionHookDeps(claimFirst, [purchase]),
+  );
+  assert.equal(hookAfterClaim.status, 200);
+  assert.deepEqual(await readBalance(claimFirst, userId), expected);
+
+  const hookFirst = memoryCredits();
+  const hooked = await handleRevenueCatWebhook(
+    jsonRequest(event),
+    productionHookDeps(hookFirst, [purchase]),
+  );
+  assert.equal(hooked.status, 200);
+  const claimAfterHook = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(hookFirst, [purchase]),
+  );
+  assert.equal(claimAfterHook.status, 200);
+  assert.deepEqual(await readBalance(hookFirst, userId), expected);
+});
+
+test('restore credits a production purchase a missed webhook left ungranted', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const purchase = { id: 'rc_prod', store_transaction_id: 'store_prod', is_sandbox: false };
+  const db = memoryCredits();
+  const missed = await handleRevenueCatWebhook(jsonRequest({
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  }), {
+    secret: 'secret',
+    supabase: db,
+    apiKey: 'secret',
+    fetchImpl: (async () => new Response(JSON.stringify({
+      subscriber: { non_subscriptions: {} },
+    }), { status: 200 })) as typeof fetch,
+  });
+  assert.equal(missed.status, 500);
+  assert.equal((await readBalance(db, userId)).balance, 0);
+
+  const restored = await handleCreditRestore(
+    creditRestoreRequest(['store_prod']),
+    creditRouteDeps(db, [purchase]),
+  );
+  const again = await handleCreditRestore(
+    creditRestoreRequest(['store_prod']),
+    creditRouteDeps(db, [purchase]),
+  );
+  assert.equal(restored.status, 200);
+  assert.equal(again.status, 200);
+  assert.deepEqual(await restored.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+  assert.deepEqual(await again.json(), {
+    data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+});
+
+test('a reversed production transaction cannot be granted again', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const purchase = { id: 'rc_prod', store_transaction_id: 'store_prod', is_sandbox: false };
+  const db = memoryCredits();
+  const granted = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(db, [purchase]),
+  );
+  assert.equal(granted.status, 200);
+
+  const refunded = await applyRevenueCatEvent(db, {
+    type: 'REFUND',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+  });
+  assert.equal(refunded.applied, 'reversed');
+  assert.equal(refunded.credits?.balance, 0);
+
+  const claim = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(db, [purchase]),
+  );
+  assert.equal(claim.status, 200);
+  assert.deepEqual(await claim.json(), {
+    data: { balance: 0, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 5 },
+  });
+
+  const hook = await applyRevenueCatEvent(db, {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  }, {
+    apiKey: 'secret',
+    fetchImpl: subscriberFetch([purchase]),
+  });
+  assert.equal(hook.retryable, false);
+  assert.equal(hook.credits?.balance, 0);
+  assert.equal(hook.credits?.lifetimePurchased, 5);
+  assert.equal((await readBalance(db, userId)).balance, 0);
+
+  const blocked = memoryCredits();
+  const earlyRefund = await applyRevenueCatEvent(blocked, {
+    type: 'REFUND',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+  });
+  assert.equal(earlyRefund.applied, 'ignored');
+  const afterRefund = await applyRevenueCatEvent(blocked, {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  }, {
+    apiKey: 'secret',
+    fetchImpl: subscriberFetch([purchase]),
+  });
+  assert.equal(afterRefund.applied, 'ignored');
+  assert.equal(afterRefund.retryable, false);
+  assert.equal(afterRefund.credits?.balance, 0);
+  assert.equal(afterRefund.credits?.lifetimePurchased, 0);
+  const blockedClaim = await handleCreditPurchase(
+    creditPurchaseRequest('store_prod'),
+    creditRouteDeps(blocked, [purchase]),
+  );
+  assert.equal(blockedClaim.status, 200);
+  assert.deepEqual(await blockedClaim.json(), {
+    data: { balance: 0, lifetimePurchased: 0, lifetimeUsed: 0, lifetimeRefunded: 0 },
+  });
+});
+
+test('sandbox webhooks still grant without a subscriber lookup', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  let called = false;
+  const granted = await applyRevenueCatEvent(memoryCredits(), {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_sbx',
+    environment: 'SANDBOX',
+  }, {
+    apiKey: 'secret',
+    fetchImpl: (async () => {
+      called = true;
+      throw new Error('sandbox must not call RevenueCat');
+    }) as typeof fetch,
+  });
+  assert.equal(called, false);
+  assert.equal(granted.applied, 'granted');
+  assert.equal(granted.credits?.balance, 5);
+});
+
+test('a production webhook retries when RevenueCat cannot confirm it', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const event = {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  };
+  const db = memoryCredits();
+  const down = await handleRevenueCatWebhook(jsonRequest(event), {
+    secret: 'secret',
+    supabase: db,
+    apiKey: 'secret',
+    fetchImpl: (async () => new Response('no', { status: 503 })) as typeof fetch,
+  });
+  assert.equal(down.status, 500);
+  const body = await down.json() as { error?: string };
+  assert.equal(body.error, 'Credit update failed');
+  assert.equal((await readBalance(db, userId)).balance, 0);
+
+  const unconfigured = await applyRevenueCatEvent(db, event, { apiKey: '' });
+  assert.equal(unconfigured.applied, 'ignored');
+  assert.equal(unconfigured.retryable, true);
+  assert.equal(unconfigured.credits, null);
+
+  const invalidFlag = await applyRevenueCatEvent(db, event, {
+    apiKey: 'secret',
+    fetchImpl: subscriberFetch([{ id: 'rc_text', store_transaction_id: 'store_prod', is_sandbox: 'true' }]),
+  });
+  assert.equal(invalidFlag.applied, 'ignored');
+  assert.equal(invalidFlag.retryable, true);
+  assert.equal(invalidFlag.credits, null);
+  assert.equal((await readBalance(db, userId)).balance, 0);
+});
+
+test('missing, invalid, and unverified purchases grant nothing', async () => {
   const userId = '11111111-1111-4111-8111-111111111111';
   const rejected = [
-    { id: 'rc_prod', store_transaction_id: 'store_prod', is_sandbox: false },
     { id: 'rc_missing', store_transaction_id: 'store_missing' },
     { id: 'rc_null', store_transaction_id: 'store_null', is_sandbox: null },
     { id: 'rc_text', store_transaction_id: 'store_text', is_sandbox: 'true' },
@@ -510,7 +799,7 @@ test('production, missing, invalid, and unverified purchases grant nothing', asy
   );
   assert.deepEqual((await unknownRestore.json()).data.balance, 0);
 
-  const environments: unknown[] = ['PRODUCTION', 'sandbox', 'Sandbox', '', null, true, 1];
+  const environments: unknown[] = ['sandbox', 'Sandbox', '', null, true, 1];
   for (const environment of environments) {
     const webhookDb = memoryCredits();
     const event = {
@@ -543,6 +832,25 @@ test('production, missing, invalid, and unverified purchases grant nothing', asy
   });
   assert.equal(missingHook.status, 200);
   assert.equal((await readBalance(missingDb, userId)).balance, 0);
+
+  let lookedUp = false;
+  const unknownProduct = await applyRevenueCatEvent(memoryCredits(), {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: userId,
+    product_id: 'drevvy_pack_10',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  }, {
+    apiKey: 'secret',
+    fetchImpl: (async () => {
+      lookedUp = true;
+      throw new Error('unknown products are not confirmed');
+    }) as typeof fetch,
+  });
+  assert.equal(lookedUp, false);
+  assert.equal(unknownProduct.applied, 'ignored');
+  assert.equal(unknownProduct.retryable, false);
+  assert.equal(unknownProduct.credits, null);
 });
 
 test('credit routes require consumer auth and the purchase RPC is service-role only', () => {
@@ -601,6 +909,21 @@ function creditRestoreRequest(transactionIds: string[]) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ transactionIds }),
   }) as never;
+}
+
+function subscriberFetch(purchases: unknown[]): typeof fetch {
+  return (async () => new Response(JSON.stringify({
+    subscriber: { non_subscriptions: { drevvy_keys_5: purchases } },
+  }), { status: 200 })) as typeof fetch;
+}
+
+function productionHookDeps(supabase: SupabaseClient, purchases: unknown[]) {
+  return {
+    secret: 'secret',
+    supabase,
+    apiKey: 'secret',
+    fetchImpl: subscriberFetch(purchases),
+  };
 }
 
 function creditRouteDeps(supabase: SupabaseClient, purchases: unknown[]) {

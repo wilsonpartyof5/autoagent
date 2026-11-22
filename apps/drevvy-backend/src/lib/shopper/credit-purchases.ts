@@ -1,9 +1,11 @@
 /**
  * Key-pack purchases. The client may send a key count; the server ignores it
  * and maps productId to the pack. Keys are granted only after RevenueCat
- * confirms a sandbox transaction (is_sandbox === true), or from an
- * authenticated webhook whose environment is exactly SANDBOX. Production,
- * missing, and invalid flags grant nothing.
+ * confirms a transaction whose is_sandbox flag is boolean true or false, or
+ * from an authenticated webhook whose environment is exactly SANDBOX or
+ * PRODUCTION. A PRODUCTION webhook grants only after the subscriber API
+ * confirms that transaction. Missing and non-boolean flags, and any other
+ * environment, grant nothing.
  * Retired car packs (drevvy_pack_1/3/5/10 and pack_1/3/5/10) grant nothing.
  */
 
@@ -48,7 +50,7 @@ export type RevenueCatPurchaseRecord = {
   id?: string | null;
   store_transaction_id?: string | null;
   transaction_id?: string | null;
-  /** Only the boolean true is a sandbox purchase. Missing or other values are not. */
+  /** Boolean true or false is a purchase. Missing or other values are not. */
   is_sandbox?: unknown;
 };
 
@@ -124,7 +126,7 @@ export function findVerifiedPurchase(
     for (const purchase of purchases ?? []) {
       const canonical = canonicalTransactionId(purchase);
       if (!canonical) continue;
-      if (purchase.is_sandbox !== true) continue;
+      if (purchase.is_sandbox !== true && purchase.is_sandbox !== false) continue;
       const aliases = [
         trimmedId(purchase.id),
         trimmedId(purchase.store_transaction_id),
@@ -175,8 +177,13 @@ export type RevenueCatWebhookEvent = {
   product_id?: string;
   transaction_id?: string;
   id?: string;
-  /** Grant path accepts only the exact string SANDBOX. */
+  /** Grant path accepts only the exact strings SANDBOX and PRODUCTION. */
   environment?: unknown;
+};
+
+export type RevenueCatApplyDeps = {
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
 };
 
 export type RevenueCatApplyResult = {
@@ -185,23 +192,56 @@ export type RevenueCatApplyResult = {
   retryable: boolean;
 };
 
+async function confirmProductionPurchase(
+  appUserId: string,
+  transactionId: string,
+  productId: string,
+  deps: RevenueCatApplyDeps,
+): Promise<{ ok: true; verified: VerifiedCreditPurchase } | { ok: false }> {
+  const apiKey = deps.apiKey ?? process.env.REVENUECAT_SECRET_API_KEY;
+  if (!apiKey || !purchasesConfigured(apiKey)) return { ok: false };
+  try {
+    const lookup = await fetchRevenueCatSubscriber(appUserId, apiKey, deps.fetchImpl ?? fetch);
+    if (!lookup.ok) return { ok: false };
+    const verified = findVerifiedPurchase(lookup.subscriber, transactionId, productId);
+    if (!verified) return { ok: false };
+    return { ok: true, verified };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function applyRevenueCatEvent(
   supabase: SupabaseClient,
   event: RevenueCatWebhookEvent,
+  deps: RevenueCatApplyDeps = {},
 ): Promise<RevenueCatApplyResult> {
   const type = event.type ?? '';
   const userId = (event.app_user_id ?? '').trim();
   const transactionId = (event.transaction_id ?? '').trim();
-  const pack = event.product_id ? packForProductId(event.product_id.trim()) : null;
+  const productId = (event.product_id ?? '').trim();
+  const pack = productId ? packForProductId(productId) : null;
   if (!isConsumerUserId(userId) || !transactionId || !pack) {
     return { applied: 'ignored', credits: null, retryable: false };
   }
 
   if (type === 'NON_RENEWING_PURCHASE') {
-    if (event.environment !== 'SANDBOX') {
+    if (event.environment !== 'SANDBOX' && event.environment !== 'PRODUCTION') {
       return { applied: 'ignored', credits: null, retryable: false };
     }
-    const result = await purchaseCredits(supabase, userId, pack.size, pack.priceUsd, transactionId);
+    let grantSize = pack.size;
+    let grantPrice = pack.priceUsd;
+    let grantTransactionId = transactionId;
+    if (event.environment === 'PRODUCTION') {
+      const confirmed = await confirmProductionPurchase(userId, transactionId, productId, deps);
+      if (!confirmed.ok) {
+        return { applied: 'ignored', credits: null, retryable: true };
+      }
+      grantSize = confirmed.verified.size;
+      grantPrice = confirmed.verified.priceUsd;
+      grantTransactionId = confirmed.verified.transactionId;
+    }
+    const result = await purchaseCredits(supabase, userId, grantSize, grantPrice, grantTransactionId);
     if (!result.success) return { applied: 'ignored', credits: result.credits, retryable: true };
     if (!result.granted && !result.alreadyGranted) {
       return { applied: 'ignored', credits: result.credits, retryable: false };

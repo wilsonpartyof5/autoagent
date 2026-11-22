@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { applyRevenueCatEvent, webhookAuthorized, type RevenueCatWebhookEvent } from '@/lib/shopper/credit-purchases';
+import {
+  applyRevenueCatEvent,
+  webhookAuthorized,
+  type RevenueCatApplyDeps,
+  type RevenueCatWebhookEvent,
+} from '@/lib/shopper/credit-purchases';
 
 export async function handleRevenueCatWebhook(
   request: Request,
   deps: {
     secret: string | undefined;
     supabase: SupabaseClient;
-  },
+  } & RevenueCatApplyDeps,
 ): Promise<NextResponse> {
   if (!webhookAuthorized(request.headers.get('authorization'), deps.secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,7 +25,10 @@ export async function handleRevenueCatWebhook(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const result = await applyRevenueCatEvent(deps.supabase, event);
+  const result = await applyRevenueCatEvent(deps.supabase, event, {
+    apiKey: deps.apiKey,
+    fetchImpl: deps.fetchImpl,
+  });
   if (result.retryable) {
     return NextResponse.json({ error: 'Credit update failed' }, { status: 500 });
   }
