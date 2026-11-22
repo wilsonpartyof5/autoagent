@@ -1,5 +1,5 @@
-import { loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
+import { loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
 import {
   getVehicleDetailMcp,
   searchActiveCarsMcp,
@@ -166,6 +166,62 @@ export function countPriceDrops(raw: unknown): number | null {
   return drops;
 }
 
+export function listingIdentityMatches(input: {
+  requestedListingId: string;
+  requestedVin: string | null;
+  returnedListingId: string;
+  returnedVin: string | null;
+}): boolean {
+  const requestedId = input.requestedListingId.trim();
+  const returnedId = input.returnedListingId.trim();
+  if (requestedId.length > 0) return returnedId.length > 0 && requestedId === returnedId;
+  const requestedVin = (input.requestedVin ?? '').trim().toUpperCase();
+  const returnedVin = (input.returnedVin ?? '').trim().toUpperCase();
+  return requestedVin.length > 0 && requestedVin === returnedVin;
+}
+
+export type MarketIntelLookup = {
+  intel: MarketIntel | null;
+  listingFound: boolean;
+  returnedListingId: string | null;
+};
+
+export function asMarketIntelLookup(
+  value: MarketIntel | MarketIntelLookup | null,
+  requestedListingId: string,
+): MarketIntelLookup {
+  if (value && typeof value === 'object' && 'listingFound' in value && 'intel' in value) {
+    const lookup = value as MarketIntelLookup;
+    return {
+      intel: lookup.intel ?? null,
+      listingFound: lookup.listingFound === true,
+      returnedListingId: typeof lookup.returnedListingId === 'string' ? lookup.returnedListingId : null,
+    };
+  }
+  if (value && typeof value === 'object' && (value as MarketIntel).source === 'marketcheck') {
+    return {
+      intel: value as MarketIntel,
+      listingFound: true,
+      returnedListingId: requestedListingId,
+    };
+  }
+  return { intel: null, listingFound: false, returnedListingId: null };
+}
+
+/** When a listing id was requested, the returned id has to match. A VIN match is not enough. */
+export function acceptedListingFacts(
+  requested: { listingId: string; vin: string | null },
+  detail: DetailResponse,
+): ListingFacts | null {
+  if (!listingIdentityMatches({
+    requestedListingId: requested.listingId,
+    requestedVin: requested.vin,
+    returnedListingId: detail.id,
+    returnedVin: detail.vin ?? null,
+  })) return null;
+  return listingFactsFromDetail(requested.listingId, detail);
+}
+
 export function listingFactsFromDetail(listingId: string, detail: DetailResponse): ListingFacts | null {
   const make = detail.make?.trim() ?? '';
   const model = detail.model?.trim() ?? '';
@@ -269,14 +325,22 @@ export async function loadMarketIntelFromMarketCheck(input: {
   listingId: string;
   vin: string | null;
   profileZip: string | null;
-}): Promise<MarketIntel | null> {
-  return computeMarketIntel(input, {
-    listing: async (listingId, vin) => {
-      const detail = await getVehicleDetailMcp(listingId, vin ?? undefined, ['listing']);
-      return detail ? listingFactsFromDetail(listingId, detail) : null;
-    },
+}): Promise<MarketIntelLookup> {
+  const detail = await getVehicleDetailMcp(input.listingId, input.vin ?? undefined, ['listing']);
+  if (!detail) return { intel: null, listingFound: false, returnedListingId: null };
+  const returnedListingId = detail.id.trim();
+  const facts = acceptedListingFacts({ listingId: input.listingId, vin: input.vin }, detail);
+  if (!facts) {
+    return {
+      intel: null,
+      listingFound: returnedListingId.length > 0,
+      returnedListingId: returnedListingId || null,
+    };
+  }
+  const intel = await computeMarketIntel(input, {
+    listing: async () => facts,
     fairPrice: async (vehicle) => {
-      const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle);
+      const quote = await loadFairPriceIfAllowed('unlock_with_agent', vehicle, { strict: true });
       return quote && quote.price > 0 ? { price: quote.price } : null;
     },
     comparables: async (query) => {
@@ -291,7 +355,7 @@ export async function loadMarketIntelFromMarketCheck(input: {
           model: query.model,
           condition: query.condition,
         },
-      });
+      }, { strict: true });
       return result.vehicles
         .filter((vehicle) => vehicle.price > 0)
         .map((vehicle) => ({
@@ -305,11 +369,14 @@ export async function loadMarketIntelFromMarketCheck(input: {
       const raw = await callMcpTool<unknown>(
         'get_car_history',
         vin ? { vin } : { listing_id: listingId },
+        8000,
+        { strict: true },
       );
       if (raw == null) return null;
       return countPriceDrops(raw);
     },
   });
+  return { intel, listingFound: true, returnedListingId: facts.id };
 }
 
 function isSubject(comp: CompFact, facts: ListingFacts, listingId: string): boolean {

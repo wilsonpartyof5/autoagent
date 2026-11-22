@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { fetchMarketCheckListing } from '@/lib/marketcheck/listing-car';
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
 
 import {
@@ -17,7 +18,7 @@ import {
  */
 export type ListingIdentityLookup =
   | { status: 'found'; identity: ListingDealerIdentity }
-  | { status: 'unavailable'; reason: 'not_found' | 'error' | 'timeout' };
+  | { status: 'unavailable'; reason: 'not_found' | 'mismatch' | 'error' | 'timeout' };
 
 export type RooftopDirectory = {
   listOnboardedRooftops: () => Promise<OnboardedRooftop[]>;
@@ -108,23 +109,32 @@ export function identityFromMarketCheckListing(listing: RawListing | null | unde
   return { listingId, listingUrl, dealerWebsite, marketcheckDealerId };
 }
 
-export async function lookupListingDealerIdentity(
-  listingId: string,
-  vin?: string,
-): Promise<ListingIdentityLookup> {
-  const args: Record<string, unknown> = {
+async function searchListingByVin(vin: string): Promise<RawListing | null> {
+  const search = await callMcpTool<{ data?: { listings?: RawListing[] } }>('search_active_cars', {
     rows: 1,
     start: 0,
     include_build_object: true,
     include_dealer_object: true,
-  };
-  if (vin) args.vin = vin;
-  else args.listing_id = listingId;
+    vin,
+  });
+  return search?.data?.listings?.[0] ?? null;
+}
 
+export async function lookupListingDealerIdentity(
+  listingId: string,
+  vin?: string,
+): Promise<ListingIdentityLookup> {
   try {
-    const search = await callMcpTool<{ data?: { listings?: RawListing[] } }>('search_active_cars', args);
-    const listing = search?.data?.listings?.[0];
+    const listing = vin
+      ? await searchListingByVin(vin)
+      : await fetchMarketCheckListing(listingId) as RawListing | null;
     if (!listing) return { status: 'unavailable', reason: 'not_found' };
+    if (!vin) {
+      const returnedId = typeof listing.id === 'string' ? listing.id.trim() : '';
+      if (returnedId.length > 0 && returnedId !== listingId) {
+        return { status: 'unavailable', reason: 'mismatch' };
+      }
+    }
     const identity = identityFromMarketCheckListing(listing);
     if (!identity) return { status: 'unavailable', reason: 'not_found' };
     return {
