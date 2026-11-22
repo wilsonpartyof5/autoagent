@@ -11,6 +11,7 @@ import {
   grantVerifiedPurchase,
   packForProductId,
   purchasesConfigured,
+  subscriberLookupFailure,
 } from '@/lib/shopper/credit-purchases';
 import { getShopperCredits } from '@/lib/shopper/credits';
 import { sandboxGrantCap, type SandboxGrantCap, type SandboxGrantEnv } from '@/lib/shopper/sandbox-grant-policy';
@@ -68,9 +69,10 @@ export async function handleCreditPurchase(request: Request, deps: CreditPurchas
 
     const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey, deps.fetchImpl ?? fetch);
     if (!lookup.ok) {
+      const failure = subscriberLookupFailure(lookup.status);
       return NextResponse.json(
-        { success: false, error: { code: 'verification_failed', message: 'Purchase could not be verified.' } },
-        { status: 502 },
+        { success: false, error: { code: failure.code, message: failure.message } },
+        { status: failure.httpStatus },
       );
     }
     const verified = findVerifiedPurchase(lookup.subscriber, transactionId, productId);

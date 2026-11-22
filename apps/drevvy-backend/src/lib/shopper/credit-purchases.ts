@@ -229,6 +229,30 @@ export async function grantVerifiedPurchase(
   );
 }
 
+/** 408 and 429 are retryable upstream responses, along with 401 and 5xx. */
+export function isRetryableRevenueCatStatus(status: number): boolean {
+  return status === 401 || status === 408 || status === 429 || status >= 500;
+}
+
+export function subscriberLookupFailure(status: number): {
+  httpStatus: number;
+  code: string;
+  message: string;
+} {
+  if (status === 408 || status === 429) {
+    return {
+      httpStatus: 503,
+      code: 'verification_unavailable',
+      message: 'purchases temporarily unavailable',
+    };
+  }
+  return {
+    httpStatus: 502,
+    code: 'verification_failed',
+    message: 'Purchase could not be verified.',
+  };
+}
+
 export async function fetchRevenueCatSubscriber(
   appUserId: string,
   apiKey: string,
@@ -314,8 +338,15 @@ async function confirmSubscriberPurchase(
   try {
     const lookup = await fetchRevenueCatSubscriber(appUserId, apiKey, deps.fetchImpl ?? fetch);
     if (!lookup.ok) {
-      if (lookup.status === 401 || lookup.status >= 500) {
-        logConfirmFailure(lookup.status === 401 ? 'unauthorized' : 'upstream', lookup.status);
+      if (isRetryableRevenueCatStatus(lookup.status)) {
+        const reason = lookup.status === 401
+          ? 'unauthorized'
+          : lookup.status === 408
+            ? 'timeout'
+            : lookup.status === 429
+              ? 'rate_limited'
+              : 'upstream';
+        logConfirmFailure(reason, lookup.status);
         return { ok: false, retryable: true };
       }
       return { ok: false, retryable: false };

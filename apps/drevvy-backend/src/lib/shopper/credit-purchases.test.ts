@@ -1145,7 +1145,7 @@ test('production grants, and sandbox or test-store purchases do not unless allow
   assert.equal(labeled.credits, null);
 });
 
-test('sandbox grants stop at the daily cap and claim or restore returns 429', async () => {
+test('sandbox grants stop at the daily cap, claim returns 429, and restore skips the capped purchase', async () => {
   const cap = createSandboxGrantCap(1);
   const first = { id: 'rc_a', store_transaction_id: 'store_a', is_sandbox: true, store: 'app_store' };
   const second = { id: 'rc_b', store_transaction_id: 'store_b', is_sandbox: true, store: 'app_store' };
@@ -1164,7 +1164,8 @@ test('sandbox grants stop at the daily cap and claim or restore returns 429', as
   assert.equal(replay.status, 200);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
   const restore = await handleCreditRestore(creditRestoreRequest(['store_b']), deps);
-  assert.equal(restore.status, 429);
+  assert.equal(restore.status, 200);
+  assert.equal((await readBalance(db, TEST_USER)).balance, 5);
   const hook = await applyRevenueCatEvent(db, {
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: TEST_USER,
@@ -1194,12 +1195,42 @@ test('the same store transaction grants one shopper', async () => {
   assert.equal(JSON.stringify(body).includes('added'), false);
   assert.equal((await readBalance(db, OTHER_USER)).balance, 0);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
-  const restored = await handleCreditRestore(
-    creditRestoreRequest(['store_prod']),
-    creditRouteDeps(db, [purchase], OTHER_USER),
+  const alias = await purchaseCredits(
+    db,
+    TEST_USER,
+    5,
+    19.99,
+    'rc_prod',
+    'drevvy_keys_5',
+    ['store_prod', 'rc_prod'],
   );
-  assert.equal(restored.status, 409);
+  assert.equal(alias.granted, false);
+  assert.equal(alias.alreadyGranted, true);
+  assert.equal(alias.alreadyGrantedElsewhere, false);
+  assert.equal(alias.credits.balance, 5);
+});
+
+test('restore skips a purchase granted elsewhere or refused and keeps going', async () => {
+  const cap = createSandboxGrantCap(1);
+  const owned = { id: 'rc_owned', store_transaction_id: 'store_owned', is_sandbox: false, store: 'app_store' };
+  const refused = { id: 'rc_refused', store_transaction_id: 'store_refused', is_sandbox: true, store: 'app_store' };
+  const next = { id: 'rc_next', store_transaction_id: 'store_next', is_sandbox: false, store: 'app_store' };
+  const db = memoryCredits();
+  const ownerDeps = creditRouteDeps(db, [owned, refused, next]);
+  assert.equal((await handleCreditPurchase(creditPurchaseRequest('store_owned'), ownerDeps)).status, 200);
+  const restored = await handleCreditRestore(
+    creditRestoreRequest(['store_owned', 'store_refused', 'store_next']),
+    {
+      ...creditRouteDeps(db, [owned, refused, next], OTHER_USER),
+      sandboxCap: cap,
+      env: sandboxAllowEnv,
+    },
+  );
+  assert.equal(restored.status, 200);
+  assert.equal((await restored.json() as { data: { balance: number } }).data.balance, 5);
+  assert.equal((await readBalance(db, OTHER_USER)).balance, 5);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
+  assert.equal((await readBalance(db, OTHER_USER)).lifetimePurchased, 5);
 });
 
 test('purchase and restore rate limits return 429 and do not grant', async () => {
@@ -1230,6 +1261,68 @@ test('purchase and restore rate limits return 429 and do not grant', async () =>
   const blocked = await handleCreditPurchase(creditPurchaseRequest('store_prod'), deps);
   assert.equal(blocked.status, 429);
   assert.equal((await readBalance(limited, TEST_USER)).balance, 5);
+});
+
+test('RevenueCat 408 and 429 are retryable on the webhook, claim, and restore', async () => {
+  const event = {
+    type: 'NON_RENEWING_PURCHASE',
+    app_user_id: TEST_USER,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_prod',
+    environment: 'PRODUCTION',
+  };
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (line?: unknown) => {
+    errors.push(String(line));
+  };
+  try {
+    for (const status of [408, 429]) {
+      const db = memoryCredits();
+      const fetchImpl = (async () => new Response('later', { status })) as typeof fetch;
+      const claim = await handleCreditPurchase(
+        creditPurchaseRequest('store_prod'),
+        { ...creditRouteDeps(db, []), fetchImpl },
+      );
+      assert.equal(claim.status, 503);
+      const claimBody = await claim.json() as { error?: { code?: string; message?: string } };
+      assert.equal(claimBody.error?.code, 'verification_unavailable');
+      assert.equal(claimBody.error?.message, 'purchases temporarily unavailable');
+      const restore = await handleCreditRestore(
+        creditRestoreRequest(['store_prod']),
+        { ...creditRouteDeps(db, []), fetchImpl },
+      );
+      assert.equal(restore.status, 503);
+      const hook = await handleRevenueCatWebhook(jsonRequest(event), {
+        secret: 'secret',
+        supabase: db,
+        apiKey: 'secret',
+        fetchImpl,
+      });
+      assert.equal(hook.status, 500);
+      assert.equal((await readBalance(db, TEST_USER)).balance, 0);
+    }
+    const ignored = memoryCredits();
+    const claim400 = await handleCreditPurchase(
+      creditPurchaseRequest('store_prod'),
+      { ...creditRouteDeps(ignored, []), fetchImpl: (async () => new Response('no', { status: 400 })) as typeof fetch },
+    );
+    assert.equal(claim400.status, 502);
+    const hook400 = await applyRevenueCatEvent(ignored, event, {
+      apiKey: 'secret',
+      fetchImpl: (async () => new Response('no', { status: 400 })) as typeof fetch,
+    });
+    assert.equal(hook400.retryable, false);
+    assert.equal((await readBalance(ignored, TEST_USER)).balance, 0);
+  } finally {
+    console.error = original;
+  }
+  const parsed = errors
+    .filter((line) => line.includes('revenuecat_confirm_failed'))
+    .map((line) => JSON.parse(line) as { reason: string; status: number | null });
+  assert.equal(parsed.some((line) => line.reason === 'timeout' && line.status === 408), true);
+  assert.equal(parsed.some((line) => line.reason === 'rate_limited' && line.status === 429), true);
+  assert.equal(errors.join('\n').includes(TEST_USER), false);
 });
 
 test('a subscriber miss is ignored and lookup failures retry with a counted log', async () => {
@@ -1435,6 +1528,24 @@ test('held store-transaction sql stays out of supabase/migrations', () => {
   assert.match(held, /Rollback/);
   assert.match(held, /p_aliases/);
   assert.match(held, /s\.pack_size/);
+  assert.match(held, /^begin;/m);
+  assert.match(held, /^commit;/m);
+  assert.match(held, /rolname = 'drevvy_clickpipes'/);
+  assert.match(held, /revoke all on table public\.store_transactions from drevvy_clickpipes/);
+  assert.match(held, /revoke all on table public\.store_transaction_aliases from drevvy_clickpipes/);
+  assert.match(held, /revoke all on function public\.purchase_credits_atomic/);
+  assert.match(held, /revoke all on function public\.reverse_purchase_atomic/);
+  assert.match(held, /supabase_realtime/);
+  assert.match(held, /drevvy_clickhouse/);
+  assert.match(held, /not added to any publication/);
+  assert.match(held, /FOR ALL TABLES/);
+  assert.equal(/alter publication/i.test(held), false);
+  assert.equal(/create publication/i.test(held), false);
+  const txCreate = held.indexOf('create table if not exists public.store_transactions');
+  const txRevoke = held.indexOf('revoke all on table public.store_transactions from drevvy_clickpipes');
+  const aliasCreate = held.indexOf('create table if not exists public.store_transaction_aliases');
+  const aliasRevoke = held.indexOf('revoke all on table public.store_transaction_aliases from drevvy_clickpipes');
+  assert.ok(txCreate >= 0 && txCreate < txRevoke && txRevoke < aliasCreate && aliasCreate < aliasRevoke);
 });
 
 function creditPurchaseRequest(transactionId: string) {
@@ -1702,8 +1813,11 @@ function memoryCredits(): SupabaseClient {
         }
         const aliases = aliasList(canonical, params.p_aliases);
         const existing = findRow(aliases);
-        if (existing?.reversed || (existing && existing.userId === userId)) {
+        if (existing?.reversed) {
           return snapshot(row, { granted: false, already_granted: false, already_granted_elsewhere: false });
+        }
+        if (existing && existing.userId === userId) {
+          return snapshot(row, { granted: false, already_granted: true, already_granted_elsewhere: false });
         }
         if (existing && existing.userId !== userId) {
           return snapshot(row, { granted: false, already_granted: false, already_granted_elsewhere: true });

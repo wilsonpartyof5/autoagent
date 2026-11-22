@@ -15,6 +15,15 @@
 -- reversed_at is set and a later grant of any alias does not add keys.
 -- A refund debits store_transactions.pack_size, not the product on the event.
 --
+-- Read-only production check, 2026-11-22: none of the three publications is
+-- FOR ALL TABLES. supabase_realtime has no tables. drevvy_clickhouse and
+-- drevvy_clickpipes are explicit lists. store_transactions and
+-- store_transaction_aliases are not added to any publication.
+-- drevvy_clickpipes exists and has USAGE on public. Default privileges grant
+-- new public tables to anon, authenticated, and service_role, and SELECT to
+-- drevvy_clickpipes. Each CREATE TABLE below revokes those grants before the
+-- transaction commits, then grants the table only to service_role.
+--
 -- Pre-check (report only, do not delete). Run this before the rest of the file
 -- and keep the rows. The backfill below keeps the earliest purchase and does
 -- not delete the others:
@@ -29,6 +38,8 @@
 -- group by 1
 -- having count(distinct e.user_id) > 1
 -- order by user_count desc, transaction_id;
+
+begin;
 
 do $report$
 declare
@@ -63,6 +74,18 @@ create table if not exists public.store_transactions (
   reversed_at timestamptz
 );
 
+revoke all on table public.store_transactions from anon, authenticated, public;
+
+do $clickpipes_store_transactions$
+begin
+  if exists (select 1 from pg_roles where rolname = 'drevvy_clickpipes') then
+    revoke all on table public.store_transactions from drevvy_clickpipes;
+  end if;
+end
+$clickpipes_store_transactions$;
+
+grant select, insert, update, delete on table public.store_transactions to service_role;
+
 alter table public.store_transactions add column if not exists pack_price_cents integer;
 alter table public.store_transactions add column if not exists aliases text[] not null default '{}';
 
@@ -70,27 +93,33 @@ create index if not exists store_transactions_aliases_gin
   on public.store_transactions using gin (aliases);
 
 comment on table public.store_transactions is
-  'One canonical store transaction grants keys to one shopper. Service role only.';
+  'One canonical store transaction grants keys to one shopper. Service role only. Not published.';
 
 alter table public.store_transactions enable row level security;
 alter table public.store_transactions force row level security;
-
-revoke all on table public.store_transactions from anon, authenticated, public;
-grant select, insert, update, delete on table public.store_transactions to service_role;
 
 create table if not exists public.store_transaction_aliases (
   alias text primary key,
   transaction_id text not null references public.store_transactions(transaction_id)
 );
 
+revoke all on table public.store_transaction_aliases from anon, authenticated, public;
+
+do $clickpipes_store_transaction_aliases$
+begin
+  if exists (select 1 from pg_roles where rolname = 'drevvy_clickpipes') then
+    revoke all on table public.store_transaction_aliases from drevvy_clickpipes;
+  end if;
+end
+$clickpipes_store_transaction_aliases$;
+
+grant select, insert, update, delete on table public.store_transaction_aliases to service_role;
+
 comment on table public.store_transaction_aliases is
-  'Every id form of one store transaction. Service role only.';
+  'Every id form of one store transaction. Service role only. Not published.';
 
 alter table public.store_transaction_aliases enable row level security;
 alter table public.store_transaction_aliases force row level security;
-
-revoke all on table public.store_transaction_aliases from anon, authenticated, public;
-grant select, insert, update, delete on table public.store_transaction_aliases to service_role;
 
 -- Earliest ledger purchase wins. Later grants for the same id are left in
 -- shopper_credit_events and are not deleted. Historical rows only know the
@@ -111,7 +140,7 @@ where e.event_type = 'purchase'
   and e.idempotency_key like 'purchase:%'
   and length(substring(e.idempotency_key from length('purchase:') + 1)) > 0
   and coalesce(e.pack_size, e.amount) > 0
-order by substring(e.idempotency_key from length('purchase:') + 1), e.created_at asc
+order by substring(e.idempotency_key from length('purchase:') + 1), e.created_at asc, e.id asc
 on conflict (transaction_id) do nothing;
 
 update public.store_transactions
@@ -225,8 +254,12 @@ begin
   for update of s;
 
   if found then
-    if v_hit_reversed is not null or v_hit_user = p_user_id then
+    if v_hit_reversed is not null then
       return query select false, false, v_balance, v_purchased, v_used, v_refunded, false;
+      return;
+    end if;
+    if v_hit_user = p_user_id then
+      return query select false, true, v_balance, v_purchased, v_used, v_refunded, false;
       return;
     end if;
     return query select false, false, v_balance, v_purchased, v_used, v_refunded, true;
@@ -264,6 +297,10 @@ begin
     where a.alias = any (v_aliases)
     order by s.reversed_at nulls last
     limit 1;
+    if v_hit_user is not null and v_hit_reversed is null and v_hit_user = p_user_id then
+      return query select false, true, v_balance, v_purchased, v_used, v_refunded, false;
+      return;
+    end if;
     if v_hit_user is not null and v_hit_reversed is null and v_hit_user <> p_user_id then
       return query select false, false, v_balance, v_purchased, v_used, v_refunded, true;
       return;
@@ -294,6 +331,14 @@ $purchase$;
 
 revoke execute on function public.purchase_credits_atomic(uuid, integer, integer, text, text, text, text[]) from anon, authenticated, public;
 grant execute on function public.purchase_credits_atomic(uuid, integer, integer, text, text, text, text[]) to service_role;
+
+do $clickpipes_purchase_credits_atomic$
+begin
+  if exists (select 1 from pg_roles where rolname = 'drevvy_clickpipes') then
+    revoke all on function public.purchase_credits_atomic(uuid, integer, integer, text, text, text, text[]) from drevvy_clickpipes;
+  end if;
+end
+$clickpipes_purchase_credits_atomic$;
 
 create or replace function public.reverse_purchase_atomic(
   p_user_id uuid,
@@ -436,6 +481,14 @@ $reverse$;
 revoke execute on function public.reverse_purchase_atomic(uuid, integer, text, text) from anon, authenticated, public;
 grant execute on function public.reverse_purchase_atomic(uuid, integer, text, text) to service_role;
 
+do $clickpipes_reverse_purchase_atomic$
+begin
+  if exists (select 1 from pg_roles where rolname = 'drevvy_clickpipes') then
+    revoke all on function public.reverse_purchase_atomic(uuid, integer, text, text) from drevvy_clickpipes;
+  end if;
+end
+$clickpipes_reverse_purchase_atomic$;
+
 -- Rollback (do not run as part of this file):
 -- drop function if exists public.purchase_credits_atomic(uuid, integer, integer, text, text, text, text[]);
 -- Recreate public.purchase_credits_atomic(uuid, integer, integer, text, text)
@@ -444,3 +497,5 @@ grant execute on function public.reverse_purchase_atomic(uuid, integer, text, te
 -- from supabase/migrations/20261019220620_qualify_credit_balance_columns.sql.
 -- drop table if exists public.store_transaction_aliases;
 -- drop table if exists public.store_transactions;
+
+commit;
