@@ -17,6 +17,7 @@ import { runGuardrails } from '@/lib/brain/guardrails';
 import { shopperFirstNameOnly } from '@/lib/dealer/rooftop-match';
 import { messageHasItemizedOtd } from '@/lib/dealer/otd-warnings';
 import { ShopperDealError, type ShopperDealRepository } from './deals';
+import { enforceShopperReadLimit, type ShopperMessageLimitOptions } from './thread-rate-limit';
 
 export const CHIP_LABEL_LIMIT = 18;
 export const CHIP_BODY_LIMIT = 160;
@@ -527,7 +528,15 @@ export async function suggestDealChips(
     deals: Pick<ShopperDealRepository, 'get'>;
     supabase: SupabaseClient;
   },
+  limits?: ShopperMessageLimitOptions,
 ): Promise<ChipSuggestionSet> {
+  await enforceShopperReadLimit({
+    userId,
+    route: 'chips',
+    nowMs: limits?.nowMs,
+    store: limits?.store,
+    env: limits?.env,
+  });
   const deal = await deps.deals.get(userId, dealId);
   if (!deal) throw new ShopperDealError('Deal not found.', 404, 'not_found');
 
