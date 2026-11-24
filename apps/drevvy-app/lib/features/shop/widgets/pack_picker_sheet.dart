@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/config/drevvy_config.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/drevvy_buttons.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
 import '../../common/analytics_privacy.dart';
+import '../../common/open_drevvy_page.dart';
 import 'pack_option_card.dart';
 
 /// Pack picker for one-time key packs.
@@ -201,7 +203,8 @@ class _PackPickerSheetState extends State<PackPickerSheet> {
                       style: text.callout.copyWith(color: colors.muted),
                     ),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () =>
+                          openDrevvyPage(context, DrevvyConfig.termsUrl),
                       child: Text(
                         'Terms',
                         style: text.callout.copyWith(color: colors.muted),

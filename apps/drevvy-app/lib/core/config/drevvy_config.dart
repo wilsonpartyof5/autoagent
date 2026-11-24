@@ -62,6 +62,12 @@ class DrevvyConfig {
     defaultValue: 'https://www.drevvy.com/api/consumer/auth/apple/callback',
   );
 
+  /// Public privacy policy. Profile and the key pack picker open this page.
+  static const privacyPolicyUrl = 'https://www.drevvy.com/privacy';
+
+  /// Public terms. Profile and the key pack picker open this page.
+  static const termsUrl = 'https://www.drevvy.com/terms';
+
   /// TODO: Firebase project values from GoogleService-Info.plist / google-services.json.
   /// See ios/Runner/GoogleService-Info.plist.example and android/app/google-services.json.example.
   static const firebaseProjectId = String.fromEnvironment(
