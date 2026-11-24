@@ -517,8 +517,7 @@ test('a strict cap or a missing shopper throws and does not block the next shopp
 
 test('market intel over the daily cap does not call the price tool', async () => {
   const names: string[] = [];
-  // The unlock path clocks the cap with Date.now, so this loop has to use the same day.
-  const nowMs = Date.now();
+  const nowMs = Date.parse('2026-11-22T12:00:00.000Z');
   await withFetch((call) => {
     if (call.url.includes('/v2/listing/car/')) {
       names.push('listing_detail');
