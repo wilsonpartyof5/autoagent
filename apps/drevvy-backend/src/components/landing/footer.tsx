@@ -39,6 +39,9 @@ export function Footer() {
           <Link href="/sms" className={linkClass}>
             SMS Program
           </Link>
+          <Link href="/delete-account" className={linkClass}>
+            Delete account
+          </Link>
         </div>
 
         <div className="flex flex-col gap-2.5">

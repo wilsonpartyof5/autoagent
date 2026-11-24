@@ -11,7 +11,6 @@ import 'package:drevvy_app/features/deals/widgets/deal_summary_card.dart';
 import 'package:drevvy_app/features/onboarding/onboarding_controller.dart';
 import 'package:drevvy_app/features/profile/screens/profile_screen.dart';
 import 'package:drevvy_app/features/saved/widgets/saved_car_card.dart';
-import 'package:drevvy_app/features/shop/widgets/account_sheet.dart';
 import 'package:drevvy_app/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -182,8 +181,8 @@ void main() {
     await tester.scrollUntilVisible(find.text('Delete account'), 200);
     await tester.tap(find.text('Delete account'));
     await tester.pumpAndSettle();
-    expect(find.text(accountDeletionUnavailableMessage), findsOneWidget);
-    expect(find.text('Account deleted'), findsNothing);
+    expect(find.text('Keep my account'), findsOneWidget);
+    expect(find.text('Your account is deleted.'), findsNothing);
   });
 
   testWidgets('deal chat stays empty without a stored thread', (tester) async {

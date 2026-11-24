@@ -1,7 +1,22 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Footer } from '@/components/landing/footer';
-import { LEGAL } from '@/lib/legal-constants';
+import {
+  DRAFT_DELETE_ACCOUNT_ALREADY_SENT,
+  DRAFT_DELETE_ACCOUNT_DELETED,
+  DRAFT_DELETE_ACCOUNT_EMAIL_AFTER,
+  DRAFT_DELETE_ACCOUNT_EMAIL_BEFORE,
+  DRAFT_DELETE_ACCOUNT_IN_APP,
+  DRAFT_DELETE_ACCOUNT_KEPT,
+  DRAFT_DELETE_ACCOUNT_MESSAGES,
+  DRAFT_DELETE_ACCOUNT_PAYMENTS,
+  DRAFT_PRIVACY_FIREBASE,
+  DRAFT_PRIVACY_POSTHOG,
+  DRAFT_PRIVACY_RETENTION,
+  DRAFT_PRIVACY_SUPERWALL,
+  DRAFT_PRIVACY_USAGE,
+  LEGAL,
+} from '@/lib/legal-constants';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy - Drevvy',
@@ -117,8 +132,7 @@ export default function PrivacyPage() {
                 individual shopper. We also never include third-party listing data in these insights.
               </p>
               <p className="text-muted-foreground">
-                Analytics providers process App usage data on our behalf to help us understand usage patterns
-                and improve our services.
+                {DRAFT_PRIVACY_USAGE}
               </p>
             </section>
 
@@ -222,7 +236,13 @@ export default function PrivacyPage() {
                   above)
                 </li>
                 <li>
-                  <strong>Analytics providers:</strong> To understand App usage and improve our services
+                  <strong>PostHog:</strong> {DRAFT_PRIVACY_POSTHOG}
+                </li>
+                <li>
+                  <strong>Superwall:</strong> {DRAFT_PRIVACY_SUPERWALL}
+                </li>
+                <li>
+                  <strong>Firebase:</strong> {DRAFT_PRIVACY_FIREBASE}
                 </li>
               </ul>
               <p className="text-muted-foreground mt-4">
@@ -232,34 +252,33 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-2xl font-semibold mb-4">Data Retention</h2>
-              <p className="text-muted-foreground mb-4">
-                We retain your information for as long as your account is active or as needed to provide you
-                services. We also retain information as necessary to comply with legal obligations, resolve
-                disputes, and enforce our agreements.
-              </p>
               <p className="text-muted-foreground">
-                If you delete your account, we will delete your personal information within 30 days, except
-                where we are required to retain it by law.
+                {DRAFT_PRIVACY_RETENTION}
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-semibold mb-4">Data Deletion</h2>
+              <p className="text-muted-foreground mb-4">{DRAFT_DELETE_ACCOUNT_IN_APP}</p>
               <p className="text-muted-foreground mb-4">
-                You may request deletion of your personal data at any time by:
+                The same steps are on the{' '}
+                <Link href="/delete-account" className="text-primary hover:underline">
+                  Delete account
+                </Link>{' '}
+                page.
               </p>
-              <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Using the &quot;Delete Account&quot; option in the App settings</li>
-                <li>
-                  Emailing us at{' '}
-                  <a href={`mailto:${LEGAL.PRIVACY_EMAIL}`} className="text-primary hover:underline">
-                    {LEGAL.PRIVACY_EMAIL}
-                  </a>
-                </li>
-              </ul>
-              <p className="text-muted-foreground mt-4">
-                We will process your request within 30 days and confirm deletion.
+              <p className="text-muted-foreground mb-4">
+                {DRAFT_DELETE_ACCOUNT_EMAIL_BEFORE}{' '}
+                <a href={`mailto:${LEGAL.PRIVACY_EMAIL}`} className="text-primary hover:underline">
+                  {LEGAL.PRIVACY_EMAIL}
+                </a>{' '}
+                {DRAFT_DELETE_ACCOUNT_EMAIL_AFTER}
               </p>
+              <p className="text-muted-foreground mb-4">{DRAFT_DELETE_ACCOUNT_DELETED}</p>
+              <p className="text-muted-foreground mb-4">{DRAFT_DELETE_ACCOUNT_KEPT}</p>
+              <p className="text-muted-foreground mb-4">{DRAFT_DELETE_ACCOUNT_MESSAGES}</p>
+              <p className="text-muted-foreground mb-4">{DRAFT_DELETE_ACCOUNT_ALREADY_SENT}</p>
+              <p className="text-muted-foreground">{DRAFT_DELETE_ACCOUNT_PAYMENTS}</p>
             </section>
 
             <section>

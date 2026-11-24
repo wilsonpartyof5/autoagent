@@ -10,7 +10,7 @@ import 'consumer_session.dart';
 /// Client for the consumer auth routes:
 /// `POST /api/consumer/auth/apple`, `POST /api/consumer/auth/google`,
 /// `POST /api/consumer/auth/refresh`, `POST /api/consumer/auth/signout`,
-/// and `GET /api/consumer/profile`.
+/// `GET /api/consumer/profile`, and `DELETE /api/consumer/profile`.
 class AuthApi {
   AuthApi({http.Client? client, String? baseUrl})
     : _client = client ?? http.Client(),
@@ -60,6 +60,31 @@ class AuthApi {
       return;
     }
     _throwIfFailed(response);
+  }
+
+  /// `DELETE /api/consumer/profile`. A 200 `{ deleted: true }` removes the account.
+  Future<void> deleteAccount(String accessToken) async {
+    _requireBaseUrl();
+    final response = await _client.delete(
+      _uri(DrevvyConfig.profilePath),
+      headers: _headers(accessToken: accessToken),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = _tryDecode(response.body);
+      if (decoded != null && decoded['deleted'] == true) return;
+      throw const AuthException(
+        code: 'invalid_response',
+        message: 'Drevvy could not delete this account.',
+      );
+    }
+    final decoded = _tryDecode(response.body);
+    if (decoded != null) {
+      throw authExceptionFromBody(decoded, response.statusCode);
+    }
+    throw AuthException(
+      code: 'http_${response.statusCode}',
+      message: 'Drevvy could not delete this account.',
+    );
   }
 
   /// Confirms the access token against the profile route. Throws [AuthException]
