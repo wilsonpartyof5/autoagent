@@ -102,8 +102,8 @@ test('the captured premium response maps the fair price and active comps only', 
     },
   });
   assert.deepEqual(days?.comparables, [
-    { id: 'dos-only', vin: VIN, price: 21000, daysOnMarket: 7 },
-    { id: 'dom-only', vin: null, price: 23000, daysOnMarket: 5 },
+    { id: 'dos-only', vin: VIN, price: 21000, daysOnMarket: 7, year: null, trim: null, miles: null, distanceMiles: null, dealerName: null, vdpUrl: null },
+    { id: 'dom-only', vin: null, price: 23000, daysOnMarket: 5, year: null, trim: null, miles: null, distanceMiles: null, dealerName: null, vdpUrl: null },
   ]);
   assert.equal(readPremiumPrice({ success: true, data: { marketcheck_price: -5, comparables: { listings: [] } } }), null);
   assert.equal(readPremiumPrice({ success: true, data: { price: 22000, comparables: { listings: [] } } }), null);

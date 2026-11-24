@@ -69,6 +69,14 @@ export type FairPriceComp = {
   vin: string | null;
   price: number;
   daysOnMarket: number | null;
+  /** Similarity facts MarketCheck returns on each comparable. Null when absent. */
+  year?: number | null;
+  trim?: string | null;
+  miles?: number | null;
+  /** Miles from the subject car, as MarketCheck reports `dist`. */
+  distanceMiles?: number | null;
+  dealerName?: string | null;
+  vdpUrl?: string | null;
 };
 
 export type FairPriceQuote = {
@@ -79,6 +87,8 @@ export type FairPriceQuote = {
    * search. Omitted means the caller loads comps with search_active_cars.
    */
   comparables?: FairPriceComp[];
+  /** Factory sticker for this VIN as configured (MarketCheck `msrp` on the price response). */
+  msrp?: number;
 };
 
 export type FairPriceVehicle = {
@@ -199,6 +209,7 @@ export interface MarketCheckPrice {
   price: number;
   fromCache: boolean;
   comparables?: FairPriceComp[];
+  msrp?: number;
 }
 
 export async function getMarketCheckPrice(
@@ -293,6 +304,7 @@ export async function loadFairPriceIfAllowed(
       price: quote.price,
       fromCache: quote.fromCache,
       ...(Array.isArray(quote.comparables) ? { comparables: quote.comparables } : {}),
+      ...(typeof quote.msrp === 'number' && quote.msrp > 0 ? { msrp: quote.msrp } : {}),
     };
   } catch (error) {
     if (options?.strict) throw error;
@@ -326,7 +338,14 @@ async function fetchMarketCheckPrice(
   }, 8000, { strict });
   const parsed = readPremiumPrice(raw);
   if (!parsed) return null;
-  return { vin, miles, zip, price: parsed.price, comparables: parsed.comparables };
+  return {
+    vin,
+    miles,
+    zip,
+    price: parsed.price,
+    comparables: parsed.comparables,
+    ...(parsed.msrp != null ? { msrp: parsed.msrp } : {}),
+  };
 }
 
 async function fetchRestBasePrice(
@@ -406,7 +425,9 @@ async function fetchRestBasePrice(
   }
 }
 
-export function readPremiumPrice(raw: unknown): { price: number; comparables: FairPriceComp[] } | null {
+export function readPremiumPrice(
+  raw: unknown,
+): { price: number; comparables: FairPriceComp[]; msrp: number | null } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   if (record.success === false) return null;
@@ -417,7 +438,7 @@ export function readPremiumPrice(raw: unknown): { price: number; comparables: Fa
   if (price == null) return null;
   const comparables = readActiveComparables(body.comparables);
   if (!comparables) return null;
-  return { price, comparables };
+  return { price, comparables, msrp: readMoney(body.msrp) };
 }
 
 function readRestBasePrice(raw: unknown): number | null {
@@ -449,13 +470,29 @@ function readComp(raw: unknown): FairPriceComp | null {
   const vin = typeof listing.vin === 'string' && listing.vin.trim()
     ? listing.vin.trim().toUpperCase()
     : null;
-  return { id, vin, price, daysOnMarket: readDays(listing) };
+  return {
+    id,
+    vin,
+    price,
+    daysOnMarket: readDays(listing),
+    year: readWhole(listing.year),
+    trim: typeof listing.trim === 'string' && listing.trim.trim() ? listing.trim.trim() : null,
+    miles: readWhole(listing.miles),
+    distanceMiles: typeof listing.dist === 'number' && Number.isFinite(listing.dist) ? listing.dist : null,
+    dealerName: typeof listing.dealer_name === 'string' ? listing.dealer_name : null,
+    vdpUrl: typeof listing.vdp_url === 'string' ? listing.vdp_url : null,
+  };
 }
 
 function readDays(listing: Record<string, unknown>): number | null {
   const candidate = listing.dom_active ?? listing.dos_active ?? listing.dom;
   if (typeof candidate !== 'number' || !Number.isFinite(candidate) || candidate < 0) return null;
   return Math.round(candidate);
+}
+
+function readWhole(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
 }
 
 function readMoney(value: unknown): number | null {

@@ -736,19 +736,23 @@ class _MarketTiles extends StatelessWidget {
         _Tile(
           label: 'Days listed',
           value: '${listing.domActive ?? "—"}',
-          sub: 'Market avg ${market.daysListedMedian ?? 38}',
+          sub: market.daysListedMedian != null
+              ? 'Similar cars: ${market.daysListedMedian} days'
+              : '',
         ),
         _Tile(
           label: 'Price drops',
-          value: '${market.priceDrops ?? 0}',
-          sub: market.priceDrops != null && market.priceDrops! > 0
-              ? 'Since listed'
-              : 'None yet',
+          value: market.priceDrops != null ? '${market.priceDrops}' : '—',
+          sub: market.priceDrops == null
+              ? ''
+              : market.priceDrops! > 0
+                  ? 'At this dealer'
+                  : 'None seen yet',
         ),
         _Tile(
           label: 'Comparables',
           value: '${market.comparablesCount}',
-          sub: 'Within 50 mi',
+          sub: 'Cars like this',
         ),
       ],
     );
@@ -780,7 +784,8 @@ class _Tile extends StatelessWidget {
           Text(label, style: text.label.copyWith(color: colors.muted)),
           const SizedBox(height: DrevvySpace.s1),
           Text(value, style: text.figureS),
-          Text(sub, style: text.micro.copyWith(color: colors.muted)),
+          if (sub.isNotEmpty)
+            Text(sub, style: text.micro.copyWith(color: colors.muted)),
         ],
       ),
     );
