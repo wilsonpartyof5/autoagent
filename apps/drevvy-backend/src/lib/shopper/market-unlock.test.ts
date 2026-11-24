@@ -441,11 +441,13 @@ test('a refund keeps the spend row, and the lookup guard caps paid retries', asy
 
 test('the unlock read is owner scoped and is not the heart save', () => {
   const route = readFileSync(join(HERE, '../../app/api/consumer/listings/[id]/market-intel/route.ts'), 'utf8');
+  const read = readFileSync(join(HERE, 'market-intel-read.ts'), 'utf8');
   const store = readFileSync(join(HERE, 'market-unlock-store.ts'), 'utf8');
   const heart = readFileSync(join(HERE, '../../app/api/consumer/saved-cars/route.ts'), 'utf8');
-  assert.match(route, /requireShopperAuth/);
-  assert.match(route, /findMarketUnlock/);
-  assert.match(route, /isMissingMarketSchema/);
+  assert.match(route, /handleMarketIntelGet/);
+  assert.match(read, /requireShopperAuth/);
+  assert.match(read, /findMarketUnlock/);
+  assert.match(read, /isMissingMarketSchema/);
   assert.match(store, /shopper_market_unlocks/);
   assert.match(store, /\.eq\('user_id', userId\)/);
   assert.equal(route.includes('/api/public'), false);
