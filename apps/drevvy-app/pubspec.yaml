@@ -52,13 +52,16 @@ dependencies:
   # Product analytics. The project key is a dart-define, never a committed value.
   # With no POSTHOG_API_KEY the SDK is not started and the app stays in demo mode.
   posthog_flutter: ^5.9.0
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  plugin_platform_interface: ^2.1.8
   riverpod_generator: ^2.6.3
   build_runner: ^2.4.15
+  url_launcher_platform_interface: ^2.3.2
 
 flutter:
   uses-material-design: true
