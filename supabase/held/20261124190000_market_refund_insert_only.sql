@@ -1,21 +1,27 @@
 -- HELD. DO NOT APPLY.
 -- Security reviews this file. DW applies it. It is not a migration.
+-- Do not re-run 20261120180000 or 20261120201000. Those are already on prod.
 --
--- Prod already has 20261120180000_shopper_market_unlocks.sql and
--- 20261120201000_market_save_lookup_guards.sql, as written.
--- public.shopper_credit_events is append-only. private.drevvy_credit_events_guard
--- rejects every UPDATE and DELETE except the user-deletion cleanup.
--- The applied refund_unstored_market_save UPDATEs the spend row, so it fails
--- with 'shopper_credit_events is append-only' and rolls the refund back.
--- The key stays spent and the claim stays held.
+-- public.shopper_credit_events is append-only. This file does not update or
+-- delete that table, and it does not create or replace the guard that
+-- enforces the rule.
 --
--- This replacement inserts a refund row and restores the balance. It does not
--- update or delete the spend row. The refund's idempotency key is
--- 'refund:' || the spend's idempotency key, so a second call inserts nothing
--- and does not credit again.
+-- The refund row's idempotency key is
+-- refund:market_save:<listing_id>:<spend event id>.
+-- refund_reason is left null. The existing check allows null, or only
+-- no_reply_7d, sold, dealer_declined, dealer_opted_out, and admin.
+-- None of those is a market-save miss, so null is the value that fits.
+-- A second call finds the refund row and inserts nothing.
 --
--- A refunded spend is not an open hold. The next charge uses a new key,
--- because the original use:market_save:<listing> key is still taken.
+-- Why a refunded use is not "still charged", and why the retry key changes:
+-- Prod already stored use:market_save:<listing_id>. That row cannot be
+-- renamed. All three functions below treat a market_save use as open only
+-- when no refund row uses refund:market_save:<listing_id>:<that use id>.
+-- The next charge cannot reuse the original key, so it inserts
+-- use:market_save:<listing_id>:after:<refund event id>. The same rule is
+-- in refund_unstored_market_save, claim_market_save_lookup,
+-- unlock_market_intel_atomic, and consume_market_save_atomic.
+-- A stored unlock is still left alone: the refund returns without a row.
 
 create or replace function public.refund_unstored_market_save(
   p_user_id uuid,
@@ -76,7 +82,7 @@ begin
       where r.user_id = e.user_id
         and r.event_type = 'refund'
         and r.spend_kind = 'market_save'
-        and r.idempotency_key = 'refund:' || e.idempotency_key
+        and r.idempotency_key = 'refund:market_save:' || e.listing_id || ':' || e.id::text
     )
   order by e.created_at desc
   limit 1;
@@ -86,7 +92,8 @@ begin
     return;
   end if;
 
-  v_refund_key := 'refund:' || v_spend_key;
+  -- refund_reason stays null. See the header for the check constraint.
+  v_refund_key := 'refund:market_save:' || p_listing_id || ':' || v_event_id::text;
 
   begin
     insert into public.shopper_credit_events (
@@ -119,7 +126,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.refund_unstored_market_save(uuid, text) from anon, authenticated, public;
+revoke all on function public.refund_unstored_market_save(uuid, text) from public, anon, authenticated;
 grant execute on function public.refund_unstored_market_save(uuid, text) to service_role;
 
 -- An open market_save use holds the key. A use with a refund row does not.
@@ -200,7 +207,7 @@ begin
         where r.user_id = e.user_id
           and r.event_type = 'refund'
           and r.spend_kind = 'market_save'
-          and r.idempotency_key = 'refund:' || e.idempotency_key
+          and r.idempotency_key = 'refund:market_save:' || e.listing_id || ':' || e.id::text
       )
   ) into v_hold;
 
@@ -263,7 +270,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.claim_market_save_lookup(uuid, text, text) from anon, authenticated, public;
+revoke all on function public.claim_market_save_lookup(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.claim_market_save_lookup(uuid, text, text) to service_role;
 
 -- The original use key stays after a refund, so "that key exists" is not
@@ -372,7 +379,7 @@ begin
       where r.user_id = e.user_id
         and r.event_type = 'refund'
         and r.spend_kind = 'market_save'
-        and r.idempotency_key = 'refund:' || e.idempotency_key
+        and r.idempotency_key = 'refund:market_save:' || e.listing_id || ':' || e.id::text
     )
   order by e.created_at desc
   limit 1;
@@ -449,7 +456,7 @@ exception
 end;
 $$;
 
-revoke execute on function public.unlock_market_intel_atomic(uuid, text, text, jsonb) from anon, authenticated, public;
+revoke all on function public.unlock_market_intel_atomic(uuid, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.unlock_market_intel_atomic(uuid, text, text, jsonb) to service_role;
 
 -- Same open-spend rule for the reserve that runs before the paid lookup.
@@ -507,7 +514,7 @@ begin
       where r.user_id = e.user_id
         and r.event_type = 'refund'
         and r.spend_kind = 'market_save'
-        and r.idempotency_key = 'refund:' || e.idempotency_key
+        and r.idempotency_key = 'refund:market_save:' || e.listing_id || ':' || e.id::text
     )
   order by e.created_at desc
   limit 1;
@@ -568,7 +575,20 @@ begin
 end;
 $$;
 
-revoke execute on function public.consume_market_save_atomic(uuid, text) from anon, authenticated, public;
+revoke all on function public.consume_market_save_atomic(uuid, text) from public, anon, authenticated;
 grant execute on function public.consume_market_save_atomic(uuid, text) to service_role;
 
+-- SELECT for authenticated stays as granted by 20261120180000.
 revoke truncate, references, trigger on public.shopper_market_unlocks from authenticated;
+
+-- Manual check after DW applies this file. Do not run it from a migration.
+-- 1. Spend with consume_market_save_atomic. Balance drops. The use key is
+--    use:market_save:<listing>.
+-- 2. refund_unstored_market_save inserts one row
+--    refund:market_save:<listing>:<use id>, refund_reason null, and restores
+--    the balance. The use row is unchanged.
+-- 3. Call the refund again. refunded is false and there is still one refund row.
+-- 4. After an unlock row exists, the refund returns false and inserts nothing.
+-- 5. claim_market_save_lookup hold is true before the refund and false after.
+-- 6. The retry calls unlock_market_intel_atomic, which charges
+--    use:market_save:<listing>:after:<refund id> and stores the snapshot.

@@ -8,9 +8,11 @@ Prod already has these two migrations, as written:
 1. `supabase/migrations/20261120180000_shopper_market_unlocks.sql`
 2. `supabase/migrations/20261120201000_market_save_lookup_guards.sql`
 
-`refund_unstored_market_save_append_only.sql` replaces the refund that updates
-the spend row. Prod rejects that update because `shopper_credit_events` is
-append-only. It is not applied.
+`20261124190000_market_refund_insert_only.sql` is the unapplied replacement.
+It inserts `refund:market_save:<listing id>:<spend event id>` and does not
+update or delete `shopper_credit_events`. A use counts as open only when that
+refund row is absent. The retry spend key is
+`use:market_save:<listing id>:after:<refund event id>`.
 
 `market_intel_call_ceiling.sql` is a later design for a durable price-call cap.
 Until it is applied, the process enforces `FAIR_PRICE_DAILY_CAP` (20 per user
