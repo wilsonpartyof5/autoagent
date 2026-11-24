@@ -288,6 +288,7 @@ export async function loadFairPriceIfAllowed(
   trigger: string,
   vehicle: FairPriceVehicle,
   options?: FairPriceLoadOptions,
+  now: () => number = Date.now,
 ): Promise<FairPriceQuote | null> {
   if (!fairPriceTriggerAllowed(trigger)) return null;
   if (vehicle.condition === 'new') return null;
@@ -298,7 +299,7 @@ export async function loadFairPriceIfAllowed(
       miles: vehicle.miles,
       zip: vehicle.zip,
       dealerType: vehicle.dealerType,
-    }, Date.now, options);
+    }, now, options);
     if (!quote) return null;
     return {
       price: quote.price,

@@ -544,6 +544,7 @@ test('market intel over the daily cap does not call the price tool', async () =>
       vin: null,
       profileZip: null,
       userId: PRICE_USER,
+      now: () => new Date(nowMs),
     });
     assert.equal(lookup.intel, null);
     assert.equal(names.filter((name) => name === PREMIUM_PRICE_TOOL).length, priceCalls);

@@ -345,11 +345,23 @@ export async function computeMarketIntel(
   return marketIntelHasValue(intel) ? intel : null;
 }
 
+/** Real clock when omitted. A Date or clock function is read when the cap is checked. */
+function marketIntelClock(now?: Date | (() => Date)): () => number {
+  if (now == null) return Date.now;
+  if (typeof now === 'function') return () => now().getTime();
+  return () => now.getTime();
+}
+
 export async function loadMarketIntelFromMarketCheck(input: {
   listingId: string;
   vin: string | null;
   profileZip: string | null;
   userId?: string | null;
+  /**
+   * Clock for the fair-price daily cap. Omitted calls use Date.now, so the
+   * UTC-day key matches a direct read of the real clock.
+   */
+  now?: Date | (() => Date);
 }): Promise<MarketIntelLookup> {
   if (!fairPriceSpendEnabled()) {
     return { intel: null, listingFound: false, returnedListingId: null };
@@ -374,7 +386,7 @@ export async function loadMarketIntelFromMarketCheck(input: {
         strict: true,
         userId: input.userId,
         purpose: 'market_intel',
-      });
+      }, marketIntelClock(input.now));
       if (!quote || quote.price <= 0) return null;
       if (Array.isArray(quote.comparables)) {
         return { price: quote.price, comparables: quote.comparables };
