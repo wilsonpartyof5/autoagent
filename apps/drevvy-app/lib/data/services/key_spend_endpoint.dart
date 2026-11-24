@@ -23,6 +23,9 @@ class KeySpendResult {
     this.errorCode,
     this.statusCode,
     this.brief,
+    this.refunded = false,
+    this.held = false,
+    this.unlockState,
   });
 
   final bool ok;
@@ -31,6 +34,14 @@ class KeySpendResult {
   final KeySpendSource source;
   final String? message;
   final MarketIntelBrief? brief;
+
+  /// True only when the server confirmed the key was returned.
+  final bool refunded;
+
+  /// True when a key is still held and the lookup is not finished.
+  final bool held;
+
+  final String? unlockState;
 
   /// Server `error.code` when the response included one. Null on success.
   final String? errorCode;
@@ -46,7 +57,10 @@ class KeySpendResult {
       message = null,
       errorCode = null,
       statusCode = null,
-      brief = null;
+      brief = null,
+      refunded = false,
+      held = false,
+      unlockState = null;
 
   /// Live mode refused a local spend. [ok] is false.
   const KeySpendResult.blocked(this.message, {this.errorCode})
@@ -55,7 +69,10 @@ class KeySpendResult {
       dealId = null,
       source = KeySpendSource.blocked,
       statusCode = null,
-      brief = null;
+      brief = null,
+      refunded = false,
+      held = false,
+      unlockState = null;
 }
 
 enum KeySpendSource { live, stub, missing, blocked }
@@ -172,6 +189,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
       {'listingId': listing.id, 'vin': listing.vin},
       surface: 'market_save',
       requiresSignIn: true,
+      timeout: const Duration(seconds: 90),
     );
   }
 
@@ -230,6 +248,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     required String surface,
     bool requiresSignIn = false,
     bool conversation = false,
+    Duration? timeout,
   }) async {
     if (requiresSignIn && _sessionStore.accessToken == null) {
       if (strict) {
@@ -243,7 +262,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     try {
       final response = await _client
           .post(_uri(path), headers: _headers(), body: jsonEncode(body))
-          .timeout(timeout);
+          .timeout(timeout ?? this.timeout);
       if (_endpointMissing(response.statusCode)) {
         if (strict) {
           return KeySpendResult.blocked(
@@ -333,6 +352,9 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
       source: KeySpendSource.live,
       message: message is String ? message : null,
       brief: MarketIntelBrief.tryParse(root['market']),
+      refunded: root['refunded'] == true,
+      held: root['held'] == true,
+      unlockState: root['unlockState'] is String ? root['unlockState'] as String : null,
     );
   }
 
@@ -411,4 +433,20 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     }
     return null;
   }
+}
+
+/// Keeps the balance on screen from disagreeing with the unlock message.
+///
+/// A confirmed refund must not show a lower balance than the spend response.
+/// A key that is still held must not show a higher balance than that response.
+int reconcileUnlockBalance({
+  required int responseBalance,
+  required int? refreshed,
+  required bool keyBack,
+  required bool stillHeld,
+}) {
+  if (refreshed == null) return responseBalance;
+  if (keyBack && refreshed < responseBalance) return responseBalance;
+  if (stillHeld && refreshed > responseBalance) return responseBalance;
+  return refreshed;
 }

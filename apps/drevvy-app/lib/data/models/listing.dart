@@ -259,7 +259,7 @@ class ListingMedia extends Equatable {
     );
   }
 
-  /// Drops photo URLs that carry a key, token, or secret query param.
+  /// Drops a photo URL that is not a plain picture link.
   static List<String> _safePhotos(List<String> urls) {
     return [
       for (final url in urls)
@@ -267,13 +267,34 @@ class ListingMedia extends Equatable {
     ];
   }
 
+  static const _photoQueryAllow = {
+    'w',
+    'h',
+    'width',
+    'height',
+    'fit',
+    'crop',
+    'quality',
+    'q',
+    'format',
+    'auto',
+    'dpr',
+    'u',
+    'e',
+    's',
+  };
+
+  static final _secretUrl = RegExp(r'key|token|secret|auth', caseSensitive: false);
+
   static bool _photoKeepsKeyOff(String url) {
     final parsed = Uri.tryParse(url);
     if (parsed == null) return false;
-    for (final key in parsed.queryParameters.keys) {
-      if (RegExp(r'key|token|secret|auth', caseSensitive: false).hasMatch(key)) {
-        return false;
-      }
+    final signedProxy = parsed.path == '/api/inventory/photo';
+    if (!signedProxy && _secretUrl.hasMatch(url)) return false;
+    if (signedProxy && _secretUrl.hasMatch(parsed.path)) return false;
+    for (final name in parsed.queryParameters.keys) {
+      if (!_photoQueryAllow.contains(name.toLowerCase())) return false;
+      if (_secretUrl.hasMatch(name)) return false;
     }
     return true;
   }

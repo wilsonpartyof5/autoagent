@@ -3,12 +3,18 @@ import test from 'node:test';
 
 import type { FairPriceComp } from '@/lib/marketcheck/price';
 
+import { MarketCheckUpstreamError } from '@/lib/marketcheck/mcp-client';
+import { FAIR_PRICE_GLOBAL_DAILY_CAP, resetFairPriceGuardsForTests, tryConsumeFairPriceCall } from '@/lib/marketcheck/price';
+
 import { toStoredMarketIntel } from './market-intel';
 import {
   FAIR_BAND,
   HIGH_BAND,
+  MARKET_INTEL_CALL_BUDGET,
   MIN_SHOW,
   buildMarketIntelV1,
+  loadMarketIntelV1,
+  resetMarketIntelUnlockCacheForTests,
   type IntelInputs,
   type Subject,
 } from './market-intel-v1';
@@ -204,4 +210,117 @@ test('maker deals are real offers and each one says when it ends', () => {
   assert.equal(card.similar?.low, null);
   const used = buildMarketIntelV1(jeepInputs());
   assert.equal(used.lines.find((line) => line.key === 'maker_deals')?.shown, false);
+});
+
+test('a new car talks about the typical asking price and never says fair', () => {
+  const card = buildMarketIntelV1(inputs({
+    subject: subject({ condition: 'new', price: 40000, miles: 8, model: 'Wrangler' }),
+    newComps: {
+      num_found: 4,
+      listings: [42000, 44000, 46000, 48000].map((price, index) => ({
+        vin: `NEWVIN${index}`,
+        price,
+        dom_active: 10,
+      })),
+    },
+  }));
+  const deal = card.lines.find((line) => line.key === 'deal_score');
+  assert.equal(deal?.shown, true);
+  assert.equal(deal?.title, 'Typical asking price');
+  assert.match(deal?.text ?? '', /under the typical asking price/);
+  assert.match(deal?.detail ?? '', /^Typical asking price /);
+  const shown = card.lines.filter((line) => line.shown).map((line) => `${line.title} ${line.text} ${line.detail ?? ''}`).join('\n');
+  assert.equal(/fair/i.test(shown), false);
+  const used = buildMarketIntelV1(jeepInputs());
+  assert.match(used.lines.find((line) => line.key === 'deal_score')?.text ?? '', /fair price/);
+});
+
+test('no fair price stops before more paid calls, and a retry does not pay again', async () => {
+  const previous = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+  resetMarketIntelUnlockCacheForTests();
+  const paths: string[] = [];
+  const listing = {
+    id: 'budget-used',
+    vin: '1C4HJXDG5LW123456',
+    price: 26724,
+    miles: 83609,
+    inventory_type: 'used',
+    build: { year: 2020, make: 'Jeep', model: 'Wrangler', trim: 'Limited' },
+    dealer: { zip: '28202' },
+  };
+  try {
+    const get = async (path: string) => {
+      paths.push(path);
+      if (path.startsWith('listing/')) return listing;
+      throw new Error(`unexpected ${path}`);
+    };
+    const first = await loadMarketIntelV1({
+      listingId: 'budget-used',
+      get: get as never,
+      loadPrice: async () => null,
+    });
+    assert.equal(first.definitiveEmpty, true);
+    assert.equal(first.upstreamRetry, false);
+    assert.deepEqual(paths, ['listing/car/budget-used']);
+    const second = await loadMarketIntelV1({
+      listingId: 'budget-used',
+      get: get as never,
+      loadPrice: async () => { throw new Error('paid again'); },
+    });
+    assert.equal(second.definitiveEmpty, true);
+    assert.deepEqual(paths, ['listing/car/budget-used']);
+  } finally {
+    resetMarketIntelUnlockCacheForTests();
+    if (previous === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previous;
+  }
+});
+
+test('a 402 is a retry, not an empty quote', async () => {
+  const previous = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+  resetMarketIntelUnlockCacheForTests();
+  try {
+    const result = await loadMarketIntelV1({
+      listingId: 'retry-used',
+      get: async () => ({
+        id: 'retry-used',
+        vin: '1C4HJXDG5LW123456',
+        price: 26724,
+        miles: 83609,
+        inventory_type: 'used',
+        build: { year: 2020, make: 'Jeep', model: 'Wrangler' },
+        dealer: { zip: '28202' },
+      }),
+      loadPrice: async () => {
+        throw new MarketCheckUpstreamError('quota', 402);
+      },
+    });
+    assert.equal(result.upstreamRetry, true);
+    assert.equal(result.definitiveEmpty, false);
+    assert.equal(result.card, null);
+  } finally {
+    resetMarketIntelUnlockCacheForTests();
+    if (previous === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previous;
+  }
+});
+
+test('one unlock stays inside the paid-call budget', () => {
+  assert.equal(MARKET_INTEL_CALL_BUDGET, 12);
+});
+
+test('price calls stop at the process-wide daily ceiling', () => {
+  resetFairPriceGuardsForTests();
+  const now = Date.parse('2026-11-22T12:00:00.000Z');
+  let allowed = 0;
+  for (let user = 0; user < 15; user += 1) {
+    for (let call = 0; call < 20; call += 1) {
+      if (tryConsumeFairPriceCall(`ceiling-${user}`, now)) allowed += 1;
+    }
+  }
+  assert.equal(allowed, FAIR_PRICE_GLOBAL_DAILY_CAP);
+  assert.equal(tryConsumeFairPriceCall('ceiling-extra', now), false);
+  resetFairPriceGuardsForTests();
 });

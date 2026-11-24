@@ -339,6 +339,8 @@ test('an unknown price tool refunds the key instead of saving a basic listing', 
     names.push(tool?.name ?? 'other');
     return toolError('Unknown tool');
   }, async () => {
+    const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+    process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
     const saved = await unlockMarketAndSave('shopper-1', { listingId: 'subject-listing' }, {
       repo,
       ownsDeal: async () => false,
@@ -361,6 +363,8 @@ test('an unknown price tool refunds the key instead of saving a basic listing', 
     assert.equal(names.includes('search_active_cars'), false);
     assert.equal(names.includes(PREMIUM_PRICE_TOOL), true);
     assert.equal(names.includes('get_car_history'), false);
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
   });
 });
 

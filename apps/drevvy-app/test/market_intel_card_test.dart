@@ -140,15 +140,41 @@ void main() {
         MarketIntelCard(
           unlocked: false,
           failed: true,
+          failureMessage: KeySpend.marketIntelKeyBack,
+          failureAction: KeySpend.marketIntelRetry,
           onUnlock: () => taps += 1,
         ),
       ),
     );
 
-    expect(find.text(KeySpend.marketIntelFailed), findsOneWidget);
+    expect(find.text(KeySpend.marketIntelKeyBack), findsOneWidget);
     expect(find.text(KeySpend.marketIntelTeaser), findsNothing);
     await tester.tap(find.text(KeySpend.marketIntelRetry));
     expect(taps, 1);
+  });
+
+  testWidgets('check again does not spend', (tester) async {
+    var spends = 0;
+    var checks = 0;
+    await tester.pumpWidget(
+      _frame(
+        MarketIntelCard(
+          unlocked: false,
+          failed: true,
+          isNew: true,
+          failureMessage: KeySpend.marketIntelStillChecking,
+          failureAction: KeySpend.marketIntelCheckAgain,
+          onUnlock: () => spends += 1,
+          onRecheck: () => checks += 1,
+        ),
+      ),
+    );
+
+    expect(find.text('Typical asking price'), findsOneWidget);
+    expect(find.textContaining('key is back'), findsNothing);
+    await tester.tap(find.text(KeySpend.marketIntelCheckAgain));
+    expect(checks, 1);
+    expect(spends, 0);
   });
 }
 

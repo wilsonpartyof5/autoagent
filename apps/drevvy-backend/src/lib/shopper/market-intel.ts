@@ -1,4 +1,4 @@
-import { callMcpTool } from '@/lib/marketcheck/mcp-client';
+import { callMcpTool, MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
 import { FairPriceCappedError, fairPriceSpendEnabled, loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
 import { containsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
 import { loadMarketIntelV1, type MarketIntelV1 } from '@/lib/shopper/market-intel-v1';
@@ -196,10 +196,14 @@ export type MarketIntelLookup = {
   listingFound: boolean;
   returnedListingId: string | null;
   /**
-   * False when a miss must not be cached. A missing fair price refunds the
-   * key and the shopper can retry. The 24-hour "no value" mark stays off.
+   * False only for a 402, a 429, a timeout, spend that is off, or the daily
+   * cap. Those are not empty quotes. A definitive empty quote is not false,
+   * and it is remembered per shopper for a short window instead of the
+   * 24-hour shared mark.
    */
   cacheableMiss?: boolean;
+  /** True when this shopper should not pay for the same empty quote again soon. */
+  shopperMiss?: boolean;
 };
 
 export function asMarketIntelLookup(
@@ -213,6 +217,7 @@ export function asMarketIntelLookup(
       listingFound: lookup.listingFound === true,
       returnedListingId: typeof lookup.returnedListingId === 'string' ? lookup.returnedListingId : null,
       cacheableMiss: lookup.cacheableMiss,
+      shopperMiss: lookup.shopperMiss === true,
     };
   }
   if (value && typeof value === 'object' && (value as MarketIntel).source === 'marketcheck') {
@@ -608,6 +613,13 @@ function storedUsedBand(card: MarketIntelV1): { low: number; median: number; hig
  * card the existing unlock check cannot store, comes back as a miss that is
  * not cached, so the refunded key can be used again.
  */
+function quoteRetry(error: unknown): boolean {
+  if (error instanceof McpQuotaError || error instanceof McpRateLimitError) return true;
+  if (!(error instanceof MarketCheckUpstreamError)) return false;
+  if (error.status === 402 || error.status === 429 || error.kind === 'timeout') return true;
+  return /timed out|timeout/i.test(error.message);
+}
+
 export async function loadShopperMarketIntel(input: {
   listingId: string;
   vin: string | null;
@@ -615,27 +627,47 @@ export async function loadShopperMarketIntel(input: {
   userId?: string | null;
 }): Promise<MarketIntelLookup> {
   if (!fairPriceSpendEnabled()) {
-    return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+    return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false, shopperMiss: false };
   }
   try {
-    const card = await loadMarketIntelV1({
+    const loaded = await loadMarketIntelV1({
       listingId: input.listingId,
       userId: input.userId,
       profileZip: input.profileZip,
     });
-    if (!card) {
-      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+    if (loaded.upstreamRetry) {
+      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false, shopperMiss: false };
     }
-    const intel = card.listingId === input.listingId ? toStoredMarketIntel(card) : null;
+    const card = loaded.card;
+    if (!card || card.listingId !== input.listingId) {
+      return {
+        intel: null,
+        listingFound: card != null,
+        returnedListingId: card?.listingId ?? null,
+        cacheableMiss: loaded.definitiveEmpty,
+        shopperMiss: loaded.definitiveEmpty,
+      };
+    }
+    const intel = toStoredMarketIntel(card);
+    if (!intel) {
+      return {
+        intel: null,
+        listingFound: true,
+        returnedListingId: card.listingId,
+        cacheableMiss: true,
+        shopperMiss: true,
+      };
+    }
     return {
       intel,
       listingFound: true,
       returnedListingId: card.listingId,
-      cacheableMiss: intel != null,
+      cacheableMiss: true,
+      shopperMiss: false,
     };
   } catch (error) {
-    if (error instanceof FairPriceCappedError) {
-      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+    if (error instanceof FairPriceCappedError || quoteRetry(error)) {
+      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false, shopperMiss: false };
     }
     throw error;
   }

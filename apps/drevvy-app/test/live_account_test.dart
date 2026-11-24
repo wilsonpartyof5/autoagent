@@ -163,7 +163,12 @@ class _BriefSpend extends KeySpendEndpoint {
 }
 
 class _RefusedSpend extends KeySpendEndpoint {
+  _RefusedSpend({this.refunded = true, this.held = false, this.message});
+
   int marketSaves = 0;
+  final bool refunded;
+  final bool held;
+  final String? message;
 
   @override
   Future<KeySpendResult> requestOtdNumber(
@@ -176,10 +181,12 @@ class _RefusedSpend extends KeySpendEndpoint {
   @override
   Future<KeySpendResult> spendMarketSave(Listing listing) async {
     marketSaves += 1;
-    return const KeySpendResult(
+    return KeySpendResult(
       ok: false,
       source: KeySpendSource.live,
-      message: "We couldn't load this. Your key came back. Try again.",
+      refunded: refunded,
+      held: held,
+      message: message ?? "We couldn't load this. Your key is back.",
     );
   }
 
@@ -501,10 +508,55 @@ void main() {
     );
 
     expect(await repo.unlockMarketIntel(_civic()), isFalse);
-    expect(repo.marketIntelFailure, contains('key came back'));
+    expect(repo.marketIntelFailure, contains('key is back'));
+    expect(repo.marketIntelRecheck, isFalse);
     expect(repo.hasUnlockedMarketIntel('mc-1'), isFalse);
     expect(await repo.unlockMarketIntel(_civic()), isFalse);
     expect(spend.marketSaves, 2);
+  });
+
+  test('a message that says the key came back is ignored unless the server refunded', () async {
+    final spend = _RefusedSpend(
+      refunded: false,
+      message: "We couldn't load this. Your key came back. Try again.",
+    );
+    final repo = DemoRepository(
+      config: _live,
+      keySpend: spend,
+      miSpendEnabled: true,
+      networkDelay: Duration.zero,
+    );
+
+    expect(await repo.unlockMarketIntel(_civic()), isFalse);
+    expect(repo.marketIntelFailure, KeySpend.marketIntelNotConfirmed);
+    expect(repo.marketIntelFailure, isNot(contains('key')));
+    expect(repo.marketIntelRecheck, isTrue);
+  });
+
+  test('a held key says we are still checking', () async {
+    final spend = _RefusedSpend(refunded: false, held: true, message: 'held');
+    final repo = DemoRepository(
+      config: _live,
+      keySpend: spend,
+      miSpendEnabled: true,
+      networkDelay: Duration.zero,
+    );
+
+    expect(await repo.unlockMarketIntel(_civic()), isFalse);
+    expect(repo.marketIntelFailure, KeySpend.marketIntelStillChecking);
+    expect(repo.lastUnlockHeld, isTrue);
+    expect(reconcileUnlockBalance(
+      responseBalance: 2,
+      refreshed: 3,
+      keyBack: false,
+      stillHeld: true,
+    ), 2);
+    expect(reconcileUnlockBalance(
+      responseBalance: 3,
+      refreshed: 2,
+      keyBack: true,
+      stillHeld: false,
+    ), 3);
   });
 
   test(

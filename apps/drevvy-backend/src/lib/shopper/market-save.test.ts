@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import test from 'node:test';
+import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -11,11 +11,22 @@ import { refundCredit, spendMarketSaveKey } from './credits';
 import type { MarketIntel } from './market-intel';
 import { MarketCheckUpstreamError } from '@/lib/marketcheck/mcp-client';
 import { createMemoryMarketLookupGuard } from './market-lookup-guard';
+import { fairPriceSpendEnabled } from '@/lib/marketcheck/price';
 import { unlockMarketAndSave, type MarketSaveDeps } from './market-save';
 import type { CommitMarketUnlockInput, StoredMarketUnlock } from './market-unlock-store';
 import type { SavedCarRepository, SavedCarRow } from './saved-cars';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+
+before(() => {
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+});
+
+after(() => {
+  if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
+});
 
 function memoryRepo(): SavedCarRepository & { rows: SavedCarRow[] } {
   const rows: SavedCarRow[] = [];
@@ -45,27 +56,34 @@ function memoryRepo(): SavedCarRepository & { rows: SavedCarRow[] } {
 function memoryKeys(balance: number): SupabaseClient {
   const row = { balance, lifetime_purchased: balance, lifetime_used: 0, lifetime_refunded: 0 };
   const keys = new Set<string>();
+  const openSpends = new Map<string, string>();
   const client = {
     rpc: async (fnName: string, params: { p_listing_id?: string; p_deal_id?: string; p_idempotency_key?: string }) => {
       if (fnName === 'consume_market_save_atomic') {
-        const key = `use:market_save:${params.p_listing_id ?? ''}`;
-        if (keys.has(key)) {
+        const listingId = params.p_listing_id ?? '';
+        if (openSpends.has(listingId)) {
           return { data: [{ consumed: true, already_consumed: true, balance: row.balance }], error: null };
         }
         if (row.balance <= 0) {
           return { data: [{ consumed: false, already_consumed: false, balance: row.balance }], error: null };
         }
-        keys.add(key);
+        const base = `use:market_save:${listingId}`;
+        const spendKey = keys.has(base) ? `${base}:after:${keys.size}` : base;
+        keys.add(spendKey);
+        openSpends.set(listingId, spendKey);
         row.balance -= 1;
         row.lifetime_used += 1;
         return { data: [{ consumed: true, already_consumed: false, balance: row.balance }], error: null };
       }
       if (fnName === 'refund_unstored_market_save') {
-        const spentKey = `use:market_save:${params.p_listing_id ?? ''}`;
-        if (!keys.has(spentKey)) {
+        const listingId = params.p_listing_id ?? '';
+        const spendKey = openSpends.get(listingId);
+        const refundKey = spendKey ? `refund:${spendKey}` : '';
+        if (!spendKey || keys.has(refundKey)) {
           return { data: [{ refunded: false, balance: row.balance }], error: null };
         }
-        keys.delete(spentKey);
+        keys.add(refundKey);
+        openSpends.delete(listingId);
         row.balance += 1;
         row.lifetime_used = Math.max(0, row.lifetime_used - 1);
         row.lifetime_refunded += 1;
@@ -356,6 +374,7 @@ test('a closed limiter and a per-user rate limit do not call MarketCheck', async
   const repo = memoryRepo();
   const blocked = scriptedUnlock(memoryKeys(1), repo);
   blocked.failClosed = true;
+  delete blocked.lookupGuard;
   let loads = 0;
   blocked.loadMarketIntel = async () => {
     loads += 1;
@@ -412,7 +431,9 @@ test('a failed refund is finished by the next commit without a second charge', a
   assert.equal(failed.unlocked, false);
   assert.equal(failed.spent, false);
   assert.equal(failed.car, null);
-  assert.match(failed.message ?? '', /already on hold/);
+  assert.equal(failed.message, "We couldn't load this yet. We're fixing it.");
+  assert.equal(failed.held, false);
+  assert.equal(failed.refunded, false);
   assert.equal(loads, 1);
   assert.equal(repo.rows.length, 0);
 
@@ -531,6 +552,96 @@ test('the market-save route spends a key and a heart save does not', () => {
   assert.match(route, /market/);
   assert.match(route, /failClosed/);
   assert.match(route, /ipHash/);
+  assert.match(route, /refunded/);
+  assert.match(route, /unlockState/);
+});
+
+test('spend stays off before a key is held', async () => {
+  delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  try {
+    let reserves = 0;
+    const deps = scriptedUnlock(memoryKeys(2), memoryRepo());
+    deps.reserveKey = async () => {
+      reserves += 1;
+      return { ok: true, already: false, failed: false, balance: 2 };
+    };
+    const saved = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+    assert.equal(reserves, 0);
+    assert.equal(saved.refunded, false);
+    assert.equal(saved.unlockState, 'unavailable');
+    assert.equal(saved.message, 'This is off right now.');
+    assert.equal(fairPriceSpendEnabled(), false);
+  } finally {
+    process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+  }
+});
+
+test('the stored VIN is the card VIN, not the one the shopper sent', async () => {
+  const deps = scriptedUnlock(memoryKeys(1), memoryRepo());
+  let stored: string | null = 'unset';
+  const commit = deps.commitUnlock!;
+  deps.commitUnlock = async (input) => {
+    stored = input.vin;
+    return commit(input);
+  };
+  deps.loadMarketIntel = async () => ({
+    ...usedIntel(),
+    v1: {
+      version: 'v1',
+      listingId: 'mc-listing-1',
+      condition: 'used',
+      vin: '1c4hjxdg5lw123456',
+      lines: [],
+    } as unknown as MarketIntel['v1'],
+  });
+  await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1', vin: '1GNSKCKD5RR123456' }, deps);
+  assert.equal(stored, '1C4HJXDG5LW123456');
+});
+
+test('a rate limit with a held key finishes the refund instead of returning 429', async () => {
+  const deps = scriptedUnlock(memoryKeys(1), memoryRepo());
+  let refunds = 0;
+  deps.lookupGuard = {
+    claim: async () => ({ action: 'rate_limited', scope: 'user', hold: true }),
+    rememberMiss: async () => undefined,
+    rememberUpstreamAttempt: async () => undefined,
+    releaseRefundSlot: async () => undefined,
+    noteRefund: async () => undefined,
+  };
+  deps.refundKey = async () => {
+    refunds += 1;
+    return { refunded: true, balance: 1 };
+  };
+  const saved = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(refunds, 1);
+  assert.equal(saved.refunded, true);
+  assert.equal(saved.held, false);
+  assert.equal(saved.message, "We couldn't load this. Your key is back.");
+});
+
+test('a definitive empty quote is remembered for this shopper only', async () => {
+  const deps = scriptedUnlock(memoryKeys(2), memoryRepo());
+  deps.lookupGuard = createMemoryMarketLookupGuard();
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return {
+      intel: null,
+      listingFound: true,
+      returnedListingId: 'mc-listing-1',
+      cacheableMiss: true,
+      shopperMiss: true,
+    };
+  };
+  const first = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(first.refunded, true);
+  const second = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(loads, 1);
+  assert.equal(second.refunded, false);
+  assert.equal(second.message, 'This is off right now.');
+  const other = await unlockMarketAndSave('shopper-2', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(loads, 2);
+  assert.equal(other.refunded, true);
 });
 
 function usedIntel(): MarketIntel {
@@ -565,6 +676,7 @@ function scriptedUnlock(
     now: new Date('2026-10-26T12:00:00.000Z'),
     supabase,
     profileZip: async () => null,
+    lookupGuard: createMemoryMarketLookupGuard(),
     loadMarketIntel: async () => usedIntel(),
     findUnlock: async (userId, listingId) => rows.get(`${userId}:${listingId}`) ?? null,
     commitUnlock: async (input: CommitMarketUnlockInput) => {

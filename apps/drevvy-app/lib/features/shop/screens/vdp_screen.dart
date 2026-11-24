@@ -13,6 +13,7 @@ import '../../../data/discover/discover_catalog.dart';
 import '../../../data/discover/discover_client.dart';
 import '../../../data/discover/discover_config.dart';
 import '../../../data/discover/discover_exception.dart';
+import '../../../data/services/key_spend_endpoint.dart';
 import '../../../data/services/saved_cars_endpoint.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
@@ -254,10 +255,10 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     }
   }
 
-  Future<void> _refreshBalance() async {
+  Future<CarCreditBalance> _refreshBalance({bool apply = true}) async {
     final next = await _repo.getCreditBalance();
-    if (!mounted) return;
-    setState(() => _creditBalance = next);
+    if (apply && mounted) setState(() => _creditBalance = next);
+    return next;
   }
 
   /// Key A: market intel + save. Paywall only when the key balance is 0.
@@ -288,8 +289,24 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
               onConfirm: () async {
                 final ok = await _repo.unlockMarketIntel(listing);
                 if (!mounted) return;
-                await _refreshBalance();
+                final refreshed = await _refreshBalance(apply: false);
+                if (!mounted) return;
+                final responseBalance = _repo.lastUnlockBalance;
+                final shown = responseBalance == null
+                    ? refreshed
+                    : CarCreditBalance(
+                        balance: reconcileUnlockBalance(
+                          responseBalance: responseBalance,
+                          refreshed: refreshed.balance,
+                          keyBack: _repo.lastUnlockRefunded,
+                          stillHeld: _repo.lastUnlockHeld,
+                        ),
+                        totalPurchased: refreshed.totalPurchased,
+                        totalSpent: refreshed.totalSpent,
+                        totalRefunded: refreshed.totalRefunded,
+                      );
                 setState(() {
+                  _creditBalance = shown;
                   _marketIntelUnlocked = ok;
                   _marketIntelFailed = !ok;
                   if (ok) _isSaved = true;
@@ -475,6 +492,33 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
     );
   }
 
+  Future<void> _recheckMarketIntel(Listing listing) async {
+    final ok = await _repo.recheckMarketIntel(listing.id);
+    if (!mounted) return;
+    final refreshed = await _refreshBalance(apply: false);
+    if (!mounted) return;
+    final responseBalance = _repo.lastUnlockBalance;
+    final shown = responseBalance == null
+        ? refreshed
+        : CarCreditBalance(
+            balance: reconcileUnlockBalance(
+              responseBalance: responseBalance,
+              refreshed: refreshed.balance,
+              keyBack: false,
+              stillHeld: !ok && _repo.lastUnlockHeld,
+            ),
+            totalPurchased: refreshed.totalPurchased,
+            totalSpent: refreshed.totalSpent,
+            totalRefunded: refreshed.totalRefunded,
+          );
+    setState(() {
+      _creditBalance = shown;
+      _marketIntelUnlocked = ok;
+      _marketIntelFailed = !ok;
+      if (ok) _isSaved = true;
+    });
+  }
+
   /// The card is shown only when this build is live and the sim flag is on.
   /// A live Discover config with the demo repository still says no key is spent.
   Widget? get _liveFairPrice {
@@ -487,7 +531,12 @@ class _VdpScreenState extends ConsumerState<VdpScreen> {
       unlocked: _marketIntelUnlocked,
       failed: _marketIntelFailed && !_marketIntelUnlocked,
       askingPrice: listing.price,
+      isNew: listing.isNew,
+      model: listing.build.model,
+      failureMessage: _repo.marketIntelFailure,
+      failureAction: _repo.marketIntelFailureAction,
       onUnlock: _handleMarketIntelTap,
+      onRecheck: () => unawaited(_recheckMarketIntel(listing)),
     );
   }
 

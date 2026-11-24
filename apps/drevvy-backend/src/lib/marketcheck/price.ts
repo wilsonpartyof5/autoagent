@@ -116,6 +116,11 @@ export type FairPriceLoadOptions = {
 
 /** Network price calls per user per UTC day. In-memory, so each instance counts alone. */
 export const FAIR_PRICE_DAILY_CAP = 20;
+/**
+ * Network price calls for every shopper in this process per UTC day.
+ * The durable ceiling lives in supabase/held and is not applied.
+ */
+export const FAIR_PRICE_GLOBAL_DAILY_CAP = 200;
 /** Empty or failed price lookups. Repeats are not billed again. */
 export const FAIR_PRICE_NEGATIVE_TTL_MS = 6 * 60 * 60 * 1000;
 /** 5xx and transport failures. Short so a blip can be retried. */
@@ -144,10 +149,12 @@ export class FairPriceCappedError extends Error {
 
 const negativeCache = new Map<string, NegativeEntry>();
 const dailyCalls = new Map<string, { day: string; count: number }>();
+const globalCalls = new Map<string, number>();
 
 export function resetFairPriceGuardsForTests(): void {
   negativeCache.clear();
   dailyCalls.clear();
+  globalCalls.clear();
 }
 
 function rememberNegative(key: string, kind: NegativeKind, nowMs: number, error?: unknown): void {
@@ -175,20 +182,24 @@ function negativeKindFor(error: unknown): NegativeKind {
 }
 
 /** Counts one network call. False when this user is already at the daily cap. */
-function tryConsumeFairPriceCall(userId: string, nowMs: number): boolean {
+export function tryConsumeFairPriceCall(userId: string, nowMs: number): boolean {
   const day = new Date(nowMs).toISOString().slice(0, 10);
   if (dailyCalls.size > 1000) {
     for (const [id, row] of dailyCalls) {
       if (row.day !== day) dailyCalls.delete(id);
     }
   }
+  const global = globalCalls.get(day) ?? 0;
+  if (global >= FAIR_PRICE_GLOBAL_DAILY_CAP) return false;
   const row = dailyCalls.get(userId);
   if (!row || row.day !== day) {
     dailyCalls.set(userId, { day, count: 1 });
+    globalCalls.set(day, global + 1);
     return true;
   }
   if (row.count >= FAIR_PRICE_DAILY_CAP) return false;
   row.count += 1;
+  globalCalls.set(day, global + 1);
   return true;
 }
 

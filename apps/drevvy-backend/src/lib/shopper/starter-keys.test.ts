@@ -16,6 +16,7 @@ import {
   STARTER_GRANT_IDEMPOTENCY_KEY,
 } from './credits';
 import type { MarketIntel } from './market-intel';
+import { createMemoryMarketLookupGuard } from './market-lookup-guard';
 import { unlockMarketAndSave } from './market-save';
 import type { SavedCarRepository, SavedCarRow } from './saved-cars';
 
@@ -189,6 +190,8 @@ test('starter grant is exactly 3 keys and is recorded apart from a purchase', ()
 
 test('a new shopper gets 3 keys once, and that balance unlocks market details', async () => {
   const db = await boot();
+  const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
   try {
     const admin = rpcClient(db);
     const repo = memoryRepo();
@@ -213,6 +216,7 @@ test('a new shopper gets 3 keys once, and that balance unlocks market details', 
       lookup: async () => null,
       now: new Date('2026-10-29T16:00:00.000Z'),
       supabase: admin,
+      lookupGuard: createMemoryMarketLookupGuard(),
       profileZip: async () => null,
       loadMarketIntel: async () => intel,
       findUnlock: async (userId: string, listingId: string) => {
@@ -379,6 +383,8 @@ test('a new shopper gets 3 keys once, and that balance unlocks market details', 
     assert.equal(privileges.rows[0]?.service_ensure, true);
     assert.equal(privileges.rows[0]?.service_grant, true);
   } finally {
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
     await db.close();
   }
 });

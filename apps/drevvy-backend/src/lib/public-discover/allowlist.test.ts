@@ -95,6 +95,22 @@ test('search listings keep vehicle facts and drop dealer identity', () => {
   assert.equal(JSON.stringify(publicListing).includes('dealerName'), false);
   assert.equal(JSON.stringify(publicListing).includes('dealer_name'), false);
   assert.equal(JSON.stringify(publicListing).includes('api_key'), false);
+  assert.deepEqual(publicListing.media?.photo_links, ['https://cdn.dealer.example/rav4.jpg']);
+  for (const bad of [
+    'https://cdn.dealer.example/a.jpg?x-api-key=abc',
+    'https://cdn.dealer.example/a.jpg?key=abc',
+    'https://cdn.dealer.example/a.jpg?auth=abc',
+    'https://cdn.dealer.example/a.jpg?client_secret=abc',
+    'https://cdn.dealer.example/a.jpg?access_key=abc',
+    'https://cdn.dealer.example/a.jpg?width=1;API_KEY=abc',
+    'https://cdn.dealer.example/API_KEY/secret.jpg',
+  ]) {
+    const leaked = publicListingFromSearchVehicle(liveVehicle({ photoUrls: [bad], primaryPhotoUrl: bad }), { latitude: 35.2, longitude: -80.8 });
+    const photos = leaked?.media?.photo_links ?? [];
+    assert.equal(photos.includes(bad), false, bad);
+    assert.equal(JSON.stringify(leaked).toLowerCase().includes('api_key'), false);
+    assert.equal(JSON.stringify(leaked).toLowerCase().includes('secret'), false);
+  }
   assert.equal(publicListingsContainForbiddenKey(publicListing), false);
   assert.deepEqual(Object.keys(publicListing).sort(), [
     'build',

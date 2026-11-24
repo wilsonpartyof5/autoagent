@@ -49,6 +49,28 @@ void main() {
     expect(listing.media.photoLinks, ['https://cdn.example/civic.jpg']);
   });
 
+  test('photo links with a secret in the query or path are dropped', () {
+    final listing = Listing.fromJson({
+      'id': 'mc_secret_photo',
+      'price': 10000,
+      'build': {'year': 2020, 'make': 'Honda', 'model': 'Civic'},
+      'media': {
+        'photo_links': [
+          'https://cdn.example/civic.jpg?width=640',
+          'https://cdn.example/a.jpg?x-api-key=abc',
+          'https://cdn.example/a.jpg?key=abc',
+          'https://cdn.example/a.jpg?auth=abc',
+          'https://cdn.example/a.jpg?client_secret=abc',
+          'https://cdn.example/a.jpg?access_key=abc',
+          'https://cdn.example/a.jpg?width=1;API_KEY=abc',
+          'https://cdn.example/API_KEY/secret.jpg',
+        ],
+      },
+    });
+
+    expect(listing.media.photoLinks, ['https://cdn.example/civic.jpg?width=640']);
+  });
+
   test('a decimal price rounds and does not throw', () {
     final listing = Listing.fromJson({
       'id': 'mc_rav',

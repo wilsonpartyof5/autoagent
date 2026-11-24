@@ -13,7 +13,7 @@
  * close miles), not by distance. Distance only widens until there are
  * enough cars to compare.
  */
-import { callMcpTool } from '@/lib/marketcheck/mcp-client';
+import { callMcpTool, MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
 import { fairPriceSpendEnabled, loadFairPriceIfAllowed, type FairPriceComp } from '@/lib/marketcheck/price';
 import { marketCheckGet } from '@/lib/marketcheck/rest';
 
@@ -288,11 +288,24 @@ export function pickSimilar(subject: Subject, comps: FairPriceComp[]): {
 
 /**
  * Shopper badge. Cutoffs stay FAIR_BAND / HIGH_BAND from the patch.
- * The words compare the asking price only to the fair price.
+ * Used cars compare the asking price only to MarketCheck's fair price.
+ * New cars use those same cutoffs. The new-car words are TBD with Design;
+ * the strings below are the shopper copy for now. New cars never say fair,
+ * fair price, or deal value.
  */
-function dealScore(asking: number, reference: number): { label: string; tone: Tone; diff: number } {
+function dealScore(
+  asking: number,
+  reference: number,
+  condition: 'used' | 'new',
+): { label: string; tone: Tone; diff: number } {
   const diff = asking - reference;
   const share = diff / reference;
+  if (condition === 'new') {
+    if (share <= -FAIR_BAND) return { label: `Great: ${money(-diff)} under the typical asking price`, tone: 'good', diff };
+    if (share < FAIR_BAND) return { label: 'About typical: close to the typical asking price', tone: 'neutral', diff };
+    if (share <= HIGH_BAND) return { label: `A bit high: ${money(diff)} over the typical asking price`, tone: 'caution', diff };
+    return { label: `High: ${money(diff)} over the typical asking price`, tone: 'caution', diff };
+  }
   if (share <= -FAIR_BAND) return { label: `Great: ${money(-diff)} under the fair price`, tone: 'good', diff };
   if (share < FAIR_BAND) {
     if (diff === 0) return { label: 'Fair: right at the fair price', tone: 'neutral', diff };
@@ -486,7 +499,7 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         : median(pick.picked
           .map((comp) => comp.daysOnMarket)
           .filter((days): days is number => days != null));
-      const score = dealScore(s.price, fair.price);
+      const score = dealScore(s.price, fair.price, 'used');
       const rangeLine = low != null && high != null
         ? ` Most cars like this: ${money(low)} to ${money(high)}.`
         : '';
@@ -549,14 +562,14 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         mileMatched: false,
       };
       similarDays = st.days;
-      const score = dealScore(s.price, st.median);
+      const score = dealScore(s.price, st.median, 'new');
       lines.push({
         key: 'deal_score',
-        title: 'Deal score',
+        title: 'Typical asking price',
         shown: true,
         text: score.label,
         tone: score.tone,
-        detail: `Fair price ${money(st.median)}.`,
+        detail: `Typical asking price ${money(st.median)}.`,
         source: {
           askingPrice: s.price,
           fairPrice: st.median,
@@ -804,11 +817,12 @@ export async function searchSimilarActive(
   subject: Subject,
   near: Record<string, string | number | undefined>,
   milesRange: string | undefined,
+  get: typeof marketCheckGet = marketCheckGet,
 ): Promise<{ raw: Raw | null; radius: number | null }> {
   let raw: Raw | null = null;
   const steps: number[] = subject.condition === 'new' ? [...LIVE_RADIUS_STEPS, Infinity] : [...LIVE_RADIUS_STEPS];
   for (const radius of steps) {
-    raw = await marketCheckGet('search/car/active', {
+    raw = await get('search/car/active', {
       year: subject.year,
       make: subject.make,
       model: subject.model,
@@ -827,6 +841,50 @@ export async function searchSimilarActive(
   return { raw, radius: subject.condition === 'new' ? null : steps[steps.length - 1] };
 }
 
+/** Every MarketCheck read on one unlock: listing, price, search, history, MDS, recents, NeoVIN. */
+export const MARKET_INTEL_CALL_BUDGET = 12;
+/** A retry inside this window reuses the card or the empty quote. It does not pay again. */
+export const MARKET_INTEL_PARTIAL_MS = 10 * 60 * 1000;
+
+export type MarketIntelV1Result = {
+  card: MarketIntelV1 | null;
+  /** MarketCheck finished and there is no fair price or typical asking price. */
+  definitiveEmpty: boolean;
+  /** 402, 429, or a timeout. Do not remember this as an empty quote. */
+  upstreamRetry: boolean;
+};
+
+type UnlockPartial = {
+  expiresAt: number;
+  result?: MarketIntelV1Result;
+  subject?: Subject;
+  fairPrice?: IntelInputs['fairPrice'] | null;
+  fairKnown?: boolean;
+};
+
+const unlockPartials = new Map<string, UnlockPartial>();
+
+export function resetMarketIntelUnlockCacheForTests(): void {
+  unlockPartials.clear();
+}
+
+function upstreamRetryError(error: unknown): boolean {
+  if (error instanceof McpQuotaError || error instanceof McpRateLimitError) return true;
+  if (!(error instanceof MarketCheckUpstreamError)) return false;
+  if (error.status === 402 || error.status === 429 || error.kind === 'timeout') return true;
+  return /timed out|timeout/i.test(error.message);
+}
+
+type PriceLoader = typeof loadFairPriceIfAllowed;
+
+function budgetedGet(budget: { left: number }, get: typeof marketCheckGet): typeof marketCheckGet {
+  return async (path, params, endpoint, timeout) => {
+    if (budget.left <= 0) return null;
+    budget.left -= 1;
+    return get(path, params, endpoint, timeout);
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Loader: one unlock. Calls MarketCheck only; writes nothing.
 // ---------------------------------------------------------------------------
@@ -837,119 +895,184 @@ export async function loadMarketIntelV1(input: {
   /** Shopper's ZIP. Maker offers are regional, so they use this first. */
   profileZip?: string | null;
   today?: Date;
-}): Promise<MarketIntelV1 | null> {
-  if (!fairPriceSpendEnabled()) return null;
-  const today = input.today ?? new Date();
-  const listing = await marketCheckGet(`listing/car/${encodeURIComponent(input.listingId)}`, {}, 'listing_detail');
-  const subject = listing ? subjectFromListing(listing) : null;
-  if (!subject) return null;
-  const near = subject.latitude != null && subject.longitude != null
-    ? { latitude: subject.latitude, longitude: subject.longitude }
-    : { zip: subject.zip ?? undefined };
-  const milesRange = subject.condition === 'used' && subject.miles != null
-    ? `${Math.max(0, Math.round(subject.miles * (1 - MILES_WINDOWS[0])))}-${Math.round(subject.miles * (1 + MILES_WINDOWS[0]))}`
-    : undefined;
-  const ymmt = {
-    year: subject.year,
-    make: subject.make,
-    model: subject.model,
-    trim: subject.trim ?? undefined,
-    car_type: subject.condition,
+  nowMs?: number;
+  /** Tests only. Shopper calls use marketCheckGet. */
+  get?: typeof marketCheckGet;
+  /** Tests only. Shopper calls use loadFairPriceIfAllowed. */
+  loadPrice?: PriceLoader;
+}): Promise<MarketIntelV1Result> {
+  const now = input.nowMs ?? Date.now();
+  const cached = unlockPartials.get(input.listingId);
+  if (cached && cached.expiresAt > now && cached.result) return cached.result;
+  if (!fairPriceSpendEnabled()) {
+    return { card: null, definitiveEmpty: false, upstreamRetry: false };
+  }
+
+  const budget = { left: MARKET_INTEL_CALL_BUDGET };
+  const get = budgetedGet(budget, input.get ?? marketCheckGet);
+  const loadPrice = input.loadPrice ?? loadFairPriceIfAllowed;
+  const today = input.today ?? new Date(now);
+  const empty = (definitiveEmpty: boolean): MarketIntelV1Result => {
+    const result = { card: null, definitiveEmpty, upstreamRetry: false };
+    if (definitiveEmpty) {
+      unlockPartials.set(input.listingId, { expiresAt: now + MARKET_INTEL_PARTIAL_MS, result });
+    }
+    return result;
   };
 
-  let fairPrice: IntelInputs['fairPrice'] = null;
-  let usedComps: Raw | null = null;
-  let usedCompsRadius: number | null = null;
-  let newComps: Raw | null = null;
-  let newCompsRadius: number | null = null;
-  let neovin: Raw | null = null;
-  let incentives: Raw | null = null;
+  try {
+    let subject = cached && cached.expiresAt > now ? cached.subject ?? null : null;
+    if (!subject) {
+      const listing = await get(`listing/car/${encodeURIComponent(input.listingId)}`, {}, 'listing_detail');
+      subject = listing ? subjectFromListing(listing) : null;
+    }
+    if (!subject) return empty(true);
 
-  if (subject.condition === 'used') {
-    if (subject.zip && subject.miles != null) {
-      const quote = await loadFairPriceIfAllowed('unlock_with_agent', {
-        vin: subject.vin,
-        miles: subject.miles,
-        zip: subject.zip,
-        condition: 'used',
-        dealerType: subject.dealerType,
-      }, { strict: true, userId: input.userId, purpose: 'market_intel' });
-      if (quote && quote.price > 0) {
-        fairPrice = { price: quote.price, msrp: quote.msrp ?? null, comparables: quote.comparables ?? [] };
+    const near = subject.latitude != null && subject.longitude != null
+      ? { latitude: subject.latitude, longitude: subject.longitude }
+      : { zip: subject.zip ?? undefined };
+    const milesRange = subject.condition === 'used' && subject.miles != null
+      ? `${Math.max(0, Math.round(subject.miles * (1 - MILES_WINDOWS[0])))}-${Math.round(subject.miles * (1 + MILES_WINDOWS[0]))}`
+      : undefined;
+    const ymmt = {
+      year: subject.year,
+      make: subject.make,
+      model: subject.model,
+      trim: subject.trim ?? undefined,
+      car_type: subject.condition,
+    };
+
+    let fairPrice: IntelInputs['fairPrice'] = cached?.fairKnown ? cached.fairPrice ?? null : null;
+    let usedComps: Raw | null = null;
+    let usedCompsRadius: number | null = null;
+    let newComps: Raw | null = null;
+    let newCompsRadius: number | null = null;
+    let neovin: Raw | null = null;
+    let incentives: Raw | null = null;
+    const fairKnown = cached?.fairKnown === true;
+
+    if (subject.condition === 'used') {
+      if (!fairKnown) {
+        if (!(subject.zip && subject.miles != null) || budget.left <= 0) {
+          unlockPartials.set(input.listingId, {
+            expiresAt: now + MARKET_INTEL_PARTIAL_MS,
+            subject,
+            fairPrice: null,
+            fairKnown: false,
+          });
+          if (!(subject.zip && subject.miles != null)) return empty(true);
+          return { card: null, definitiveEmpty: false, upstreamRetry: false };
+        }
+        budget.left -= 1;
+        const quote = await loadPrice('unlock_with_agent', {
+          vin: subject.vin,
+          miles: subject.miles,
+          zip: subject.zip,
+          condition: 'used',
+          dealerType: subject.dealerType,
+        }, { strict: true, userId: input.userId, purpose: 'market_intel' });
+        if (quote?.fromCache) budget.left += 1;
+        if (quote && quote.price > 0) {
+          fairPrice = { price: quote.price, msrp: quote.msrp ?? null, comparables: quote.comparables ?? [] };
+        }
+      }
+      if (!fairPrice) return empty(true);
+      unlockPartials.set(input.listingId, {
+        expiresAt: now + MARKET_INTEL_PARTIAL_MS,
+        subject,
+        fairPrice,
+        fairKnown: true,
+      });
+      ({ raw: usedComps, radius: usedCompsRadius } = await searchSimilarActive(subject, near, milesRange, get));
+    } else {
+      ({ raw: newComps, radius: newCompsRadius } = await searchSimilarActive(subject, near, undefined, get));
+      const stats = searchPrices(newComps, subject.vin);
+      if (stats.count < MIN_SHOW || stats.median == null) return empty(true);
+      neovin = await get(`decode/car/neovin/${encodeURIComponent(subject.vin)}/specs`, {}, 'neovin');
+      const offerZip = input.profileZip?.match(/^\d{5}/)?.[0] ?? subject.zip;
+      if (budget.left > 0) {
+        budget.left -= 1;
+        try {
+          incentives = obj(await callMcpTool<unknown>('search_oem_incentives_by_zip', {
+            oem: subject.make.toLowerCase(),
+            zip: offerZip ?? undefined,
+            model: subject.model,
+            year: String(subject.year),
+            rows: 10,
+          }, 8000, { strict: true }));
+        } catch (error) {
+          if (upstreamRetryError(error)) throw error;
+          console.error(JSON.stringify({ event: 'mi_v1_incentives_failed', error: error instanceof Error ? error.name : 'error' }));
+          incentives = null;
+        }
       }
     }
-    if (fairPrice) {
-      ({ raw: usedComps, radius: usedCompsRadius } = await searchSimilarActive(subject, near, milesRange));
-    }
-  } else {
-    ({ raw: newComps, radius: newCompsRadius } = await searchSimilarActive(subject, near, undefined));
-    neovin = await marketCheckGet(`decode/car/neovin/${encodeURIComponent(subject.vin)}/specs`, {}, 'neovin');
-    const offerZip = input.profileZip?.match(/^\d{5}/)?.[0] ?? subject.zip;
-    try {
-      incentives = obj(await callMcpTool<unknown>('search_oem_incentives_by_zip', {
-        oem: subject.make.toLowerCase(),
-        zip: offerZip ?? undefined,
-        model: subject.model,
-        year: String(subject.year),
-        rows: 10,
-      }, 8000, { strict: true }));
-    } catch (error) {
-      // No offers is better than a broken card. The line hides.
-      console.error(JSON.stringify({ event: 'mi_v1_incentives_failed', error: error instanceof Error ? error.name : 'error' }));
-      incentives = null;
-    }
-  }
 
-  const cheaper = await marketCheckGet('search/car/active', {
-    ...ymmt,
-    ...near,
-    radius: NEARBY_MILES,
-    miles_range: milesRange,
-    price_range: `1-${subject.price - 1}`,
-    sort_by: 'price',
-    sort_order: 'asc',
-    rows: 3,
-  }, 'search_active');
-  const history = await marketCheckGet(`history/car/${encodeURIComponent(subject.vin)}`, {}, 'car_history');
-  const mds = subject.latitude != null && subject.longitude != null
-    ? await marketCheckGet('mds/car', {
-      vin: subject.vin,
-      latitude: subject.latitude,
-      longitude: subject.longitude,
-      radius: 100,
-      exact: true,
-    }, 'mds')
-    : null;
-  let recents: Raw | null = null;
-  let recentsRadius: number | null = null;
-  for (const radius of [100, 250] as const) {
-    recents = await marketCheckGet('search/car/recents', {
+    const cheaper = await get('search/car/active', {
       ...ymmt,
       ...near,
-      radius,
+      radius: NEARBY_MILES,
       miles_range: milesRange,
-      rows: 0,
-      stats: 'price',
-    }, 'search_recents');
-    recentsRadius = radius;
-    if ((pos(recents?.num_found) ?? 0) >= MIN_SIMILAR) break;
-  }
+      price_range: `1-${subject.price - 1}`,
+      sort_by: 'price',
+      sort_order: 'asc',
+      rows: 3,
+    }, 'search_active');
+    const history = await get(`history/car/${encodeURIComponent(subject.vin)}`, {}, 'car_history');
+    const mds = subject.latitude != null && subject.longitude != null
+      ? await get('mds/car', {
+        vin: subject.vin,
+        latitude: subject.latitude,
+        longitude: subject.longitude,
+        radius: 100,
+        exact: true,
+      }, 'mds')
+      : null;
+    let recents: Raw | null = null;
+    let recentsRadius: number | null = null;
+    for (const radius of [100, 250] as const) {
+      if (budget.left <= 0) break;
+      recents = await get('search/car/recents', {
+        ...ymmt,
+        ...near,
+        radius,
+        miles_range: milesRange,
+        rows: 0,
+        stats: 'price',
+      }, 'search_recents');
+      recentsRadius = radius;
+      if ((pos(recents?.num_found) ?? 0) >= MIN_SIMILAR) break;
+    }
 
-  return buildMarketIntelV1({
-    subject,
-    fairPrice,
-    usedComps,
-    usedCompsRadius,
-    newComps,
-    newCompsRadius,
-    cheaper,
-    cheaperRadius: cheaper ? NEARBY_MILES : null,
-    history,
-    mds,
-    recents,
-    recentsRadius,
-    neovin,
-    incentives,
-    today,
-  });
+    const card = buildMarketIntelV1({
+      subject,
+      fairPrice,
+      usedComps,
+      usedCompsRadius,
+      newComps,
+      newCompsRadius,
+      cheaper,
+      cheaperRadius: cheaper ? NEARBY_MILES : null,
+      history,
+      mds,
+      recents,
+      recentsRadius,
+      neovin,
+      incentives,
+      today,
+    });
+    const shown = card.lines.some((line) => line.key === 'deal_score' && line.shown);
+    const result: MarketIntelV1Result = {
+      card: shown ? card : null,
+      definitiveEmpty: !shown,
+      upstreamRetry: false,
+    };
+    unlockPartials.set(input.listingId, { expiresAt: now + MARKET_INTEL_PARTIAL_MS, result, subject, fairPrice, fairKnown: true });
+    return result;
+  } catch (error) {
+    if (upstreamRetryError(error)) {
+      return { card: null, definitiveEmpty: false, upstreamRetry: true };
+    }
+    throw error;
+  }
 }

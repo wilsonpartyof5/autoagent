@@ -130,6 +130,11 @@ class DemoRepository {
   late final MarketIntelEndpoint _marketIntel;
   final Map<String, MarketIntelBrief> _marketBriefs = {};
   String? _marketIntelFailure;
+  String? _marketIntelFailureAction;
+  bool _marketIntelRecheck = false;
+  int? _lastUnlockBalance;
+  bool _lastUnlockRefunded = false;
+  bool _lastUnlockHeld = false;
 
   /// Live mode, including a live build whose API origin is still empty.
   bool get isLive => _live;
@@ -140,8 +145,20 @@ class DemoRepository {
 
   MarketIntelBrief? marketBriefFor(String listingId) => _marketBriefs[listingId];
 
-  /// Set when a live unlock did not store a fair price and the key came back.
+  /// Shopper copy for the last live unlock that did not store a card.
+  /// The key-back line is used only when the server confirmed the refund.
   String? get marketIntelFailure => _marketIntelFailure;
+
+  String? get marketIntelFailureAction => _marketIntelFailureAction;
+
+  /// True when the next tap should look again and must not spend a key.
+  bool get marketIntelRecheck => _marketIntelRecheck;
+
+  int? get lastUnlockBalance => _lastUnlockBalance;
+
+  bool get lastUnlockRefunded => _lastUnlockRefunded;
+
+  bool get lastUnlockHeld => _lastUnlockHeld;
 
   /// Shown when live mode cannot confirm a key balance. Null in demo mode.
   String? _creditNotice;
@@ -369,7 +386,10 @@ class DemoRepository {
     _accountGeneration++;
     _marketIntelUnlocked.clear();
     _marketBriefs.clear();
-    _marketIntelFailure = null;
+    _clearMarketIntelFailure();
+    _lastUnlockBalance = null;
+    _lastUnlockRefunded = false;
+    _lastUnlockHeld = false;
     _conversationStarted.clear();
     _otdRequested.clear();
     _savedListings.clear();
@@ -402,7 +422,10 @@ class DemoRepository {
     _savedListings.clear();
     _marketIntelUnlocked.clear();
     _marketBriefs.clear();
-    _marketIntelFailure = null;
+    _clearMarketIntelFailure();
+    _lastUnlockBalance = null;
+    _lastUnlockRefunded = false;
+    _lastUnlockHeld = false;
     _conversationStarted.clear();
     _otdRequested.clear();
     _creditLedger.clear();
@@ -741,25 +764,47 @@ class DemoRepository {
     if (read == null || !read.unlocked || read.brief == null) return;
     _marketIntelUnlocked.add(listingId);
     _marketBriefs[listingId] = read.brief!;
-    _marketIntelFailure = null;
+    _clearMarketIntelFailure();
+  }
+
+  /// Looks again at a stored card. Does not spend a key.
+  Future<bool> recheckMarketIntel(String listingId) async {
+    if (!marketIntelSpendEnabled || !_live) {
+      return _marketIntelUnlocked.contains(listingId);
+    }
+    final read = await _marketIntel.read(listingId);
+    if (read != null && read.unlocked && read.brief != null) {
+      _marketIntelUnlocked.add(listingId);
+      _marketBriefs[listingId] = read.brief!;
+      _clearMarketIntelFailure();
+      _lastUnlockHeld = false;
+      return true;
+    }
+    _marketIntelFailure = KeySpend.marketIntelStillChecking;
+    _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+    _marketIntelRecheck = true;
+    return false;
   }
 
   Future<bool> unlockMarketIntel(Listing listing) async {
     if (!marketIntelSpendEnabled) return false;
-    _marketIntelFailure = null;
+    _clearMarketIntelFailure();
     final remote = await _keySpend.spendMarketSave(listing);
     if (_refusesLocalKeySpend(remote)) {
       if (remote.ok) {
         _marketIntelUnlocked.add(listing.id);
         if (remote.brief != null) _marketBriefs[listing.id] = remote.brief!;
         if (remote.balance != null) _creditBalance = remote.balance!;
+        _lastUnlockBalance = remote.balance?.balance;
+        _lastUnlockRefunded = false;
+        _lastUnlockHeld = false;
         await saveCar(listing, source: 'market_intel');
         ProductAnalytics.instance.track(AnalyticsEvents.marketIntelUnlocked, {
           'listing_id': listing.id,
           'source': 'live',
         });
       } else if (_live) {
-        _marketIntelFailure = KeySpend.marketIntelFailed;
+        _rememberUnlockFailure(remote);
       }
       return remote.ok;
     }
@@ -770,6 +815,34 @@ class DemoRepository {
       'source': 'stub',
     });
     return true;
+  }
+
+  void _clearMarketIntelFailure() {
+    _marketIntelFailure = null;
+    _marketIntelFailureAction = null;
+    _marketIntelRecheck = false;
+  }
+
+  void _rememberUnlockFailure(KeySpendResult remote) {
+    _lastUnlockBalance = remote.balance?.balance ?? _lastUnlockBalance;
+    _lastUnlockRefunded = remote.refunded;
+    _lastUnlockHeld = remote.held || remote.errorCode == 'unreachable' || remote.statusCode == 0;
+    if (remote.refunded) {
+      _marketIntelFailure = KeySpend.marketIntelKeyBack;
+      _marketIntelFailureAction = KeySpend.marketIntelRetry;
+      _marketIntelRecheck = false;
+      if (remote.balance != null) _creditBalance = remote.balance!;
+      return;
+    }
+    if (_lastUnlockHeld) {
+      _marketIntelFailure = KeySpend.marketIntelStillChecking;
+      _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+      _marketIntelRecheck = true;
+      return;
+    }
+    _marketIntelFailure = KeySpend.marketIntelNotConfirmed;
+    _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+    _marketIntelRecheck = true;
   }
 
   Future<Deal?> startDealerConversation(

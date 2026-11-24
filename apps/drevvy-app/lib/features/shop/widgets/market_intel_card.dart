@@ -17,6 +17,11 @@ class MarketIntelCard extends StatelessWidget {
     this.brief,
     this.failed = false,
     this.askingPrice,
+    this.isNew = false,
+    this.model,
+    this.failureMessage,
+    this.failureAction,
+    this.onRecheck,
   });
 
   final MarketIntelBrief? brief;
@@ -24,30 +29,44 @@ class MarketIntelCard extends StatelessWidget {
   final bool failed;
   final VoidCallback onUnlock;
   final int? askingPrice;
+  final bool isNew;
+  final String? model;
+  final String? failureMessage;
+  final String? failureAction;
+  final VoidCallback? onRecheck;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.drevvy;
     final text = context.drevvyText;
+    final title = isNew ? 'Typical asking price' : 'Fair price';
+    final count = brief?.similarCount;
+    final modelName = (model ?? '').trim();
+    final subline = isNew && count != null && count > 0 && modelName.isNotEmpty
+        ? 'From $count new ${modelName}s for sale near you.'
+        : null;
     if (failed && !unlocked) {
+      final action = failureAction ?? KeySpend.marketIntelCheckAgain;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Fair price',
-            style: text.label.copyWith(color: colors.muted),
-          ),
+          Text(title, style: text.label.copyWith(color: colors.muted)),
           const SizedBox(height: DrevvySpace.s2),
           GlassCard(
             padding: const EdgeInsets.all(DrevvySpace.s4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(KeySpend.marketIntelFailed, style: text.body),
+                Text(
+                  failureMessage ?? KeySpend.marketIntelNotConfirmed,
+                  style: text.body,
+                ),
                 const SizedBox(height: DrevvySpace.s3),
                 DrevvyPrimaryButton(
-                  label: KeySpend.marketIntelRetry,
-                  onPressed: onUnlock,
+                  label: action,
+                  onPressed: action == KeySpend.marketIntelRetry
+                      ? onUnlock
+                      : (onRecheck ?? onUnlock),
                 ),
               ],
             ),
@@ -59,11 +78,16 @@ class MarketIntelCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Fair price', style: text.label.copyWith(color: colors.muted)),
+        Text(title, style: text.label.copyWith(color: colors.muted)),
+        if (subline != null) ...[
+          const SizedBox(height: DrevvySpace.s1),
+          Text(subline, style: text.callout.copyWith(color: colors.muted)),
+        ],
         const SizedBox(height: DrevvySpace.s2),
         MarketIntelGate(
           unlocked: unlocked,
           onUnlock: onUnlock,
+          teaser: isNew ? KeySpend.typicalPriceTeaser : KeySpend.marketIntelTeaser,
           child: _CardBody(brief: brief, askingPrice: askingPrice),
         ),
       ],

@@ -126,8 +126,8 @@ test('search results do not cache and never return the API key', async () => {
     assert.equal(containsSecret(serialized), false);
     assert.equal(serialized.includes('api_key'), false);
     assert.match(first.vehicles[0]?.thumbnailUrl ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
-    assert.equal(first.vehicles[0]?.photoUrls?.[0], 'https://cdn.dealer.example/tahoe.jpg');
-    assert.equal(first.vehicles[0]?.primaryPhotoUrl, 'https://cdn.dealer.example/tahoe.jpg');
+    assert.deepEqual(first.vehicles[0]?.photoUrls, []);
+    assert.equal(first.vehicles[0]?.primaryPhotoUrl, undefined);
     assert.equal(logs.some((line) => line.includes('"endpoint":"search_active_cars"') && line.includes('"count":1')), true);
     assert.equal(containsSecret(logs.join('\n')), false);
     assert.equal(calls[0]?.url.includes(SECRET), true);

@@ -95,6 +95,8 @@ class MarketIntelBrief {
     this.fairPriceLine,
     this.cheaper = const [],
     this.cheaperCount = 0,
+    this.condition,
+    this.similarCount,
   });
 
   final List<MarketIntelLine> lines;
@@ -108,6 +110,10 @@ class MarketIntelBrief {
   final String? fairPriceLine;
   final List<CheaperCar> cheaper;
   final int cheaperCount;
+  final String? condition;
+  final int? similarCount;
+
+  bool get isNew => condition == 'new';
 
   bool get showsRange =>
       mileMatched &&
@@ -180,6 +186,8 @@ class MarketIntelBrief {
       fairPriceLine: deal?.detail,
       cheaper: cheaper,
       cheaperCount: cheaperCount > 0 ? cheaperCount : cheaper.length,
+      condition: jsonString(card['condition']),
+      similarCount: jsonInt(similar['count']),
     );
   }
 }

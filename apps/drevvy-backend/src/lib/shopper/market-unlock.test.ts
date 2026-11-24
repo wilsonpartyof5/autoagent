@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import test from 'node:test';
+import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { PGlite } from '@electric-sql/pglite';
@@ -21,11 +21,25 @@ const GUARD_SQL = readFileSync(
   join(HERE, '../../../../../supabase/migrations/20261120201000_market_save_lookup_guards.sql'),
   'utf8',
 );
+const HELD_REFUND_SQL = readFileSync(
+  join(HERE, '../../../../../supabase/held/refund_unstored_market_save_append_only.sql'),
+  'utf8',
+);
 
 const SHOPPER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SHOPPER_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const LISTING = 'mc-listing-1';
 const VIN = '1GNSKCKD5RR123456';
+const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+
+before(() => {
+  process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
+});
+
+after(() => {
+  if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+  else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
+});
 
 test('parallel unlocks charge one key and a second shopper cannot read the snapshot', async () => {
   const repo = memoryRepo();
@@ -455,6 +469,126 @@ test('the unlock read is owner scoped and is not the heart save', () => {
   assert.equal(heart.includes('unlock_market_intel_atomic'), false);
 });
 
+test('an append-only credit ledger rejects the applied refund and accepts the held insert', async () => {
+  assert.equal(/update\s+public\.shopper_credit_events/i.test(HELD_REFUND_SQL), false);
+  assert.equal(/delete\s+from\s+public\.shopper_credit_events/i.test(HELD_REFUND_SQL), false);
+  assert.match(HELD_REFUND_SQL, /security definer/i);
+  assert.match(HELD_REFUND_SQL, /set search_path = ''/);
+  assert.match(HELD_REFUND_SQL, /grant execute on function public\.refund_unstored_market_save\(uuid, text\) to service_role/);
+  assert.match(
+    HELD_REFUND_SQL,
+    /revoke truncate, references, trigger on public\.shopper_market_unlocks from authenticated;/,
+  );
+
+  const db = await boot();
+  const listingId = 'mc-append-1';
+  const spendKey = `use:market_save:${listingId}`;
+  try {
+    await seed(db, SHOPPER_A, 0);
+    await db.exec(`
+      update public.shopper_credits
+         set balance = 0, lifetime_used = 1
+       where user_id = '${SHOPPER_A}';
+      insert into public.shopper_credit_events
+        (user_id, event_type, amount, listing_id, spend_kind, key_kind, idempotency_key)
+      values ('${SHOPPER_A}', 'use', 1, '${listingId}', 'market_save', 'market_intel', '${spendKey}');
+    `);
+    await db.exec(`
+      create schema if not exists private;
+      create or replace function private.drevvy_credit_events_guard()
+      returns trigger
+      language plpgsql
+      as $guard$
+      begin
+        if pg_catalog.current_setting('drevvy.allow_credit_event_cleanup', true) = 'on' then
+          if tg_op = 'DELETE' then
+            return old;
+          end if;
+          return new;
+        end if;
+        raise exception 'shopper_credit_events is append-only';
+      end;
+      $guard$;
+      drop trigger if exists drevvy_credit_events_guard on public.shopper_credit_events;
+      create trigger drevvy_credit_events_guard
+        before update or delete on public.shopper_credit_events
+        for each row
+        execute function private.drevvy_credit_events_guard();
+    `);
+
+    await assert.rejects(
+      () => db.query('select * from public.refund_unstored_market_save($1, $2)', [SHOPPER_A, listingId]),
+      /shopper_credit_events is append-only/,
+    );
+    assert.equal(await balance(db, SHOPPER_A), 0);
+    const blocked = await db.query<{ idempotency_key: string; event_type: string }>(
+      `select event_type, idempotency_key
+         from public.shopper_credit_events
+        where user_id = $1 and listing_id = $2
+        order by event_type`,
+      [SHOPPER_A, listingId],
+    );
+    assert.deepEqual(blocked.rows, [{ event_type: 'use', idempotency_key: spendKey }]);
+
+    await db.exec(HELD_REFUND_SQL);
+    const held = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_A, 'ab'.repeat(32), listingId],
+    );
+    assert.equal(held.rows[0]?.hold, true);
+
+    const refunded = await db.query<{ refunded: boolean; balance: number }>(
+      'select * from public.refund_unstored_market_save($1, $2)',
+      [SHOPPER_A, listingId],
+    );
+    assert.equal(refunded.rows[0]?.refunded, true);
+    assert.equal(refunded.rows[0]?.balance, 1);
+    const trail = await db.query<{ event_type: string; idempotency_key: string }>(
+      `select event_type, idempotency_key
+         from public.shopper_credit_events
+        where user_id = $1 and listing_id = $2
+        order by event_type, idempotency_key`,
+      [SHOPPER_A, listingId],
+    );
+    assert.deepEqual(trail.rows.map((row) => row.idempotency_key), [
+      `refund:${spendKey}`,
+      spendKey,
+    ]);
+
+    const again = await db.query<{ refunded: boolean; balance: number }>(
+      'select * from public.refund_unstored_market_save($1, $2)',
+      [SHOPPER_A, listingId],
+    );
+    assert.equal(again.rows[0]?.refunded, false);
+    assert.equal(again.rows[0]?.balance, 1);
+
+    const released = await db.query<{ action: string; hold: boolean }>(
+      'select * from public.claim_market_save_lookup($1, $2, $3)',
+      [SHOPPER_A, 'cd'.repeat(32), listingId],
+    );
+    assert.equal(released.rows[0]?.hold, false);
+
+    const charged = await db.query<{ charged: boolean; unlocked: boolean; balance: number }>(
+      'select * from public.unlock_market_intel_atomic($1, $2, $3, $4::jsonb)',
+      [SHOPPER_A, listingId, VIN, JSON.stringify(usedIntel())],
+    );
+    assert.equal(charged.rows[0]?.unlocked, true);
+    assert.equal(charged.rows[0]?.charged, true);
+    assert.equal(charged.rows[0]?.balance, 0);
+    const kept = await db.query<{ idempotency_key: string }>(
+      `select idempotency_key
+         from public.shopper_credit_events
+        where user_id = $1 and event_type = 'use' and listing_id = $2
+        order by idempotency_key`,
+      [SHOPPER_A, listingId],
+    );
+    assert.equal(kept.rows.some((row) => row.idempotency_key === spendKey), true);
+    assert.equal(kept.rows.some((row) => row.idempotency_key.startsWith(`${spendKey}:after:`)), true);
+  } finally {
+    await db.close();
+  }
+});
+
 function usedIntel(): MarketIntel {
   return {
     fairVehiclePrice: 30100,
@@ -488,6 +622,8 @@ function exclusiveLedger(opening: Map<string, number>): Ledger {
   const balances = new Map(opening);
   const rows = new Map<string, MarketIntel>();
   const events = new Set<string>();
+  const spent = new Set<string>();
+  const refunds = new Set<string>();
   let chain = Promise.resolve();
   const serialized = <T>(work: () => Promise<T>): Promise<T> => {
     const run = chain.then(work);
@@ -508,14 +644,17 @@ function exclusiveLedger(opening: Map<string, number>): Ledger {
       }
       balances.set(userId, balance - 1);
       events.add(key);
+      spent.add(key);
       return { data: [{ consumed: true, already_consumed: false, balance: balance - 1 }], error: null };
     }),
     refund: (userId, listingId) => serialized(async () => {
       const key = `${userId}:${listingId}`;
       const balance = balances.get(userId) ?? 0;
-      if (rows.has(key) || !events.has(key)) {
+      const refundKey = `refund:${key}`;
+      if (rows.has(key) || !events.has(key) || refunds.has(refundKey)) {
         return { data: [{ refunded: false, balance }], error: null };
       }
+      refunds.add(refundKey);
       events.delete(key);
       balances.set(userId, balance + 1);
       return { data: [{ refunded: true, balance: balance + 1 }], error: null };
