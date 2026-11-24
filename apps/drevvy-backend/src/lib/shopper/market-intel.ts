@@ -1,5 +1,7 @@
 import { callMcpTool } from '@/lib/marketcheck/mcp-client';
 import { FairPriceCappedError, fairPriceSpendEnabled, loadFairPriceIfAllowed } from '@/lib/marketcheck/price';
+import { containsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
+import { loadMarketIntelV1, type MarketIntelV1 } from '@/lib/shopper/market-intel-v1';
 import {
   getVehicleDetailMcp,
   searchActiveCarsMcp,
@@ -42,6 +44,8 @@ export type MarketIntel = {
   msrpDiscount: number | null;
   listedPrice: number | null;
   source: 'marketcheck';
+  /** Shopper card from market-intel v1. Absent on unlocks stored before v1. */
+  v1?: MarketIntelV1;
 };
 
 export type ListingFacts = {
@@ -110,7 +114,7 @@ export function marketIntelHasValue(intel: MarketIntel | null | undefined): inte
 }
 
 export function presentMarketIntel(intel: MarketIntel): MarketIntel {
-  return {
+  const presented: MarketIntel = {
     fairVehiclePrice: intel.fairVehiclePrice,
     lowPrice: intel.lowPrice,
     medianPrice: intel.medianPrice,
@@ -124,6 +128,8 @@ export function presentMarketIntel(intel: MarketIntel): MarketIntel {
     listedPrice: intel.listedPrice,
     source: 'marketcheck',
   };
+  if (intel.v1) presented.v1 = scrubMarketIntelV1(intel.v1);
+  return presented;
 }
 
 export function marketIntelFromUnknown(value: unknown): MarketIntel | null {
@@ -143,6 +149,7 @@ export function marketIntelFromUnknown(value: unknown): MarketIntel | null {
     msrpDiscount: whole(record.msrpDiscount),
     listedPrice: positive(record.listedPrice),
     source: 'marketcheck',
+    v1: readStoredV1(record.v1),
   });
   return marketIntelHasValue(intel) ? intel : null;
 }
@@ -188,6 +195,11 @@ export type MarketIntelLookup = {
   intel: MarketIntel | null;
   listingFound: boolean;
   returnedListingId: string | null;
+  /**
+   * False when a miss must not be cached. A missing fair price refunds the
+   * key and the shopper can retry. The 24-hour "no value" mark stays off.
+   */
+  cacheableMiss?: boolean;
 };
 
 export function asMarketIntelLookup(
@@ -200,6 +212,7 @@ export function asMarketIntelLookup(
       intel: lookup.intel ?? null,
       listingFound: lookup.listingFound === true,
       returnedListingId: typeof lookup.returnedListingId === 'string' ? lookup.returnedListingId : null,
+      cacheableMiss: lookup.cacheableMiss,
     };
   }
   if (value && typeof value === 'object' && (value as MarketIntel).source === 'marketcheck') {
@@ -478,4 +491,140 @@ function positive(value: unknown): number | null {
 function nonNegative(value: unknown): number | null {
   const rounded = whole(value);
   return rounded != null && rounded >= 0 ? rounded : null;
+}
+
+function readStoredV1(value: unknown): MarketIntelV1 | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.version !== 'v1' || !Array.isArray(record.lines)) return undefined;
+  return scrubMarketIntelV1(record as MarketIntelV1);
+}
+
+function scrubMarketIntelV1(card: MarketIntelV1): MarketIntelV1 {
+  const raw = JSON.stringify(card);
+  if (!containsSecret(raw)) return card;
+  return JSON.parse(redactSecrets(raw)) as MarketIntelV1;
+}
+
+function shownLine(card: MarketIntelV1, key: MarketIntelV1['lines'][number]['key']) {
+  return card.lines.find((line) => line.key === key && line.shown);
+}
+
+/**
+ * Legacy snapshot the existing unlock function can store, plus the v1 card.
+ *
+ * Used cars need a real fair price. No fair price is not stored: the key is
+ * refunded and the shopper can retry. A displayed range is stored when it is
+ * mile-matched. When the range is hidden, the middle-half percentiles are
+ * stored only so the existing SQL value check can keep the unlock. The client
+ * reads v1.similar and does not draw that hidden range.
+ *
+ * New cars need a shown deal score (the median used as the fair price) and a
+ * real NeoVIN sticker, which is what the existing new-car check requires.
+ * There is no out-the-door number on this object.
+ */
+export function toStoredMarketIntel(card: MarketIntelV1): MarketIntel | null {
+  const deal = shownLine(card, 'deal_score');
+  if (!deal) return null;
+  const value = shownLine(card, 'value_since_new');
+  const sticker = value ? positive(value.source.factorySticker) : null;
+  const listed = card.askingPrice > 0 ? Math.round(card.askingPrice) : null;
+  const time = shownLine(card, 'time_on_lot');
+  const days = time ? nonNegative(time.source.similarMedianDays) : null;
+  const drops = time && time.source.drops != null ? nonNegative(time.source.drops) : null;
+
+  if (card.condition === 'new') {
+    if ((card.fairPrice ?? positive(deal.source.fairPrice) ?? 0) <= 0) return null;
+    if (!sticker || !listed) return null;
+    return presentMarketIntel({
+      fairVehiclePrice: null,
+      lowPrice: null,
+      medianPrice: null,
+      highPrice: null,
+      comparablesCount: card.similar?.count ?? 0,
+      daysListedMedian: days,
+      priceDrops: drops,
+      isNewCar: true,
+      msrp: sticker,
+      msrpDiscount: sticker - listed,
+      listedPrice: listed,
+      source: 'marketcheck',
+      v1: card,
+    });
+  }
+
+  if ((card.fairPrice ?? 0) <= 0) return null;
+  const band = storedUsedBand(card);
+  if (!band) return null;
+  return presentMarketIntel({
+    fairVehiclePrice: Math.round(card.fairPrice!),
+    lowPrice: band.low,
+    medianPrice: band.median,
+    highPrice: band.high,
+    comparablesCount: band.count,
+    daysListedMedian: days,
+    priceDrops: drops,
+    isNewCar: false,
+    msrp: sticker,
+    msrpDiscount: sticker != null && listed != null ? sticker - listed : null,
+    listedPrice: listed,
+    source: 'marketcheck',
+    v1: card,
+  });
+}
+
+function storedUsedBand(card: MarketIntelV1): { low: number; median: number; high: number; count: number } | null {
+  const count = card.similar?.count ?? 0;
+  if (count < 3) return null;
+  const shown = card.similar;
+  if (shown?.mileMatched && shown.low != null && shown.median != null && shown.high != null
+    && shown.low > 0 && shown.low <= shown.median && shown.median <= shown.high) {
+    return { low: shown.low, median: shown.median, high: shown.high, count };
+  }
+  const deal = shownLine(card, 'deal_score');
+  const low = positive(deal?.source.p25);
+  const median = positive(deal?.source.p50);
+  const high = positive(deal?.source.p75);
+  if (low != null && median != null && high != null && low <= median && median <= high) {
+    return { low, median, high, count };
+  }
+  return null;
+}
+
+/**
+ * Shopper unlock loader. Serves v1 lines. A card with no fair price, or a
+ * card the existing unlock check cannot store, comes back as a miss that is
+ * not cached, so the refunded key can be used again.
+ */
+export async function loadShopperMarketIntel(input: {
+  listingId: string;
+  vin: string | null;
+  profileZip: string | null;
+  userId?: string | null;
+}): Promise<MarketIntelLookup> {
+  if (!fairPriceSpendEnabled()) {
+    return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+  }
+  try {
+    const card = await loadMarketIntelV1({
+      listingId: input.listingId,
+      userId: input.userId,
+      profileZip: input.profileZip,
+    });
+    if (!card) {
+      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+    }
+    const intel = card.listingId === input.listingId ? toStoredMarketIntel(card) : null;
+    return {
+      intel,
+      listingFound: true,
+      returnedListingId: card.listingId,
+      cacheableMiss: intel != null,
+    };
+  } catch (error) {
+    if (error instanceof FairPriceCappedError) {
+      return { intel: null, listingFound: false, returnedListingId: null, cacheableMiss: false };
+    }
+    throw error;
+  }
 }

@@ -7,6 +7,7 @@ import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/car_pack.dart';
 import '../models/listing.dart';
+import '../models/market_intel_brief.dart';
 import '../models/rooftop_match.dart';
 import 'purchase_config.dart';
 import 'shopper_session_store.dart';
@@ -21,6 +22,7 @@ class KeySpendResult {
     this.message,
     this.errorCode,
     this.statusCode,
+    this.brief,
   });
 
   final bool ok;
@@ -28,6 +30,7 @@ class KeySpendResult {
   final String? dealId;
   final KeySpendSource source;
   final String? message;
+  final MarketIntelBrief? brief;
 
   /// Server `error.code` when the response included one. Null on success.
   final String? errorCode;
@@ -42,7 +45,8 @@ class KeySpendResult {
       source = KeySpendSource.missing,
       message = null,
       errorCode = null,
-      statusCode = null;
+      statusCode = null,
+      brief = null;
 
   /// Live mode refused a local spend. [ok] is false.
   const KeySpendResult.blocked(this.message, {this.errorCode})
@@ -50,7 +54,8 @@ class KeySpendResult {
       balance = null,
       dealId = null,
       source = KeySpendSource.blocked,
-      statusCode = null;
+      statusCode = null,
+      brief = null;
 }
 
 enum KeySpendSource { live, stub, missing, blocked }
@@ -312,14 +317,22 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     } else if (conversation && payload['id'] is String) {
       dealId = payload['id'] as String;
     }
+    final refused =
+        root['unlocked'] == false ||
+        root['available'] == false ||
+        root['reason'] == 'market_unavailable';
+    final message = root['message'];
     return KeySpendResult(
       ok:
           root['success'] != false &&
           payload['ok'] != false &&
-          payload['success'] != false,
+          payload['success'] != false &&
+          !refused,
       balance: balance,
       dealId: dealId,
       source: KeySpendSource.live,
+      message: message is String ? message : null,
+      brief: MarketIntelBrief.tryParse(root['market']),
     );
   }
 

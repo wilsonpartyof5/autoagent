@@ -204,6 +204,32 @@ test('a shopper with no keys does not call MarketCheck', async () => {
   assert.equal(repo.rows.length, 0);
 });
 
+test('a missing fair price is not cached, so the refunded key can retry', async () => {
+  const repo = memoryRepo();
+  const supabase = memoryKeys(1);
+  const deps = scriptedUnlock(supabase, repo);
+  let loads = 0;
+  deps.loadMarketIntel = async () => {
+    loads += 1;
+    return {
+      intel: null,
+      listingFound: true,
+      returnedListingId: 'mc-listing-1',
+      cacheableMiss: false,
+    };
+  };
+
+  const first = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  const second = await unlockMarketAndSave('shopper-1', { listingId: 'mc-listing-1' }, deps);
+  assert.equal(first.unlocked, false);
+  assert.equal(first.spent, false);
+  assert.equal(first.credits.balance, 1);
+  assert.equal(second.unlocked, false);
+  assert.equal(second.credits.balance, 1);
+  assert.equal(loads, 2);
+  assert.equal(repo.rows.length, 0);
+});
+
 test('a failed lookup returns the key and the retry spends it', async () => {
   const repo = memoryRepo();
   const supabase = memoryKeys(1);

@@ -73,10 +73,21 @@ class MarketIntelGate extends StatelessWidget {
                           horizontal: DrevvySpace.s4,
                           vertical: DrevvySpace.s3,
                         ),
-                        child: Text(
-                          KeySpend.marketIntelTeaser,
-                          style: text.bodyStrong.copyWith(color: colors.ink),
-                          textAlign: TextAlign.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              KeySpend.marketIntelTeaser,
+                              style: text.bodyStrong.copyWith(color: colors.ink),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: DrevvySpace.s2),
+                            Text(
+                              KeySpend.marketIntelHelper,
+                              style: text.callout.copyWith(color: colors.muted),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
                       ),
                     ),

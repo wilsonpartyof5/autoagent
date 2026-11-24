@@ -252,11 +252,30 @@ class ListingMedia extends Equatable {
   List<Object?> get props => [photoLinks];
 
   factory ListingMedia.fromJson(Map<String, dynamic> json) {
-    final cached = jsonStringList(json['photo_links_cached']);
+    final cached = _safePhotos(jsonStringList(json['photo_links_cached']));
     return ListingMedia(
-      photoLinks: jsonStringList(json['photo_links']),
+      photoLinks: _safePhotos(jsonStringList(json['photo_links'])),
       photoLinksCached: cached.isEmpty ? null : cached,
     );
+  }
+
+  /// Drops photo URLs that carry a key, token, or secret query param.
+  static List<String> _safePhotos(List<String> urls) {
+    return [
+      for (final url in urls)
+        if (_photoKeepsKeyOff(url)) url,
+    ];
+  }
+
+  static bool _photoKeepsKeyOff(String url) {
+    final parsed = Uri.tryParse(url);
+    if (parsed == null) return false;
+    for (final key in parsed.queryParameters.keys) {
+      if (RegExp(r'key|token|secret|auth', caseSensitive: false).hasMatch(key)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 

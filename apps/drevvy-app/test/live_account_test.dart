@@ -105,6 +105,95 @@ class _Saved extends SavedCarsEndpoint {
   }
 }
 
+class _BriefSpend extends KeySpendEndpoint {
+  int marketSaves = 0;
+
+  @override
+  Future<KeySpendResult> requestOtdNumber(
+    Listing listing, {
+    String? note,
+  }) async {
+    return const KeySpendResult.blocked('unused');
+  }
+
+  @override
+  Future<KeySpendResult> spendMarketSave(Listing listing) async {
+    marketSaves += 1;
+    final parsed = MarketSaveResponse.tryParse(
+      jsonEncode({
+        'success': true,
+        'spent': true,
+        'available': true,
+        'unlocked': true,
+        'reason': 'ok',
+        'credits': {'balance': 1, 'canAdd': true, 'reason': 'ok'},
+        'data': {'listingId': listing.id},
+        'market': {
+          'version': 'v1',
+          'lines': [
+            {
+              'key': 'deal_score',
+              'title': 'Deal score',
+              'shown': true,
+              'text': 'Fair: about the same as the fair price',
+              'detail': 'Fair price \$18,990.',
+              'tone': 'neutral',
+            },
+          ],
+        },
+      }),
+    );
+    return KeySpendResult(
+      ok: true,
+      source: KeySpendSource.live,
+      balance: const CarCreditBalance.withBalance(1),
+      brief: parsed?.market,
+    );
+  }
+
+  @override
+  Future<KeySpendResult> startConversation({
+    required Listing listing,
+    required RooftopMatch match,
+    String? templateId,
+    String? message,
+  }) async {
+    return const KeySpendResult.blocked('unused');
+  }
+}
+
+class _RefusedSpend extends KeySpendEndpoint {
+  int marketSaves = 0;
+
+  @override
+  Future<KeySpendResult> requestOtdNumber(
+    Listing listing, {
+    String? note,
+  }) async {
+    return const KeySpendResult.blocked('unused');
+  }
+
+  @override
+  Future<KeySpendResult> spendMarketSave(Listing listing) async {
+    marketSaves += 1;
+    return const KeySpendResult(
+      ok: false,
+      source: KeySpendSource.live,
+      message: "We couldn't load this. Your key came back. Try again.",
+    );
+  }
+
+  @override
+  Future<KeySpendResult> startConversation({
+    required Listing listing,
+    required RooftopMatch match,
+    String? templateId,
+    String? message,
+  }) async {
+    return const KeySpendResult.blocked('unused');
+  }
+}
+
 class _Spend extends KeySpendEndpoint {
   int marketSaves = 0;
 
@@ -337,8 +426,86 @@ void main() {
       expect(parsed?.balance, 2);
       expect(parsed?.canAdd, isTrue);
       expect(parsed?.reason, 'ok');
+      expect(parsed?.market, isNull);
+      expect(parsed?.refused, isFalse);
     },
   );
+
+  test('the market-save parser reads a v1 brief and a refused unlock', () {
+    final parsed = MarketSaveResponse.tryParse(
+      jsonEncode({
+        'success': true,
+        'spent': false,
+        'available': false,
+        'unlocked': false,
+        'reason': 'market_unavailable',
+        'message': 'Market intelligence is not available for this listing. A key was not used.',
+        'credits': {'balance': 2, 'canAdd': true, 'reason': 'ok'},
+        'data': {'listingId': 'mc-1'},
+        'market': {
+          'v1': {
+            'version': 'v1',
+            'fairPrice': 25151,
+            'askingPrice': 26724,
+            'similar': {
+              'low': 23779,
+              'high': 29452,
+              'mileMatched': true,
+            },
+            'lines': [
+              {
+                'key': 'deal_score',
+                'title': 'Deal score',
+                'shown': true,
+                'text': 'A bit high: \$1,573 over the fair price',
+                'detail': 'Fair price \$25,151. Most cars like this: \$23,779 to \$29,452.',
+                'tone': 'caution',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(parsed?.refused, isTrue);
+    expect(parsed?.market?.verdict, contains('A bit high'));
+    expect(parsed?.market?.showsRange, isTrue);
+    expect(parsed?.market?.fairPrice, 25151);
+  });
+
+  test('a live sim flag spends a key and stores the brief', () async {
+    final spend = _BriefSpend();
+    final saved = _Saved([]);
+    final repo = DemoRepository(
+      config: _live,
+      keySpend: spend,
+      savedCars: saved,
+      miSpendEnabled: true,
+      networkDelay: Duration.zero,
+    );
+
+    expect(repo.marketIntelSpendEnabled, isTrue);
+    expect(await repo.unlockMarketIntel(_civic()), isTrue);
+    expect(spend.marketSaves, 1);
+    expect(repo.hasUnlockedMarketIntel('mc-1'), isTrue);
+    expect(repo.marketBriefFor('mc-1')?.verdict, contains('Fair'));
+  });
+
+  test('a refused live unlock keeps the key path retryable', () async {
+    final spend = _RefusedSpend();
+    final repo = DemoRepository(
+      config: _live,
+      keySpend: spend,
+      miSpendEnabled: true,
+      networkDelay: Duration.zero,
+    );
+
+    expect(await repo.unlockMarketIntel(_civic()), isFalse);
+    expect(repo.marketIntelFailure, contains('key came back'));
+    expect(repo.hasUnlockedMarketIntel('mc-1'), isFalse);
+    expect(await repo.unlockMarketIntel(_civic()), isFalse);
+    expect(spend.marketSaves, 2);
+  });
 
   test(
     'sign-out clears the live account instead of leaving it in place',

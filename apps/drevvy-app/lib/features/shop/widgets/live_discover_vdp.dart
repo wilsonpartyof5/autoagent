@@ -26,6 +26,7 @@ class LiveDiscoverVdp extends StatelessWidget {
     this.onAskDealer,
     this.asking = false,
     this.askMessage,
+    this.fairPrice,
   });
 
   final bool isLoading;
@@ -41,6 +42,9 @@ class LiveDiscoverVdp extends StatelessWidget {
 
   final bool asking;
   final String? askMessage;
+
+  /// Fair-price card. Null keeps the sentence that no key is spent.
+  final Widget? fairPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +67,7 @@ class LiveDiscoverVdp extends StatelessWidget {
               onAskDealer: onAskDealer,
               asking: asking,
               askMessage: askMessage,
+              fairPrice: fairPrice,
             ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
@@ -128,6 +133,7 @@ class _Body extends StatelessWidget {
     required this.onAskDealer,
     required this.asking,
     required this.askMessage,
+    required this.fairPrice,
   });
 
   final Listing listing;
@@ -135,6 +141,7 @@ class _Body extends StatelessWidget {
   final VoidCallback? onAskDealer;
   final bool asking;
   final String? askMessage;
+  final Widget? fairPrice;
 
   static const networkUnavailableMessage =
       'Dealer network is unavailable. Drevvy is not guessing in-network or off-network.';
@@ -198,12 +205,16 @@ class _Body extends StatelessWidget {
           ),
         ],
         const SizedBox(height: DrevvySpace.s6),
-        Text('Marketplace Intelligence', style: text.title),
-        const SizedBox(height: DrevvySpace.s2),
-        Text(
-          'Fair price is not part of this listing. Drevvy is not estimating one. No key is spent.',
-          style: text.body.copyWith(color: colors.muted),
-        ),
+        if (fairPrice != null)
+          fairPrice!
+        else ...[
+          Text('Marketplace Intelligence', style: text.title),
+          const SizedBox(height: DrevvySpace.s2),
+          Text(
+            'Fair price is not part of this listing. Drevvy is not estimating one. No key is spent.',
+            style: text.body.copyWith(color: colors.muted),
+          ),
+        ],
         const SizedBox(height: DrevvySpace.s6),
         Text('Key specs', style: text.title),
         const SizedBox(height: DrevvySpace.s2),

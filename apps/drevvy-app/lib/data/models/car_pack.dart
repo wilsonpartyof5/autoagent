@@ -19,15 +19,20 @@ class KeySpend {
 
   static const marketIntelCta = 'Unlock market intel & save';
   static const marketIntelUse = 'Uses 1 key';
-  static const marketIntelNote =
-      'Unlocks a price brief and saves this listing. This key is not refunded.';
+  static const marketIntelNote = 'One key unlocks this and saves the car.';
 
-  /// VDP teaser on the blurred Marketplace Intelligence card.
-  static const marketIntelTeaser =
-      'See fair price, similar cars, days listed, price drops · 1 key';
+  /// VDP teaser on the blurred fair-price card.
+  static const marketIntelTeaser = 'See the fair price · 1 key';
+
+  static const marketIntelHelper = 'One key unlocks this and saves the car.';
 
   /// Shown after Key A spends and the listing is saved.
-  static const marketIntelUnlockedConfirm = 'Fair price unlocked · Car saved.';
+  static const marketIntelUnlockedConfirm = 'Fair price saved · car saved';
+
+  static const marketIntelFailed =
+      "We couldn't load this. Your key came back. Try again.";
+
+  static const marketIntelRetry = 'Try again';
 
   static const conversationCta = 'Text the dealer · 1 key';
   static const conversationUse = 'Uses 1 key';

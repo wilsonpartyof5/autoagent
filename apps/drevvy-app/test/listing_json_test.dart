@@ -32,6 +32,23 @@ void main() {
     expect(listing.carLocation?.city, 'Springfield');
   });
 
+  test('photo links that carry a key are dropped', () {
+    final listing = Listing.fromJson({
+      'id': 'mc_photo',
+      'price': 10000,
+      'build': {'year': 2020, 'make': 'Honda', 'model': 'Civic'},
+      'media': {
+        'photo_links': [
+          'https://cdn.example/civic.jpg',
+          'https://api.marketcheck.com/v2/image?api_key=secret-key',
+          'https://cdn.example/token.jpg?token=abc',
+        ],
+      },
+    });
+
+    expect(listing.media.photoLinks, ['https://cdn.example/civic.jpg']);
+  });
+
   test('a decimal price rounds and does not throw', () {
     final listing = Listing.fromJson({
       'id': 'mc_rav',

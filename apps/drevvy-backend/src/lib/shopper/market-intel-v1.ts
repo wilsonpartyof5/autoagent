@@ -72,6 +72,8 @@ export type MarketIntelV1 = {
     median: number | null;
     high: number | null;
     fairInsideRange: boolean | null;
+    /** True only when every car in the range was limited by this car's miles. */
+    mileMatched: boolean;
   } | null;
   lines: IntelLine[];
 };
@@ -109,6 +111,8 @@ export type IntelInputs = {
   newComps: Raw | null;
   newCompsRadius: number | null;
   cheaper: Raw | null;
+  /** Radius actually sent for the cheaper-nearby search. Null when that search did not run. */
+  cheaperRadius: number | null;
   history: unknown;
   mds: Raw | null;
   recents: Raw | null;
@@ -165,9 +169,6 @@ function median(values: number[]): number | null {
   if (values.length === 0) return null;
   return percentile([...values].sort((a, b) => a - b), 0.5);
 }
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
 function shortDate(iso: string): string {
   const d = new Date(`${iso}T12:00:00Z`);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -200,10 +201,6 @@ export function searchPrices(raw: Raw | null, vin: string): {
   // Not every match came back, so this count and these stats may include this car.
   return { ...st, count: found, p10: pos(pct?.['10.0']), p90: pos(pct?.['90.0']), exact: false, days };
 }
-function radiusText(miles: number | null): string {
-  return miles == null ? 'across the US' : `within ${commas(miles)} miles`;
-}
-
 export function subjectFromListing(raw: Raw): Subject | null {
   const build = obj(raw.build) ?? {};
   const dealer = obj(raw.dealer) ?? {};
@@ -289,16 +286,33 @@ export function pickSimilar(subject: Subject, comps: FairPriceComp[]): {
   };
 }
 
-function dealScore(asking: number, reference: number, against: string): { label: string; tone: Tone; diff: number } {
+/**
+ * Shopper badge. Cutoffs stay FAIR_BAND / HIGH_BAND from the patch.
+ * The words compare the asking price only to the fair price.
+ */
+function dealScore(asking: number, reference: number): { label: string; tone: Tone; diff: number } {
   const diff = asking - reference;
   const share = diff / reference;
-  if (share <= -FAIR_BAND) return { label: `Good price: ${money(-diff)} under ${against}`, tone: 'good', diff };
+  if (share <= -FAIR_BAND) return { label: `Great: ${money(-diff)} under the fair price`, tone: 'good', diff };
   if (share < FAIR_BAND) {
-    const side = diff === 0 ? 'right at' : diff < 0 ? `${money(-diff)} under` : `${money(diff)} over`;
-    return { label: `Fair price: ${side} ${against}`, tone: 'neutral', diff };
+    if (diff === 0) return { label: 'Fair: right at the fair price', tone: 'neutral', diff };
+    return { label: 'Fair: about the same as the fair price', tone: 'neutral', diff };
   }
-  if (share <= HIGH_BAND) return { label: `A bit high: ${money(diff)} over ${against}`, tone: 'caution', diff };
-  return { label: `High: ${money(diff)} over ${against}`, tone: 'caution', diff };
+  if (share <= HIGH_BAND) return { label: `A bit high: ${money(diff)} over the fair price`, tone: 'caution', diff };
+  return { label: `High: ${money(diff)} over the fair price`, tone: 'caution', diff };
+}
+
+function mileWindow(subjectMiles: number): number {
+  return subjectMiles * MILES_WINDOWS[MILES_WINDOWS.length - 1];
+}
+
+/** A range is mile-matched only when this car has miles and every car in it is inside the miles window. */
+function rangeIsMileMatched(subject: Subject, useLive: boolean, picked: FairPriceComp[]): boolean {
+  if (subject.miles == null) return false;
+  if (useLive) return true;
+  if (picked.length === 0) return false;
+  const window = mileWindow(subject.miles);
+  return picked.every((comp) => comp.miles != null && Math.abs(comp.miles - subject.miles!) <= window);
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +464,12 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
           high = null;
         }
       }
+      const mileMatched = rangeIsMileMatched(s, useLive, pick.picked);
+      if (!mileMatched) {
+        band = 'hidden';
+        low = null;
+        high = null;
+      }
       const mid = q.p50;
       similar = {
         count,
@@ -459,22 +479,24 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         median: mid,
         high,
         fairInsideRange: low != null && high != null ? true : band === 'hidden' && q.p25 != null ? false : null,
+        mileMatched,
       };
       similarDays = useLive && live!.days != null
         ? live!.days
         : median(pick.picked
           .map((comp) => comp.daysOnMarket)
           .filter((days): days is number => days != null));
-      const score = dealScore(s.price, fair.price, 'fair price');
+      const score = dealScore(s.price, fair.price);
+      const rangeLine = low != null && high != null
+        ? ` Most cars like this: ${money(low)} to ${money(high)}.`
+        : '';
       lines.push({
         key: 'deal_score',
         title: 'Deal score',
         shown: true,
         text: score.label,
         tone: score.tone,
-        detail: low != null && high != null
-          ? `Fair price ${money(fair.price)}. Most similar cars list for ${money(low)} to ${money(high)} (${count} ${plural(count, 'car', 'cars')} like this ${radiusText(searchedMiles)}).`
-          : `Fair price ${money(fair.price)}.`,
+        detail: `Fair price ${money(fair.price)}.${rangeLine}`,
         source: {
           fairPrice: fair.price,
           askingPrice: s.price,
@@ -483,6 +505,7 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
           similarRule: rule,
           searchedMiles,
           liveSearchExact: useLive ? live!.exact : null,
+          mileMatched,
           rangeBand: band,
           rangeLow: low,
           rangeMedian: mid,
@@ -498,14 +521,13 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         lines.push(hidden('miles_vs_similar', 'Miles', 'Not enough same-year, same-trim cars with miles.', { count: miles.length }));
       } else {
         const share = (s.miles - typical) / typical;
-        const label = share > 0.15 ? 'More miles than most' : share < -0.15 ? 'Fewer miles than most' : 'About normal miles';
+        const label = share > 0.15 ? 'More than most' : share < -0.15 ? 'Fewer than most' : 'About the same';
         lines.push({
           key: 'miles_vs_similar',
           title: 'Miles',
           shown: true,
-          text: `${label}: ${commas(s.miles)} vs about ${commas(typical)} on similar cars`,
+          text: `${label}: ${commas(s.miles)} vs about ${commas(typical)}`,
           tone: share > 0.15 ? 'caution' : share < -0.15 ? 'good' : 'neutral',
-          detail: `Based on ${miles.length} other ${s.year} ${s.model}${s.trim ? ` ${s.trim}` : ''} for sale that MarketCheck used to price this car.`,
           source: { subjectMiles: s.miles, medianMiles: typical, count: miles.length },
         });
       }
@@ -519,31 +541,42 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         count: st.count,
         searchedMiles: input.newCompsRadius,
         rule: 'same year, same trim, new',
-        low: st.low,
+        // New cars are not mile-matched, so the range stays hidden.
+        low: null,
         median: st.median,
-        high: st.high,
+        high: null,
         fairInsideRange: null,
+        mileMatched: false,
       };
       similarDays = st.days;
-      const score = dealScore(s.price, st.median, 'similar new cars');
+      const score = dealScore(s.price, st.median);
       lines.push({
         key: 'deal_score',
         title: 'Deal score',
         shown: true,
         text: score.label,
         tone: score.tone,
-        detail: st.low != null && st.high != null
-          ? `Most new ones like this list for ${money(st.low)} to ${money(st.high)} (${st.count} cars, ${radiusText(input.newCompsRadius)}).`
-          : null,
-        source: { askingPrice: s.price, ...st, searchedMiles: input.newCompsRadius },
+        detail: `Fair price ${money(st.median)}.`,
+        source: {
+          askingPrice: s.price,
+          fairPrice: st.median,
+          ...st,
+          mileMatched: false,
+          rangeLow: null,
+          rangeHigh: null,
+          searchedMiles: input.newCompsRadius,
+        },
       });
     }
     lines.push(hidden('miles_vs_similar', 'Miles', 'New car.'));
   }
 
-  // 2. Same car cheaper nearby (real search, within 50 miles).
-  if (!input.cheaper) {
-    lines.push(hidden('cheaper_nearby', 'Cheaper nearby', 'Search did not run or returned nothing.'));
+  // 2. Same car cheaper nearby. The radius is the one this search actually used.
+  const cheaperRadius = input.cheaperRadius != null && input.cheaperRadius > 0
+    ? Math.round(input.cheaperRadius)
+    : null;
+  if (!input.cheaper || cheaperRadius == null) {
+    lines.push(hidden('cheaper_nearby', 'Cheaper nearby', 'Search did not run or returned no radius.'));
   } else {
     const list = (Array.isArray(input.cheaper.listings) ? input.cheaper.listings : [])
       .map(obj)
@@ -551,90 +584,105 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         && (pos(row.price) ?? 0) < s.price);
     const count = list.length === 0 ? 0 : Math.max(pos(input.cheaper.num_found) ?? 0, list.length);
     const cheapest = list[0];
-    const rows = list.slice(0, 3).map((row) => ({
-      price: pos(row.price),
-      miles: pos(row.miles),
-      distance: num(row.dist),
-      dealer: str(obj(row.dealer)?.name),
-    }));
+    const rows = list.map((row) => {
+      const build = obj(row.build) ?? {};
+      return {
+        year: pos(build.year),
+        make: str(build.make) ?? s.make,
+        model: str(build.model) ?? s.model,
+        trim: str(build.trim),
+        price: pos(row.price),
+        miles: pos(row.miles),
+        distance: num(row.dist),
+      };
+    });
+    const from = cheapest ? pos(cheapest.price) : null;
+    const text = count === 0 || from == null
+      ? `None cheaper within ${cheaperRadius} miles.`
+      : count === 1
+        ? `1 like this within ${cheaperRadius} miles, at ${money(from)}`
+        : `${count} like this within ${cheaperRadius} miles, from ${money(from)}`;
     lines.push({
       key: 'cheaper_nearby',
       title: 'Cheaper nearby',
       shown: true,
-      text: count === 0
-        ? `No cheaper ${s.condition === 'new' ? 'new ' : ''}${s.model}${s.trim ? ` ${s.trim}` : ''} like this within ${NEARBY_MILES} miles of this one`
-        : `${count} ${plural(count, 'car', 'cars')} like this for less within ${NEARBY_MILES} miles of this one, from ${money(pos(cheapest!.price)!)}`,
+      text,
       tone: count === 0 ? 'good' : 'caution',
       detail: rows.length
-        ? rows.map((row) => `${money(row.price ?? 0)}${row.miles ? `, ${commas(row.miles)} miles` : ''}${row.distance != null ? `, ${Math.round(row.distance)} mi away` : ''}${row.dealer ? ` (${row.dealer})` : ''}`).join('; ')
+        ? rows.map((row) => {
+          const name = [row.year, row.make, row.model, row.trim].filter(Boolean).join(' ');
+          const milesBit = row.miles != null ? `${commas(row.miles)} mi` : null;
+          const away = row.distance != null ? `${Math.round(row.distance)} mi away` : null;
+          return [name, milesBit, away, row.price != null ? money(row.price) : null].filter(Boolean).join(' · ');
+        }).join('; ')
         : null,
-      source: { numFound: input.cheaper.num_found, rows },
+      source: { numFound: input.cheaper.num_found, radius: cheaperRadius, rows },
     });
   }
 
-  // 4. How fast these sell (market days supply).
+  // 4. How fast these sell. Cutoffs stay 30 and 60. Shopper copy never says "days of supply".
   const mds = num(input.mds?.mds);
   const active = num(input.mds?.total_active_cars_for_ymmt);
   const left45 = num(input.mds?.total_cars_sold_in_last_45_days);
   if (mds == null || mds <= 0 || !active) {
-    lines.push(hidden('how_fast', 'How fast these sell', 'MarketCheck returned no days-of-supply for this car near here.', { mds, active, left45 }));
+    lines.push(hidden('how_fast', 'How fast they sell', 'MarketCheck returned no sell-speed number for this car near here.', { mds, active, left45 }));
   } else {
-    const label = mds <= 30 ? 'Sells fast' : mds <= 60 ? 'Normal pace' : 'Slow seller';
+    const days = Math.round(mds);
+    const text = mds <= 30
+      ? `Fast: about ${days} days. They go quickly.`
+      : mds <= 60
+        ? `About ${days} days to sell.`
+        : `Slow: about ${days} days. You have time.`;
     lines.push({
       key: 'how_fast',
-      title: 'How fast these sell',
+      title: 'How fast they sell',
       shown: true,
-      text: `${label}: about ${Math.round(mds)} days of supply near you`,
+      text,
       tone: mds <= 30 ? 'caution' : mds <= 60 ? 'neutral' : 'good',
-      detail: `Same exact build within 100 miles: ${active} for sale now, ${left45 ?? 0} left the market in the last 45 days.`,
       source: { mds, totalActive: active, leftMarket45Days: left45 },
     });
   }
 
-  // 5. Similar cars that left the market (last 90 days). Last listed price, not a sold price.
-  const rec = statsPrice(input.recents);
-  if (rec.count < MIN_SHOW || rec.median == null) {
-    lines.push(hidden('left_market', 'Similar cars that left the market', 'Fewer than 3 similar cars left the market nearby in 90 days.', { count: rec.count }));
+  // 5. Similar cars that left the market (last 90 days). Last asking price, never a sale price.
+  // Fewer than MIN_SHOW still hides, matching the patch cutoff.
+  const rec = input.recents ? statsPrice(input.recents) : { count: 0, low: null, median: null, high: null };
+  if (!input.recents || rec.count < MIN_SHOW) {
+    lines.push(hidden('left_market', 'Left the market', 'Fewer than 3 similar cars left the market nearby in 90 days.', { count: rec.count }));
   } else {
+    const dollars = rec.median != null ? ` Last asking prices were about ${money(rec.median)}.` : '';
     lines.push({
       key: 'left_market',
-      title: 'Similar cars that left the market',
+      title: 'Left the market',
       shown: true,
-      text: `${rec.count} similar cars left the market in the last 90 days. Their last asking price was about ${money(rec.median)}.`,
+      text: `${rec.count} similar cars left the market in the last 90 days.${dollars} These are not final sale prices.`,
       tone: 'neutral',
-      detail: `${radiusText(input.recentsRadius)}. Last listed prices, not final sale prices.`,
       source: { count: rec.count, median: rec.median, p25: rec.low, p75: rec.high, searchedMiles: input.recentsRadius },
     });
   }
 
-  // 6. Time on the lot + price drops at this dealer.
+  // 6. Days and price cuts for this listing at this dealer only.
+  // dosActive is the current run here. A total-market day count is not this listing.
   const drops = dropsAtThisDealer(s, input.history, input.today);
-  if (s.dosActive == null && s.domActive == null) {
-    lines.push(hidden('time_on_lot', 'Time on the lot', 'MarketCheck returned no days on market for this listing.'));
+  if (s.dosActive == null) {
+    lines.push(hidden('time_on_lot', 'This dealer', 'MarketCheck returned no days at this dealer for this listing.'));
   } else {
-    const days = s.dosActive ?? s.domActive!;
-    const parts = [`At this dealer ${days} ${plural(days, 'day', 'days')}.`];
-    if (s.domActive != null && s.dosActive != null && s.domActive > s.dosActive + 7) {
-      parts.push(`For sale ${s.domActive} days in total.`);
-    }
-    if (drops.drops != null) {
-      const since = drops.partial && drops.coveredSince ? ` since ${shortDate(drops.coveredSince)}` : '';
-      if (drops.drops === 0) {
-        parts.push(`No price cuts seen here${since}.`);
-      } else {
-        const net = (drops.firstPrice ?? s.price) - s.price;
-        const raised = drops.raises > 0 ? ` and raised ${drops.raises} ${plural(drops.raises, 'time', 'times')}` : '';
-        parts.push(`Price cut ${drops.drops} ${plural(drops.drops, 'time', 'times')}${raised} here${since}.`
-          + (net > 0 ? ` Now ${money(net)} below its first price here (${money(drops.firstPrice!)}).` : ''));
-      }
+    const days = Math.max(0, Math.round(s.dosActive));
+    const dayWord = days === 1 ? 'day' : 'days';
+    let text = `Listed ${days} ${dayWord} ago.`;
+    if (drops.drops === 0) {
+      text = `Listed ${days} ${dayWord} ago. No price cuts yet.`;
+    } else if (drops.drops != null && drops.drops > 0) {
+      const cut = drops.drops === 1 ? 'Price cut 1 time.' : `Price cut ${drops.drops} times.`;
+      const net = (drops.firstPrice ?? s.price) - s.price;
+      const below = net > 0 ? ` Now ${money(net)} below the first price.` : '';
+      text = `On the lot ${days} ${dayWord}. ${cut}${below}`;
     }
     lines.push({
       key: 'time_on_lot',
-      title: 'Time on the lot',
+      title: 'This dealer',
       shown: true,
-      text: parts.join(' '),
+      text,
       tone: days >= 60 || (drops.drops ?? 0) > 0 ? 'good' : 'neutral',
-      detail: similarDays != null ? `Similar cars have been for sale about ${similarDays} days.` : null,
       source: {
         dosActive: s.dosActive,
         domActive: s.domActive,
@@ -656,30 +704,25 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
     ? input.fairPrice?.msrp ?? null
     : pos(input.neovin?.combined_msrp) ?? pos(input.neovin?.msrp);
   if (sticker == null) {
-    lines.push(hidden('value_since_new', s.condition === 'used' ? 'Value since new' : 'Price vs sticker', 'MarketCheck returned no factory sticker for this VIN.'));
+    lines.push(hidden('value_since_new', s.condition === 'used' ? 'When it was new' : 'Price vs sticker', 'MarketCheck returned no factory sticker for this VIN.'));
   } else if (s.condition === 'used') {
-    if (sticker <= s.price) {
-      lines.push(hidden('value_since_new', 'Value since new', 'Sticker is not above the asking price, so the number would mislead.', { sticker }));
-    } else {
-      const lost = sticker - s.price;
-      lines.push({
-        key: 'value_since_new',
-        title: 'Value since new',
-        shown: true,
-        text: `Cost about ${money(sticker)} new. This one asks ${money(lost)} less (${Math.round((lost / sticker) * 100)}% less).`,
-        tone: 'neutral',
-        source: { factorySticker: sticker, from: 'predict_price_with_comparables.msrp', askingPrice: s.price },
-      });
-    }
+    lines.push({
+      key: 'value_since_new',
+      title: 'When it was new',
+      shown: true,
+      text: `It cost about ${money(sticker)} new. They ask ${money(s.price)} now.`,
+      tone: 'neutral',
+      source: { factorySticker: sticker, from: 'predict_price_with_comparables.msrp', askingPrice: s.price },
+    });
   } else {
     const diff = sticker - s.price;
     lines.push({
       key: 'value_since_new',
       title: 'Price vs sticker',
       shown: true,
-      text: diff > 0 ? `${money(diff)} below the factory sticker of ${money(sticker)}`
-        : diff < 0 ? `${money(-diff)} above the factory sticker of ${money(sticker)}`
-        : `Right at the factory sticker of ${money(sticker)}`,
+      text: diff > 0 ? `${money(diff)} under the sticker of ${money(sticker)}`
+        : diff < 0 ? `${money(-diff)} over the sticker of ${money(sticker)}`
+        : `At the sticker price of ${money(sticker)}`,
       tone: diff > 0 ? 'good' : diff < 0 ? 'caution' : 'neutral',
       source: { factorySticker: sticker, from: 'neovin.combined_msrp', askingPrice: s.price },
     });
@@ -697,7 +740,7 @@ export function buildMarketIntelV1(input: IntelInputs): MarketIntelV1 {
         key: 'maker_deals',
         title: 'Maker deals',
         shown: true,
-        text: `${offers.length} ${plural(offers.length, 'offer', 'offers')} from ${s.make} near you`,
+        text: `${s.make} deals near you`,
         tone: 'good',
         detail: offers.slice(0, 3).map((offer) => offer.text).join('; '),
         source: { offers },
@@ -739,8 +782,14 @@ function readOffers(raw: Raw | null, s: Subject, today: Date): { text: string; v
     if (type === 'lease' && pos(amount?.monthly)) bits.push(`Lease ${money(pos(amount!.monthly)!)} a month for ${pos(amount!.term)} months, ${money(pos(offer.due_at_signing) ?? 0)} due at signing`);
     else if (type === 'finance' && num(amount?.apr) != null) bits.push(`${num(amount!.apr)}% APR for ${pos(amount!.term)} months`);
     if (cash) bits.push(`${money(cash)} cash back`);
-    if (bits.length === 0) bits.push(str(Array.isArray(offer.titles) ? offer.titles[0] : null) ?? type);
-    out.push({ text: `${bits.join(', ')} (ends ${through})`, validThrough: through, type });
+    const name = str(Array.isArray(offer.titles) ? offer.titles[0] : null)
+      ?? (type === 'lease' ? 'Lease' : type === 'finance' ? 'Finance' : 'Offer');
+    const terms = bits.filter((bit) => bit !== name);
+    const endLabel = shortDate(through);
+    const text = terms.length
+      ? `${name}: ${terms.join(', ')}. Ends ${endLabel}.`
+      : `${name}. Ends ${endLabel}.`;
+    out.push({ text, validThrough: through, type });
   }
   return out;
 }
@@ -894,6 +943,7 @@ export async function loadMarketIntelV1(input: {
     newComps,
     newCompsRadius,
     cheaper,
+    cheaperRadius: cheaper ? NEARBY_MILES : null,
     history,
     mds,
     recents,

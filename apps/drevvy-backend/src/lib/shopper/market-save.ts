@@ -12,7 +12,7 @@ import {
 } from './market-lookup-guard';
 import {
   asMarketIntelLookup,
-  loadMarketIntelFromMarketCheck,
+  loadShopperMarketIntel,
   marketIntelHasValue,
   type MarketIntel,
   type MarketIntelLookup,
@@ -165,7 +165,7 @@ export async function unlockMarketAndSave(
     }
   }
 
-  const load = deps.loadMarketIntel ?? loadMarketIntelFromMarketCheck;
+  const load = deps.loadMarketIntel ?? loadShopperMarketIntel;
   const zipOf = deps.profileZip ?? ((ownerId) => readProfileZip(deps.supabase, ownerId));
   let profileZip: string | null = null;
   try {
@@ -259,6 +259,7 @@ function sharedMissAllowed(
   input: { listingId: string; vin?: string | null },
   lookup: MarketIntelLookup,
 ): boolean {
+  if (lookup.cacheableMiss === false) return false;
   const requestedId = input.listingId.trim();
   const returnedId = (lookup.returnedListingId ?? '').trim();
   const clientVin = (input.vin ?? '').trim();

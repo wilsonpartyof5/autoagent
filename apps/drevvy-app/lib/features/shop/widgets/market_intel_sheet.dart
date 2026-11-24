@@ -103,9 +103,7 @@ class _MarketIntelSheetState extends State<MarketIntelSheet> {
                             'Unlock a price brief from market data for this listing',
                       ),
                       const _Bullet(text: 'Save it so you can come back later'),
-                      const _Bullet(
-                        text: 'This key is not refunded',
-                      ),
+                      const _Bullet(text: KeySpend.marketIntelHelper),
                       const SizedBox(height: DrevvySpace.s6),
                       DrevvyPrimaryButton(
                         label: KeySpend.marketIntelCta,
