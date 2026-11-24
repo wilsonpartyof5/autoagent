@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { FairPriceComp } from '@/lib/marketcheck/price';
 
-import { handleMarketIntelGet } from '../../app/api/consumer/listings/[id]/market-intel/route';
+import { handleMarketIntelGet } from './market-intel-read';
 
 import { toStoredMarketIntel } from './market-intel';
 import { buildMarketIntelV1, type IntelInputs, type Subject } from './market-intel-v1';
