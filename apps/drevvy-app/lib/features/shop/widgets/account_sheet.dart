@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/config/api_config_exception.dart';
+import '../../../core/config/drevvy_config.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/analytics/product_analytics.dart';
 import '../../../data/models/models.dart';
-import '../../common/analytics_privacy.dart';
+import '../../common/open_drevvy_page.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
@@ -354,7 +355,7 @@ class _AccountSheetState extends State<AccountSheet> {
                         // Legal
                         _buildSectionLabel(text, colors, 'LEGAL'),
                         const SizedBox(height: DrevvySpace.s2),
-                        _buildLegal(colors, text),
+                        _buildLegal(colors),
                         const SizedBox(height: DrevvySpace.s6),
 
                         // Sign out / Delete
@@ -549,13 +550,30 @@ class _AccountSheetState extends State<AccountSheet> {
     );
   }
 
-  Widget _buildLegal(DrevvyColors colors, DrevvyText text) {
+  Widget _buildLegal(DrevvyColors colors) {
     return GlassCard(
-      child: _SettingsRow(
-        label: 'Terms · Privacy',
-        subtitle: 'Analytics can be turned off in Profile',
-        trailing: Icon(LucideIcons.chevronRight, size: 16, color: colors.muted),
-        onTap: () => showAnalyticsPrivacy(context),
+      child: Column(
+        children: [
+          _SettingsRow(
+            label: 'Terms',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: () => openDrevvyPage(context, DrevvyConfig.termsUrl),
+          ),
+          Divider(height: 1, color: colors.line),
+          _SettingsRow(
+            label: 'Privacy',
+            trailing: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.muted,
+            ),
+            onTap: () => openDrevvyPage(context, DrevvyConfig.privacyPolicyUrl),
+          ),
+        ],
       ),
     );
   }
