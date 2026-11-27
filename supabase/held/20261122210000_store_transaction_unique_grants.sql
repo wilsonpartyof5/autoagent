@@ -15,6 +15,16 @@
 -- reversed_at is set and a later grant of any alias does not add keys.
 -- A refund debits store_transactions.pack_size, not the product on the event.
 --
+-- store_transactions.user_id is nullable and references auth.users(id)
+-- ON DELETE SET NULL, the same shape as the credit ledger after account
+-- deletion. public.delete_consumer_account does not touch this table.
+-- auth.admin.deleteUser nulls the owner and leaves the row. A null owner
+-- is already granted: purchase_credits_atomic returns
+-- already_granted_elsewhere and does not add keys, so a recreated account
+-- cannot claim the same store transaction. A refund of that row reverses
+-- nothing: no credit event and no balance change. The row is never deleted.
+-- store_transaction_aliases has no user column and no user foreign key.
+--
 -- Read-only production check, 2026-11-22: none of the three publications is
 -- FOR ALL TABLES. supabase_realtime has no tables. drevvy_clickhouse and
 -- drevvy_clickpipes are explicit lists. store_transactions and
@@ -65,14 +75,67 @@ $report$;
 
 create table if not exists public.store_transactions (
   transaction_id text primary key,
-  user_id uuid not null references auth.users(id),
+  user_id uuid references auth.users(id) on delete set null,
   product_id text,
   pack_size integer not null check (pack_size > 0),
   pack_price_cents integer,
   aliases text[] not null default '{}',
-  granted_at timestamptz not null default now(),
+  granted_at timestamptz not null default pg_catalog.now(),
   reversed_at timestamptz
 );
+
+-- Re-applying this file, or a table left by an older draft of it, must end
+-- on the same foreign key. Drop NOT NULL, then replace any user_id foreign
+-- key that is not ON DELETE SET NULL. Never delete the store row.
+do $store_tx_user_fk$
+declare
+  old_fk record;
+  v_set_null boolean;
+begin
+  alter table public.store_transactions alter column user_id drop not null;
+
+  select exists (
+    select 1
+    from pg_catalog.pg_constraint c
+    join pg_catalog.pg_class rel on rel.oid = c.conrelid
+    join pg_catalog.pg_namespace nsp on nsp.oid = rel.relnamespace
+    join pg_catalog.pg_attribute att on att.attrelid = rel.oid and att.attnum = any (c.conkey)
+    where nsp.nspname = 'public'
+      and rel.relname = 'store_transactions'
+      and c.contype = 'f'
+      and att.attname = 'user_id'
+      and c.confdeltype = 'n'
+  ) into v_set_null;
+
+  if v_set_null then
+    return;
+  end if;
+
+  for old_fk in
+    select c.conname
+    from pg_catalog.pg_constraint c
+    join pg_catalog.pg_class rel on rel.oid = c.conrelid
+    join pg_catalog.pg_namespace nsp on nsp.oid = rel.relnamespace
+    join pg_catalog.pg_attribute att on att.attrelid = rel.oid and att.attnum = any (c.conkey)
+    where nsp.nspname = 'public'
+      and rel.relname = 'store_transactions'
+      and c.contype = 'f'
+      and att.attname = 'user_id'
+  loop
+    execute pg_catalog.format(
+      'alter table public.store_transactions drop constraint %I',
+      old_fk.conname
+    );
+  end loop;
+
+  alter table public.store_transactions
+    add constraint store_transactions_user_id_fkey
+    foreign key (user_id) references auth.users(id) on delete set null;
+end
+$store_tx_user_fk$;
+
+comment on column public.store_transactions.user_id is
+  'Shopper who was granted this store transaction. Null after auth.users is deleted (ON DELETE SET NULL). The row stays so the transaction cannot be granted again.';
 
 revoke all on table public.store_transactions from anon, authenticated, public;
 
@@ -116,7 +179,7 @@ $clickpipes_store_transaction_aliases$;
 grant select, insert, update, delete on table public.store_transaction_aliases to service_role;
 
 comment on table public.store_transaction_aliases is
-  'Every id form of one store transaction. Service role only. Not published.';
+  'Every id form of one store transaction. No user_id column. Service role only. Not published.';
 
 alter table public.store_transaction_aliases enable row level security;
 alter table public.store_transaction_aliases force row level security;
@@ -183,7 +246,7 @@ returns table(
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $purchase$
 declare
   v_balance integer;
@@ -204,16 +267,18 @@ begin
     raise exception 'pack price must be positive';
   end if;
 
-  v_tx := substring(p_idempotency_key from length('purchase:') + 1);
-  if p_idempotency_key not like 'purchase:%' or length(v_tx) = 0 then
+  v_tx := pg_catalog.substr(p_idempotency_key, pg_catalog.length('purchase:') + 1);
+  if p_idempotency_key not like 'purchase:%' or pg_catalog.length(v_tx) = 0 then
     raise exception 'purchase idempotency key is required';
   end if;
 
   v_aliases := array[v_tx];
   if p_aliases is not null then
     foreach v_alias in array p_aliases loop
-      if v_alias is not null and btrim(v_alias) <> '' and not (btrim(v_alias) = any (v_aliases)) then
-        v_aliases := array_append(v_aliases, btrim(v_alias));
+      if v_alias is not null
+         and pg_catalog.btrim(v_alias) <> ''
+         and not (pg_catalog.btrim(v_alias) = any (v_aliases)) then
+        v_aliases := pg_catalog.array_append(v_aliases, pg_catalog.btrim(v_alias));
       end if;
     end loop;
   end if;
@@ -258,11 +323,13 @@ begin
       return query select false, false, v_balance, v_purchased, v_used, v_refunded, false;
       return;
     end if;
-    if v_hit_user = p_user_id then
-      return query select false, true, v_balance, v_purchased, v_used, v_refunded, false;
+    -- A deleted shopper leaves user_id null. That row is already granted
+    -- and is not this account, so it cannot be claimed again.
+    if v_hit_user is null or v_hit_user <> p_user_id then
+      return query select false, false, v_balance, v_purchased, v_used, v_refunded, true;
       return;
     end if;
-    return query select false, false, v_balance, v_purchased, v_used, v_refunded, true;
+    return query select false, true, v_balance, v_purchased, v_used, v_refunded, false;
     return;
   end if;
 
@@ -273,7 +340,7 @@ begin
     values (
       v_tx,
       p_user_id,
-      nullif(btrim(p_product_id), ''),
+      nullif(pg_catalog.btrim(p_product_id), ''),
       p_pack_size,
       p_pack_price_usd,
       v_aliases
@@ -281,7 +348,7 @@ begin
 
     insert into public.store_transaction_aliases (alias, transaction_id)
     select alias_id, v_tx
-    from unnest(v_aliases) as alias_id;
+    from pg_catalog.unnest(v_aliases) as alias_id;
 
     insert into public.shopper_credit_events (
       user_id, event_type, amount, pack_size, pack_price_usd, pack_price_cents, idempotency_key
@@ -297,6 +364,10 @@ begin
     where a.alias = any (v_aliases)
     order by s.reversed_at nulls last
     limit 1;
+    if found and v_hit_reversed is null and v_hit_user is null then
+      return query select false, false, v_balance, v_purchased, v_used, v_refunded, true;
+      return;
+    end if;
     if v_hit_user is not null and v_hit_reversed is null and v_hit_user = p_user_id then
       return query select false, true, v_balance, v_purchased, v_used, v_refunded, false;
       return;
@@ -319,7 +390,7 @@ begin
   update public.shopper_credits
   set balance = shopper_credits.balance + p_pack_size,
       lifetime_purchased = shopper_credits.lifetime_purchased + p_pack_size,
-      updated_at = now()
+      updated_at = pg_catalog.now()
   where user_id = p_user_id
   returning shopper_credits.balance, shopper_credits.lifetime_purchased,
             shopper_credits.lifetime_used, shopper_credits.lifetime_refunded
@@ -356,7 +427,7 @@ returns table(
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $reverse$
 declare
   v_balance integer;
@@ -375,14 +446,14 @@ begin
     raise exception 'reversal amount must be positive';
   end if;
 
-  v_event_tx := substring(p_purchase_key from length('purchase:') + 1);
+  v_event_tx := pg_catalog.substr(p_purchase_key, pg_catalog.length('purchase:') + 1);
   v_target := p_user_id;
   v_amount := p_amount;
   v_tx := v_event_tx;
   v_purchase_key := p_purchase_key;
   v_reversal_key := p_reversal_key;
 
-  if p_purchase_key like 'purchase:%' and length(v_event_tx) > 0 then
+  if p_purchase_key like 'purchase:%' and pg_catalog.length(v_event_tx) > 0 then
     select s.transaction_id, s.user_id, s.pack_size
       into v_tx, v_target, v_amount
     from public.store_transaction_aliases a
@@ -406,6 +477,13 @@ begin
       v_purchase_key := p_purchase_key;
       v_reversal_key := p_reversal_key;
     end if;
+  end if;
+
+  -- Owner was deleted. The store row stays and still blocks a re-grant.
+  -- Do not write a refund event and do not change a balance.
+  if v_target is null then
+    return query select false, false, 0, 0, 0, 0;
+    return;
   end if;
 
   insert into public.shopper_credits (user_id)
@@ -441,11 +519,11 @@ begin
     return;
   end;
 
-  if v_purchase_key like 'purchase:%' and length(v_tx) > 0 then
+  if v_purchase_key like 'purchase:%' and pg_catalog.length(v_tx) > 0 then
     insert into public.store_transactions (
       transaction_id, user_id, product_id, pack_size, aliases, reversed_at
     )
-    values (v_tx, v_target, null, v_amount, array[v_tx], now())
+    values (v_tx, v_target, null, v_amount, array[v_tx], pg_catalog.now())
     on conflict (transaction_id) do update
       set reversed_at = coalesce(public.store_transactions.reversed_at, excluded.reversed_at);
 
@@ -468,7 +546,7 @@ begin
   update public.shopper_credits
   set balance = greatest(shopper_credits.balance - v_amount, 0),
       lifetime_refunded = shopper_credits.lifetime_refunded + v_amount,
-      updated_at = now()
+      updated_at = pg_catalog.now()
   where user_id = v_target
   returning shopper_credits.balance, shopper_credits.lifetime_purchased,
             shopper_credits.lifetime_used, shopper_credits.lifetime_refunded

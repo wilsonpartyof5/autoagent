@@ -16,6 +16,7 @@ const HELD = readFileSync(
 
 const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '22222222-2222-4222-8222-222222222222';
+const USER_C = '33333333-3333-4333-8333-333333333333';
 const HIST_TX = 'hist_dup';
 
 const TABLE_PRIVILEGES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] as const;
@@ -412,5 +413,98 @@ describe('held store transaction grants', { concurrency: 1, timeout: 180_000 }, 
     assert.match(warning, /2 users/);
     assert.match(warning, new RegExp(USER_A));
     assert.match(warning, new RegExp(USER_B));
+  });
+
+  test('deleting the purchaser keeps the store row and blocks a re-claim', async () => {
+    const { db } = state;
+    assert.equal(HELD.includes('set search_path = public'), false);
+    assert.equal(HELD.split("set search_path = ''").length - 1, 2);
+    assert.match(HELD, /on delete set null/i);
+    assert.match(HELD, /store_transaction_aliases has no user column/);
+
+    const fk = await db.query<{ confdeltype: string; attnotnull: boolean }>(`
+      select c.confdeltype, att.attnotnull
+      from pg_constraint c
+      join pg_class rel on rel.oid = c.conrelid
+      join pg_namespace nsp on nsp.oid = rel.relnamespace
+      join pg_attribute att on att.attrelid = rel.oid and att.attnum = any (c.conkey)
+      where nsp.nspname = 'public'
+        and rel.relname = 'store_transactions'
+        and c.contype = 'f'
+        and att.attname = 'user_id'
+    `);
+    assert.equal(fk.rows.length, 1);
+    assert.equal(fk.rows[0]?.confdeltype, 'n');
+    assert.equal(fk.rows[0]?.attnotnull, false);
+
+    const aliasUser = await db.query<{ attname: string }>(`
+      select att.attname
+      from pg_attribute att
+      join pg_class rel on rel.oid = att.attrelid
+      join pg_namespace nsp on nsp.oid = rel.relnamespace
+      where nsp.nspname = 'public'
+        and rel.relname = 'store_transaction_aliases'
+        and att.attname = 'user_id'
+        and att.attnum > 0
+        and not att.attisdropped
+    `);
+    assert.equal(aliasUser.rows.length, 0);
+
+    const paths = await db.query<{ proname: string; proconfig: string[] | null }>(`
+      select p.proname, p.proconfig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname in ('purchase_credits_atomic', 'reverse_purchase_atomic')
+    `);
+    assert.ok(paths.rows.length >= 2);
+    for (const row of paths.rows) {
+      assert.ok(
+        (row.proconfig ?? []).some((item) => item.replace(/[\s"']/g, '') === 'search_path='),
+        `${row.proname} ${JSON.stringify(row.proconfig)}`,
+      );
+    }
+
+    const granted = await grant(db, USER_A, 5, 1999, 'deleted_owner', ['deleted_owner', 'deleted_owner_rc']);
+    assert.equal(granted.granted, true);
+    const balanceBeforeDelete = await balanceOf(db, USER_A);
+
+    await db.exec(`delete from auth.users where id = '${USER_A}'`);
+
+    const kept = await db.query<{ user_id: string | null; transaction_id: string }>(
+      `select user_id, transaction_id from public.store_transactions where transaction_id = 'deleted_owner'`,
+    );
+    assert.equal(kept.rows.length, 1);
+    assert.equal(kept.rows[0]?.user_id, null);
+
+    await db.exec(`
+      insert into auth.users (id, email) values ('${USER_C}', 'c@example.com');
+    `);
+    const reclaimed = await grant(db, USER_C, 5, 1999, 'deleted_owner_rc', ['deleted_owner_rc', 'deleted_owner']);
+    assert.equal(reclaimed.granted, false);
+    assert.equal(reclaimed.already_granted, false);
+    assert.equal(reclaimed.already_granted_elsewhere, true);
+    assert.equal(await balanceOf(db, USER_C), 0);
+
+    const stillOne = await db.query<{ user_id: string | null }>(
+      `select user_id from public.store_transactions where transaction_id = 'deleted_owner'`,
+    );
+    assert.equal(stillOne.rows.length, 1);
+    assert.equal(stillOne.rows[0]?.user_id, null);
+
+    const refunded = await reverse(db, USER_C, 25, 'deleted_owner');
+    assert.equal(refunded.reversed, false);
+    assert.equal(refunded.already_reversed, false);
+    assert.equal(await balanceOf(db, USER_C), 0);
+    const reversal = await db.query<{ count: string }>(
+      `select count(*)::text as count from public.shopper_credit_events where idempotency_key = 'purchase_reversal:deleted_owner'`,
+    );
+    assert.equal(reversal.rows[0]?.count, '0');
+    const afterRefund = await db.query<{ user_id: string | null }>(
+      `select user_id from public.store_transactions where transaction_id = 'deleted_owner'`,
+    );
+    assert.equal(afterRefund.rows.length, 1);
+    assert.equal(afterRefund.rows[0]?.user_id, null);
+    assert.ok(balanceBeforeDelete >= 5);
   });
 });
