@@ -11,7 +11,7 @@ import {
 import { ListingCarRateLimited } from '../marketcheck/listing-car-limit';
 import { payloadContainsSecret, redactSecrets } from '../marketcheck/secrets';
 
-import { publicListingFromDetail, publicListingFromSearchVehicle, publicListingsContainForbiddenKey, assertPublicListing } from './allowlist';
+import { publicListingFromDetail, publicListingFromSearchVehicle, publicListingsContainForbiddenKey, assertPublicListing, rankPhotoLessListingsLast } from './allowlist';
 import { discoverClientIp, hashIpForLogs } from './client-ip';
 import { CORS_HEADERS, DISCOVER_SEARCH_MAX_PAGE } from './constants';
 import { DiscoverApiError, discoverErrorBody, type DiscoverErrorCode } from './errors';
@@ -163,10 +163,12 @@ export async function handleDiscoverSearch(request: Request, deps: DiscoverHandl
       throw new DiscoverApiError('UPSTREAM_ERROR', 'Inventory is temporarily unavailable. Please try again later.');
     }
 
-    const listings = await withMarketCheckContext({ origin }, async () => result.vehicles
-      .map((vehicle) => publicListingFromSearchVehicle(vehicle, body))
-      .filter((listing): listing is NonNullable<typeof listing> => listing != null)
-      .map(assertPublicListing));
+    const listings = await withMarketCheckContext({ origin }, async () => rankPhotoLessListingsLast(
+      result.vehicles
+        .map((vehicle) => publicListingFromSearchVehicle(vehicle, body))
+        .filter((listing): listing is NonNullable<typeof listing> => listing != null)
+        .map(assertPublicListing),
+    ));
 
     const total = Math.min(result.numFound > 0 ? result.numFound : listings.length, DISCOVER_SEARCH_MAX_PAGE * body.page_size);
     const totalPages = Math.max(1, Math.ceil(total / body.page_size));

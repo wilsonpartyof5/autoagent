@@ -8,6 +8,7 @@ import {
   publicListingFromDetail,
   publicListingFromSearchVehicle,
   publicListingsContainForbiddenKey,
+  rankPhotoLessListingsLast,
 } from './allowlist';
 
 const SECRET = 'test-marketcheck-key-do-not-ship';
@@ -154,6 +155,63 @@ test('detail allow-list keeps specs and scrubs contact-shaped features', () => {
   assert.equal(json.includes('Hendrick Way'), false);
   assert.equal(json.includes('loadedSections'), false);
   assert.equal(publicListingsContainForbiddenKey(listing), false);
+});
+
+test('an empty photo list falls back to the primary or cached thumbnail', () => {
+  const origin = { latitude: 35.0071, longitude: -80.9398 };
+  const primary = publicListingFromSearchVehicle(
+    liveVehicle({
+      photoUrls: [],
+      primaryPhotoUrl: 'http://images.example-cdn.test/primary.jpg',
+      thumbnailUrl: 'https://images.carsforsale.com/thumb.jpg',
+    }),
+    origin,
+  );
+  assert.deepEqual(primary?.media.photo_links, ['https://images.example-cdn.test/primary.jpg']);
+
+  const cached = publicListingFromSearchVehicle(
+    liveVehicle({
+      photoUrls: [],
+      primaryPhotoUrl: `https://cdn.dealer.example/a.jpg?api_key=${SECRET}`,
+      thumbnailUrl: 'https://images.autodealersdigital.com/cached.jpg',
+    }),
+    origin,
+  );
+  assert.deepEqual(cached?.media.photo_links, ['https://images.autodealersdigital.com/cached.jpg']);
+  assert.equal(JSON.stringify(cached).includes('api_key'), false);
+  assert.equal(JSON.stringify(cached).includes('http://'), false);
+});
+
+test('photo-less listings sort after photos only at the same distance', () => {
+  const origin = { latitude: 35.0071, longitude: -80.9398 };
+  const near = { latitude: 35.006611, longitude: -80.946295 };
+  const far = { latitude: 35.22, longitude: -80.84 };
+  const row = (id: string, latitude: number, longitude: number, photo?: string) => publicListingFromSearchVehicle(
+    liveVehicle({
+      id,
+      vin: id === 'near-blank' ? '3N6CM0KN2GK693924' : '1HGCM82633A004352',
+      photoUrls: photo ? [photo] : [],
+      primaryPhotoUrl: undefined,
+      thumbnailUrl: photo,
+      location: { latitude, longitude, dealerName: 'Example Independent Lot', dealerCity: 'Charlotte', dealerState: 'NC' },
+    }),
+    origin,
+  );
+  const blank = row('near-blank', near.latitude, near.longitude);
+  const pictured = row('near-photo', near.latitude, near.longitude, 'https://images.inventoryrsc.com/a.jpg');
+  const distant = row('far-photo', far.latitude, far.longitude, 'https://images.carsforsale.com/a.jpg');
+  assert.ok(blank && pictured && distant);
+  assert.equal(blank.dist, pictured.dist);
+  assert.notEqual(blank.dist, distant.dist);
+  assert.deepEqual(
+    rankPhotoLessListingsLast([blank, distant, pictured]).map((listing) => listing.id),
+    ['near-photo', 'near-blank', 'far-photo'],
+  );
+  assert.deepEqual(
+    rankPhotoLessListingsLast([distant, blank]).map((listing) => listing.id),
+    ['far-photo', 'near-blank'],
+  );
+  assert.equal(JSON.stringify([blank, pictured, distant]).includes('Example Independent'), false);
 });
 
 test('payloads with dealer keys are flagged', () => {

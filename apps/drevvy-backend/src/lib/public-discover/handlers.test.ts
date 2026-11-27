@@ -115,6 +115,56 @@ test('anonymous search returns allow-listed listings without an API key', async 
   assert.equal(response.headers.get('RateLimit-Limit'), '20');
 });
 
+test('search ranks a photo-less car behind a photo at the same distance', async () => {
+  const store = new MemoryRateLimitStore();
+  const near = {
+    latitude: 35.006611,
+    longitude: -80.946295,
+    dealerName: 'Hidden Motors',
+    dealerCity: 'Charlotte',
+    dealerState: 'NC',
+  };
+  const blank: LiveVehicle = {
+    ...vehicle(),
+    id: 'near-blank',
+    vin: '3N6CM0KN2GK693924',
+    photoUrls: [],
+    primaryPhotoUrl: undefined,
+    thumbnailUrl: undefined,
+    location: near,
+  };
+  const pictured: LiveVehicle = {
+    ...vehicle(),
+    id: 'near-photo',
+    photoUrls: ['https://images.carsforsale.com/nv200.jpg'],
+    primaryPhotoUrl: 'https://images.carsforsale.com/nv200.jpg',
+    location: near,
+  };
+  const far: LiveVehicle = {
+    ...vehicle(),
+    id: 'far-photo',
+    vin: '1HGCM82633A004352',
+    photoUrls: ['https://images.inventoryrsc.com/far.jpg'],
+    primaryPhotoUrl: 'https://images.inventoryrsc.com/far.jpg',
+    location: { ...near, latitude: 35.22, longitude: -80.84 },
+  };
+  const response = await handleDiscoverSearch(
+    searchRequest({ latitude: 35.0071, longitude: -80.9398, radius_miles: 50, page: 1, page_size: 20 }),
+    {
+      rateLimitStore: store,
+      search: async () => ({ ...searchResult(), vehicles: [blank, far, pictured], numFound: 3, returned: 3, rows: 20 }),
+    },
+  );
+  const { status, body } = await readJson(response);
+  assert.equal(status, 200);
+  const data = body.data as { listings: Array<{ id: string; media: { photo_links: string[] } }> };
+  assert.deepEqual(data.listings.map((listing) => listing.id), ['near-photo', 'near-blank', 'far-photo']);
+  assert.deepEqual(data.listings[0]?.media.photo_links, ['https://images.carsforsale.com/nv200.jpg']);
+  assert.deepEqual(data.listings[1]?.media.photo_links, []);
+  assert.equal(JSON.stringify(body).includes('Hidden Motors'), false);
+  assert.equal(JSON.stringify(body).includes('http://'), false);
+});
+
 test('validation errors are 400 before MarketCheck is called', async () => {
   const store = new MemoryRateLimitStore();
   let calls = 0;

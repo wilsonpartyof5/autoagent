@@ -171,8 +171,17 @@ export function toClientPhotoUrl(raw: string | undefined, now = Date.now()): str
   } catch {
     return undefined;
   }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return undefined;
-  if (parsed.port && parsed.port !== '443') return undefined;
+  if (parsed.username || parsed.password) return undefined;
+  const http = parsed.protocol === 'http:';
+  if (parsed.protocol !== 'https:' && !http) return undefined;
+  // Port 80 is only the http default. Any other non-443 port is not a public photo.
+  if (parsed.port && parsed.port !== '443' && !(http && parsed.port === '80')) return undefined;
+  // Dealer feeds still publish http photo_links. Upgrade first, then apply the
+  // same host and query rules. A host is not probed for TLS.
+  if (http) {
+    parsed.protocol = 'https:';
+    parsed.port = '';
+  }
 
   const kind = marketCheckPhotoHostKind(parsed.hostname);
   const canonical = canonicalPhotoUrl(parsed);

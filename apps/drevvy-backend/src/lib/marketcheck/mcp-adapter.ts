@@ -55,12 +55,15 @@ interface MCListing {
   miles?: number;
   mileage?: number;
   media?: {
-    photo_links?: string[];
-    photo_links_cached?: string[];
+    photo_links?: string[] | string;
+    photo_links_cached?: string[] | string;
     primary_photo_url?: string;
-    thumbnail?: { url?: string };
+    photo_url?: string;
+    thumbnail?: { url?: string } | string;
     video_url?: string;
   };
+  /** Price-comparable rows use a single photo_url instead of media.photo_links. */
+  photo_url?: string;
   build?: {
     year?: number;
     make?: string;
@@ -287,20 +290,79 @@ function clientPhoto(url: string | undefined): string | undefined {
   return toClientPhotoUrl(url);
 }
 
+function photoUrlValues(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (!Array.isArray(value)) return [];
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) urls.push(item);
+  }
+  return urls;
+}
+
+function firstPhoto(...urls: Array<string | undefined>): string | undefined {
+  for (const url of urls) {
+    if (typeof url === 'string' && url.trim()) return url;
+  }
+  return undefined;
+}
+
+function thumbnailSource(media: MCListing['media']): string | undefined {
+  const thumbnail = media?.thumbnail;
+  if (typeof thumbnail === 'string') return thumbnail;
+  return thumbnail?.url;
+}
+
+function uniqueClientPhotos(urls: Array<string | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const client = clientPhoto(raw);
+    if (!client || seen.has(client)) continue;
+    seen.add(client);
+    out.push(client);
+  }
+  return out;
+}
+
+/**
+ * Dealer photo_links are the full-size gallery. Cached copies, primary_photo_url,
+ * and photo_url are the same pictures, so they are used only when every dealer
+ * URL is dropped. An empty gallery is undefined so `photoUrls ?? primary` can run.
+ */
+function listingClientPhotos(listing: MCListing | null | undefined): {
+  photoUrls?: string[];
+  primaryPhotoUrl?: string;
+  thumbnailUrl?: string;
+} {
+  const media = listing?.media;
+  const dealerRaw = photoUrlValues(media?.photo_links);
+  const cachedRaw = photoUrlValues(media?.photo_links_cached);
+  const primaryRaw = firstPhoto(media?.primary_photo_url, media?.photo_url, listing?.photo_url);
+  const dealer = uniqueClientPhotos(dealerRaw);
+  const cached = uniqueClientPhotos(cachedRaw);
+  const gallery = dealer.length > 0
+    ? dealer
+    : cached.length > 0
+      ? cached
+      : uniqueClientPhotos([primaryRaw, thumbnailSource(media)]);
+  const thumbnailUrl = clientPhoto(firstPhoto(cachedRaw[0], dealerRaw[0], primaryRaw, thumbnailSource(media)));
+  return {
+    photoUrls: gallery.length > 0 ? gallery : undefined,
+    primaryPhotoUrl: gallery[0] ?? thumbnailUrl,
+    thumbnailUrl,
+  };
+}
+
 function normalizeListing(listing: MCListing): LiveVehicle | null {
   const lat = normalizeLat(listing.dealer?.latitude);
   const lng = normalizeLat(listing.dealer?.longitude);
   if (lat === undefined || lng === undefined) return null;
 
-  const cachedPhotos = Array.isArray(listing.media?.photo_links_cached) ? (listing.media!.photo_links_cached as string[]).filter(Boolean) : [];
-  const dealerPhotos = Array.isArray(listing.media?.photo_links) ? (listing.media!.photo_links as string[]).filter(Boolean) : [];
-
-  // Prefer dealer originals for the gallery — the cached thumbnails are lower-res copies
-  // of the same images. Only fall back to cached if no dealer photos are available.
-  // This prevents showing the same photo twice (once cached, once original).
-  const galleryPhotos = dealerPhotos.length > 0 ? dealerPhotos : cachedPhotos;
-  const thumbnailPhoto = cachedPhotos[0] ?? dealerPhotos[0] ?? listing.media?.primary_photo_url ?? listing.media?.thumbnail?.url;
-
+  const photos = listingClientPhotos(listing);
   const miles = listing.miles ?? listing.mileage;
 
   return {
@@ -316,9 +378,9 @@ function normalizeListing(listing: MCListing): LiveVehicle | null {
     msrp: listing.msrp,
     miles: typeof miles === 'number' ? Math.max(miles, 0) : undefined,
     bodyType: listing.build?.body_type,
-    thumbnailUrl: clientPhoto(thumbnailPhoto),
-    primaryPhotoUrl: clientPhoto(galleryPhotos[0] ?? thumbnailPhoto),
-    photoUrls: galleryPhotos.length > 0 ? galleryPhotos.map(clientPhoto).filter((u): u is string => !!u) : undefined,
+    thumbnailUrl: photos.thumbnailUrl,
+    primaryPhotoUrl: photos.primaryPhotoUrl,
+    photoUrls: photos.photoUrls,
     daysOnMarket: typeof listing.dom === 'number' && listing.dom >= 0 ? Math.round(listing.dom) : undefined,
     location: {
       latitude: lat,
@@ -573,19 +635,7 @@ export async function getVehicleDetailMcp(
     return null;
   }
 
-  // Build photo list for detail view.
-  // Prefer dealer originals (photo_links) — they are the full-size gallery photos.
-  // photo_links_cached are MarketCheck's lower-res copies of the same images, so
-  // mixing both would show duplicates. Only fall back to cached if no dealer photos exist.
-  const cachedPhotos = Array.isArray(listing?.media?.photo_links_cached) ? (listing!.media!.photo_links_cached as string[]).filter(Boolean) : [];
-  const dealerPhotos = Array.isArray(listing?.media?.photo_links) ? (listing!.media!.photo_links as string[]).filter(Boolean) : [];
-  const galleryPhotos = dealerPhotos.length > 0 ? dealerPhotos : cachedPhotos;
-  // Ensure primary_photo_url is included if not already in the gallery
-  const primaryPhoto = listing?.media?.primary_photo_url ?? listing?.media?.thumbnail?.url ?? galleryPhotos[0];
-  const allPhotos = primaryPhoto && !galleryPhotos.includes(primaryPhoto)
-    ? [primaryPhoto, ...galleryPhotos]
-    : [...galleryPhotos];
-  const allPhotosWithKey = allPhotos.map(clientPhoto).filter((u): u is string => !!u);
+  const photos = listingClientPhotos(listing);
 
   // Build features list — combine VIN decode + listing build info
   const buildFeatures: string[] = [];
@@ -663,7 +713,7 @@ export async function getVehicleDetailMcp(
     description: listing?.description,
     features: allFeatures.length > 0 ? allFeatures : undefined,
     options,
-    photoUrls: allPhotosWithKey.length > 0 ? allPhotosWithKey : undefined,
+    photoUrls: photos.photoUrls,
     videoUrl: listing?.media?.video_url,
     daysOnMarket: typeof dom === 'number' ? dom : undefined,
     location: {
@@ -699,7 +749,7 @@ export async function getVehicleDetailMcp(
     hasListing: !!listing,
     hasVin: !!vinData,
     hasHistory: historyList.length > 0,
-    photoCount: allPhotos.length,
+    photoCount: photos.photoUrls?.length ?? 0,
     featureCount: allFeatures.length,
     latencyMs,
     sections: [...wanted],

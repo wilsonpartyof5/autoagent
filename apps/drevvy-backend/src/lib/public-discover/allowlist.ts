@@ -158,6 +158,24 @@ function httpsPhotos(urls: string[] | undefined): string[] {
   return out;
 }
 
+function firstSurvivingPhoto(candidates: Array<string | undefined>): string[] {
+  for (const candidate of candidates) {
+    const photos = httpsPhotos(candidate ? [candidate] : undefined);
+    if (photos.length > 0) return photos;
+  }
+  return [];
+}
+
+/**
+ * photoUrls: [] is not nullish, so `photoUrls ?? primary` never reaches a
+ * cached or primary photo. Treat an empty sanitized list as missing.
+ */
+function searchPhotoLinks(vehicle: LiveVehicle): string[] {
+  const listed = httpsPhotos(vehicle.photoUrls);
+  if (listed.length > 0) return listed;
+  return firstSurvivingPhoto([vehicle.primaryPhotoUrl, vehicle.thumbnailUrl]);
+}
+
 function scrubFeature(value: string): string | null {
   const trimmed = value.trim().slice(0, 80);
   if (trimmed.length < 2) return null;
@@ -195,7 +213,7 @@ export function publicListingFromSearchVehicle(
       make: vehicle.make,
       model: vehicle.model,
     },
-    media: { photo_links: httpsPhotos(vehicle.photoUrls ?? (vehicle.primaryPhotoUrl ? [vehicle.primaryPhotoUrl] : [])) },
+    media: { photo_links: searchPhotoLinks(vehicle) },
   };
 
   const trim = optionalText(vehicle.trim, 60);
@@ -295,6 +313,36 @@ function assertAllowedObject(value: unknown, allowed: Set<string>): void {
       throw new DiscoverApiError('UPSTREAM_ERROR', 'Listing could not be returned.');
     }
   }
+}
+
+/**
+ * Geo search is already ordered by distance. Within one distance, listings
+ * with photos come first. A farther car with a photo stays where it was.
+ */
+export function rankPhotoLessListingsLast(listings: PublicListing[]): PublicListing[] {
+  const order: PublicListing[][] = [];
+  const byDistance = new Map<string, PublicListing[]>();
+  listings.forEach((listing, index) => {
+    const key = typeof listing.dist === 'number' ? listing.dist.toFixed(1) : `#${index}`;
+    let group = byDistance.get(key);
+    if (!group) {
+      group = [];
+      byDistance.set(key, group);
+      order.push(group);
+    }
+    group.push(listing);
+  });
+  const ranked: PublicListing[] = [];
+  for (const group of order) {
+    const withPhotos: PublicListing[] = [];
+    const withoutPhotos: PublicListing[] = [];
+    for (const listing of group) {
+      if (listing.media.photo_links.length > 0) withPhotos.push(listing);
+      else withoutPhotos.push(listing);
+    }
+    ranked.push(...withPhotos, ...withoutPhotos);
+  }
+  return ranked;
 }
 
 export function assertPublicListing(listing: PublicListing): PublicListing {

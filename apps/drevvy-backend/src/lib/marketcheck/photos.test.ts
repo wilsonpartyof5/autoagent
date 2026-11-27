@@ -318,6 +318,36 @@ test('the photo route goes through the rate-limited handler', () => {
   assert.doesNotMatch(source, /proxyMarketCheckPhoto/);
 });
 
+test('http photo URLs upgrade to https only when the host rules allow them', () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  process.env.DREVVY_PUBLIC_ORIGIN = 'https://app.example';
+  assert.equal(
+    toClientPhotoUrl('http://images.carsforsale.com/nv200/1.jpg?width=640'),
+    'https://images.carsforsale.com/nv200/1.jpg?width=640',
+  );
+  assert.equal(
+    toClientPhotoUrl('http://images.autodealersdigital.com/nv200/1.jpg'),
+    'https://images.autodealersdigital.com/nv200/1.jpg',
+  );
+  assert.equal(
+    toClientPhotoUrl('http://images.inventoryrsc.com:80/nv200/1.jpg'),
+    'https://images.inventoryrsc.com/nv200/1.jpg',
+  );
+  assert.equal(
+    toClientPhotoUrl('http://images.marketcheck.com/vehicles/nv200.jpg'),
+    'https://images.marketcheck.com/vehicles/nv200.jpg',
+  );
+  const proxied = toClientPhotoUrl('http://api.marketcheck.com/v2/image/cache/car/nv200');
+  assert.match(proxied ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
+  assert.equal(containsSecret(proxied ?? ''), false);
+  assert.equal(toClientPhotoUrl(`http://cdn.dealer.example/a.jpg?api_key=${SECRET}`), undefined);
+  assert.equal(toClientPhotoUrl('http://cdn.dealer.example/a.jpg?token=abc'), undefined);
+  assert.equal(toClientPhotoUrl('http://user:pass@cdn.dealer.example/a.jpg'), undefined);
+  assert.equal(toClientPhotoUrl('http://cdn.dealer.example:8080/a.jpg'), undefined);
+  assert.equal(toClientPhotoUrl('http://cdn.dealer.example/a.jpg?utm_source=lot'), undefined);
+  assert.equal(toClientPhotoUrl('javascript:alert(1)'), undefined);
+});
+
 test('photo URLs built inside a request use that origin', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
   delete process.env.DREVVY_PUBLIC_ORIGIN;
