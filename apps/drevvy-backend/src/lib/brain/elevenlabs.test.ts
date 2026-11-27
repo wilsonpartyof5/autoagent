@@ -62,6 +62,57 @@ describe('verifyElevenLabsSignature', () => {
     assert.equal(result.valid, false);
     assert.ok('reason' in result && result.reason.includes('Invalid'));
   });
+
+  it('accepts the documented v0 signature over timestamp.body', () => {
+    const payload = '{"type":"post_call_transcription"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac('sha256', webhookSecret).update(`${timestamp}.${payload}`).digest('hex');
+    const header = `t=${timestamp},v0=${signature}`;
+
+    const result = verifyElevenLabsSignature(payload, header, webhookSecret);
+    assert.equal(result.valid, true);
+  });
+
+  it('accepts a later v0 value when an earlier one does not match', () => {
+    const payload = '{"type":"post_call_transcription"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac('sha256', webhookSecret).update(`${timestamp}.${payload}`).digest('hex');
+    const header = `t=${timestamp},v0=${'0'.repeat(64)},v0=${signature.toUpperCase()}`;
+
+    const result = verifyElevenLabsSignature(payload, header, webhookSecret);
+    assert.equal(result.valid, true);
+  });
+
+  it('accepts a valid v0 signature when v1 does not match', () => {
+    const payload = '{"type":"post_call_transcription"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac('sha256', webhookSecret).update(`${timestamp}.${payload}`).digest('hex');
+    const header = `t=${timestamp}, v1=${'ab'.repeat(32)}, v0=${signature}`;
+
+    const result = verifyElevenLabsSignature(payload, header, webhookSecret);
+    assert.equal(result.valid, true);
+  });
+
+  it('rejects a v0 signature outside the five-minute tolerance', () => {
+    const payload = '{"type":"post_call_transcription"}';
+    const oldTimestamp = String(Math.floor(Date.now() / 1000) - 29 * 60);
+    const signature = createHmac('sha256', webhookSecret).update(`${oldTimestamp}.${payload}`).digest('hex');
+    const header = `t=${oldTimestamp},v0=${signature}`;
+
+    const result = verifyElevenLabsSignature(payload, header, webhookSecret);
+    assert.equal(result.valid, false);
+    assert.ok('reason' in result && result.reason.includes('tolerance'));
+  });
+
+  it('rejects a v0 signature that does not match', () => {
+    const payload = '{"type":"post_call_transcription"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const header = `t=${timestamp},v0=${'ab'.repeat(32)}`;
+
+    const result = verifyElevenLabsSignature(payload, header, webhookSecret);
+    assert.equal(result.valid, false);
+    assert.ok('reason' in result && result.reason.includes('verification failed'));
+  });
 });
 
 describe('parseElevenLabsDynamicVariables', () => {

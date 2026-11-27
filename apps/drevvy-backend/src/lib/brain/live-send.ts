@@ -1,13 +1,15 @@
 /**
  * Assign a conversation identity before the first live email, text, widget
  * message, or call. A later send reads the same row. Test mode does not
- * assign, so DREVVY_EMAIL, DREVVY_TEXT_NUMBER, and SHOPPER_FIRST_NAME still
- * fill the message.
+ * assign. A courtesy call in test mode still reads the deal, then takes the
+ * reply text number from DREVVY_TEST_TEXT_NUMBER or DREVVY_TEXT_NUMBER and
+ * the reply email from DREVVY_EMAIL. That text number is never the caller ID.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { ConversationIdentity } from './identity';
+import { readVehicleCallFields } from './courtesy-call';
+import { readShopperFirstName, type ConversationIdentity } from './identity';
 import { ensureConversationIdentity, readLivePurchaseFlag } from './identity-store';
 
 export type LiveChannel = 'email' | 'sms' | 'voice' | 'widget';
@@ -60,6 +62,27 @@ export async function resolveLiveIdentity(input: {
     };
   }
   return { held: false, identity: assigned };
+}
+
+export async function loadCourtesyContext(
+  supabase: SupabaseClient,
+  dealId: string,
+): Promise<{ shopperFirstName: string | null; stock: string | null; vin: string | null }> {
+  const { data } = await supabase
+    .from('shopper_deals')
+    .select('consumer_user_id, vehicle_snapshot')
+    .eq('id', dealId)
+    .maybeSingle();
+  const vehicle = readVehicleCallFields(data?.vehicle_snapshot);
+  const shopperId = typeof data?.consumer_user_id === 'string' && data.consumer_user_id ? data.consumer_user_id : null;
+  if (!shopperId) return { shopperFirstName: null, ...vehicle };
+  const profile = await supabase
+    .from('consumer_profiles')
+    .select('first_name')
+    .eq('user_id', shopperId)
+    .maybeSingle();
+  const first = typeof profile.data?.first_name === 'string' ? profile.data.first_name : null;
+  return { shopperFirstName: readShopperFirstName(first, null), ...vehicle };
 }
 
 async function loadDeal(
