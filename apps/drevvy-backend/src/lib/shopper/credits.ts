@@ -314,6 +314,8 @@ export function purchaseReversalKey(transactionId: string): string {
 type AtomicCreditRow = {
   granted?: boolean;
   already_granted?: boolean;
+  /** Absent on the pre-store_transactions RPC. Missing means not elsewhere. */
+  already_granted_elsewhere?: boolean;
   reversed?: boolean;
   already_reversed?: boolean;
   balance?: number;
@@ -321,6 +323,12 @@ type AtomicCreditRow = {
   lifetime_used?: number;
   lifetime_refunded?: number;
 };
+
+function rpcMissingProductArg(error: { message?: string; code?: string }): boolean {
+  if (error.code === 'PGRST202') return true;
+  const message = error.message ?? '';
+  return /could not find the function/i.test(message) || /schema cache/i.test(message);
+}
 
 function atomicCreditRow(data: unknown): AtomicCreditRow {
   const row = Array.isArray(data) ? data[0] : data;
@@ -337,32 +345,83 @@ function creditsFromAtomicRow(userId: string, row: AtomicCreditRow): ShopperCred
   };
 }
 
+export type PurchaseCreditsResult = {
+  success: boolean;
+  credits: ShopperCredits;
+  granted: boolean;
+  alreadyGranted: boolean;
+  alreadyGrantedElsewhere: boolean;
+  /** True when production cannot grant because store_transactions is not applied. */
+  unavailable: boolean;
+  error?: string;
+};
+
+function logStoreTransactionsMissing() {
+  console.error(JSON.stringify({
+    event: 'store_transactions_not_applied',
+    message: 'store_transactions is not applied',
+  }));
+}
+
 export async function purchaseCredits(
   supabase: SupabaseClient,
   userId: string,
   packSize: number,
   packPriceUsd: number,
   transactionId: string,
-): Promise<{ success: boolean; credits: ShopperCredits; granted: boolean; alreadyGranted: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('purchase_credits_atomic', {
+  productId?: string,
+  aliases?: string[],
+  allowLegacyRpc = false,
+): Promise<PurchaseCreditsResult> {
+  const args = {
     p_user_id: userId,
     p_pack_size: packSize,
     p_pack_price_usd: usdToCents(packPriceUsd),
     p_idempotency_key: purchaseIdempotencyKey(transactionId),
     p_reversal_key: purchaseReversalKey(transactionId),
-  });
-
-  if (error) {
-    const credits = await getShopperCredits(supabase, userId);
-    return { success: false, credits, granted: false, alreadyGranted: false, error: error.message };
+  };
+  const withStoreFields = productId != null || (aliases != null && aliases.length > 0);
+  let response = await supabase.rpc(
+    'purchase_credits_atomic',
+    withStoreFields ? { ...args, p_product_id: productId ?? null, p_aliases: aliases ?? null } : args,
+  );
+  if (response.error && withStoreFields && rpcMissingProductArg(response.error)) {
+    if (!allowLegacyRpc) {
+      logStoreTransactionsMissing();
+      const credits = await getShopperCredits(supabase, userId);
+      return {
+        success: false,
+        credits,
+        granted: false,
+        alreadyGranted: false,
+        alreadyGrantedElsewhere: false,
+        unavailable: true,
+      };
+    }
+    response = await supabase.rpc('purchase_credits_atomic', args);
   }
 
-  const row = atomicCreditRow(data);
+  if (response.error) {
+    const credits = await getShopperCredits(supabase, userId);
+    return {
+      success: false,
+      credits,
+      granted: false,
+      alreadyGranted: false,
+      alreadyGrantedElsewhere: false,
+      unavailable: false,
+      error: response.error.message,
+    };
+  }
+
+  const row = atomicCreditRow(response.data);
   return {
     success: true,
     credits: creditsFromAtomicRow(userId, row),
     granted: row.granted === true,
     alreadyGranted: row.already_granted === true,
+    alreadyGrantedElsewhere: row.already_granted_elsewhere === true,
+    unavailable: false,
   };
 }
 

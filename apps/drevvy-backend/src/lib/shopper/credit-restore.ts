@@ -2,14 +2,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
+import { creditClaimLimiter, type CreditClaimLimiter } from '@/lib/shopper/credit-claim-rate-limit';
 import {
   creditBalanceData,
+  decideClaimGrant,
   fetchRevenueCatSubscriber,
   findVerifiedPurchase,
   grantVerifiedPurchase,
   purchasesConfigured,
+  subscriberLookupFailure,
 } from '@/lib/shopper/credit-purchases';
 import { getShopperCredits } from '@/lib/shopper/credits';
+import { sandboxGrantCap, type SandboxGrantCap, type SandboxGrantEnv } from '@/lib/shopper/sandbox-grant-policy';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type CreditRestoreDeps = {
@@ -17,12 +21,23 @@ export type CreditRestoreDeps = {
   supabase?: SupabaseClient;
   fetchImpl?: typeof fetch;
   apiKey?: string;
+  env?: SandboxGrantEnv;
+  claimLimiter?: CreditClaimLimiter;
+  sandboxCap?: SandboxGrantCap;
+  now?: () => Date;
 };
 
 export async function handleCreditRestore(request: Request, deps: CreditRestoreDeps = {}) {
   try {
     const requireAuth = deps.requireAuth ?? requireConsumerAuth;
     const auth = await requireAuth(request);
+    const limiter = deps.claimLimiter ?? creditClaimLimiter();
+    if (!(await limiter.allow(auth.userId))) {
+      return NextResponse.json(
+        { success: false, error: { code: 'rate_limited', message: 'Too many purchase attempts. Try again shortly.' } },
+        { status: 429 },
+      );
+    }
     const apiKey = deps.apiKey ?? process.env.REVENUECAT_SECRET_API_KEY;
     if (!apiKey || !purchasesConfigured(apiKey)) {
       return NextResponse.json(
@@ -44,22 +59,40 @@ export async function handleCreditRestore(request: Request, deps: CreditRestoreD
 
     const lookup = await fetchRevenueCatSubscriber(auth.userId, apiKey, deps.fetchImpl ?? fetch);
     if (!lookup.ok) {
+      const failure = subscriberLookupFailure(lookup.status);
       return NextResponse.json(
-        { success: false, error: { code: 'verification_failed', message: 'Purchase could not be verified.' } },
-        { status: 502 },
+        { success: false, error: { code: failure.code, message: failure.message } },
+        { status: failure.httpStatus },
       );
     }
 
+    const env = deps.env ?? process.env;
+    const cap = deps.sandboxCap ?? sandboxGrantCap();
+    const now = deps.now ? deps.now() : new Date();
     let credits = await getShopperCredits(admin, auth.userId);
     for (const transactionId of transactionIds) {
       const verified = findVerifiedPurchase(lookup.subscriber, transactionId.trim());
       if (!verified) continue;
-      const granted = await grantVerifiedPurchase(admin, auth.userId, verified);
+      const decision = decideClaimGrant(auth.userId, verified, env, cap, now);
+      if (!decision.ok) continue;
+      const granted = await grantVerifiedPurchase(admin, auth.userId, verified, {
+        allowLegacyRpc: decision.sandbox,
+      });
+      if (granted.unavailable) {
+        return NextResponse.json(
+          { success: false, error: { code: 'purchases_unavailable', message: 'purchases temporarily unavailable' } },
+          { status: 503 },
+        );
+      }
       if (!granted.success) {
         return NextResponse.json(
           { success: false, error: { code: 'purchase_failed', message: 'Drevvy could not restore these keys.' } },
           { status: 500 },
         );
+      }
+      if (granted.alreadyGrantedElsewhere) continue;
+      if (decision.sandbox && granted.granted && !granted.alreadyGranted) {
+        cap.note(auth.userId, verified.transactionId, now);
       }
       credits = granted.credits;
     }
