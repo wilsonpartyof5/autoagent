@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { resetMarketCheckCacheForTests, marketCheckStoredKeyCount } from './cache-policy';
@@ -7,7 +8,7 @@ import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
 
 import { marketCheckListingFromPayload } from './listing-car';
 import { MarketCheckUpstreamError } from './mcp-client';
-import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
+import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp, summarizeListingPhotos } from './mcp-adapter';
 import { publicListingFromDetail, publicListingFromSearchVehicle } from '../public-discover/allowlist';
 import { getMarketCheckPrice, resetFairPriceGuardsForTests } from './price';
 import { containsSecret } from './secrets';
@@ -633,5 +634,163 @@ test('http dealer photo_links upgrade, and a dropped gallery falls back to cache
     assert.equal(json.includes('example-lot.test'), false);
     assert.equal(json.includes('Example Independent'), false);
     assert.equal(json.includes('http://'), false);
+  });
+});
+
+function photoLogId(id: string): string {
+  return createHash('sha256').update(id).digest('hex').slice(0, 12);
+}
+
+test('listing photo logs are counts only, and a coming-soon file is dropped', async () => {
+  const counts = summarizeListingPhotos({
+    media: {
+      photo_links: [
+        'javascript:alert(1)',
+        'https://user:pass@cdn.example.test/a.jpg',
+        `https://cdn.example.test/a.jpg?api_key=${SECRET}`,
+        { url: 'https://cdn.example.test/obj.jpg' },
+      ],
+      photo_links_cached: ['https://cdn.example.test/ok.jpg'],
+      primary_photo_url: 'https://cdn.example.test/comingsoon.jpg',
+    },
+  });
+  assert.equal(counts.photoLinks, 4);
+  assert.equal(counts.photoLinksCached, 1);
+  assert.equal(counts.primary, 1);
+  assert.equal(counts.kept, 1);
+  assert.deepEqual(counts.rejected, { scheme: 1, host: 1, query: 1, other: 2 });
+  assert.equal(counts.kept + counts.rejected.scheme + counts.rejected.host + counts.rejected.query + counts.rejected.other, 6);
+  assert.equal(JSON.stringify(counts).includes('cdn.example'), false);
+  assert.equal(JSON.stringify(counts).includes(SECRET), false);
+  assert.equal(JSON.stringify(counts).includes('comingsoon'), false);
+
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  process.env.DREVVY_PUBLIC_ORIGIN = 'https://app.example';
+  resetMarketCheckCacheForTests();
+  const origin = { latitude: 35.0071, longitude: -80.9398 };
+  const dealer = {
+    name: 'Example Independent Lot',
+    city: 'Charlotte',
+    state: 'NC',
+    phone: '704-555-0148',
+    website: 'http://example-lot.test',
+    latitude: 35.006611,
+    longitude: -80.946295,
+  };
+  const listings = [
+    {
+      id: 'photo-empty',
+      vin: '1N4AL3AP8JC100001',
+      price: 9000,
+      miles: 80000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer,
+      media: {},
+    },
+    {
+      id: 'photo-soon',
+      vin: '1N4AL3AP8JC100002',
+      price: 9100,
+      miles: 81000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer,
+      media: { photo_links: ['https://images.example-cdn.test/comingsoon.jpg'] },
+    },
+    {
+      id: 'photo-real',
+      vin: '1N4AL3AP8JC100003',
+      price: 9200,
+      miles: 82000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer,
+      media: {
+        photo_links: [
+          'https://images.example-cdn.test/coming-soon.png',
+          'https://images.carsforsale.com/nv200/1.jpg',
+        ],
+      },
+    },
+  ];
+
+  await withFetch(() => jsonRpc({ data: { num_found: listings.length, listings } }), async (_calls, logs) => {
+    const found = await searchActiveCarsMcp({
+      latitude: origin.latitude,
+      longitude: origin.longitude,
+      radiusMiles: 50,
+      rows: 20,
+    });
+    const publicById = new Map(
+      found.vehicles.map((vehicle) => [vehicle.id, publicListingFromSearchVehicle(vehicle, origin)]),
+    );
+    assert.deepEqual(publicById.get('photo-empty')?.media.photo_links, []);
+    assert.deepEqual(publicById.get('photo-soon')?.media.photo_links, []);
+    assert.deepEqual(publicById.get('photo-real')?.media.photo_links, ['https://images.carsforsale.com/nv200/1.jpg']);
+
+    const photoLogs = logs
+      .filter((line) => line.includes('"event":"mc_listing_photos"'))
+      .map((line) => JSON.parse(line) as {
+        source: string;
+        id: string;
+        photoLinks: number;
+        kept: number;
+        rejected: { scheme: number; host: number; query: number; other: number };
+      });
+    assert.equal(photoLogs.length, 3);
+    const soon = photoLogs.find((row) => row.id === photoLogId('photo-soon'));
+    assert.ok(soon);
+    assert.equal(soon.source, 'search');
+    assert.equal(soon.photoLinks, 1);
+    assert.equal(soon.kept, 0);
+    assert.equal(soon.rejected.other, 1);
+    const empty = photoLogs.find((row) => row.id === photoLogId('photo-empty'));
+    assert.equal(empty?.photoLinks, 0);
+    assert.equal(empty?.kept, 0);
+    const real = photoLogs.find((row) => row.id === photoLogId('photo-real'));
+    assert.equal(real?.photoLinks, 2);
+    assert.equal(real?.kept, 1);
+    assert.equal(real?.rejected.other, 1);
+    const joined = photoLogs.map((row) => JSON.stringify(row)).join('\n');
+    assert.equal(joined.includes('example-cdn'), false);
+    assert.equal(joined.includes('carsforsale'), false);
+    assert.equal(joined.includes('comingsoon'), false);
+    assert.equal(joined.includes('coming-soon'), false);
+    assert.equal(joined.includes('photo-soon'), false);
+    assert.equal(joined.includes('1N4AL3AP'), false);
+    assert.equal(joined.includes(SECRET), false);
+    assert.equal(containsSecret(joined), false);
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => new Response(JSON.stringify({
+    id: 'photo-soon',
+    vin: '1N4AL3AP8JC100002',
+    price: 9100,
+    miles: 81000,
+    inventory_type: 'used',
+    build: { year: 2016, make: 'Nissan', model: 'NV200' },
+    dealer,
+    media: { photo_links: ['http://images.example-cdn.test/coming_soon.webp'] },
+  }), { status: 200, headers: { 'content-type': 'application/json' } }), async (_calls, logs) => {
+    const detail = await getVehicleDetailMcp('photo-soon', undefined, ['listing']);
+    assert.equal(detail?.photoUrls, undefined);
+    const listing = detail ? publicListingFromDetail(detail) : null;
+    assert.deepEqual(listing?.media.photo_links, []);
+    const photoLogs = logs
+      .filter((line) => line.includes('"event":"mc_listing_photos"'))
+      .map((line) => JSON.parse(line) as { source: string; id: string; photoLinks: number; kept: number; rejected: { other: number } });
+    assert.equal(photoLogs.length, 1);
+    assert.equal(photoLogs[0]?.source, 'detail');
+    assert.equal(photoLogs[0]?.id, photoLogId('photo-soon'));
+    assert.equal(photoLogs[0]?.photoLinks, 1);
+    assert.equal(photoLogs[0]?.kept, 0);
+    assert.equal(photoLogs[0]?.rejected.other, 1);
+    const joined = JSON.stringify(photoLogs[0]);
+    assert.equal(joined.includes('example-cdn'), false);
+    assert.equal(joined.includes('coming'), false);
+    assert.equal(joined.includes('photo-soon'), false);
+    assert.equal(containsSecret(joined), false);
   });
 });
