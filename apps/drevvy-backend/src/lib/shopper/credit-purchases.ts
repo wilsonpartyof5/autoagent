@@ -460,6 +460,12 @@ export async function applyRevenueCatEvent(
   if (result.alreadyGrantedElsewhere || (!result.granted && !result.alreadyGranted)) {
     return { applied: 'ignored', credits: result.credits, retryable: false };
   }
+  if (result.alreadyGranted) {
+    console.log(JSON.stringify({
+      event: 'revenuecat_webhook',
+      outcome: 'already_granted',
+    }));
+  }
   if (sandbox && result.granted && !result.alreadyGranted) {
     cap.note(userId, verified.transactionId, now);
   }

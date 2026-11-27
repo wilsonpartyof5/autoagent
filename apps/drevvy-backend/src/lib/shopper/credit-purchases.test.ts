@@ -465,10 +465,12 @@ test('a sandbox purchase grants once on credits, restore, and the webhook', asyn
   assert.equal(firstRestore.status, 200);
   assert.deepEqual(await firstRestore.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [],
   });
   assert.equal(replayedRestore.status, 200);
   assert.deepEqual(await replayedRestore.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [{ transactionId: 'store_sbx', reason: 'already_granted' }],
   });
 
   const webhookDb = memoryCredits();
@@ -543,9 +545,11 @@ test('a production purchase grants once on claim, restore, and the webhook', asy
   assert.equal(replayedRestore.status, 200);
   assert.deepEqual(await firstRestore.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [],
   });
   assert.deepEqual(await replayedRestore.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [{ transactionId: 'store_prod', reason: 'already_granted' }],
   });
 
   const webhookDb = memoryCredits();
@@ -649,9 +653,11 @@ test('restore credits a production purchase a missed webhook left ungranted', as
   assert.equal(again.status, 200);
   assert.deepEqual(await restored.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [],
   });
   assert.deepEqual(await again.json(), {
     data: { balance: 5, lifetimePurchased: 5, lifetimeUsed: 0, lifetimeRefunded: 0 },
+    skipped: [{ transactionId: 'store_prod', reason: 'already_granted' }],
   });
 });
 
@@ -826,6 +832,7 @@ test('missing, invalid, and unverified purchases grant nothing', async () => {
     assert.equal(restoreResponse.status, 200);
     assert.deepEqual(await restoreResponse.json(), {
       data: { balance: 0, lifetimePurchased: 0, lifetimeUsed: 0, lifetimeRefunded: 0 },
+      skipped: [],
     });
   }
 
@@ -1163,8 +1170,11 @@ test('sandbox grants stop at the daily cap, claim returns 429, and restore skips
   const replay = await handleCreditPurchase(creditPurchaseRequest('store_a'), deps);
   assert.equal(replay.status, 200);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
-  const restore = await handleCreditRestore(creditRestoreRequest(['store_b']), deps);
+  const restore = await handleCreditRestore(creditRestoreRequest(['rc_b']), deps);
   assert.equal(restore.status, 200);
+  assert.deepEqual((await restore.json()).skipped, [
+    { transactionId: 'store_b', reason: 'sandbox_cap' },
+  ]);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
   const hook = await applyRevenueCatEvent(db, {
     type: 'NON_RENEWING_PURCHASE',
@@ -1214,23 +1224,122 @@ test('restore skips a purchase granted elsewhere or refused and keeps going', as
   const cap = createSandboxGrantCap(1);
   const owned = { id: 'rc_owned', store_transaction_id: 'store_owned', is_sandbox: false, store: 'app_store' };
   const refused = { id: 'rc_refused', store_transaction_id: 'store_refused', is_sandbox: true, store: 'app_store' };
+  const tomb = { id: 'rc_tomb', store_transaction_id: 'store_tomb', is_sandbox: false, store: 'app_store' };
   const next = { id: 'rc_next', store_transaction_id: 'store_next', is_sandbox: false, store: 'app_store' };
   const db = memoryCredits();
-  const ownerDeps = creditRouteDeps(db, [owned, refused, next]);
+  const ownerDeps = creditRouteDeps(db, [owned, refused, tomb, next]);
   assert.equal((await handleCreditPurchase(creditPurchaseRequest('store_owned'), ownerDeps)).status, 200);
+  const earlyRefund = await applyRevenueCatEvent(db, {
+    type: 'REFUND',
+    app_user_id: OTHER_USER,
+    product_id: 'drevvy_keys_5',
+    transaction_id: 'store_tomb',
+  }, lookupMissDeps());
+  assert.equal(earlyRefund.applied, 'ignored');
   const restored = await handleCreditRestore(
-    creditRestoreRequest(['store_owned', 'store_refused', 'store_next']),
+    creditRestoreRequest(['rc_owned', 'rc_refused', 'rc_tomb', 'rc_next']),
     {
-      ...creditRouteDeps(db, [owned, refused, next], OTHER_USER),
+      ...creditRouteDeps(db, [owned, refused, tomb, next], OTHER_USER),
       sandboxCap: cap,
       env: sandboxAllowEnv,
     },
   );
   assert.equal(restored.status, 200);
-  assert.equal((await restored.json() as { data: { balance: number } }).data.balance, 5);
+  const body = await restored.json() as {
+    data: { balance: number };
+    skipped: { transactionId: string; reason: string }[];
+  };
+  assert.equal(body.data.balance, 5);
+  assert.deepEqual(body.skipped, [
+    { transactionId: 'store_owned', reason: 'already_granted_elsewhere' },
+    { transactionId: 'store_refused', reason: 'sandbox_not_allowed' },
+    { transactionId: 'store_tomb', reason: 'refused' },
+  ]);
   assert.equal((await readBalance(db, OTHER_USER)).balance, 5);
   assert.equal((await readBalance(db, TEST_USER)).balance, 5);
   assert.equal((await readBalance(db, OTHER_USER)).lifetimePurchased, 5);
+});
+
+test('restore names test-store and promotional skips and keeps the canonical id', async () => {
+  const purchases = [
+    { id: 'rc_ts', store_transaction_id: 'store_ts', is_sandbox: false, store: 'TEST_STORE' },
+    {
+      id: 'rc_promo',
+      store_transaction_id: 'store_promo',
+      is_sandbox: false,
+      store: 'app_store',
+      period_type: 'PROMOTIONAL',
+    },
+    { id: 'rc_ok', store_transaction_id: 'store_ok', is_sandbox: false, store: 'app_store' },
+  ];
+  const db = memoryCredits();
+  const restored = await handleCreditRestore(
+    creditRestoreRequest(['rc_ts', 'rc_promo', 'apple_missing', 'rc_ok']),
+    creditRouteDeps(db, purchases),
+  );
+  assert.equal(restored.status, 200);
+  const body = await restored.json() as {
+    data: { balance: number; lifetimePurchased: number };
+    skipped: { transactionId: string; reason: string }[];
+  };
+  assert.equal(body.data.balance, 5);
+  assert.equal(body.data.lifetimePurchased, 5);
+  assert.deepEqual(body.skipped, [
+    { transactionId: 'store_ts', reason: 'test_store' },
+    { transactionId: 'store_promo', reason: 'promotional' },
+  ]);
+  assert.equal(JSON.stringify(body.skipped).includes('apple_missing'), false);
+  assert.equal(JSON.stringify(body.skipped).includes('rc_ts'), false);
+  assert.equal(JSON.stringify(body.skipped).includes('rc_promo'), false);
+});
+
+test('a same-user alias match on the webhook logs already_granted', async () => {
+  const purchase = {
+    id: 'rc_alias',
+    store_transaction_id: 'store_alias',
+    transaction_id: 'apple_alias',
+    is_sandbox: false,
+    store: 'app_store',
+  };
+  const db = memoryCredits();
+  assert.equal((await handleCreditPurchase(
+    creditPurchaseRequest('store_alias'),
+    creditRouteDeps(db, [purchase]),
+  )).status, 200);
+  const logs: string[] = [];
+  const original = console.log;
+  console.log = (line?: unknown) => {
+    logs.push(String(line));
+  };
+  try {
+    const result = await applyRevenueCatEvent(db, {
+      type: 'NON_RENEWING_PURCHASE',
+      app_user_id: TEST_USER,
+      product_id: 'drevvy_keys_5',
+      transaction_id: 'rc_alias',
+      environment: 'PRODUCTION',
+    }, {
+      apiKey: 'secret',
+      fetchImpl: subscriberFetch([purchase]),
+    });
+    assert.equal(result.applied, 'granted');
+    assert.equal(result.retryable, false);
+  } finally {
+    console.log = original;
+  }
+  const line = logs.find((entry) => entry.includes('already_granted'));
+  assert.ok(line);
+  const parsed = JSON.parse(line) as { event?: string; outcome?: string };
+  assert.equal(parsed.event, 'revenuecat_webhook');
+  assert.equal(parsed.outcome, 'already_granted');
+  const blob = JSON.stringify(parsed);
+  assert.equal(blob.includes(TEST_USER), false);
+  assert.equal(blob.includes('store_alias'), false);
+  assert.equal(blob.includes('rc_alias'), false);
+  assert.equal(blob.includes('apple_alias'), false);
+  assert.equal(blob.includes('secret'), false);
+  assert.equal((await readBalance(db, TEST_USER)).balance, 5);
+  assert.equal((await readBalance(db, TEST_USER)).lifetimePurchased, 5);
 });
 
 test('purchase and restore rate limits return 429 and do not grant', async () => {
@@ -1541,6 +1650,20 @@ test('held store-transaction sql stays out of supabase/migrations', () => {
   assert.match(held, /FOR ALL TABLES/);
   assert.equal(/alter publication/i.test(held), false);
   assert.equal(/create publication/i.test(held), false);
+  assert.equal(migrations.some((name) => name.includes('publication_guard')), false);
+  const guard = readFileSync(
+    join(HERE, '../../../../../supabase/held/20261122220000_store_transaction_publication_guard.sql'),
+    'utf8',
+  );
+  assert.match(guard, /^begin;/m);
+  assert.match(guard, /^commit;/m);
+  assert.match(guard, /pg_publication_tables/);
+  assert.match(guard, /puballtables/);
+  assert.match(guard, /store_transactions/);
+  assert.match(guard, /store_transaction_aliases/);
+  assert.match(guard, /can be appended/);
+  assert.equal(/alter publication/i.test(guard), false);
+  assert.equal(/create publication/i.test(guard), false);
   const txCreate = held.indexOf('create table if not exists public.store_transactions');
   const txRevoke = held.indexOf('revoke all on table public.store_transactions from drevvy_clickpipes');
   const aliasCreate = held.indexOf('create table if not exists public.store_transaction_aliases');

@@ -15,6 +15,8 @@ import 'shopper_session_store.dart';
 /// A purchase body is `{productId, transactionId}`. A restore body is
 /// `{transactionIds}`. The balance response is
 /// `{data: {balance, lifetimePurchased, lifetimeUsed, lifetimeRefunded}}`.
+/// Restore also returns `skipped: [{transactionId, reason}]`. This client
+/// still reads the balance from `data`.
 /// In demo mode, a missing route (404, 405, 501), a 503 `purchases not
 /// configured`, an empty base URL, or a network failure returns null so the
 /// caller keeps the local demo balance. Live mode throws [ApiConfigException]
