@@ -113,13 +113,31 @@ export function stripShopperNames(body: string, names: readonly string[]): strin
   return next;
 }
 
-/** Removes the in-network opener suffix ". ZIP 12345" or ". ZIP 12345-6789". */
-export function stripShopperZip(body: string): string {
-  return body.replace(/\. ZIP \d{5}(?:-\d{4})?/gi, '');
+/**
+ * Removes the opener suffix ". ZIP 12345" and the shopper's own ZIP wherever
+ * it stands alone in the text. A longer number that only contains those
+ * digits is left alone. Pass the five-digit profile ZIP, or ZIP+4.
+ */
+export function stripShopperZip(body: string, zips: readonly string[] = []): string {
+  let next = body.replace(/\. ZIP \d{5}(?:-\d{4})?/gi, '');
+  const seen = new Set<string>();
+  for (const zip of zips) {
+    const match = zip.trim().match(/^(\d{5})(?:-\d{4})?$/);
+    if (!match) continue;
+    const base = match[1];
+    if (seen.has(base)) continue;
+    seen.add(base);
+    next = next.replace(new RegExp(`\\b${base}(?:-\\d{4})?\\b`, 'g'), '');
+  }
+  return next.replace(/[ \t]{2,}/g, ' ').replace(/ +([.,])/g, '$1').trim();
 }
 
-export function scrubShopperText(body: string, names: readonly string[]): string {
-  return stripShopperNames(stripShopperZip(body), names);
+export function scrubShopperText(
+  body: string,
+  names: readonly string[],
+  zips: readonly string[] = [],
+): string {
+  return stripShopperNames(stripShopperZip(body, zips), names);
 }
 
 /**

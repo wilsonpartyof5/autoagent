@@ -8,6 +8,8 @@ The API calls `public.delete_consumer_account(uuid)` once, then `auth.admin.dele
 
 `conversation_identities.email_alias` keeps its first-name local part, for example `maya.ab12@offers.drevvy.com`. That is not the shopper's real email. It stays so a dealer reply still reaches the open thread.
 
+The profile ZIP is deleted with `consumer_profiles`. In the text we scrub, that same ZIP is removed wherever it stands alone, including `62701-1234`, and the opener suffix `. ZIP #####` is removed too. A longer number that only contains those digits is left in place. The dealer email alias is not rewritten.
+
 ## RevenueCat
 
 The backend already has `REVENUECAT_SECRET_API_KEY`. After the auth user is deleted, the API sends:

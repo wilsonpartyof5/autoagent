@@ -94,6 +94,7 @@ class MemoryAdmin {
 
   private apply(userId: string): void {
     const names = namesFor(this.tables, userId);
+    const zips = zipsFor(this.tables, userId);
     const dealIds = new Set<string>();
     for (const row of this.tables.shopper_deals ?? []) {
       if (row.consumer_user_id === userId && typeof row.id === 'string') dealIds.add(row.id);
@@ -121,7 +122,7 @@ class MemoryAdmin {
     for (const row of this.tables.shopper_outreach_messages ?? []) {
       if (row.consumer_user_id !== userId) continue;
       row.consumer_user_id = null;
-      if (typeof row.body === 'string') row.body = scrubShopperText(row.body, names);
+      if (typeof row.body === 'string') row.body = scrubShopperText(row.body, names, zips);
     }
     for (const row of this.tables.shopper_offers ?? []) {
       if (row.consumer_user_id === userId) row.consumer_user_id = null;
@@ -129,7 +130,7 @@ class MemoryAdmin {
     for (const row of this.tables.shopper_deal_events ?? []) {
       if (row.consumer_user_id !== userId) continue;
       row.consumer_user_id = null;
-      if (typeof row.detail === 'string') row.detail = scrubShopperText(row.detail, names);
+      if (typeof row.detail === 'string') row.detail = scrubShopperText(row.detail, names, zips);
     }
     for (const row of this.tables.shopper_deal_lifecycle ?? []) {
       if (row.consumer_user_id === userId) row.consumer_user_id = null;
@@ -138,19 +139,19 @@ class MemoryAdmin {
       if (!dealIds.has(String(row.deal_id)) || typeof row.body !== 'string') continue;
       if (row.author === 'shopper') row.body = REDACTED_SHOPPER_MESSAGE;
       else if (row.kind === 'opener') row.body = ANONYMOUS_OPENER;
-      else row.body = scrubShopperText(row.body, names);
+      else row.body = scrubShopperText(row.body, names, zips);
     }
     for (const row of this.tables.dealer_otd_warnings ?? []) {
       if (!dealIds.has(String(row.deal_id)) || typeof row.body !== 'string') continue;
-      row.body = scrubShopperText(row.body, names);
+      row.body = scrubShopperText(row.body, names, zips);
     }
     for (const row of this.tables.brain_vendor_events ?? []) {
       const linked = dealIds.has(String(row.deal_id))
         || identityIds.has(String(row.conversation_identity_id));
       if (!linked) continue;
-      if (typeof row.transcript === 'string') row.transcript = scrubShopperText(row.transcript, names);
-      if (typeof row.summary === 'string') row.summary = scrubShopperText(row.summary, names);
-      row.payload = scrubPayload(row.payload, names, userId);
+      if (typeof row.transcript === 'string') row.transcript = scrubShopperText(row.transcript, names, zips);
+      if (typeof row.summary === 'string') row.summary = scrubShopperText(row.summary, names, zips);
+      row.payload = scrubPayload(row.payload, names, zips, userId);
     }
     const flowIds = new Set<string>();
     for (const row of this.tables.app_events ?? []) {
@@ -158,7 +159,7 @@ class MemoryAdmin {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
       if ((payload as Row).consumer_user_id !== userId) continue;
       if (typeof row.flow_id === 'string') flowIds.add(row.flow_id);
-      row.payload = scrubPayload(payload, names, userId);
+      row.payload = scrubPayload(payload, names, zips, userId);
     }
     for (const row of this.tables.app_sessions ?? []) {
       if (flowIds.has(String(row.id))) row.search_location = null;
@@ -199,12 +200,22 @@ function namesFor(tables: Record<string, Row[]>, userId: string): string[] {
   return [...names];
 }
 
-function scrubPayload(payload: unknown, names: string[], userId: string): Row {
+function zipsFor(tables: Record<string, Row[]>, userId: string): string[] {
+  const zips = new Set<string>();
+  for (const row of tables.consumer_profiles ?? []) {
+    if (row.user_id === userId && typeof row.zip === 'string' && /^\d{5}$/.test(row.zip)) {
+      zips.add(row.zip);
+    }
+  }
+  return [...zips];
+}
+
+function scrubPayload(payload: unknown, names: string[], zips: string[], userId: string): Row {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
   const next: Row = {};
   for (const [key, value] of Object.entries(payload as Row)) {
     if (SENSITIVE_KEYS.includes(key) || value === userId) continue;
-    next[key] = typeof value === 'string' ? scrubShopperText(value, names) : value;
+    next[key] = typeof value === 'string' ? scrubShopperText(value, names, zips) : value;
   }
   return next;
 }
@@ -234,7 +245,7 @@ function seed(): Record<string, Row[]> {
     }],
     shopper_dealer_messages: [
       { id: 'msg-shopper', deal_id: 'deal-1', author: 'shopper', body: 'My phone is 555-1212' },
-      { id: 'msg-dealer', deal_id: 'deal-1', author: 'salesperson', body: 'Maya, the price is 20000' },
+      { id: 'msg-dealer', deal_id: 'deal-1', author: 'salesperson', body: 'Maya, the price is 20000 near 62701. Lot 1627019.' },
       { id: 'msg-opener', deal_id: 'deal-1', author: 'drevvy', kind: 'opener', body: 'Maya wants your best itemized out-the-door. ZIP 62701' },
     ],
     shopper_outreach_messages: [{
@@ -319,7 +330,11 @@ test('name scrubbing is case-insensitive and keeps short names inside longer wor
   assert.equal(stripShopperNames('Ann and Annie', ['Ann']), 'A shopper and Annie');
   assert.equal(stripShopperZip('A shopper wants your best itemized out-the-door. ZIP 62701'), 'A shopper wants your best itemized out-the-door');
   assert.equal(stripShopperZip('Noted. zip 62701-1234 today'), 'Noted today');
+  assert.equal(stripShopperZip('Near 62701 and 62701-1234.', ['62701']), 'Near and.');
+  assert.equal(stripShopperZip('Price 20000 and code 1627019', ['62701']), 'Price 20000 and code 1627019');
+  assert.equal(stripShopperZip('Dealer wrote . ZIP 29730', ['62701']), 'Dealer wrote');
   assert.equal(scrubShopperText('Bo withheld the price. ZIP 62701', ['bo']), 'A shopper withheld the price');
+  assert.equal(scrubShopperText('Bo near 62701. Price 20000.', ['Bo'], ['62701']), 'A shopper near. Price 20000.');
   assert.equal(isMissingRelation({ code: '42P01', message: 'relation does not exist' }), true);
   assert.equal(isMissingRelation({ code: '42703', message: 'column "zip" does not exist' }), false);
   assert.equal(isMissingRelation({ code: 'PGRST205', message: 'Could not find the table in the schema cache' }), false);
@@ -370,7 +385,7 @@ test('delete account calls one rpc, then sign-out, then the auth user', async ()
   assert.equal(rows.shopper_dealer_conversations[0].opener, ANONYMOUS_OPENER);
   assert.equal(String(rows.shopper_dealer_conversations[0].opener).includes('62701'), false);
   assert.equal(rows.shopper_dealer_messages[0].body, REDACTED_SHOPPER_MESSAGE);
-  assert.equal(rows.shopper_dealer_messages[1].body, 'A shopper, the price is 20000');
+  assert.equal(rows.shopper_dealer_messages[1].body, 'A shopper, the price is 20000 near. Lot 1627019.');
   assert.equal(rows.shopper_dealer_messages[2].body, ANONYMOUS_OPENER);
   assert.equal(rows.shopper_outreach_messages[0].consumer_user_id, null);
   assert.equal(rows.shopper_outreach_messages[0].body, 'A shopper asked about the car');
@@ -632,6 +647,11 @@ test('the profile route delegates DELETE and the schema change stays out of migr
   assert.match(held, /dealer_otd_warnings/);
   assert.match(held, /brain_vendor_events/);
   assert.match(held, /\\\. ZIP \[0-9\]\{5\}/);
+  assert.match(held, /profile\.zip ~ '\^\[0-9\]\{5\}\$'/);
+  assert.equal(held.includes('skipped if the table is absent'), false);
+  assert.match(held, /The function does not skip the table/);
+  assert.match(held, /deal_id stays/);
+  assert.match(held, /references public\.shopper_deals\(id\) ON DELETE CASCADE/);
   const guardStart = held.indexOf('function private.guard_conversation_identity');
   const guardEnd = held.indexOf('revoke all on function private.guard_conversation_identity');
   const guard = held.slice(guardStart, guardEnd);

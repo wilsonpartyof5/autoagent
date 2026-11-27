@@ -322,6 +322,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Keep my account'), findsOneWidget);
     expect(find.text('Delete my account'), findsWidgets);
+    expect(find.textContaining('still starts with your first name'), findsOneWidget);
+    expect(find.textContaining('erase your name'), findsNothing);
     expect(find.text('Your account is deleted.'), findsNothing);
     expect(find.text('permanently delete'), findsNothing);
   });

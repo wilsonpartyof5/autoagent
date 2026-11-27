@@ -28,7 +28,12 @@
 --   shopper_outreach_messages.consumer_user_id
 --   shopper_offers.consumer_user_id
 --   shopper_deal_events.consumer_user_id
---   shopper_deal_lifecycle.consumer_user_id   (skipped if the table is absent)
+--   shopper_deal_lifecycle.consumer_user_id
+--     Prod has public.shopper_deal_lifecycle. consumer_user_id references
+--     auth.users(id) ON DELETE CASCADE. This file replaces that foreign key
+--     with ON DELETE SET NULL, and delete_consumer_account sets the column
+--     null. The function does not skip the table. deal_id stays
+--     references public.shopper_deals(id) ON DELETE CASCADE.
 --   shopper_credit_events.user_id
 -- Triggers:
 --   private.protect_shopper_deal — allow consumer_user_id to become null
@@ -243,9 +248,17 @@ begin
 end
 $hold$;
 
--- Word-boundary, case-insensitive name scrub, plus the opener suffix ". ZIP #####".
--- Two-letter names match only as a whole word, so "Bo" does not rewrite "Boston".
-create or replace function private.scrub_deleted_shopper_text(p_body text, p_names text[])
+-- Word-boundary, case-insensitive name scrub.
+-- Also strips the opener suffix ". ZIP #####" and the shopper profile ZIP
+-- (##### or #####-####) wherever that ZIP stands alone. A longer number that
+-- only contains those digits stays. "Bo" does not rewrite "Boston".
+drop function if exists private.scrub_deleted_shopper_text(text, text[]);
+
+create or replace function private.scrub_deleted_shopper_text(
+  p_body text,
+  p_names text[],
+  p_zips text[]
+)
 returns text
 language plpgsql
 immutable
@@ -254,6 +267,7 @@ set search_path = ''
 as $$
 declare
   v_name text;
+  v_zip text;
   v_next text;
   v_pattern text;
 begin
@@ -261,6 +275,23 @@ begin
     return null;
   end if;
   v_next := pg_catalog.regexp_replace(p_body, '\. ZIP [0-9]{5}(-[0-9]{4})?', '', 'gi');
+  if p_zips is not null then
+    foreach v_zip in array p_zips loop
+      v_zip := pg_catalog.btrim(v_zip);
+      if v_zip is null or v_zip !~ '^[0-9]{5}(-[0-9]{4})?$' then
+        continue;
+      end if;
+      v_zip := pg_catalog.left(v_zip, 5);
+      v_pattern := '\y' || v_zip || '(-[0-9]{4})?\y';
+      v_next := pg_catalog.regexp_replace(v_next, v_pattern, '', 'g');
+    end loop;
+  end if;
+  v_next := pg_catalog.btrim(pg_catalog.regexp_replace(
+    pg_catalog.regexp_replace(v_next, ' {2,}', ' ', 'g'),
+    ' +([.,])',
+    '\1',
+    'g'
+  ));
   if p_names is null then
     return v_next;
   end if;
@@ -276,12 +307,15 @@ begin
 end;
 $$;
 
-revoke all on function private.scrub_deleted_shopper_text(text, text[]) from public, anon, authenticated, service_role;
+revoke all on function private.scrub_deleted_shopper_text(text, text[], text[]) from public, anon, authenticated, service_role;
+
+drop function if exists private.scrub_deleted_shopper_json(jsonb, text[], text);
 
 create or replace function private.scrub_deleted_shopper_json(
   p_value jsonb,
   p_names text[],
-  p_user_id text
+  p_user_id text,
+  p_zips text[]
 )
 returns jsonb
 language plpgsql
@@ -311,7 +345,7 @@ begin
       end if;
       v_result := v_result || pg_catalog.jsonb_build_object(
         v_key,
-        private.scrub_deleted_shopper_json(v_item, p_names, p_user_id)
+        private.scrub_deleted_shopper_json(v_item, p_names, p_user_id, p_zips)
       );
     end loop;
     return v_result;
@@ -323,19 +357,19 @@ begin
       from pg_catalog.jsonb_array_elements(p_value) as entry(value)
     loop
       v_result := v_result || pg_catalog.jsonb_build_array(
-        private.scrub_deleted_shopper_json(v_item, p_names, p_user_id)
+        private.scrub_deleted_shopper_json(v_item, p_names, p_user_id, p_zips)
       );
     end loop;
     return v_result;
   end if;
   if pg_catalog.jsonb_typeof(p_value) = 'string' then
-    return pg_catalog.to_jsonb(private.scrub_deleted_shopper_text(p_value #>> '{}', p_names));
+    return pg_catalog.to_jsonb(private.scrub_deleted_shopper_text(p_value #>> '{}', p_names, p_zips));
   end if;
   return p_value;
 end;
 $$;
 
-revoke all on function private.scrub_deleted_shopper_json(jsonb, text[], text) from public, anon, authenticated, service_role;
+revoke all on function private.scrub_deleted_shopper_json(jsonb, text[], text, text[]) from public, anon, authenticated, service_role;
 
 -- One transaction. A guard, a missing column, or a missing relation raises,
 -- and Postgres rolls the whole call back. The API then returns
@@ -352,6 +386,7 @@ set search_path = ''
 as $$
 declare
   v_names text[];
+  v_zips text[];
   v_deal_ids uuid[];
   v_identity_ids uuid[];
 begin
@@ -384,6 +419,12 @@ begin
   ) as source
   where source.name is not null
     and pg_catalog.char_length(pg_catalog.btrim(source.name)) >= 2;
+
+  select coalesce(pg_catalog.array_agg(distinct profile.zip), '{}'::text[])
+    into v_zips
+  from public.consumer_profiles as profile
+  where profile.user_id = p_user_id
+    and profile.zip ~ '^[0-9]{5}$';
 
   select coalesce(pg_catalog.array_agg(distinct source.id), '{}'::uuid[])
     into v_deal_ids
@@ -420,7 +461,7 @@ begin
 
   update public.shopper_outreach_messages as message
   set consumer_user_id = null,
-      body = private.scrub_deleted_shopper_text(message.body, v_names)
+      body = private.scrub_deleted_shopper_text(message.body, v_names, v_zips)
   where message.consumer_user_id = p_user_id;
 
   update public.shopper_offers as offer
@@ -429,9 +470,12 @@ begin
 
   update public.shopper_deal_events as event
   set consumer_user_id = null,
-      detail = private.scrub_deleted_shopper_text(event.detail, v_names)
+      detail = private.scrub_deleted_shopper_text(event.detail, v_names, v_zips)
   where event.consumer_user_id = p_user_id;
 
+  -- Prod has public.shopper_deal_lifecycle. This update always runs.
+  -- consumer_user_id is nulled here. deal_id is not changed, so its
+  -- ON DELETE CASCADE to public.shopper_deals(id) stays.
   update public.shopper_deal_lifecycle as lifecycle
   set consumer_user_id = null
   where lifecycle.consumer_user_id = p_user_id;
@@ -441,20 +485,20 @@ begin
     when message.author = 'shopper' then 'Removed when this shopper deleted their account.'
     when message.kind = 'opener' then 'A shopper wants your best itemized out-the-door'
     else coalesce(
-      nullif(pg_catalog.btrim(private.scrub_deleted_shopper_text(message.body, v_names)), ''),
+      nullif(pg_catalog.btrim(private.scrub_deleted_shopper_text(message.body, v_names, v_zips)), ''),
       'Removed when this shopper deleted their account.'
     )
   end
   where message.deal_id = any (v_deal_ids);
 
   update public.dealer_otd_warnings as warning
-  set body = private.scrub_deleted_shopper_text(warning.body, v_names)
+  set body = private.scrub_deleted_shopper_text(warning.body, v_names, v_zips)
   where warning.deal_id = any (v_deal_ids);
 
   update public.brain_vendor_events as event
-  set transcript = private.scrub_deleted_shopper_text(event.transcript, v_names),
-      summary = private.scrub_deleted_shopper_text(event.summary, v_names),
-      payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text)
+  set transcript = private.scrub_deleted_shopper_text(event.transcript, v_names, v_zips),
+      summary = private.scrub_deleted_shopper_text(event.summary, v_names, v_zips),
+      payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text, v_zips)
   where event.deal_id = any (
     select pg_catalog.unnest(v_deal_ids)::text
   )
@@ -462,7 +506,7 @@ begin
 
   with touched as (
     update public.app_events as event
-    set payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text)
+    set payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text, v_zips)
     where event.payload @> pg_catalog.jsonb_build_object('consumer_user_id', p_user_id::text)
     returning event.flow_id
   )

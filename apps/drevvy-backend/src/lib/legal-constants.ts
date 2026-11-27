@@ -73,7 +73,7 @@ export const DRAFT_PRIVACY_FIREBASE =
   'Firebase Cloud Messaging delivers alert notifications to your phone. We store a device token so an alert can arrive, and we delete that token when you delete your account. We do not use Firebase to sign you in, and we do not store your cars or chats in Firebase.';
 
 export const DRAFT_PRIVACY_RETENTION =
-  'We keep your information while your account is open so the app can work. When you delete your account, we delete or take your name off your personal information at that time. We do not wait 30 days. What we delete and what we keep is described under Data Deletion.';
+  'We keep your information while your account is open so the app can work. When you delete your account, we delete your sign-in then. We do not wait 30 days. What we delete and what we keep is described under Data Deletion.';
 
 export const DRAFT_DELETE_ACCOUNT_INTRO =
   'You can delete your Drevvy account yourself. This page tells you how. It does not ask for a password.';
@@ -87,10 +87,10 @@ export const DRAFT_DELETE_ACCOUNT_EMAIL_AFTER =
   'and ask us to delete your account. Tell us the email on the account so we know it is you. Do not send a password. We will not ask for one. After we confirm the request is yours, we delete the account the same way the app does.';
 
 export const DRAFT_DELETE_ACCOUNT_DELETED =
-  'We delete these right away: your name, your ZIP code, cars you saved, the saved address we use to ping your phone, and your sign-in. The email on the login goes away with the sign-in.';
+  'We delete these right away: the cars you saved, the ZIP code on your profile, the saved place we use to ping your phone, and your sign-in. The email you use to sign in goes away with the sign-in.';
 
 export const DRAFT_DELETE_ACCOUNT_KEPT =
-  'We keep some records, and we take your name off them. We keep dealer chats so the dealer still has the conversation. We keep the list of keys you bought or used so we can fix a purchase. We keep notes the law tells us to keep. We keep them for as long as the dealer, the purchase, or the law needs them. A lawyer still has to pick the exact number of days.';
+  'We keep dealer chats so the dealer still has the conversation. We take your first name out of those chats. We also take out the ZIP code that was on your profile. One email address we made for the dealer still starts with your first name, so a reply can find the chat. That address is not your real email. We keep the list of keys you bought or used so we can fix a purchase. We keep notes the law tells us to keep. We keep them for as long as the dealer, the purchase, or the law needs them. A lawyer still has to pick the exact number of days.';
 
 export const DRAFT_DELETE_ACCOUNT_MESSAGES =
   'Words you typed in a dealer chat are replaced with a short note that the message was removed. The dealer\'s own words can stay.';

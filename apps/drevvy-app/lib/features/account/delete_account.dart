@@ -7,8 +7,8 @@ import '../../data/services/shopper_session_store.dart';
 const deleteAccountConfirmTitle = 'Delete my account';
 
 const deleteAccountConfirmBody =
-    'This deletes your Drevvy account. We erase your name, your saved cars, and your sign-in. '
-    'Dealer chats and key purchases stay, with your name taken off. You cannot undo this.';
+    'This deletes your Drevvy account. We erase your saved cars, the ZIP code on your profile, and your sign-in. '
+    'Dealer chats stay. We take your first name and that ZIP code out of those chats. One dealer email address still starts with your first name. Key purchases stay. You cannot undo this.';
 
 const deleteAccountKeepLabel = 'Keep my account';
 
