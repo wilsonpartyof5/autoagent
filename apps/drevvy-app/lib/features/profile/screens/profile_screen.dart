@@ -10,7 +10,7 @@ import '../../../data/models/models.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
-import '../../shop/widgets/account_sheet.dart';
+import '../../account/delete_account.dart';
 import '../../shop/widgets/get_more_keys.dart';
 
 /// Profile from the drawer footer.
@@ -129,19 +129,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _delete() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete account'),
-          content: const Text(accountDeletionUnavailableMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('OK'),
-            ),
-          ],
-        );
+    confirmAndDeleteAccount(
+      context,
+      onDeleted: () {
+        if (!mounted) return;
+        _load();
       },
     );
   }

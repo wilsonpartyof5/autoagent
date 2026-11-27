@@ -12,6 +12,7 @@ import '../../common/open_drevvy_page.dart';
 import '../../../data/repositories/demo_repository.dart';
 import '../../../data/services/purchase_service.dart';
 import '../../../data/services/shopper_session_store.dart';
+import '../../account/delete_account.dart';
 import '../../account/widgets/car_balance_card.dart';
 import '../../account/widgets/shopper_sign_in_actions.dart';
 import '../../account/widgets/memory_facts_sheet.dart';
@@ -22,8 +23,6 @@ import 'pack_picker_sheet.dart';
 
 /// Account sheet per spec §6.16 (v1.8).
 /// Replaces Profile tab - shown from avatar button tap.
-const accountDeletionUnavailableMessage = 'Account deletion is not available.';
-
 class AccountSheet extends StatefulWidget {
   const AccountSheet({super.key, this.repository});
 
@@ -213,20 +212,11 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   void _handleDeleteAccount() {
-    final text = context.drevvyText;
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Delete account', style: text.title),
-          content: Text(accountDeletionUnavailableMessage, style: text.body),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('OK'),
-            ),
-          ],
-        );
+    confirmAndDeleteAccount(
+      context,
+      onDeleted: () {
+        if (!mounted) return;
+        Navigator.pop(context);
       },
     );
   }

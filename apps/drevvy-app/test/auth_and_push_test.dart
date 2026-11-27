@@ -114,6 +114,54 @@ void main() {
       expect(calls[1].headers['Authorization'], 'Bearer access-token');
     });
 
+    test('delete account sends DELETE /api/consumer/profile', () async {
+      final calls = <http.Request>[];
+      final api = AuthApi(
+        baseUrl: 'https://drevvy.test',
+        client: _ScriptedClient((request) async {
+          calls.add(request);
+          return http.Response(jsonEncode({'deleted': true}), 200);
+        }),
+      );
+
+      await api.deleteAccount('access-token');
+
+      expect(calls.single.method, 'DELETE');
+      expect(calls.single.url.path, DrevvyConfig.profilePath);
+      expect(calls.single.headers['Authorization'], 'Bearer access-token');
+    });
+
+    test('delete account surfaces the server message', () async {
+      final api = AuthApi(
+        baseUrl: 'https://drevvy.test',
+        client: _ScriptedClient((request) async {
+          return http.Response(
+            jsonEncode({
+              'deleted': false,
+              'error': {
+                'code': 'deletion_schema_pending',
+                'message': 'We could not delete this account yet. Email privacy@drevvy.com.',
+              },
+            }),
+            500,
+          );
+        }),
+      );
+
+      expect(
+        api.deleteAccount('access-token'),
+        throwsA(
+          isA<AuthException>()
+              .having((error) => error.code, 'code', 'deletion_schema_pending')
+              .having(
+                (error) => error.message,
+                'message',
+                'We could not delete this account yet. Email privacy@drevvy.com.',
+              ),
+        ),
+      );
+    });
+
     test('surfaces the backend error message', () async {
       final api = AuthApi(
         baseUrl: 'https://drevvy.test',
