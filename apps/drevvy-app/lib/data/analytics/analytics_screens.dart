@@ -36,9 +36,19 @@ AnalyticsRoute? resolveAnalyticsRoute(Uri uri) {
   if (path == '/account/create') {
     return const AnalyticsRoute(screen: 'create_account');
   }
-  if (path == '/shop') return const AnalyticsRoute(screen: 'shop');
+  if (path == '/shop' || path == '/discover') {
+    return const AnalyticsRoute(screen: 'shop');
+  }
   if (path == '/deals') return const AnalyticsRoute(screen: 'deals');
-  if (path == '/saved') return const AnalyticsRoute(screen: 'saved');
+  if (path == '/saved' || path == '/saves') {
+    return const AnalyticsRoute(screen: 'saved');
+  }
+  if (path == '/profile') return const AnalyticsRoute(screen: 'profile');
+  final dealChat = RegExp(r'^/deals/([^/]+)/chat$').firstMatch(path);
+  if (dealChat != null) {
+    final id = _id(dealChat.group(1)!);
+    return AnalyticsRoute(screen: 'deal_chat', properties: {'deal_id': ?id});
+  }
   if (path.startsWith('/vdp/')) {
     final id = _id(path.substring('/vdp/'.length));
     if (id == null) return const AnalyticsRoute(screen: 'car_detail');

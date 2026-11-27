@@ -160,10 +160,11 @@ class VdpCtaBar extends StatelessWidget {
               'This dealer is off Drevvy.',
               style: text.callout.copyWith(color: colors.muted),
             ),
-            const SizedBox(height: DrevvySpace.s1),
+            const SizedBox(height: DrevvySpace.s3),
             Text(
-              'An out-the-door request is not available yet.',
-              style: text.callout.copyWith(color: colors.muted),
+              'Coming soon',
+              key: const Key('otd-coming-soon'),
+              style: text.body.copyWith(color: colors.ink),
             ),
           ] else if (networkUnknown) ...[
             Text(

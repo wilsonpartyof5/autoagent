@@ -16,6 +16,7 @@ import {
   isPrivateAddress,
   marketCheckPhotoHostKind,
   proxyMarketCheckPhoto,
+  clientPhotoUrlDropped,
   toClientPhotoUrl,
 } from './photos';
 import { containsSecret } from './secrets';
@@ -46,15 +47,37 @@ test('credentialed MarketCheck photos are proxied and the key is stripped', () =
   assert.equal(client.length < 500, true);
 
   const dealer = toClientPhotoUrl(`https://cdn.dealer.example/tahoe.jpg?api_key=${SECRET}&width=640`);
-  assert.equal(dealer, 'https://cdn.dealer.example/tahoe.jpg?width=640');
-  assert.equal(containsSecret(dealer ?? ''), false);
+  assert.equal(dealer, undefined);
+
+  const sized = toClientPhotoUrl('https://cdn.dealer.example/tahoe.jpg?width=640');
+  assert.equal(sized, 'https://cdn.dealer.example/tahoe.jpg?width=640');
 
   const publicCdn = toClientPhotoUrl(`https://images.marketcheck.com/vehicles/tahoe.jpg?api_key=${SECRET}`);
-  assert.equal(publicCdn, 'https://images.marketcheck.com/vehicles/tahoe.jpg');
+  assert.equal(publicCdn, undefined);
   assert.equal(marketCheckPhotoHostKind('images.marketcheck.com'), 'public');
   assert.equal(marketCheckPhotoHostKind('api.marketcheck.com.evil.example'), 'other');
   assert.equal(marketCheckPhotoHostKind('evilmarketcheck.com'), 'other');
   assert.equal(marketCheckPhotoHostKind('cdn.marketcheck.com'), 'credentialed');
+});
+
+test('photo URLs with a secret-looking query or path are dropped', () => {
+  const samples = [
+    'https://cdn.dealer.example/a.jpg?x-api-key=abc',
+    'https://cdn.dealer.example/a.jpg?key=abc',
+    'https://cdn.dealer.example/a.jpg?auth=1',
+    'https://cdn.dealer.example/a.jpg?client_secret=abc',
+    'https://cdn.dealer.example/a.jpg?access_key=abc',
+    'https://cdn.dealer.example/a.jpg?width=1;API_KEY=abc',
+    'https://cdn.dealer.example/API_KEY/abc.jpg',
+    'https://cdn.dealer.example/a.jpg?X-Amz-Signature=abc',
+    'https://cdn.dealer.example/a.jpg?token=abc',
+    'https://cdn.dealer.example/a.jpg?SIG=abc',
+  ];
+  for (const sample of samples) {
+    assert.equal(clientPhotoUrlDropped(sample), true, sample);
+    assert.equal(toClientPhotoUrl(sample), undefined, sample);
+  }
+  assert.equal(clientPhotoUrlDropped('https://cdn.dealer.example/a.jpg?width=640'), false);
 });
 
 test('the photo proxy rejects open hosts, private addresses, redirects, and bad signatures', async () => {

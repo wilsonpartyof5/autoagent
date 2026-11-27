@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { ListingCarRateLimited } from '@/lib/marketcheck/listing-car-limit';
+
 import { ShopperAuthError, shopperAuthErrorResponse } from './session';
 
 export const SHOPPER_DEAL_STATUSES = ['interested', 'negotiating', 'accepted', 'closed'] as const;
@@ -213,6 +215,12 @@ export function shopperDealErrorResponse(error: unknown): NextResponse {
     return NextResponse.json(
       { success: false, error: { code: error.code, message: error.message } },
       { status: error.status },
+    );
+  }
+  if (error instanceof ListingCarRateLimited) {
+    return NextResponse.json(
+      { success: false, error: { code: 'rate_limited', message: 'Slow down a little. Try again tomorrow.' } },
+      { status: 429 },
     );
   }
   console.error(JSON.stringify({

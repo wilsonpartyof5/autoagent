@@ -22,6 +22,8 @@ export const MARKET_REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const MARKET_REFUND_SLOT_MS = 10 * 60 * 1000;
 export const MARKET_UPSTREAM_ATTEMPT_MS = 2 * 60 * 1000;
 export const MARKET_MISS_TTL_MS = 24 * 60 * 60 * 1000;
+/** A definitive empty quote stays with this shopper only, and only for a short while. */
+export const MARKET_SHOPPER_MISS_MS = 10 * 60 * 1000;
 
 export type MarketLookupClaim = {
   action: 'proceed' | 'cached_miss' | 'rate_limited' | 'refund_cap' | 'unavailable';
@@ -32,6 +34,7 @@ export type MarketLookupClaim = {
 export type MarketLookupGuard = {
   claim(input: { userId: string; ipHash: string; listingId: string; now: number }): Promise<MarketLookupClaim>;
   rememberMiss(listingId: string, now: number): Promise<void>;
+  rememberShopperMiss?(userId: string, listingId: string, now: number): Promise<void>;
   rememberUpstreamAttempt(userId: string, listingId: string, now: number): Promise<void>;
   releaseRefundSlot(userId: string, listingId: string): Promise<void>;
   noteRefund(userId: string, now: number): Promise<void>;
@@ -39,8 +42,9 @@ export type MarketLookupGuard = {
 
 type HeaderSource = { get(name: string): string | null };
 
-export function marketLookupFailsClosed(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.VERCEL_ENV === 'production' || env.NODE_ENV === 'production';
+/** Paid lookups fail closed in every environment. A missing limiter is not a free pass. */
+export function marketLookupFailsClosed(_env: NodeJS.ProcessEnv = process.env): boolean {
+  return true;
 }
 
 export function shopperClientIp(headers: HeaderSource): string {
@@ -77,6 +81,7 @@ export function createMemoryMarketLookupGuard(): MarketLookupGuard {
   const hits: Array<{ userId: string; ipHash: string; at: number }> = [];
   const refunds: Array<{ userId: string; at: number }> = [];
   const misses = new Map<string, number>();
+  const shopperMisses = new Map<string, number>();
   const slots = new Map<string, number>();
   const upstream = new Map<string, number>();
   const slotKey = (userId: string, listingId: string) => `${userId}\n${listingId}`;
@@ -95,6 +100,10 @@ export function createMemoryMarketLookupGuard(): MarketLookupGuard {
       const missedAt = misses.get(input.listingId);
       if (missedAt != null && input.now - missedAt < MARKET_MISS_TTL_MS) {
         return { action: 'cached_miss', scope: null, hold: false };
+      }
+      const shopperMissAt = shopperMisses.get(slotKey(input.userId, input.listingId));
+      if (shopperMissAt != null && input.now - shopperMissAt < MARKET_SHOPPER_MISS_MS) {
+        return { action: 'cached_miss', scope: 'user', hold: false };
       }
       const attemptAt = upstream.get(slotKey(input.userId, input.listingId));
       if (attemptAt != null && input.now - attemptAt < MARKET_UPSTREAM_ATTEMPT_MS) {
@@ -121,6 +130,9 @@ export function createMemoryMarketLookupGuard(): MarketLookupGuard {
     async rememberMiss(listingId, now) {
       misses.set(listingId, now);
     },
+    async rememberShopperMiss(userId, listingId, now) {
+      shopperMisses.set(slotKey(userId, listingId), now);
+    },
     async rememberUpstreamAttempt(userId, listingId, now) {
       upstream.set(slotKey(userId, listingId), now);
     },
@@ -133,13 +145,23 @@ export function createMemoryMarketLookupGuard(): MarketLookupGuard {
   };
 }
 
-const PROCEED: MarketLookupClaim = { action: 'proceed', scope: null, hold: false };
+const processShopperMisses = new Map<string, number>();
+
+export function resetProcessShopperMissesForTests(): void {
+  processShopperMisses.clear();
+}
+
+function processShopperMissActive(userId: string, listingId: string, now: number): boolean {
+  const at = processShopperMisses.get(`${userId}\n${listingId}`);
+  return at != null && now - at < MARKET_SHOPPER_MISS_MS;
+}
 
 export async function claimDurableMarketLookup(
   supabase: SupabaseClient,
   input: { userId: string; ipHash: string; listingId: string },
   options: { failClosed: boolean },
 ): Promise<MarketLookupClaim> {
+  void options.failClosed;
   const { data, error } = await supabase.rpc('claim_market_save_lookup', {
     p_user_id: input.userId,
     p_ip_hash: input.ipHash,
@@ -151,7 +173,7 @@ export async function claimDurableMarketLookup(
       listingId: input.listingId,
       message: redactSecrets(error.message ?? 'unknown'),
     }));
-    return options.failClosed ? { action: 'unavailable', scope: null, hold: false } : PROCEED;
+    return { action: 'unavailable', scope: null, hold: false };
   }
   const row = (Array.isArray(data) ? data[0] : data) as {
     action?: string;
@@ -169,7 +191,7 @@ export async function claimDurableMarketLookup(
     const scope = row?.scope === 'user' || row?.scope === 'ip' ? row.scope : null;
     return { action, scope, hold: row?.hold === true };
   }
-  return options.failClosed ? { action: 'unavailable', scope: null, hold: false } : PROCEED;
+  return { action: 'unavailable', scope: null, hold: false };
 }
 
 export async function rememberDurableMarketMiss(supabase: SupabaseClient, listingId: string): Promise<void> {
@@ -224,8 +246,16 @@ export function durableMarketLookupGuard(
   options: { failClosed: boolean },
 ): MarketLookupGuard {
   return {
-    claim: (input) => claimDurableMarketLookup(supabase, input, options),
+    claim: async (input) => {
+      if (processShopperMissActive(input.userId, input.listingId, input.now)) {
+        return { action: 'cached_miss', scope: 'user', hold: false };
+      }
+      return claimDurableMarketLookup(supabase, input, options);
+    },
     rememberMiss: (listingId) => rememberDurableMarketMiss(supabase, listingId),
+    rememberShopperMiss: async (userId, listingId, now) => {
+      processShopperMisses.set(`${userId}\n${listingId}`, now);
+    },
     rememberUpstreamAttempt: (userId, listingId) => rememberDurableUpstreamAttempt(supabase, userId, listingId),
     releaseRefundSlot: (userId, listingId) => releaseDurableRefundSlot(supabase, userId, listingId),
     noteRefund: async () => undefined,

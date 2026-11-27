@@ -15,11 +15,13 @@ class MarketIntelGate extends StatelessWidget {
     required this.unlocked,
     required this.onUnlock,
     required this.child,
+    this.teaser = KeySpend.marketIntelTeaser,
   });
 
   final bool unlocked;
   final VoidCallback onUnlock;
   final Widget child;
+  final String teaser;
 
   /// Strong enough that listed/fair prices are not readable.
   static const double blurSigma = 16;
@@ -33,7 +35,7 @@ class MarketIntelGate extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: KeySpend.marketIntelTeaser,
+      label: teaser,
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
@@ -73,10 +75,21 @@ class MarketIntelGate extends StatelessWidget {
                           horizontal: DrevvySpace.s4,
                           vertical: DrevvySpace.s3,
                         ),
-                        child: Text(
-                          KeySpend.marketIntelTeaser,
-                          style: text.bodyStrong.copyWith(color: colors.ink),
-                          textAlign: TextAlign.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              teaser,
+                              style: text.bodyStrong.copyWith(color: colors.ink),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: DrevvySpace.s2),
+                            Text(
+                              KeySpend.marketIntelHelper,
+                              style: text.callout.copyWith(color: colors.muted),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
                       ),
                     ),

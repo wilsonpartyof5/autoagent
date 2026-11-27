@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
+import '../services/consumer_deals_endpoint.dart';
+import '../services/market_intel_endpoint.dart';
 import '../services/credits_endpoint.dart';
 import '../services/deal_chips_endpoint.dart';
 import '../services/key_spend_endpoint.dart';
@@ -23,6 +25,36 @@ class StaleAccountException implements Exception {
 
   @override
   String toString() => 'The account changed before this request finished.';
+}
+
+/// Why [DemoRepository.startDealerConversation] did not open a chat.
+enum DealerConversationNotice {
+  offNetwork,
+  needsKey,
+  unreachable,
+  failed,
+  signedOut,
+}
+
+extension DealerConversationNoticeCopy on DealerConversationNotice {
+  String get plainCopy => switch (this) {
+    DealerConversationNotice.offNetwork =>
+      'This dealer is not on Drevvy. Your key was not used.',
+    DealerConversationNotice.needsKey => 'You need a key to text this dealer.',
+    DealerConversationNotice.unreachable =>
+      'Drevvy could not reach the dealer. Try again.',
+    DealerConversationNotice.failed =>
+      'Drevvy could not start this chat. Try again.',
+    DealerConversationNotice.signedOut => 'Sign in to text this dealer.',
+  };
+}
+
+/// Messages from one thread read, plus a plain error when the read failed.
+class DealThreadRefresh {
+  const DealThreadRefresh({required this.messages, this.error});
+
+  final List<DealThreadMessage> messages;
+  final String? error;
 }
 
 /// Demo repository with realistic mock data modeled after MarketCheck API fields.
@@ -46,12 +78,21 @@ class DemoRepository {
     DealChipsEndpoint? dealChips,
     SavedCarsEndpoint? savedCars,
     ShopperProfileEndpoint? profile,
+    ConsumerDealsEndpoint? consumerDeals,
+    MarketIntelEndpoint? marketIntel,
     http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
+    bool? miSpendEnabled,
   }) {
     final resolved = config ?? PurchaseConfig.fromEnvironment();
     _live = resolved.isLive;
+    _miSpendEnabled =
+        miSpendEnabled ??
+        const bool.fromEnvironment('DREVVY_MI_SPEND', defaultValue: false);
+    _marketIntel =
+        marketIntel ??
+        MarketIntelEndpoint.fromConfig(resolved, client: httpClient);
     _credits =
         credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
@@ -67,6 +108,9 @@ class DemoRepository {
     _profile =
         profile ??
         ShopperProfileEndpoint.fromConfig(resolved, client: httpClient);
+    _consumerDeals =
+        consumerDeals ??
+        ConsumerDealsEndpoint.fromConfig(resolved, client: httpClient);
     if (initialBalance != null) {
       _creditBalance = initialBalance;
       _balanceKnown = true;
@@ -82,13 +126,39 @@ class DemoRepository {
   }
 
   late final bool _live;
+  late final bool _miSpendEnabled;
+  late final MarketIntelEndpoint _marketIntel;
+  final Map<String, MarketIntelBrief> _marketBriefs = {};
+  String? _marketIntelFailure;
+  String? _marketIntelFailureAction;
+  bool _marketIntelRecheck = false;
+  int? _lastUnlockBalance;
+  bool _lastUnlockRefunded = false;
+  bool _lastUnlockHeld = false;
 
   /// Live mode, including a live build whose API origin is still empty.
   bool get isLive => _live;
 
-  /// Market intel has no shopper payload and no unlock read, so live mode
-  /// does not spend a key for it.
-  bool get marketIntelSpendEnabled => !_live;
+  /// Live builds keep market-intel spend off unless the sim passes
+  /// `--dart-define=DREVVY_MI_SPEND=true` (or the constructor override).
+  bool get marketIntelSpendEnabled => !_live || _miSpendEnabled;
+
+  MarketIntelBrief? marketBriefFor(String listingId) => _marketBriefs[listingId];
+
+  /// Shopper copy for the last live unlock that did not store a card.
+  /// The key-back line is used only when the server confirmed the refund.
+  String? get marketIntelFailure => _marketIntelFailure;
+
+  String? get marketIntelFailureAction => _marketIntelFailureAction;
+
+  /// True when the next tap should look again and must not spend a key.
+  bool get marketIntelRecheck => _marketIntelRecheck;
+
+  int? get lastUnlockBalance => _lastUnlockBalance;
+
+  bool get lastUnlockRefunded => _lastUnlockRefunded;
+
+  bool get lastUnlockHeld => _lastUnlockHeld;
 
   /// Shown when live mode cannot confirm a key balance. Null in demo mode.
   String? _creditNotice;
@@ -120,6 +190,18 @@ class DemoRepository {
   late final DealChipsEndpoint _dealChips;
   late final SavedCarsEndpoint _savedCarsEndpoint;
   late final ShopperProfileEndpoint _profile;
+  late final ConsumerDealsEndpoint _consumerDeals;
+
+  /// Set when the last [startDealerConversation] did not open a chat.
+  DealerConversationNotice? _lastConversationNotice;
+  DealerConversationNotice? get lastConversationNotice =>
+      _lastConversationNotice;
+
+  /// Last live deals-list failure. Null after a successful read.
+  String? _dealsLoadError;
+  String? get dealsLoadError => _dealsLoadError;
+
+  bool get _loadsRemoteDeals => _consumerDeals is HttpConsumerDealsEndpoint;
 
   /// Chips route for an in-network deal. Missing base URL keeps the opener pair.
   DealChipsEndpoint get dealChips => _dealChips;
@@ -136,6 +218,16 @@ class DemoRepository {
     _ensureDealsLoaded();
     for (final deal in _deals) {
       if (deal.listingId == listingId) return deal.id;
+    }
+    return null;
+  }
+
+  /// Deal already opened for this listing. A second Ask must not post again.
+  Deal? _dealForStartedListing(String listingId) {
+    final id = dealIdForListing(listingId);
+    if (id == null) return null;
+    for (final deal in _deals) {
+      if (deal.id == id) return deal;
     }
     return null;
   }
@@ -214,9 +306,12 @@ class DemoRepository {
     savedDealsTick.value++;
   }
 
-  // Simulated delay for realistic loading states
+  // Simulated delay for realistic loading states.
+  // A zero wait must not schedule a timer. Tests that build a screen and
+  // stop would otherwise fail with a pending zero-duration timer.
   Future<T> _delay<T>(T value, [Duration? duration]) async {
-    await Future.delayed(duration ?? _networkDelay);
+    final wait = duration ?? _networkDelay;
+    if (wait > Duration.zero) await Future.delayed(wait);
     return value;
   }
 
@@ -290,6 +385,11 @@ class DemoRepository {
   void clearSignedInState() {
     _accountGeneration++;
     _marketIntelUnlocked.clear();
+    _marketBriefs.clear();
+    _clearMarketIntelFailure();
+    _lastUnlockBalance = null;
+    _lastUnlockRefunded = false;
+    _lastUnlockHeld = false;
     _conversationStarted.clear();
     _otdRequested.clear();
     _savedListings.clear();
@@ -321,6 +421,11 @@ class DemoRepository {
     _savedCarsError = null;
     _savedListings.clear();
     _marketIntelUnlocked.clear();
+    _marketBriefs.clear();
+    _clearMarketIntelFailure();
+    _lastUnlockBalance = null;
+    _lastUnlockRefunded = false;
+    _lastUnlockHeld = false;
     _conversationStarted.clear();
     _otdRequested.clear();
     _creditLedger.clear();
@@ -328,6 +433,8 @@ class DemoRepository {
     _dealThreads.clear();
     _deals = [];
     _dealsSeeded = true;
+    _dealsLoadError = null;
+    _lastConversationNotice = null;
   }
 
   Future<User> updateUser(User user) async {
@@ -625,7 +732,7 @@ class DemoRepository {
   }
 
   bool hasUnlockedMarketIntel(String listingId) =>
-      !_live && _marketIntelUnlocked.contains(listingId);
+      marketIntelSpendEnabled && _marketIntelUnlocked.contains(listingId);
 
   bool hasStartedConversation(String listingId) =>
       _conversationStarted.contains(listingId);
@@ -651,18 +758,53 @@ class DemoRepository {
     return match;
   }
 
+  Future<void> refreshMarketIntel(String listingId) async {
+    if (!marketIntelSpendEnabled || !_live) return;
+    final read = await _marketIntel.read(listingId);
+    if (read == null || !read.unlocked || read.brief == null) return;
+    _marketIntelUnlocked.add(listingId);
+    _marketBriefs[listingId] = read.brief!;
+    _clearMarketIntelFailure();
+  }
+
+  /// Looks again at a stored card. Does not spend a key.
+  Future<bool> recheckMarketIntel(String listingId) async {
+    if (!marketIntelSpendEnabled || !_live) {
+      return _marketIntelUnlocked.contains(listingId);
+    }
+    final read = await _marketIntel.read(listingId);
+    if (read != null && read.unlocked && read.brief != null) {
+      _marketIntelUnlocked.add(listingId);
+      _marketBriefs[listingId] = read.brief!;
+      _clearMarketIntelFailure();
+      _lastUnlockHeld = false;
+      return true;
+    }
+    _marketIntelFailure = KeySpend.marketIntelStillChecking;
+    _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+    _marketIntelRecheck = true;
+    return false;
+  }
+
   Future<bool> unlockMarketIntel(Listing listing) async {
-    if (_live) return false;
+    if (!marketIntelSpendEnabled) return false;
+    _clearMarketIntelFailure();
     final remote = await _keySpend.spendMarketSave(listing);
     if (_refusesLocalKeySpend(remote)) {
       if (remote.ok) {
         _marketIntelUnlocked.add(listing.id);
+        if (remote.brief != null) _marketBriefs[listing.id] = remote.brief!;
         if (remote.balance != null) _creditBalance = remote.balance!;
+        _lastUnlockBalance = remote.balance?.balance;
+        _lastUnlockRefunded = false;
+        _lastUnlockHeld = false;
         await saveCar(listing, source: 'market_intel');
         ProductAnalytics.instance.track(AnalyticsEvents.marketIntelUnlocked, {
           'listing_id': listing.id,
           'source': 'live',
         });
+      } else if (_live) {
+        _rememberUnlockFailure(remote);
       }
       return remote.ok;
     }
@@ -675,13 +817,50 @@ class DemoRepository {
     return true;
   }
 
+  void _clearMarketIntelFailure() {
+    _marketIntelFailure = null;
+    _marketIntelFailureAction = null;
+    _marketIntelRecheck = false;
+  }
+
+  void _rememberUnlockFailure(KeySpendResult remote) {
+    _lastUnlockBalance = remote.balance?.balance ?? _lastUnlockBalance;
+    _lastUnlockRefunded = remote.refunded;
+    _lastUnlockHeld = remote.held || remote.errorCode == 'unreachable' || remote.statusCode == 0;
+    if (remote.refunded) {
+      _marketIntelFailure = KeySpend.marketIntelKeyBack;
+      _marketIntelFailureAction = KeySpend.marketIntelRetry;
+      _marketIntelRecheck = false;
+      if (remote.balance != null) _creditBalance = remote.balance!;
+      return;
+    }
+    if (_lastUnlockHeld) {
+      _marketIntelFailure = KeySpend.marketIntelStillChecking;
+      _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+      _marketIntelRecheck = true;
+      return;
+    }
+    _marketIntelFailure = KeySpend.marketIntelNotConfirmed;
+    _marketIntelFailureAction = KeySpend.marketIntelCheckAgain;
+    _marketIntelRecheck = true;
+  }
+
   Future<Deal?> startDealerConversation(
     Listing listing,
     RooftopMatch match, {
     String? templateId,
     String? message,
   }) async {
-    if (!_mayStartConversation(match)) return null;
+    _lastConversationNotice = null;
+    if (!_mayStartConversation(match)) {
+      _lastConversationNotice = match.classifiedOffNetwork
+          ? DealerConversationNotice.offNetwork
+          : DealerConversationNotice.failed;
+      return null;
+    }
+    if (hasStartedConversation(listing.id)) {
+      return _dealForStartedListing(listing.id);
+    }
     final epoch = _captureAccount();
     final remote = await _keySpend.startConversation(
       listing: listing,
@@ -691,7 +870,10 @@ class DemoRepository {
     );
     if (!_accountStill(epoch)) return null;
     if (_refusesLocalKeySpend(remote)) {
-      if (!remote.ok) return null;
+      if (!remote.ok || remote.dealId == null || remote.dealId!.isEmpty) {
+        _lastConversationNotice = _noticeFor(remote);
+        return null;
+      }
       _conversationStarted.add(listing.id);
       if (remote.balance != null) _creditBalance = remote.balance!;
       ProductAnalytics.instance.track(
@@ -705,7 +887,12 @@ class DemoRepository {
       );
       final Deal created;
       try {
-        created = await addDeal(listing, spend: false, id: remote.dealId);
+        created = await addDeal(
+          listing,
+          spend: false,
+          id: remote.dealId,
+          serverThread: true,
+        );
       } on StaleAccountException {
         return null;
       }
@@ -752,8 +939,22 @@ class DemoRepository {
     return true;
   }
 
+  DealerConversationNotice _noticeFor(KeySpendResult remote) {
+    final code = remote.errorCode;
+    if (code == 'off_network') return DealerConversationNotice.offNetwork;
+    if (code == 'no_credits' || remote.statusCode == 402) {
+      return DealerConversationNotice.needsKey;
+    }
+    if (code == 'signed_out') return DealerConversationNotice.signedOut;
+    if (code == 'unreachable' || remote.statusCode == 0) {
+      return DealerConversationNotice.unreachable;
+    }
+    return DealerConversationNotice.failed;
+  }
+
   /// In-network is not enough in live mode. A stub match and an unavailable
   /// match must not post a conversation or fall through to the local ledger.
+  /// A verified `in_network` classification does not need a rooftop id.
   bool _mayStartConversation(RooftopMatch match) {
     if (!match.isInNetwork) return false;
     if (_live && match.source != RooftopMatchSource.live) return false;
@@ -783,6 +984,7 @@ class DemoRepository {
       changedOffer: deal.changedOffer,
       tryOnceMoreUsed: deal.tryOnceMoreUsed,
       dealerTimelines: deal.dealerTimelines,
+      serverThread: deal.serverThread,
     );
   }
 
@@ -1429,6 +1631,7 @@ class DemoRepository {
   }
 
   Future<List<Deal>> getDeals() async {
+    if (_loadsRemoteDeals) return _loadLiveDeals();
     final epoch = _captureAccount();
     _ensureDealsLoaded();
     await _delay(null);
@@ -1436,12 +1639,83 @@ class DemoRepository {
     return List<Deal>.unmodifiable(_deals);
   }
 
+  Future<List<Deal>> _loadLiveDeals() async {
+    final epoch = _captureAccount();
+    try {
+      final page = await _consumerDeals.list();
+      if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+      final remoteIds = page.deals.map((deal) => deal.id).toSet();
+      final kept = [
+        for (final deal in _deals)
+          if (deal.serverThread && !remoteIds.contains(deal.id)) deal,
+      ];
+      _deals = [...page.deals, ...kept];
+      _dealsSeeded = true;
+      _dealsLoadError = null;
+      if (page.balance != null) {
+        _creditBalance = _creditBalance.copyWith(balance: page.balance);
+        _balanceKnown = true;
+        _creditNotice = null;
+      }
+      return List<Deal>.unmodifiable(_deals);
+    } on ConsumerDealsException catch (error) {
+      if (!_accountStill(epoch)) return List<Deal>.unmodifiable(_deals);
+      _dealsLoadError = error.message;
+      return List<Deal>.unmodifiable(_deals);
+    }
+  }
+
+  /// Loads the server thread for a deal the API created.
+  /// Demo and local deals return the in-memory lines.
+  Future<DealThreadRefresh> refreshDealThread(String dealId) async {
+    if (!_isServerThread(dealId)) {
+      return DealThreadRefresh(messages: dealThread(dealId));
+    }
+    try {
+      final messages = await _consumerDeals.readThread(dealId);
+      _dealThreads[dealId] = messages;
+      return DealThreadRefresh(messages: dealThread(dealId));
+    } on ConsumerDealsException catch (error) {
+      return DealThreadRefresh(messages: dealThread(dealId), error: error.message);
+    }
+  }
+
+  /// Posts one shopper line. Server threads send `{body}` only.
+  /// Returns plain copy when the send fails, or null when it lands.
+  Future<String?> sendDealThreadMessage(String dealId, String body) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return null;
+    if (!_isServerThread(dealId)) {
+      rememberDealMessage(dealId, author: 'shopper', body: trimmed);
+      return null;
+    }
+    try {
+      final messages = await _consumerDeals.postMessage(dealId, trimmed);
+      _dealThreads[dealId] = messages;
+      return null;
+    } on ConsumerDealsException catch (error) {
+      return error.message;
+    }
+  }
+
+  bool _isServerThread(String dealId) {
+    for (final deal in _deals) {
+      if (deal.id == dealId) return deal.serverThread;
+    }
+    return false;
+  }
+
   Future<Deal> getDealById(String id) async {
     final deals = await getDeals();
     return deals.firstWhere((d) => d.id == id, orElse: () => deals.first);
   }
 
-  Future<Deal> addDeal(Listing listing, {bool spend = true, String? id}) async {
+  Future<Deal> addDeal(
+    Listing listing, {
+    bool spend = true,
+    String? id,
+    bool serverThread = false,
+  }) async {
     final epoch = _captureAccount();
     _ensureDealsLoaded();
     if (!_accountStill(epoch)) throw const StaleAccountException();
@@ -1450,8 +1724,13 @@ class DemoRepository {
         final renamed = id != null && id.isNotEmpty && deal.id != id
             ? deal.copyWith(id: id)
             : deal;
-        final next = _dropSyntheticMarket(renamed);
-        if (next.id != deal.id || next.marketContext != deal.marketContext) {
+        final marked = serverThread
+            ? renamed.copyWith(serverThread: true)
+            : renamed;
+        final next = _dropSyntheticMarket(marked);
+        if (next.id != deal.id ||
+            next.marketContext != deal.marketContext ||
+            next.serverThread != deal.serverThread) {
           _deals = [
             for (final item in _deals)
               if (item.id == deal.id) next else item,
@@ -1483,6 +1762,7 @@ class DemoRepository {
       addedAt: DateTime.now(),
       listing: listing,
       marketContext: _live ? null : await getMarketContext(listing),
+      serverThread: serverThread,
     );
     if (!_accountStill(epoch)) throw const StaleAccountException();
     _deals = [..._deals, newDeal];

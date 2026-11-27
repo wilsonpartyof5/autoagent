@@ -78,6 +78,11 @@ export function dealerConversationIdempotencyKey(dealId: string): string {
   return `use:dealer_conversation:${dealId}`;
 }
 
+/** Pre-stamp rows used `use:<deal id>` for the same dealer-conversation spend. */
+export function legacyDealerConversationIdempotencyKey(dealId: string): string {
+  return `use:${dealId}`;
+}
+
 export function dealerConversationRefundKey(dealId: string): string {
   return `refund:${dealId}`;
 }
@@ -139,6 +144,40 @@ export async function getShopperCredits(
     lifetimeUsed: data.lifetime_used,
     lifetimeRefunded: data.lifetime_refunded,
   };
+}
+
+export type DealerConversationChargeLookup = 'charged' | 'not_charged' | 'unreadable';
+
+/**
+ * True when this deal already has a dealer-conversation use event.
+ * A later consume_credit_atomic call for the same deal is a no-op.
+ */
+export async function dealerConversationAlreadyCharged(
+  supabase: SupabaseClient,
+  userId: string,
+  dealId: string,
+): Promise<DealerConversationChargeLookup> {
+  const { data, error } = await supabase
+    .from('shopper_credit_events')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('deal_id', dealId)
+    .eq('event_type', 'use')
+    .in('idempotency_key', [
+      dealerConversationIdempotencyKey(dealId),
+      legacyDealerConversationIdempotencyKey(dealId),
+    ])
+    .limit(1);
+
+  if (error) {
+    console.error(JSON.stringify({
+      event: 'dealer_conversation_charge_unreadable',
+      message: error.message,
+    }));
+    return 'unreadable';
+  }
+
+  return (data?.length ?? 0) > 0 ? 'charged' : 'not_charged';
 }
 
 export async function checkCanAddCar(

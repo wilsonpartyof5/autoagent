@@ -5,6 +5,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../core/widgets/canvas_background.dart';
+import '../../../core/widgets/drevvy_buttons.dart';
+import '../../../data/models/car_pack.dart';
 import '../../../data/models/listing.dart';
 import '../../../data/models/rooftop_match.dart';
 import 'listing_photo.dart';
@@ -21,6 +23,10 @@ class LiveDiscoverVdp extends StatelessWidget {
     required this.errorMessage,
     required this.onRetry,
     this.network,
+    this.onAskDealer,
+    this.asking = false,
+    this.askMessage,
+    this.fairPrice,
   });
 
   final bool isLoading;
@@ -30,6 +36,15 @@ class LiveDiscoverVdp extends StatelessWidget {
 
   /// Server classification. Null means the lookup was not made or failed.
   final RooftopMatch? network;
+
+  /// In-network only. Spends one key and opens the deal chat.
+  final VoidCallback? onAskDealer;
+
+  final bool asking;
+  final String? askMessage;
+
+  /// Fair-price card. Null keeps the sentence that no key is spent.
+  final Widget? fairPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +61,14 @@ class LiveDiscoverVdp extends StatelessWidget {
               onRetry: onRetry,
             )
           else
-            _Body(listing: listing!, network: network),
+            _Body(
+              listing: listing!,
+              network: network,
+              onAskDealer: onAskDealer,
+              asking: asking,
+              askMessage: askMessage,
+              fairPrice: fairPrice,
+            ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 12,
@@ -105,10 +127,21 @@ class _Error extends StatelessWidget {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.listing, required this.network});
+  const _Body({
+    required this.listing,
+    required this.network,
+    required this.onAskDealer,
+    required this.asking,
+    required this.askMessage,
+    required this.fairPrice,
+  });
 
   final Listing listing;
   final RooftopMatch? network;
+  final VoidCallback? onAskDealer;
+  final bool asking;
+  final String? askMessage;
+  final Widget? fairPrice;
 
   static const networkUnavailableMessage =
       'Dealer network is unavailable. Drevvy is not guessing in-network or off-network.';
@@ -172,12 +205,16 @@ class _Body extends StatelessWidget {
           ),
         ],
         const SizedBox(height: DrevvySpace.s6),
-        Text('Marketplace Intelligence', style: text.title),
-        const SizedBox(height: DrevvySpace.s2),
-        Text(
-          'Fair price is not part of this listing. Drevvy is not estimating one. No key is spent.',
-          style: text.body.copyWith(color: colors.muted),
-        ),
+        if (fairPrice != null)
+          fairPrice!
+        else ...[
+          Text('Marketplace Intelligence', style: text.title),
+          const SizedBox(height: DrevvySpace.s2),
+          Text(
+            'Fair price is not part of this listing. Drevvy is not estimating one. No key is spent.',
+            style: text.body.copyWith(color: colors.muted),
+          ),
+        ],
         const SizedBox(height: DrevvySpace.s6),
         Text('Key specs', style: text.title),
         const SizedBox(height: DrevvySpace.s2),
@@ -205,18 +242,62 @@ class _Body extends StatelessWidget {
           _networkCopy(network),
           style: text.body.copyWith(color: colors.muted),
         ),
-        const SizedBox(height: DrevvySpace.s2),
-        Text(
-          otdUnavailableMessage,
-          style: text.callout.copyWith(color: colors.muted),
-        ),
-        const SizedBox(height: DrevvySpace.s2),
-        Text(
-          dealerChatClosedMessage,
-          style: text.callout.copyWith(color: colors.muted),
-        ),
+        const SizedBox(height: DrevvySpace.s3),
+        ..._actions(context),
       ],
     );
+  }
+
+  List<Widget> _actions(BuildContext context) {
+    final colors = context.drevvy;
+    final text = context.drevvyText;
+    final match = network;
+    if (match != null && match.classifiedInNetwork) {
+      return [
+        DrevvyButton(
+          key: const Key('ask-this-dealer'),
+          label: asking ? 'Starting the chat…' : KeySpend.conversationCta,
+          variant: DrevvyButtonVariant.secondary,
+          onPressed: asking ? null : onAskDealer,
+          isFullWidth: true,
+        ),
+        const SizedBox(height: DrevvySpace.s1),
+        Text(
+          KeySpend.conversationNote,
+          style: text.callout.copyWith(color: colors.muted),
+        ),
+        if (askMessage != null) ...[
+          const SizedBox(height: DrevvySpace.s2),
+          Text(
+            askMessage!,
+            key: const Key('ask-dealer-message'),
+            style: text.body.copyWith(color: colors.ink),
+          ),
+        ],
+      ];
+    }
+    if (match != null &&
+        match.classifiedOffNetwork &&
+        match.source == RooftopMatchSource.live) {
+      return [
+        Text(
+          'Coming soon',
+          key: const Key('otd-coming-soon'),
+          style: text.body.copyWith(color: colors.ink),
+        ),
+      ];
+    }
+    return [
+      Text(
+        otdUnavailableMessage,
+        style: text.callout.copyWith(color: colors.muted),
+      ),
+      const SizedBox(height: DrevvySpace.s2),
+      Text(
+        dealerChatClosedMessage,
+        style: text.callout.copyWith(color: colors.muted),
+      ),
+    ];
   }
 
   static String _networkCopy(RooftopMatch? network) {

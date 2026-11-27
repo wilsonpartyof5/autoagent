@@ -1,11 +1,13 @@
 import 'package:equatable/equatable.dart';
 
+import 'json_values.dart';
+
 /// Market context for a listing, derived from MarketCheck comparables.
 /// Uses percentiles for low/high (not min/max) per audit recommendations.
 class MarketContext extends Equatable {
   const MarketContext({
     required this.fairVehiclePrice,
-    required this.fairOtd,
+    this.fairOtd,
     required this.lowPrice,
     required this.medianPrice,
     required this.highPrice,
@@ -20,8 +22,8 @@ class MarketContext extends Equatable {
   /// MarketCheck Price (fair vehicle price, used/CPO only)
   final int fairVehiclePrice;
   
-  /// Fair OTD = fairVehiclePrice + docFeeEst + titleRegEst + taxEst
-  final int fairOtd;
+  /// Optional whole-price figure. Market intel v1 does not invent one.
+  final int? fairOtd;
   
   /// p25 percentile of comparable listings
   final int lowPrice;
@@ -110,7 +112,7 @@ class MarketContext extends Equatable {
   factory MarketContext.fromJson(Map<String, dynamic> json) {
     return MarketContext(
       fairVehiclePrice: json['fair_vehicle_price'] as int,
-      fairOtd: json['fair_otd'] as int,
+      fairOtd: jsonInt(json['fair_otd']),
       lowPrice: json['low_price'] as int,
       medianPrice: json['median_price'] as int,
       highPrice: json['high_price'] as int,

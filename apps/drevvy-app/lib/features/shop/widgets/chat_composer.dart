@@ -44,11 +44,11 @@ class _ChatComposerState extends State<ChatComposer> {
     final text = context.drevvyText;
 
     final placeholder = widget.mode == ChatMode.ask
-        ? 'Ask about any car...'
+        ? 'Ask about cars…'
         : 'Search cars nearby...';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: DrevvySpace.gutter),
+      margin: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(DrevvyRadius.xl),
         child: BackdropFilter(
@@ -63,12 +63,6 @@ class _ChatComposerState extends State<ChatComposer> {
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: Icon(LucideIcons.mic, color: colors.muted),
-                  onPressed: () {
-                    // TODO: Voice input
-                  },
-                ),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: DrevvyMotion.composerPlaceholderFade.duration,
@@ -79,7 +73,7 @@ class _ChatComposerState extends State<ChatComposer> {
                         hintText: placeholder,
                         hintStyle: text.body.copyWith(color: colors.placeholder),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
+                        contentPadding: const EdgeInsets.only(left: 18),
                       ),
                       style: text.body,
                       textInputAction: TextInputAction.send,
@@ -90,7 +84,10 @@ class _ChatComposerState extends State<ChatComposer> {
                     ),
                   ),
                 ),
-                GestureDetector(
+                Semantics(
+                  label: 'Send',
+                  button: true,
+                  child: GestureDetector(
                   onTap: _send,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
@@ -108,6 +105,7 @@ class _ChatComposerState extends State<ChatComposer> {
                       size: 20,
                     ),
                   ),
+                ),
                 ),
               ],
             ),

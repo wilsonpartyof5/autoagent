@@ -19,15 +19,31 @@ class KeySpend {
 
   static const marketIntelCta = 'Unlock market intel & save';
   static const marketIntelUse = 'Uses 1 key';
-  static const marketIntelNote =
-      'Unlocks a price brief and saves this listing. This key is not refunded.';
+  static const marketIntelNote = 'One key unlocks this and saves the car.';
 
-  /// VDP teaser on the blurred Marketplace Intelligence card.
-  static const marketIntelTeaser =
-      'See fair price, similar cars, days listed, price drops · 1 key';
+  /// VDP teaser on the blurred fair-price card. Used cars only.
+  static const marketIntelTeaser = 'See the fair price · 1 key';
+
+  /// Locked teaser when the car is new. The number is a typical asking price.
+  static const typicalPriceTeaser = 'See typical prices · 1 key';
+
+  static const marketIntelHelper = 'One key unlocks this and saves the car.';
 
   /// Shown after Key A spends and the listing is saved.
-  static const marketIntelUnlockedConfirm = 'Fair price unlocked · Car saved.';
+  static const marketIntelUnlockedConfirm = 'Fair price saved · car saved';
+
+  /// The server confirmed the key was returned.
+  static const marketIntelKeyBack = "We couldn't load this. Your key is back.";
+
+  /// The lookup is still running, or the key is still held.
+  static const marketIntelStillChecking = 'Still checking. This can take a minute.';
+
+  /// The lookup failed and the refund is not confirmed.
+  static const marketIntelNotConfirmed = "We couldn't load this yet. We're fixing it.";
+
+  static const marketIntelRetry = 'Try again';
+
+  static const marketIntelCheckAgain = 'Check again';
 
   static const conversationCta = 'Text the dealer · 1 key';
   static const conversationUse = 'Uses 1 key';

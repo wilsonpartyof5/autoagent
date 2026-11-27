@@ -108,6 +108,7 @@ void main() {
           alreadyRequested: false,
           onConfirm: ({note}) async {
             submitted = true;
+            return true;
           },
         ),
       ),

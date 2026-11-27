@@ -1,0 +1,228 @@
+{
+  "success": true,
+  "service": "price_prediction",
+  "data": {
+    "marketcheck_price": 54926,
+    "msrp": 72620,
+    "comparables": {
+      "num_found": 34,
+      "listings": [
+        {
+          "id": "1FTEW1EP5MFA00001-aaaabbbb-1111",
+          "vin": "1FTEW1EP5MFA00001",
+          "price": 44167,
+          "miles": 93864,
+          "dom": 239,
+          "dom_180": 239,
+          "dom_active": 239,
+          "dos_active": 239,
+          "year": 2023,
+          "make": "Chevrolet",
+          "model": "Tahoe",
+          "trim": "Premier",
+          "vdp_url": "https://example.com/vdp/1FTEW1EP5MFA00001",
+          "photo_url": "https://example.com/photos/1FTEW1EP5MFA00001/1.jpg",
+          "dealer_id": 900001,
+          "dealer_name": "Example Motors",
+          "latitude": "40.00000",
+          "longitude": "-75.00000",
+          "mc_website_id": 900001,
+          "dist": 1.9
+        },
+        {
+          "id": "1FTEW1EP5MFA00002-ccccdddd-2222",
+          "vin": "1FTEW1EP5MFA00002",
+          "price": 43776,
+          "miles": 106698,
+          "dom": 48,
+          "dom_180": 29,
+          "dom_active": 29,
+          "dos_active": 29,
+          "year": 2023,
+          "make": "Chevrolet",
+          "model": "Tahoe",
+          "trim": "Premier",
+          "vdp_url": "https://example.com/vdp/1FTEW1EP5MFA00002",
+          "photo_url": "https://example.com/photos/1FTEW1EP5MFA00002/1.jpg",
+          "dealer_id": 900002,
+          "dealer_name": "North Example Chevrolet",
+          "latitude": "41.10000",
+          "longitude": "-74.20000",
+          "mc_website_id": 900002,
+          "dist": 149.67
+        }
+      ],
+      "stats": {
+        "price": {
+          "min": 35485,
+          "max": 57724,
+          "count": 34,
+          "missing": 0,
+          "sum": 1563314,
+          "mean": 45979.82,
+          "stddev": 5088.97,
+          "sum_of_squares": 72761419350,
+          "median": 45068.5,
+          "percentiles": {
+            "5.0": 38186.7,
+            "25.0": 43121.25,
+            "50.0": 45068.5,
+            "75.0": 50264.5,
+            "90.0": 52158.7,
+            "95.0": 54037.3,
+            "99.0": 56721.46
+          }
+        },
+        "miles": {
+          "min": 31760,
+          "max": 109909,
+          "count": 34,
+          "missing": 0,
+          "sum": 2447665,
+          "mean": 71990.15,
+          "stddev": 19325.1,
+          "sum_of_squares": 188905388263,
+          "median": 73344,
+          "percentiles": {
+            "5.0": 36288.5,
+            "25.0": 61759.5,
+            "50.0": 73344,
+            "75.0": 85194.75,
+            "90.0": 91717.4,
+            "95.0": 98355.9,
+            "99.0": 108849.37
+          }
+        },
+        "dos_active": {
+          "min": 1,
+          "max": 266,
+          "count": 34,
+          "missing": 0,
+          "sum": 2489,
+          "mean": 73.21,
+          "stddev": 72.22,
+          "sum_of_squares": 359561,
+          "median": 43.5,
+          "percentiles": {
+            "5.0": 2,
+            "25.0": 24.25,
+            "50.0": 43.5,
+            "75.0": 117.25,
+            "90.0": 196.2,
+            "95.0": 219.5,
+            "99.0": 257.09
+          }
+        }
+      }
+    },
+    "recent_comparables": {
+      "num_found": 4,
+      "listings": [
+        {
+          "id": "1FTEW1EP5MFA00001-eeeeffff-3333",
+          "vin": "1FTEW1EP5MFA00001",
+          "price": 44297,
+          "miles": 93864,
+          "dom": 236,
+          "dom_180": 236,
+          "dom_active": 236,
+          "dos_active": 236,
+          "year": 2023,
+          "make": "Chevrolet",
+          "model": "Tahoe",
+          "trim": "Premier",
+          "vdp_url": "https://example.com/vdp/1FTEW1EP5MFA00001",
+          "dealer_id": 900001,
+          "mc_website_id": 900001,
+          "dealer_name": "Example Motors",
+          "latitude": "40.00000",
+          "longitude": "-75.00000",
+          "dist": 1.9
+        },
+        {
+          "id": "1FTEW1EP5MFA00003-gggghhhh-4444",
+          "vin": "1FTEW1EP5MFA00003",
+          "price": 50020,
+          "miles": 50943,
+          "dom": 51,
+          "dom_180": 30,
+          "dom_active": 30,
+          "dos_active": 29,
+          "year": 2023,
+          "make": "Chevrolet",
+          "model": "Tahoe",
+          "trim": "Premier",
+          "vdp_url": "https://example.com/vdp/1FTEW1EP5MFA00003",
+          "dealer_id": 900003,
+          "mc_website_id": 900003,
+          "dealer_name": "Example Chevrolet",
+          "latitude": "39.50000",
+          "longitude": "-76.10000",
+          "dist": 51.21
+        }
+      ],
+      "stats": {
+        "price": {
+          "min": 44297,
+          "max": 55069,
+          "count": 4,
+          "missing": 0,
+          "sum": 198185,
+          "mean": 49546.25,
+          "stddev": 3835.3,
+          "sum_of_squares": 9878161771,
+          "median": 49409.5,
+          "percentiles": {
+            "5.0": 44972.3,
+            "25.0": 47673.5,
+            "50.0": 49409.5,
+            "75.0": 51282.25,
+            "90.0": 53554.3,
+            "95.0": 54311.65,
+            "99.0": 54917.53
+          }
+        },
+        "miles": {
+          "min": 49805,
+          "max": 93864,
+          "count": 4,
+          "missing": 0,
+          "sum": 257616,
+          "mean": 64404,
+          "stddev": 17777.66,
+          "sum_of_squares": 17855681786,
+          "median": 56973.5,
+          "percentiles": {
+            "5.0": 49975.7,
+            "25.0": 50658.5,
+            "50.0": 56973.5,
+            "75.0": 70719,
+            "90.0": 84606,
+            "95.0": 89235,
+            "99.0": 92938.2
+          }
+        },
+        "dos_active": {
+          "min": 29,
+          "max": 236,
+          "count": 4,
+          "missing": 0,
+          "sum": 367,
+          "mean": 91.75,
+          "stddev": 84.01,
+          "sum_of_squares": 61901,
+          "median": 51,
+          "percentiles": {
+            "5.0": 30.95,
+            "25.0": 38.75,
+            "50.0": 51,
+            "75.0": 104,
+            "90.0": 183.2,
+            "95.0": 209.6,
+            "99.0": 230.72
+          }
+        }
+      }
+    }
+  }
+}

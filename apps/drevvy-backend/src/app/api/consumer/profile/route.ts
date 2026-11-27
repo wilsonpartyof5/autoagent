@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { consumerAuthErrorResponse, requireConsumerAuth } from '@/lib/consumer/auth';
+import { handleConsumerProfileDelete } from '@/lib/shopper/account-deletion';
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import {
   presentProfile,
@@ -12,11 +13,13 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
- * GET  /api/consumer/profile
- * PATCH /api/consumer/profile
+ * GET    /api/consumer/profile
+ * PATCH  /api/consumer/profile
+ * DELETE /api/consumer/profile
  *
- * Shopper JWT. Returns first name and an optional five-digit ZIP.
+ * Shopper JWT. GET and PATCH return first name and an optional five-digit ZIP.
  * Contact fields are not read or written.
+ * DELETE removes the shopper account. Contract: 200 { deleted: true }.
  */
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +58,10 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     return profileErrorResponse(error);
   }
+}
+
+export async function DELETE(request: NextRequest) {
+  return handleConsumerProfileDelete(request);
 }
 
 function profileFromRow(userId: string, data: unknown) {
