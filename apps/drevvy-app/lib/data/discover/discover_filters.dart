@@ -1,4 +1,5 @@
 import '../models/chat.dart';
+import 'discover_query_parser.dart';
 
 /// Allow-listed Discover search filters from `docs/discover-public-api.md`.
 ///
@@ -77,15 +78,29 @@ class DiscoverFilters {
     );
   }
 
-  /// Shop composer text becomes make + model. It does not invent coordinates.
+  /// Shop composer text becomes filters through [parseDiscoverQuery].
+  ///
+  /// Only known words become filters. A sentence like
+  /// "150s under \$45k in fort mill South Carolina" becomes Ford F-150 with
+  /// a 45,000 max price. The place is not a filter here; coordinates come
+  /// from the shopper's chosen location. An unknown word never becomes `make`.
   DiscoverFilters withQuery(String query) {
     final text = query.trim();
     if (text.isEmpty) return this;
-    final parts = text.split(RegExp(r'\s+'));
-    return copyWith(
-      make: parts.first,
-      model: parts.length > 1 ? parts.sublist(1).join(' ') : null,
-      clearModel: parts.length == 1,
+    final parsed = parseDiscoverQuery(text);
+    final hasMake = parsed.make != null;
+    return DiscoverFilters(
+      make: hasMake ? parsed.make : make,
+      model: hasMake ? parsed.model : model,
+      trim: hasMake ? null : trim,
+      yearMin: parsed.yearMin ?? yearMin,
+      yearMax: parsed.yearMax ?? yearMax,
+      priceMin: parsed.priceMin ?? priceMin,
+      priceMax: parsed.priceMax ?? priceMax,
+      milesMax: parsed.milesMax ?? milesMax,
+      condition: parsed.condition ?? condition,
+      bodyType: parsed.bodyType ?? bodyType,
+      radiusMiles: radiusMiles,
     );
   }
 

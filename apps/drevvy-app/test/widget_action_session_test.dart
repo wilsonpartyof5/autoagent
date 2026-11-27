@@ -807,6 +807,9 @@ class _ActionRepo extends DemoRepository {
   Future<ChatThread> sendMessage(
     String text, {
     Set<String>? enabledMemoryIds,
+    double? lat,
+    double? lng,
+    String? zip,
   }) async {
     if (stallSend && !_sendHeld) {
       _sendHeld = true;
