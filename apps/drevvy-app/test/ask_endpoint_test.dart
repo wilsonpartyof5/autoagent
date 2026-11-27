@@ -8,7 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-const _convo = '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51';
+// #165 shape: lowercase uuid + '.' + 64-char lowercase hex HMAC = 101 chars.
+const _convo =
+    '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const _convoNext =
+    '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51.abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
 
 ShopperSessionStore _signedIn() =>
     ShopperSessionStore()
@@ -42,12 +46,13 @@ Map<String, Object?> _listing(String id) => {
 http.Response _ok(Map<String, Object?> body) =>
     http.Response(jsonEncode(body), 200);
 
-http.Response _err(int status, String code) => http.Response(
-  jsonEncode({
+http.Response _err(int status, String code, {bool envelope = false}) {
+  final body = <String, Object>{
     'error': {'code': code, 'message': 'server text the app never shows'},
-  }),
-  status,
-);
+  };
+  if (envelope) body['success'] = false;
+  return http.Response(jsonEncode(body), status);
+}
 
 Matcher _askError({
   required int status,
@@ -139,22 +144,56 @@ void main() {
     expect(result.listings.single.build.model, 'F-150');
   });
 
-  test('omits bad conversation ids, null island, and bad zips', () async {
+  test('stores the conversationId from the 200 even when it changed', () async {
     late Map<String, dynamic> body;
     final endpoint = _endpoint(
       MockClient((request) async {
         body = jsonDecode(request.body) as Map<String, dynamic>;
+        return _ok({'reply': 'Hi', 'conversationId': _convoNext});
+      }),
+    );
+    final result = await endpoint.ask(message: 'hello', conversationId: _convo);
+    expect(body['conversationId'], _convo);
+    expect(_convo.length, 101);
+    expect(_convoNext.length, 101);
+    expect(result.conversationId, _convoNext);
+    expect(result.conversationId, isNot(_convo));
+  });
+
+  test('sends a non-uuid opaque id and omits empty or overlong ids', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final endpoint = _endpoint(
+      MockClient((request) async {
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
         return _ok({'reply': 'Hi', 'conversationId': _convo});
       }),
     );
-    await endpoint.ask(
-      message: 'hello',
-      conversationId: 'not-a-uuid',
-      lat: 0,
-      lng: 0,
-      zip: 'Fort Mill',
+    await endpoint.ask(message: 'hello', conversationId: 'not-a-uuid');
+    await endpoint.ask(message: 'hello', conversationId: '   ');
+    await endpoint.ask(message: 'hello', conversationId: 'x' * 129);
+    await endpoint.ask(message: 'hello', conversationId: 'x' * 128);
+    expect(bodies[0], {'message': 'hello', 'conversationId': 'not-a-uuid'});
+    expect(bodies[1], {'message': 'hello'});
+    expect(bodies[2], {'message': 'hello'});
+    expect(bodies[3], {'message': 'hello', 'conversationId': 'x' * 128});
+  });
+
+  test('omits null island and bad zips, and sends ZIP+4', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final endpoint = _endpoint(
+      MockClient((request) async {
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return _ok({'reply': 'Hi', 'conversationId': _convo});
+      }),
     );
-    expect(body, {'message': 'hello'});
+    await endpoint.ask(message: 'hello', lat: 0, lng: 0, zip: 'Fort Mill');
+    await endpoint.ask(message: 'hello', zip: '29715-1234');
+    await endpoint.ask(message: 'hello', zip: '29715');
+    await endpoint.ask(message: 'hello', zip: '29715-12');
+    expect(bodies[0], {'message': 'hello'});
+    expect(bodies[1], {'message': 'hello', 'zip': '29715-1234'});
+    expect(bodies[2], {'message': 'hello', 'zip': '29715'});
+    expect(bodies[3], {'message': 'hello'});
   });
 
   test('tolerates a {success, data} envelope', () async {
@@ -170,6 +209,21 @@ void main() {
     expect(result.reply, 'Hi there');
     expect(result.conversationId, _convo);
     expect(result.listings, isEmpty);
+  });
+
+  test('parses the {success:false, error:{code,message}} envelope', () async {
+    final endpoint = _endpoint(
+      MockClient((_) async => _err(429, 'rate_limited', envelope: true)),
+    );
+    await expectLater(
+      endpoint.ask(message: 'hi'),
+      _askError(
+        status: 429,
+        message: AskCopy.rateLimited,
+        canRetry: false,
+        code: 'rate_limited',
+      ),
+    );
   });
 
   test('signed out shows sign in and makes no call', () async {
@@ -208,6 +262,7 @@ void main() {
     (400, 'invalid_request', AskCopy.invalidRequest, false),
     (401, 'unauthorized', AskCopy.signedOut, false),
     (403, 'dealer_account', AskCopy.dealerAccount, false),
+    (403, 'conversation_forbidden', AskCopy.network, true),
     (429, 'rate_limited', AskCopy.rateLimited, false),
     (503, 'ask_unavailable', AskCopy.busy, true),
     (500, 'internal', AskCopy.network, true),

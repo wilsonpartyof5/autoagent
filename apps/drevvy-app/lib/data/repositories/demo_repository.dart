@@ -145,7 +145,8 @@ class DemoRepository {
   /// `--dart-define=DREVVY_MI_SPEND=true` (or the constructor override).
   bool get marketIntelSpendEnabled => !_live || _miSpendEnabled;
 
-  MarketIntelBrief? marketBriefFor(String listingId) => _marketBriefs[listingId];
+  MarketIntelBrief? marketBriefFor(String listingId) =>
+      _marketBriefs[listingId];
 
   /// Shopper copy for the last live unlock that did not store a card.
   /// The key-back line is used only when the server confirmed the refund.
@@ -828,7 +829,10 @@ class DemoRepository {
   void _rememberUnlockFailure(KeySpendResult remote) {
     _lastUnlockBalance = remote.balance?.balance ?? _lastUnlockBalance;
     _lastUnlockRefunded = remote.refunded;
-    _lastUnlockHeld = remote.held || remote.errorCode == 'unreachable' || remote.statusCode == 0;
+    _lastUnlockHeld =
+        remote.held ||
+        remote.errorCode == 'unreachable' ||
+        remote.statusCode == 0;
     if (remote.refunded) {
       _marketIntelFailure = KeySpend.marketIntelKeyBack;
       _marketIntelFailureAction = KeySpend.marketIntelRetry;
@@ -1678,7 +1682,10 @@ class DemoRepository {
       _dealThreads[dealId] = messages;
       return DealThreadRefresh(messages: dealThread(dealId));
     } on ConsumerDealsException catch (error) {
-      return DealThreadRefresh(messages: dealThread(dealId), error: error.message);
+      return DealThreadRefresh(
+        messages: dealThread(dealId),
+        error: error.message,
+      );
     }
   }
 
@@ -2003,7 +2010,11 @@ class DemoRepository {
 
   /// Sends the last shopper message again after a retryable error.
   /// The error bubble is removed. The shopper's message is not added twice.
-  Future<ChatThread> retryLastAsk({double? lat, double? lng, String? zip}) async {
+  Future<ChatThread> retryLastAsk({
+    double? lat,
+    double? lng,
+    String? zip,
+  }) async {
     if (!_live) return _chatThread;
     final messages = List<ChatMessage>.from(_chatThread.messages);
     if (messages.isEmpty ||
@@ -2035,9 +2046,8 @@ class DemoRepository {
     final threadId = _chatThread.id;
     ChatMessage answer;
     try {
-      final result = await _ask.ask(
-        message: text,
-        conversationId: _askConversationId,
+      final result = await _askWithForbiddenRetry(
+        text,
         lat: lat,
         lng: lng,
         zip: zip,
@@ -2046,6 +2056,7 @@ class DemoRepository {
         return _chatThread;
       }
       if (result.conversationId.isNotEmpty) {
+        // Always keep the id from the latest 200, even if it changed.
         _askConversationId = result.conversationId;
       }
       answer = ChatMessage(
@@ -2073,6 +2084,49 @@ class DemoRepository {
       messages: [..._chatThread.messages, answer],
     );
     return _chatThread;
+  }
+
+  /// Calls Ask. A 403 `conversation_forbidden` means the stored id belongs
+  /// to someone else. Clear it and retry the same message once with no id,
+  /// which starts a new conversation (the server is stateless). A second
+  /// failure shows the generic retry copy, not "Ask is for shoppers."
+  Future<AskResult> _askWithForbiddenRetry(
+    String text, {
+    double? lat,
+    double? lng,
+    String? zip,
+  }) async {
+    try {
+      return await _ask.ask(
+        message: text,
+        conversationId: _askConversationId,
+        lat: lat,
+        lng: lng,
+        zip: zip,
+      );
+    } on AskException catch (error) {
+      if (error.code != 'conversation_forbidden') rethrow;
+      final hadId = (_askConversationId ?? '').trim().isNotEmpty;
+      _askConversationId = null;
+      if (!hadId) {
+        throw AskException(
+          code: error.code,
+          message: AskCopy.network,
+          status: error.status,
+          canRetry: true,
+        );
+      }
+      try {
+        return await _ask.ask(message: text, lat: lat, lng: lng, zip: zip);
+      } on AskException catch (retryError) {
+        throw AskException(
+          code: retryError.code,
+          message: AskCopy.network,
+          status: retryError.status,
+          canRetry: true,
+        );
+      }
+    }
   }
 
   ChatMessage _askError(String copy, {required bool canRetry}) => ChatMessage(

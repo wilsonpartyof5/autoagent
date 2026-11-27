@@ -56,17 +56,21 @@ class AskResult {
   final Map<String, dynamic> filters;
 }
 
-/// Shopper Ask. Contract confirmed by Pivot (backend PR pending):
+/// Shopper Ask. Matches backend PR #165 (`POST /api/consumer/ask`):
 ///
 /// `POST {DREVVY_API_BASE_URL}/api/consumer/ask`
 /// `Authorization: Bearer <shopper Supabase JWT>`
 /// Body: `{message (1-500 chars), conversationId?, lat?, lng?, zip?}`
+/// `conversationId` is an opaque signed string (`<uuid>.<hmac>`, 101 chars).
+/// The app treats it as opaque: any non-empty trimmed value of 128 characters
+/// or fewer is stored from the latest 200 and echoed back unchanged.
+/// `lat` and `lng` are sent together. `zip` is 5 digits or ZIP+4.
 /// 200: `{reply, conversationId, filters, listings, total}`. `listings` use
 /// the public Discover card shape. The server is stateless, so the app keeps
-/// the thread and sends `conversationId` back.
-/// Errors: `{error: {code, message}}` with 400 invalid_request,
-/// 401 unauthorized, 403 dealer_account, 429 rate_limited,
-/// 503 ask_unavailable. Ask spends no keys.
+/// the thread. A malformed id is replaced by the server, not rejected.
+/// Errors: `{success:false, error:{code, message}}` with 400 invalid_request,
+/// 401 unauthorized, 403 dealer_account, 403 conversation_forbidden,
+/// 429 rate_limited, 503 ask_unavailable. Ask spends no keys.
 abstract class AskEndpoint {
   const AskEndpoint();
 
@@ -137,11 +141,17 @@ class HttpAskEndpoint extends AskEndpoint {
   final http.Client _client;
   final ShopperSessionStore _sessionStore;
 
-  static final _uuid = RegExp(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-    caseSensitive: false,
-  );
-  static final _zip = RegExp(r'^\d{5}$');
+  /// Opaque conversation ids from #165 are `<uuid>.<hmac>` (101 chars).
+  /// Accept any non-empty trimmed value at or under this cap; do not
+  /// otherwise validate the shape. The server issues a fresh id when the
+  /// presented value is malformed.
+  static const maxConversationIdLength = 128;
+  static final _zip = RegExp(r'^\d{5}(-\d{4})?$');
+
+  static bool isOpaqueConversationId(String? value) {
+    final id = value?.trim() ?? '';
+    return id.isNotEmpty && id.length <= maxConversationIdLength;
+  }
 
   @override
   Future<AskResult> ask({
@@ -172,7 +182,9 @@ class HttpAskEndpoint extends AskEndpoint {
 
     final body = <String, Object>{'message': text};
     final id = conversationId?.trim();
-    if (id != null && _uuid.hasMatch(id)) body['conversationId'] = id;
+    if (id != null && isOpaqueConversationId(id)) {
+      body['conversationId'] = id;
+    }
     final hasCoords =
         lat != null &&
         lng != null &&
@@ -291,6 +303,14 @@ class HttpAskEndpoint extends AskEndpoint {
           status: status,
         );
       case 403:
+        if (code == 'conversation_forbidden') {
+          return AskException(
+            code: 'conversation_forbidden',
+            message: AskCopy.network,
+            status: status,
+            canRetry: true,
+          );
+        }
         return AskException(
           code: code ?? 'dealer_account',
           message: AskCopy.dealerAccount,
