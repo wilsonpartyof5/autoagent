@@ -1,28 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { searchResolvedInventory } from '@/lib/query/inventory-search';
 import {
   parseQueryWithOpenAI,
-  validateAndNormalize,
-  geocodeLocation,
   type LocationData,
   type ApiCompatibleFilters,
 } from '@/lib/query/parse-inventory-query';
 import { createShoppingModelClient, SHOPPING_MODEL, shoppingGatewayCredential } from '@/lib/query/shopping-llm';
 
-import {
-  resolveCanonicalFilters,
-  type CanonicalFilters,
-} from '@/lib/query/resolve-canonical-filters';
+import { type CanonicalFilters } from '@/lib/query/resolve-canonical-filters';
 
-import { marketCheckSubject, withMarketCheckContext } from '@/lib/marketcheck/context';
-import {
-  searchActiveCarsMcp,
-  MarketCheckQuotaError,
-  MarketCheckRateLimitError,
-  type LiveVehicle,
-  type LiveSearchFilters,
-} from '@/lib/marketcheck/mcp-adapter';
-import { payloadContainsSecret, redactSecrets } from '@/lib/marketcheck/secrets';
+import { type LiveVehicle } from '@/lib/marketcheck/mcp-adapter';
+import { payloadContainsSecret } from '@/lib/marketcheck/secrets';
 import { redactShopperDealerIdentity } from '@/lib/shopper/redact-dealer';
 
 /**
@@ -134,8 +123,6 @@ function validateApiKey(request: NextRequest): boolean {
 // ---------------------------------------------------------------------------
 // AI response generation
 // ---------------------------------------------------------------------------
-
-const DEFAULT_SEARCH_RADIUS_MILES = 25;
 
 /**
  * Build context for the AI assistant reply.
@@ -289,176 +276,34 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { filters, apiCompatibleFilters } = validateAndNormalize(parseResult.filters, parseResult.explicitFields);
+  const searched = await searchResolvedInventory({
+    query,
+    parseResult,
+    userLocation: body.userLocation,
+    previousFilters: prev,
+    previousLocation: prevLocation,
+    origin: request.nextUrl.origin,
+    subjectHeader: request.headers.get('x-drevvy-subject'),
+  });
+  if (!searched.ok) {
+    const res = NextResponse.json(
+      { success: false, error: { code: searched.code, message: searched.message } },
+      { status: searched.status },
+    );
+    if (searched.retryAfter) res.headers.set('Retry-After', String(searched.retryAfter));
+    return res;
+  }
 
-  // Log what was extracted from the current query (before merging previous context)
-  console.log(JSON.stringify({
-    event: 'chat_search_incoming',
-    query: query.substring(0, 80),
+  const {
+    location,
+    center,
     incomingFilters: apiCompatibleFilters,
-    previousFilters: Object.keys(prev).length > 0 ? prev : null,
-    hasPreviousLocation: !!prevLocation,
-  }));
-
-  // ---------------------------------------------------------------------------
-  // 2. Geocode if location mentioned in new query
-  // ---------------------------------------------------------------------------
-  let location: LocationData | undefined;
-  if (filters.locationText) {
-    try {
-      const geocoded = await geocodeLocation(filters.locationText);
-      if (geocoded) location = geocoded;
-    } catch {
-      // Non-fatal — fall back to userLocation
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // 3. Determine search center
-  //    Priority: new query geocode → userLocation (device GPS) → previousLocation
-  // ---------------------------------------------------------------------------
-  const center = location
-    ? { latitude: location.lat, longitude: location.lng }
-    : body.userLocation
-      ?? (prevLocation ? { latitude: prevLocation.latitude, longitude: prevLocation.longitude } : undefined);
-
-  // Restore previous location metadata when the current query didn't mention a place
-  if (!location && prevLocation?.raw) {
-    location = { raw: prevLocation.raw, lat: prevLocation.latitude, lng: prevLocation.longitude, source: 'geocode' };
-  }
-
-  if (!center || (Math.abs(center.latitude) < 0.01 && Math.abs(center.longitude) < 0.01)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: {
-          code: 'LOCATION_REQUIRED',
-          message: 'A location is needed to search inventory. Please mention a city/ZIP in your query or enable device location.',
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 4. Merge previous context with current intent
-  //    Rule: new explicit fields win; previous fields fill in gaps.
-  // ---------------------------------------------------------------------------
-  const explicitSet = new Set(parseResult.explicitFields);
-
-  const mergedFilters: ApiCompatibleFilters = {
-    // Start from previous context
-    ...prev,
-    // Overwrite only the fields explicitly present in the new query
-    ...(explicitSet.has('make') && apiCompatibleFilters.make !== undefined ? { make: apiCompatibleFilters.make } : {}),
-    ...(explicitSet.has('model') && apiCompatibleFilters.model !== undefined ? { model: apiCompatibleFilters.model } : {}),
-    ...(explicitSet.has('bodyType') && apiCompatibleFilters.bodyType !== undefined ? { bodyType: apiCompatibleFilters.bodyType } : {}),
-    ...(explicitSet.has('condition') && apiCompatibleFilters.condition !== undefined ? { condition: apiCompatibleFilters.condition } : {}),
-    ...(explicitSet.has('minPrice') && apiCompatibleFilters.minPrice !== undefined ? { minPrice: apiCompatibleFilters.minPrice } : {}),
-    ...(explicitSet.has('maxPrice') && apiCompatibleFilters.maxPrice !== undefined ? { maxPrice: apiCompatibleFilters.maxPrice } : {}),
-    ...(explicitSet.has('maxMiles') && apiCompatibleFilters.maxMiles !== undefined ? { maxMiles: apiCompatibleFilters.maxMiles } : {}),
-    ...(explicitSet.has('year') && apiCompatibleFilters.year !== undefined ? { year: apiCompatibleFilters.year } : {}),
-    ...(explicitSet.has('minYear') && apiCompatibleFilters.minYear !== undefined ? { minYear: apiCompatibleFilters.minYear } : {}),
-    ...(explicitSet.has('maxYear') && apiCompatibleFilters.maxYear !== undefined ? { maxYear: apiCompatibleFilters.maxYear } : {}),
-    ...(explicitSet.has('exteriorColor') && apiCompatibleFilters.exteriorColor !== undefined ? { exteriorColor: apiCompatibleFilters.exteriorColor } : {}),
-    ...(explicitSet.has('seatingCapacity') && apiCompatibleFilters.seatingCapacity !== undefined ? { seatingCapacity: apiCompatibleFilters.seatingCapacity } : {}),
-    ...(explicitSet.has('powertrainType') && apiCompatibleFilters.powertrainType !== undefined ? { powertrainType: apiCompatibleFilters.powertrainType } : {}),
-  };
-
-  console.log(JSON.stringify({
-    event: 'chat_search_merged',
-    query: query.substring(0, 80),
     mergedFilters,
-    explicitFields: parseResult.explicitFields,
-  }));
-
-  // ---------------------------------------------------------------------------
-  // 5. Canonical filter resolution — validate categorical values against MCP facets
-  // ---------------------------------------------------------------------------
-  let canonicalFilters: CanonicalFilters = { ...mergedFilters };
-  try {
-    const resolved = await resolveCanonicalFilters(mergedFilters, {
-      latitude: center.latitude,
-      longitude: center.longitude,
-      radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
-    });
-    canonicalFilters = resolved.canonicalFilters;
-  } catch (err) {
-    console.error('[chat-search] Canonical resolution failed (non-fatal):', err);
-    // canonicalFilters stays as mergedFilters passthrough
-  }
-
-  // ---------------------------------------------------------------------------
-  // 6. MCP inventory search — build from canonicalFilters (validated values)
-  // ---------------------------------------------------------------------------
-  const searchFilters: LiveSearchFilters = {};
-  if (canonicalFilters.make) searchFilters.make = canonicalFilters.make;
-  if (canonicalFilters.model) searchFilters.model = canonicalFilters.model;
-  if (canonicalFilters.year) searchFilters.year = canonicalFilters.year;
-  if (canonicalFilters.minYear) searchFilters.minYear = canonicalFilters.minYear;
-  if (canonicalFilters.maxYear) searchFilters.maxYear = canonicalFilters.maxYear;
-  if (canonicalFilters.minPrice) searchFilters.minPrice = canonicalFilters.minPrice;
-  if (canonicalFilters.maxPrice) searchFilters.maxPrice = canonicalFilters.maxPrice;
-  if (canonicalFilters.maxMiles) searchFilters.maxMiles = canonicalFilters.maxMiles;
-  if (canonicalFilters.condition) searchFilters.condition = canonicalFilters.condition;
-  if (canonicalFilters.bodyType) searchFilters.bodyType = canonicalFilters.bodyType;
-  if (canonicalFilters.seatingCapacity) searchFilters.seatingCapacity = canonicalFilters.seatingCapacity;
-  if (canonicalFilters.powertrainType) searchFilters.powertrainType = canonicalFilters.powertrainType;
-  if (canonicalFilters.exteriorColor) searchFilters.exteriorColor = canonicalFilters.exteriorColor;
-
-  let searchResult: Awaited<ReturnType<typeof searchActiveCarsMcp>>;
-  try {
-    searchResult = await withMarketCheckContext(
-      {
-        origin: request.nextUrl.origin,
-        subject: marketCheckSubject(undefined, request.headers.get('x-drevvy-subject')),
-      },
-      () => searchActiveCarsMcp({
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
-        filters: searchFilters,
-        rows: 25,
-        start: 0,
-      }),
-    );
-  } catch (error) {
-    if (error instanceof MarketCheckQuotaError) {
-      console.error(JSON.stringify({
-        event: 'marketcheck_quota_exceeded',
-        message: '🚫 Monthly MarketCheck API quota exhausted — all MCP calls will return 402 until the quota resets.',
-        query: query.substring(0, 60),
-      }));
-      return NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message } },
-        { status: 503 },
-      );
-    }
-    if (error instanceof MarketCheckRateLimitError) {
-      console.warn(JSON.stringify({
-        event: 'marketcheck_rate_limited',
-        retryAfter: error.retryAfter,
-        query: query.substring(0, 60),
-      }));
-      const res = NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message } },
-        { status: 429 },
-      );
-      if (error.retryAfter) res.headers.set('Retry-After', String(error.retryAfter));
-      return res;
-    }
-    console.error(JSON.stringify({
-      event: 'chat_search_mcp_error',
-      error: redactSecrets(error instanceof Error ? error.message : String(error)),
-    }));
-    return NextResponse.json(
-      { success: false, error: { code: 'SEARCH_ERROR', message: 'Failed to search inventory. Please try again.' } },
-      { status: 500 },
-    );
-  }
-
-  const { vehicles: liveVehicles, numFound } = searchResult;
-  const total = numFound > 0 ? numFound : liveVehicles.length;
+    canonicalFilters,
+    searchFilters,
+    liveVehicles,
+    total,
+  } = searched;
 
   // ---------------------------------------------------------------------------
   // 6. Generate AI assistant reply (grounded in canonical results)
