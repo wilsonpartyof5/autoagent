@@ -8,6 +8,7 @@ import { lookupListingDealerIdentity } from '@/lib/dealer/rooftop-store';
 import { marketCheckListingFromPayload } from './listing-car';
 import { MarketCheckUpstreamError } from './mcp-client';
 import { getVehicleDetailMcp, parseDetailSections, searchActiveCarsMcp } from './mcp-adapter';
+import { publicListingFromDetail, publicListingFromSearchVehicle } from '../public-discover/allowlist';
 import { getMarketCheckPrice, resetFairPriceGuardsForTests } from './price';
 import { containsSecret } from './secrets';
 import { resetMarketCheckUsageForTests } from './usage';
@@ -126,8 +127,11 @@ test('search results do not cache and never return the API key', async () => {
     assert.equal(containsSecret(serialized), false);
     assert.equal(serialized.includes('api_key'), false);
     assert.match(first.vehicles[0]?.thumbnailUrl ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
-    assert.deepEqual(first.vehicles[0]?.photoUrls, []);
-    assert.equal(first.vehicles[0]?.primaryPhotoUrl, undefined);
+    const photos = first.vehicles[0]?.photoUrls ?? [];
+    assert.equal(photos.length > 0, true);
+    assert.match(photos[0] ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
+    assert.equal(first.vehicles[0]?.primaryPhotoUrl, photos[0]);
+    assert.equal(JSON.stringify(first).includes('cdn.dealer.example'), false);
     assert.equal(logs.some((line) => line.includes('"endpoint":"search_active_cars"') && line.includes('"count":1')), true);
     assert.equal(containsSecret(logs.join('\n')), false);
     assert.equal(calls[0]?.url.includes(SECRET), true);
@@ -322,6 +326,7 @@ test('a listing id lookup uses GET /v2/listing/car and rejects a mismatched id',
     heading: '2025%20Eagle%20Dennis%20Proview',
     exterior_color: '100%',
     build: { ...listing.build, make: 'Eagle%20Dennis' },
+    photo_url: 'https://cdn.example/c%20d.jpg',
     media: { primary_photo_url: 'https://cdn.example/a%20b.jpg' },
   });
   assert.equal(decoded?.heading, '2025 Eagle Dennis Proview');
@@ -329,6 +334,7 @@ test('a listing id lookup uses GET /v2/listing/car and rejects a mismatched id',
   assert.equal((decoded?.build as { make?: string } | undefined)?.make, 'Eagle Dennis');
   assert.equal(decoded?.price, 32000);
   assert.equal((decoded?.media as { primary_photo_url?: string } | undefined)?.primary_photo_url, 'https://cdn.example/a%20b.jpg');
+  assert.equal(decoded?.photo_url, 'https://cdn.example/c%20d.jpg');
   assert.equal(marketCheckListingFromPayload({ data: { listings: [listing] } })?.id, 'listing-1');
   assert.equal(marketCheckListingFromPayload(listing)?.id, 'listing-1');
 });
@@ -454,5 +460,178 @@ test('upstream errors that echo the API key are redacted in logs', async () => {
     assert.equal(containsSecret(joined), false);
     assert.match(joined, /\[redacted\]/);
     assert.equal(joined.includes(SECRET), false);
+  });
+});
+
+test('http dealer photo_links upgrade, and a dropped gallery falls back to cached or primary', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  process.env.DREVVY_PUBLIC_ORIGIN = 'https://app.example';
+  resetMarketCheckCacheForTests();
+  const vin = '3N6CM0KN2GK693924';
+  const lot = {
+    name: 'Example Independent Lot',
+    city: 'Charlotte',
+    state: 'NC',
+    phone: '704-555-0148',
+    website: 'http://example-lot.test',
+    latitude: 35.006611,
+    longitude: -80.946295,
+  };
+  const origin = { latitude: 35.0071, longitude: -80.9398 };
+  const listings = [
+    {
+      id: 'nv200-http',
+      vin,
+      price: 12995,
+      miles: 87000,
+      inventory_type: 'used',
+      vdp_url: 'http://example-lot.test/vdp/nv200',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer: lot,
+      media: {
+        photo_links: [
+          'http://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg',
+          'http://images.example-cdn.test/3N6CM0KN2GK693924/2.jpg',
+        ],
+        photo_links_cached: ['https://marketcheck-prod.apigee.net/v2/image/cache/car/nv200-1'],
+        primary_photo_url: 'http://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg',
+      },
+    },
+    {
+      id: 'nv200-cached',
+      vin: '3N6CM0KN2GK693925',
+      price: 11995,
+      miles: 91000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer: lot,
+      media: {
+        photo_links: [`http://images.example-cdn.test/secret.jpg?api_key=${SECRET}`],
+        photo_links_cached: ['https://images.marketcheck.com/vehicles/nv200-cached.jpg'],
+        primary_photo_url: `http://images.example-cdn.test/secret.jpg?api_key=${SECRET}`,
+      },
+    },
+    {
+      id: 'cdn-https',
+      vin: '3N6CM0KN2GK693926',
+      price: 14995,
+      miles: 64000,
+      inventory_type: 'used',
+      build: { year: 2018, make: 'Nissan', model: 'NV200' },
+      dealer: { ...lot, latitude: 35.08, longitude: -80.9 },
+      media: {
+        photo_links: [
+          'https://images.carsforsale.com/nv200/1.jpg',
+          'https://images.autodealersdigital.com/nv200/2.jpg',
+          'https://images.inventoryrsc.com/nv200/3.jpg',
+        ],
+      },
+    },
+    {
+      id: 'photo-url-only',
+      vin: '3N6CM0KN2GK693927',
+      price: 9995,
+      miles: 99000,
+      inventory_type: 'used',
+      build: { year: 2015, make: 'Nissan', model: 'NV200' },
+      dealer: lot,
+      photo_url: 'http://images.example-cdn.test/only-photo-url.jpg',
+      media: {
+        photo_links: 'http://images.example-cdn.test/tracked.jpg?utm_source=lot',
+      },
+    },
+    {
+      id: 'photo-string',
+      vin: '3N6CM0KN2GK693928',
+      price: 10995,
+      miles: 80000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer: lot,
+      media: { photo_links: 'http://images.example-cdn.test/single.jpg' },
+    },
+    {
+      id: 'no-photos',
+      vin: '3N6CM0KN2GK693929',
+      price: 8995,
+      miles: 120000,
+      inventory_type: 'used',
+      build: { year: 2014, make: 'Nissan', model: 'NV200' },
+      dealer: lot,
+      media: {},
+    },
+  ];
+
+  await withFetch(() => jsonRpc({ data: { num_found: listings.length, listings } }), async (calls) => {
+    const found = await searchActiveCarsMcp({
+      latitude: origin.latitude,
+      longitude: origin.longitude,
+      radiusMiles: 50,
+      rows: 20,
+      start: 0,
+    });
+    assert.equal(calls.length, 1);
+    const byId = new Map(found.vehicles.map((vehicle) => [vehicle.id, vehicle]));
+    assert.deepEqual(byId.get('nv200-http')?.photoUrls, [
+      'https://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg',
+      'https://images.example-cdn.test/3N6CM0KN2GK693924/2.jpg',
+    ]);
+    assert.equal(byId.get('nv200-http')?.primaryPhotoUrl, 'https://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg');
+    assert.deepEqual(byId.get('nv200-cached')?.photoUrls, ['https://images.marketcheck.com/vehicles/nv200-cached.jpg']);
+    assert.equal(byId.get('photo-url-only')?.photoUrls?.[0], 'https://images.example-cdn.test/only-photo-url.jpg');
+    assert.deepEqual(byId.get('photo-string')?.photoUrls, ['https://images.example-cdn.test/single.jpg']);
+    assert.equal(byId.get('no-photos')?.photoUrls, undefined);
+    assert.equal(byId.get('no-photos')?.primaryPhotoUrl, undefined);
+
+    const publicListings = found.vehicles.map((vehicle) => publicListingFromSearchVehicle(vehicle, origin));
+    const publicById = new Map(publicListings.map((listing) => [listing?.id, listing]));
+    assert.deepEqual(publicById.get('nv200-http')?.media.photo_links, [
+      'https://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg',
+      'https://images.example-cdn.test/3N6CM0KN2GK693924/2.jpg',
+    ]);
+    assert.deepEqual(publicById.get('nv200-cached')?.media.photo_links, [
+      'https://images.marketcheck.com/vehicles/nv200-cached.jpg',
+    ]);
+    assert.deepEqual(publicById.get('cdn-https')?.media.photo_links, [
+      'https://images.carsforsale.com/nv200/1.jpg',
+      'https://images.autodealersdigital.com/nv200/2.jpg',
+      'https://images.inventoryrsc.com/nv200/3.jpg',
+    ]);
+    assert.deepEqual(publicById.get('no-photos')?.media.photo_links, []);
+    const json = JSON.stringify(publicListings);
+    assert.equal(json.includes('http://'), false);
+    assert.equal(json.includes('Example Independent'), false);
+    assert.equal(json.includes('704-555-0148'), false);
+    assert.equal(json.includes('example-lot.test'), false);
+    assert.equal(json.includes('vdp'), false);
+    assert.equal(json.includes('api_key'), false);
+    assert.equal(json.includes('photo_links_cached'), false);
+    assert.equal(containsSecret(json), false);
+  });
+
+  resetMarketCheckCacheForTests();
+  await withFetch(() => new Response(JSON.stringify({
+    id: 'nv200-detail',
+    vin,
+    price: 12995,
+    miles: 87000,
+    inventory_type: 'used',
+    vdp_url: 'http://example-lot.test/vdp/nv200',
+    build: { year: 2016, make: 'Nissan', model: 'NV200' },
+    dealer: lot,
+    media: {
+      photo_links: ['http://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg'],
+      primary_photo_url: 'http://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg',
+    },
+  }), { status: 200, headers: { 'content-type': 'application/json' } }), async () => {
+    const detail = await getVehicleDetailMcp('nv200-detail', undefined, ['listing']);
+    assert.deepEqual(detail?.photoUrls, ['https://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg']);
+    const listing = detail ? publicListingFromDetail(detail) : null;
+    assert.deepEqual(listing?.media.photo_links, ['https://images.example-cdn.test/3N6CM0KN2GK693924/1.jpg']);
+    const json = JSON.stringify(listing);
+    assert.equal(json.includes('704-555-0148'), false);
+    assert.equal(json.includes('example-lot.test'), false);
+    assert.equal(json.includes('Example Independent'), false);
+    assert.equal(json.includes('http://'), false);
   });
 });

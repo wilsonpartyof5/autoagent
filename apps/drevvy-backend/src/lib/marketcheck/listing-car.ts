@@ -22,6 +22,7 @@ const OPAQUE_LISTING_KEYS = new Set([
   'photo_links',
   'photo_links_cached',
   'primary_photo_url',
+  'photo_url',
   'url',
   'website',
   'video_url',
