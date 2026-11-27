@@ -5,10 +5,13 @@ import {
   MARKET_LOOKUP_IP_LIMIT,
   MARKET_LOOKUP_USER_LIMIT,
   MARKET_REFUND_CAP,
+  claimDurableMarketLookup,
   createMemoryMarketLookupGuard,
+  durableMarketLookupGuard,
   hashShopperIp,
   marketLookupFailsClosed,
   resetMarketIpPepperWarningForTests,
+  resetProcessShopperMissesForTests,
   shopperClientIp,
 } from './market-lookup-guard';
 
@@ -170,13 +173,34 @@ test('IPv6 /64 addresses share one hash and a pepper is optional', () => {
   }
 });
 
-test('production fails closed and the client IP is hashed before it is stored', () => {
+test('every environment fails closed and the client IP is hashed before it is stored', () => {
   assert.equal(marketLookupFailsClosed({ NODE_ENV: 'production' }), true);
   assert.equal(marketLookupFailsClosed({ VERCEL_ENV: 'production', NODE_ENV: 'production' }), true);
-  assert.equal(marketLookupFailsClosed({ NODE_ENV: 'test' }), false);
-  assert.equal(marketLookupFailsClosed({ NODE_ENV: 'development' }), false);
+  assert.equal(marketLookupFailsClosed({ NODE_ENV: 'test' }), true);
+  assert.equal(marketLookupFailsClosed({ NODE_ENV: 'development' }), true);
   const headers = { get: (name: string) => (name === 'x-forwarded-for' ? '203.0.113.10, 10.0.0.1' : null) };
   assert.equal(shopperClientIp(headers), '203.0.113.10');
   assert.equal(hashShopperIp('203.0.113.10').includes('203.0.113.10'), false);
   assert.equal(hashShopperIp('203.0.113.10').length, 64);
+});
+
+test('a limiter error stays closed and a short miss does not call it again', async () => {
+  const claim = await claimDurableMarketLookup({
+    rpc: async () => ({ data: null, error: { message: 'unknown rpc' } }),
+  } as never, { userId: 'u', ipHash: 'h', listingId: 'l' }, { failClosed: false });
+  assert.deepEqual(claim, { action: 'unavailable', scope: null, hold: false });
+
+  const calls: string[] = [];
+  const guard = durableMarketLookupGuard({
+    rpc: async (name: string) => {
+      calls.push(name);
+      return { data: null, error: { message: 'down' } };
+    },
+  } as never, { failClosed: false });
+  await guard.rememberShopperMiss?.('shopper', 'listing-1', 1_000);
+  const again = await guard.claim({ userId: 'shopper', ipHash: 'h', listingId: 'listing-1', now: 2_000 });
+  assert.equal(again.action, 'cached_miss');
+  assert.equal(again.hold, false);
+  assert.deepEqual(calls, []);
+  resetProcessShopperMissesForTests();
 });

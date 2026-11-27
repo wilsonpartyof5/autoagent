@@ -69,6 +69,14 @@ export type FairPriceComp = {
   vin: string | null;
   price: number;
   daysOnMarket: number | null;
+  /** Similarity facts MarketCheck returns on each comparable. Null when absent. */
+  year?: number | null;
+  trim?: string | null;
+  miles?: number | null;
+  /** Miles from the subject car, as MarketCheck reports `dist`. */
+  distanceMiles?: number | null;
+  dealerName?: string | null;
+  vdpUrl?: string | null;
 };
 
 export type FairPriceQuote = {
@@ -79,6 +87,8 @@ export type FairPriceQuote = {
    * search. Omitted means the caller loads comps with search_active_cars.
    */
   comparables?: FairPriceComp[];
+  /** Factory sticker for this VIN as configured (MarketCheck `msrp` on the price response). */
+  msrp?: number;
 };
 
 export type FairPriceVehicle = {
@@ -106,6 +116,11 @@ export type FairPriceLoadOptions = {
 
 /** Network price calls per user per UTC day. In-memory, so each instance counts alone. */
 export const FAIR_PRICE_DAILY_CAP = 20;
+/**
+ * Network price calls for every shopper in this process per UTC day.
+ * The durable ceiling lives in supabase/held and is not applied.
+ */
+export const FAIR_PRICE_GLOBAL_DAILY_CAP = 200;
 /** Empty or failed price lookups. Repeats are not billed again. */
 export const FAIR_PRICE_NEGATIVE_TTL_MS = 6 * 60 * 60 * 1000;
 /** 5xx and transport failures. Short so a blip can be retried. */
@@ -134,10 +149,12 @@ export class FairPriceCappedError extends Error {
 
 const negativeCache = new Map<string, NegativeEntry>();
 const dailyCalls = new Map<string, { day: string; count: number }>();
+const globalCalls = new Map<string, number>();
 
 export function resetFairPriceGuardsForTests(): void {
   negativeCache.clear();
   dailyCalls.clear();
+  globalCalls.clear();
 }
 
 function rememberNegative(key: string, kind: NegativeKind, nowMs: number, error?: unknown): void {
@@ -165,20 +182,24 @@ function negativeKindFor(error: unknown): NegativeKind {
 }
 
 /** Counts one network call. False when this user is already at the daily cap. */
-function tryConsumeFairPriceCall(userId: string, nowMs: number): boolean {
+export function tryConsumeFairPriceCall(userId: string, nowMs: number): boolean {
   const day = new Date(nowMs).toISOString().slice(0, 10);
   if (dailyCalls.size > 1000) {
     for (const [id, row] of dailyCalls) {
       if (row.day !== day) dailyCalls.delete(id);
     }
   }
+  const global = globalCalls.get(day) ?? 0;
+  if (global >= FAIR_PRICE_GLOBAL_DAILY_CAP) return false;
   const row = dailyCalls.get(userId);
   if (!row || row.day !== day) {
     dailyCalls.set(userId, { day, count: 1 });
+    globalCalls.set(day, global + 1);
     return true;
   }
   if (row.count >= FAIR_PRICE_DAILY_CAP) return false;
   row.count += 1;
+  globalCalls.set(day, global + 1);
   return true;
 }
 
@@ -199,6 +220,7 @@ export interface MarketCheckPrice {
   price: number;
   fromCache: boolean;
   comparables?: FairPriceComp[];
+  msrp?: number;
 }
 
 export async function getMarketCheckPrice(
@@ -294,6 +316,7 @@ export async function loadFairPriceIfAllowed(
       price: quote.price,
       fromCache: quote.fromCache,
       ...(Array.isArray(quote.comparables) ? { comparables: quote.comparables } : {}),
+      ...(typeof quote.msrp === 'number' && quote.msrp > 0 ? { msrp: quote.msrp } : {}),
     };
   } catch (error) {
     if (options?.strict) throw error;
@@ -327,7 +350,14 @@ async function fetchMarketCheckPrice(
   }, 8000, { strict });
   const parsed = readPremiumPrice(raw);
   if (!parsed) return null;
-  return { vin, miles, zip, price: parsed.price, comparables: parsed.comparables };
+  return {
+    vin,
+    miles,
+    zip,
+    price: parsed.price,
+    comparables: parsed.comparables,
+    ...(parsed.msrp != null ? { msrp: parsed.msrp } : {}),
+  };
 }
 
 async function fetchRestBasePrice(
@@ -407,7 +437,9 @@ async function fetchRestBasePrice(
   }
 }
 
-export function readPremiumPrice(raw: unknown): { price: number; comparables: FairPriceComp[] } | null {
+export function readPremiumPrice(
+  raw: unknown,
+): { price: number; comparables: FairPriceComp[]; msrp: number | null } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   if (record.success === false) return null;
@@ -418,7 +450,7 @@ export function readPremiumPrice(raw: unknown): { price: number; comparables: Fa
   if (price == null) return null;
   const comparables = readActiveComparables(body.comparables);
   if (!comparables) return null;
-  return { price, comparables };
+  return { price, comparables, msrp: readMoney(body.msrp) };
 }
 
 function readRestBasePrice(raw: unknown): number | null {
@@ -450,13 +482,29 @@ function readComp(raw: unknown): FairPriceComp | null {
   const vin = typeof listing.vin === 'string' && listing.vin.trim()
     ? listing.vin.trim().toUpperCase()
     : null;
-  return { id, vin, price, daysOnMarket: readDays(listing) };
+  return {
+    id,
+    vin,
+    price,
+    daysOnMarket: readDays(listing),
+    year: readWhole(listing.year),
+    trim: typeof listing.trim === 'string' && listing.trim.trim() ? listing.trim.trim() : null,
+    miles: readWhole(listing.miles),
+    distanceMiles: typeof listing.dist === 'number' && Number.isFinite(listing.dist) ? listing.dist : null,
+    dealerName: typeof listing.dealer_name === 'string' ? listing.dealer_name : null,
+    vdpUrl: typeof listing.vdp_url === 'string' ? listing.vdp_url : null,
+  };
 }
 
 function readDays(listing: Record<string, unknown>): number | null {
   const candidate = listing.dom_active ?? listing.dos_active ?? listing.dom;
   if (typeof candidate !== 'number' || !Number.isFinite(candidate) || candidate < 0) return null;
   return Math.round(candidate);
+}
+
+function readWhole(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
 }
 
 function readMoney(value: unknown): number | null {

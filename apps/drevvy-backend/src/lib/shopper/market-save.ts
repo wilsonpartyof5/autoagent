@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { MarketCheckUpstreamError, McpQuotaError, McpRateLimitError } from '@/lib/marketcheck/mcp-client';
+import { fairPriceSpendEnabled } from '@/lib/marketcheck/price';
 import { redactSecrets } from '@/lib/marketcheck/secrets';
 
 import { getShopperCredits } from './credits';
@@ -12,7 +13,7 @@ import {
 } from './market-lookup-guard';
 import {
   asMarketIntelLookup,
-  loadMarketIntelFromMarketCheck,
+  loadShopperMarketIntel,
   marketIntelHasValue,
   type MarketIntel,
   type MarketIntelLookup,
@@ -31,14 +32,24 @@ import {
 } from './market-unlock-store';
 import { readSaveCarInput, saveSavedCar, type SavedCarDeps, type SavedCarView } from './saved-cars';
 
-export const MARKET_UNAVAILABLE_MESSAGE =
-  'Market intelligence is not available for this listing. A key was not used.';
+export const MARKET_KEY_BACK_MESSAGE = "We couldn't load this. Your key is back.";
+export const MARKET_HELD_MESSAGE = 'Still checking. This can take a minute.';
+export const MARKET_UNCONFIRMED_MESSAGE = "We couldn't load this yet. We're fixing it.";
+/** No key was held. Does not say a key came back. */
+export const MARKET_OFF_MESSAGE = 'This is off right now.';
+export const MARKET_UNAVAILABLE_MESSAGE = MARKET_UNCONFIRMED_MESSAGE;
+
+export type UnlockState = 'ok' | 'refunded' | 'held' | 'unconfirmed' | 'unavailable';
 
 export type MarketSaveResult = {
   car: SavedCarView | null;
   spent: boolean;
   available: boolean;
   unlocked: boolean;
+  refunded: boolean;
+  held: boolean;
+  unlockState: UnlockState;
+  condition: 'new' | 'used' | null;
   reason: 'ok' | 'market_unavailable';
   message: string | null;
   credits: {
@@ -72,12 +83,11 @@ export type MarketSaveDeps = SavedCarDeps & {
   unlockWaitMs?: number;
 };
 
-const NO_KEY_MESSAGE = 'You need a key to unlock market details and save this car. Buy a key pack to continue.';
-const CREDIT_FAILED_MESSAGE = 'Drevvy could not use a key to unlock market details and save this car.';
-const RATE_LIMIT_MESSAGE = 'Too many market lookups. Try again in a few minutes.';
-const REFUND_CAP_MESSAGE = 'Market lookups are paused until tomorrow. A key was not used.';
-const GUARD_UNAVAILABLE_MESSAGE = 'Market details are unavailable right now.';
-const MARKET_HELD_MESSAGE = 'Market intelligence is not available yet. The next try finishes the unlock already on hold.';
+const NO_KEY_MESSAGE = 'You need a key to see this and save the car.';
+const CREDIT_FAILED_MESSAGE = 'We could not use a key for this car.';
+const RATE_LIMIT_MESSAGE = 'Too many tries. Wait a few minutes.';
+const REFUND_CAP_MESSAGE = 'This is paused until tomorrow. No key was used.';
+const GUARD_UNAVAILABLE_MESSAGE = 'This is not available right now.';
 const UNLOCK_WAIT_ATTEMPTS = 40;
 const UNLOCK_WAIT_MS = 25;
 
@@ -121,7 +131,11 @@ export async function unlockMarketAndSave(
 
   const reserve = deps.reserveKey ?? ((ownerId, listingId) => reserveMarketSaveKey(deps.supabase, ownerId, listingId));
   const refund = deps.refundKey ?? ((ownerId, listingId) => refundUnstoredMarketSave(deps.supabase, ownerId, listingId));
-  const guard = deps.lookupGuard ?? durableMarketLookupGuard(deps.supabase, { failClosed: deps.failClosed === true });
+  if (!fairPriceSpendEnabled()) {
+    const credits = await getShopperCredits(deps.supabase, userId);
+    return offResult(credits.balance);
+  }
+  const guard = deps.lookupGuard ?? durableMarketLookupGuard(deps.supabase, { failClosed: true });
   const now = Date.now();
   const claim = await guard.claim({
     userId,
@@ -133,16 +147,13 @@ export async function unlockMarketAndSave(
     throw new ShopperDealError(GUARD_UNAVAILABLE_MESSAGE, 503, 'service_unavailable');
   }
   if (claim.action === 'rate_limited') {
+    if (claim.hold) return finishHeldRefund(userId, input.listingId, refund, guard, now);
     throw new ShopperDealError(RATE_LIMIT_MESSAGE, 429, 'rate_limited');
   }
   if (claim.action === 'cached_miss') {
-    if (claim.hold) {
-      const restored = await refund(userId, input.listingId);
-      if (restored.refunded) await guard.noteRefund(userId, now);
-      return unavailableResult(restored.balance, restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE);
-    }
+    if (claim.hold) return finishHeldRefund(userId, input.listingId, refund, guard, now);
     const credits = await getShopperCredits(deps.supabase, userId);
-    return unavailableResult(credits.balance);
+    return offResult(credits.balance);
   }
   if (claim.action === 'refund_cap') {
     if (claim.hold) await recoverHeldLookup(userId, input.listingId, refund, guard);
@@ -165,7 +176,7 @@ export async function unlockMarketAndSave(
     }
   }
 
-  const load = deps.loadMarketIntel ?? loadMarketIntelFromMarketCheck;
+  const load = deps.loadMarketIntel ?? loadShopperMarketIntel;
   const zipOf = deps.profileZip ?? ((ownerId) => readProfileZip(deps.supabase, ownerId));
   let profileZip: string | null = null;
   try {
@@ -202,16 +213,12 @@ export async function unlockMarketAndSave(
   const intel = lookup.intel;
 
   if (!marketIntelHasValue(intel)) {
-    if (!lookupThrew && sharedMissAllowed(input, lookup)) {
+    if (!lookupThrew && lookup.shopperMiss) {
+      await guard.rememberShopperMiss?.(userId, input.listingId, now);
+    } else if (!lookupThrew && sharedMissAllowed(input, lookup)) {
       await guard.rememberMiss(input.listingId, now);
     }
-    const restored = await refund(userId, input.listingId);
-    await guard.releaseRefundSlot(userId, input.listingId);
-    if (restored.refunded) await guard.noteRefund(userId, now);
-    return unavailableResult(
-      restored.balance,
-      restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE,
-    );
+    return finishLookupRefund(userId, input.listingId, refund, guard, now);
   }
 
   const commit = deps.commitUnlock ?? ((unlock) => commitMarketUnlock(deps.supabase, unlock));
@@ -220,7 +227,7 @@ export async function unlockMarketAndSave(
     committed = await commit({
       userId,
       listingId: input.listingId,
-      vin: input.vin ?? null,
+      vin: listingVin(intel),
       market: intel,
     });
   } catch (error) {
@@ -239,10 +246,7 @@ export async function unlockMarketAndSave(
     await guard.releaseRefundSlot(userId, input.listingId);
     if (restored.refunded) await guard.noteRefund(userId, now);
     if (committed.error === 'no_value') {
-      return unavailableResult(
-        restored.balance,
-        restored.refunded ? MARKET_UNAVAILABLE_MESSAGE : MARKET_HELD_MESSAGE,
-      );
+      return afterRefund(restored, false);
     }
     if (committed.error === 'no_credits') {
       throw new ShopperDealError(NO_KEY_MESSAGE, 402, 'no_credits');
@@ -255,10 +259,20 @@ export async function unlockMarketAndSave(
   return unlockedResult(car, !held.already, committed.balance, committed.market);
 }
 
+const LISTING_VIN = /^[A-HJ-NPR-Z0-9]{11,17}$/;
+
+/** The VIN MarketCheck put on the card. Never the VIN the shopper sent. */
+function listingVin(market: MarketIntel): string | null {
+  const raw = market.v1?.vin?.trim().toUpperCase() ?? '';
+  return LISTING_VIN.test(raw) ? raw : null;
+}
+
 function sharedMissAllowed(
   input: { listingId: string; vin?: string | null },
   lookup: MarketIntelLookup,
 ): boolean {
+  if (lookup.shopperMiss) return false;
+  if (lookup.cacheableMiss === false) return false;
   const requestedId = input.listingId.trim();
   const returnedId = (lookup.returnedListingId ?? '').trim();
   const clientVin = (input.vin ?? '').trim();
@@ -285,6 +299,38 @@ async function recoverHeldLookup(
   await guard.releaseRefundSlot(userId, listingId);
 }
 
+async function finishHeldRefund(
+  userId: string,
+  listingId: string,
+  refund: (userId: string, listingId: string) => Promise<MarketKeyRefund>,
+  guard: MarketLookupGuard,
+  now: number,
+): Promise<MarketSaveResult> {
+  const restored = await refund(userId, listingId);
+  await guard.releaseRefundSlot(userId, listingId);
+  if (restored.refunded) await guard.noteRefund(userId, now);
+  return afterRefund(restored, true);
+}
+
+async function finishLookupRefund(
+  userId: string,
+  listingId: string,
+  refund: (userId: string, listingId: string) => Promise<MarketKeyRefund>,
+  guard: MarketLookupGuard,
+  now: number,
+): Promise<MarketSaveResult> {
+  const restored = await refund(userId, listingId);
+  await guard.releaseRefundSlot(userId, listingId);
+  if (restored.refunded) await guard.noteRefund(userId, now);
+  return afterRefund(restored, false);
+}
+
+function afterRefund(restored: { refunded: boolean; balance: number }, stillHeld: boolean): MarketSaveResult {
+  if (restored.refunded) return refundedResult(restored.balance);
+  if (stillHeld) return heldResult(restored.balance);
+  return unconfirmedResult(restored.balance);
+}
+
 /** Heart-save behavior used until the unlock table and zip column exist. */
 async function saveWithoutMarket(
   userId: string,
@@ -298,8 +344,12 @@ async function saveWithoutMarket(
     spent: false,
     available: false,
     unlocked: false,
+    refunded: false,
+    held: false,
+    unlockState: 'unavailable',
+    condition: null,
     reason: 'market_unavailable',
-    message: MARKET_UNAVAILABLE_MESSAGE,
+    message: MARKET_OFF_MESSAGE,
     credits: creditView(credits.balance),
     market: null,
   };
@@ -345,6 +395,10 @@ function unlockedResult(
     spent,
     available: true,
     unlocked: true,
+    refunded: false,
+    held: false,
+    unlockState: 'ok',
+    condition: market.v1?.condition ?? (market.isNewCar ? 'new' : 'used'),
     reason: 'ok',
     message: null,
     credits: creditView(balance),
@@ -352,12 +406,36 @@ function unlockedResult(
   };
 }
 
-function unavailableResult(balance: number, message = MARKET_UNAVAILABLE_MESSAGE): MarketSaveResult {
+function refundedResult(balance: number): MarketSaveResult {
+  return closedResult(balance, MARKET_KEY_BACK_MESSAGE, { refunded: true, held: false, unlockState: 'refunded' });
+}
+
+function heldResult(balance: number): MarketSaveResult {
+  return closedResult(balance, MARKET_HELD_MESSAGE, { refunded: false, held: true, unlockState: 'held' });
+}
+
+function unconfirmedResult(balance: number): MarketSaveResult {
+  return closedResult(balance, MARKET_UNCONFIRMED_MESSAGE, { refunded: false, held: false, unlockState: 'unconfirmed' });
+}
+
+function offResult(balance: number): MarketSaveResult {
+  return closedResult(balance, MARKET_OFF_MESSAGE, { refunded: false, held: false, unlockState: 'unavailable' });
+}
+
+function closedResult(
+  balance: number,
+  message: string,
+  state: { refunded: boolean; held: boolean; unlockState: UnlockState },
+): MarketSaveResult {
   return {
     car: null,
     spent: false,
     available: false,
     unlocked: false,
+    refunded: state.refunded,
+    held: state.held,
+    unlockState: state.unlockState,
+    condition: null,
     reason: 'market_unavailable',
     message,
     credits: creditView(balance),

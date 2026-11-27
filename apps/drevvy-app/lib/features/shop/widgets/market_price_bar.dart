@@ -4,8 +4,9 @@ import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
 
-/// Market price bar showing p5-p95 range with fair price marker
-/// Per spec §10.6: low/high = p5/p95, fair price sits between them
+/// Market price bar: low/high are the middle range of similar cars
+/// (p25-p75, widened to p10-p90 so MarketCheck's fair price sits inside).
+/// The fair price marker is clamped to the bar.
 class MarketPriceBar extends StatelessWidget {
   const MarketPriceBar({
     super.key,
@@ -32,7 +33,9 @@ class MarketPriceBar extends StatelessWidget {
 
     // Calculate positions for the bar (0.0 to 1.0)
     final range = highPrice - lowPrice;
-    final fairPos = range > 0 ? (fairPrice - lowPrice) / range : 0.5;
+    final fairPos = range > 0
+        ? ((fairPrice - lowPrice) / range).clamp(0.0, 1.0)
+        : 0.5;
     final listedPos = range > 0 
         ? ((listedPrice - lowPrice) / range).clamp(0.0, 1.0) 
         : 0.5;
@@ -172,7 +175,7 @@ class MarketPriceBar extends StatelessWidget {
           
           // Scope caption
           Text(
-            '${market.comparablesCount} similar vehicles within 50 mi',
+            '${market.comparablesCount} similar ${market.comparablesCount == 1 ? 'car' : 'cars'} like this',
             style: text.callout.copyWith(color: colors.muted),
           ),
         ],

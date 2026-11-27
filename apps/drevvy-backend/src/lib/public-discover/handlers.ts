@@ -147,25 +147,26 @@ export async function handleDiscoverSearch(request: Request, deps: DiscoverHandl
       hasFilters: Object.keys(filters).length > 0,
     }));
 
-    const result = await withMarketCheckContext({ origin }, () =>
-      (deps.search ?? defaultSearch)({
+    const result = await withMarketCheckContext({ origin }, async () => {
+      const found = await (deps.search ?? defaultSearch)({
         latitude: body.latitude,
         longitude: body.longitude,
         radiusMiles: body.radius_miles,
         filters,
         rows: body.page_size,
         start,
-      }),
-    );
+      });
+      return found;
+    });
 
     if (result.upstreamFailed) {
       throw new DiscoverApiError('UPSTREAM_ERROR', 'Inventory is temporarily unavailable. Please try again later.');
     }
 
-    const listings = result.vehicles
+    const listings = await withMarketCheckContext({ origin }, async () => result.vehicles
       .map((vehicle) => publicListingFromSearchVehicle(vehicle, body))
       .filter((listing): listing is NonNullable<typeof listing> => listing != null)
-      .map(assertPublicListing);
+      .map(assertPublicListing));
 
     const total = Math.min(result.numFound > 0 ? result.numFound : listings.length, DISCOVER_SEARCH_MAX_PAGE * body.page_size);
     const totalPages = Math.max(1, Math.ceil(total / body.page_size));
@@ -211,15 +212,11 @@ export async function handleDiscoverListing(
 
     // Ignore client x-drevvy-subject. This route has no shopper session, so the
     // header cannot be checked and would let a caller spoof usage attribution.
-    const detail = await withMarketCheckContext(
-      { origin },
-      () => (deps.detail ?? defaultDetail)(listingId),
-    );
-    if (!detail) {
-      throw new DiscoverApiError('LISTING_NOT_FOUND', 'This listing is no longer available.');
-    }
-
-    const listing = publicListingFromDetail(detail);
+    const listing = await withMarketCheckContext({ origin }, async () => {
+      const detail = await (deps.detail ?? defaultDetail)(listingId);
+      if (!detail) return null;
+      return publicListingFromDetail(detail);
+    });
     if (!listing) {
       throw new DiscoverApiError('LISTING_NOT_FOUND', 'This listing is no longer available.');
     }

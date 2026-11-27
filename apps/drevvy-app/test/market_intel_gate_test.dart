@@ -87,14 +87,8 @@ void main() {
       expect(lower.contains('refund'), isFalse, reason: copy);
       expect(RegExp(r'\bsold\b').hasMatch(lower), isFalse, reason: copy);
     }
-    expect(
-      KeySpend.marketIntelTeaser,
-      'See fair price, similar cars, days listed, price drops · 1 key',
-    );
-    expect(
-      KeySpend.marketIntelUnlockedConfirm,
-      'Fair price unlocked · Car saved.',
-    );
+    expect(KeySpend.marketIntelTeaser, 'See the fair price · 1 key');
+    expect(KeySpend.marketIntelUnlockedConfirm, 'Fair price saved · car saved');
   });
 
   testWidgets('locked gate blurs used-car MI and shows the teaser', (
@@ -164,7 +158,7 @@ void main() {
     expect(find.textContaining('Fair price'), findsOneWidget);
   });
 
-  testWidgets('sheet confirm is Fair price unlocked · Car saved.', (
+  testWidgets('sheet confirm is Fair price saved · car saved', (
     tester,
   ) async {
     var confirmed = false;

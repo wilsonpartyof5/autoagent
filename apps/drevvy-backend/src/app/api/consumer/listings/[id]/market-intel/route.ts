@@ -1,17 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
-import { createAdminClient } from '@/lib/supabase/admin';
-import { shopperDealErrorResponse, ShopperDealError, isShopperListingId } from '@/lib/shopper/deals';
-import { presentMarketIntel } from '@/lib/shopper/market-intel';
-import { findMarketUnlock, isMissingMarketSchema } from '@/lib/shopper/market-unlock-store';
-import { requireShopperAuth } from '@/lib/shopper/session';
+import { handleMarketIntelGet } from '@/lib/shopper/market-intel-read';
 
 /**
  * GET /api/consumer/listings/:id/market-intel
  *
- * Shopper JWT. Owner-only read of a Marketplace Intelligence unlock.
+ * Shopper JWT. Owner-only read of a stored fair-price unlock.
  * A missing row is unlocked:false, including a listing another shopper unlocked.
- * This is not the heart-save list.
+ * v1 lines are on market.v1. This call does not spend a key.
  */
 
 export const dynamic = 'force-dynamic';
@@ -20,28 +16,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  try {
-    const auth = await requireShopperAuth(request);
-    const { id } = await params;
-    if (!isShopperListingId(id)) {
-      throw new ShopperDealError('A MarketCheck listing id is required.', 400, 'invalid_listing');
-    }
-    let row = null;
-    try {
-      row = await findMarketUnlock(createAdminClient(), auth.userId, id);
-    } catch (error) {
-      if (!isMissingMarketSchema(error)) throw error;
-    }
-    return NextResponse.json({
-      success: true,
-      data: {
-        listingId: id,
-        unlocked: Boolean(row),
-        unlockedAt: row?.unlockedAt ?? null,
-        market: row ? presentMarketIntel(row.market) : null,
-      },
-    });
-  } catch (error) {
-    return shopperDealErrorResponse(error);
-  }
+  const { id } = await params;
+  return handleMarketIntelGet(request, id);
 }

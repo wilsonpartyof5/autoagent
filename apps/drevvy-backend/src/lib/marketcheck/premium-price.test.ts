@@ -102,8 +102,8 @@ test('the captured premium response maps the fair price and active comps only', 
     },
   });
   assert.deepEqual(days?.comparables, [
-    { id: 'dos-only', vin: VIN, price: 21000, daysOnMarket: 7 },
-    { id: 'dom-only', vin: null, price: 23000, daysOnMarket: 5 },
+    { id: 'dos-only', vin: VIN, price: 21000, daysOnMarket: 7, year: null, trim: null, miles: null, distanceMiles: null, dealerName: null, vdpUrl: null },
+    { id: 'dom-only', vin: null, price: 23000, daysOnMarket: 5, year: null, trim: null, miles: null, distanceMiles: null, dealerName: null, vdpUrl: null },
   ]);
   assert.equal(readPremiumPrice({ success: true, data: { marketcheck_price: -5, comparables: { listings: [] } } }), null);
   assert.equal(readPremiumPrice({ success: true, data: { price: 22000, comparables: { listings: [] } } }), null);
@@ -339,6 +339,8 @@ test('an unknown price tool refunds the key instead of saving a basic listing', 
     names.push(tool?.name ?? 'other');
     return toolError('Unknown tool');
   }, async () => {
+    const previousSpend = process.env.FAIR_PRICE_SPEND_ENABLED;
+    process.env.FAIR_PRICE_SPEND_ENABLED = 'true';
     const saved = await unlockMarketAndSave('shopper-1', { listingId: 'subject-listing' }, {
       repo,
       ownsDeal: async () => false,
@@ -361,6 +363,8 @@ test('an unknown price tool refunds the key instead of saving a basic listing', 
     assert.equal(names.includes('search_active_cars'), false);
     assert.equal(names.includes(PREMIUM_PRICE_TOOL), true);
     assert.equal(names.includes('get_car_history'), false);
+    if (previousSpend === undefined) delete process.env.FAIR_PRICE_SPEND_ENABLED;
+    else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
   });
 });
 

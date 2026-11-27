@@ -252,11 +252,51 @@ class ListingMedia extends Equatable {
   List<Object?> get props => [photoLinks];
 
   factory ListingMedia.fromJson(Map<String, dynamic> json) {
-    final cached = jsonStringList(json['photo_links_cached']);
+    final cached = _safePhotos(jsonStringList(json['photo_links_cached']));
     return ListingMedia(
-      photoLinks: jsonStringList(json['photo_links']),
+      photoLinks: _safePhotos(jsonStringList(json['photo_links'])),
       photoLinksCached: cached.isEmpty ? null : cached,
     );
+  }
+
+  /// Drops a photo URL that is not a plain picture link.
+  static List<String> _safePhotos(List<String> urls) {
+    return [
+      for (final url in urls)
+        if (_photoKeepsKeyOff(url)) url,
+    ];
+  }
+
+  static const _photoQueryAllow = {
+    'w',
+    'h',
+    'width',
+    'height',
+    'fit',
+    'crop',
+    'quality',
+    'q',
+    'format',
+    'auto',
+    'dpr',
+    'u',
+    'e',
+    's',
+  };
+
+  static final _secretUrl = RegExp(r'key|token|secret|auth', caseSensitive: false);
+
+  static bool _photoKeepsKeyOff(String url) {
+    final parsed = Uri.tryParse(url);
+    if (parsed == null) return false;
+    final signedProxy = parsed.path == '/api/inventory/photo';
+    if (!signedProxy && _secretUrl.hasMatch(url)) return false;
+    if (signedProxy && _secretUrl.hasMatch(parsed.path)) return false;
+    for (final name in parsed.queryParameters.keys) {
+      if (!_photoQueryAllow.contains(name.toLowerCase())) return false;
+      if (_secretUrl.hasMatch(name)) return false;
+    }
+    return true;
   }
 }
 
