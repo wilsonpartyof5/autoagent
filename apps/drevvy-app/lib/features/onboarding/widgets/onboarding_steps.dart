@@ -936,6 +936,8 @@ class WhereToLookStep extends StatelessWidget {
     required this.onShareLocation,
     required this.onZipChanged,
     required this.onContinue,
+    this.busy = false,
+    this.note,
   });
 
   final OnboardingDraft draft;
@@ -943,6 +945,12 @@ class WhereToLookStep extends StatelessWidget {
   final VoidCallback onShareLocation;
   final ValueChanged<String> onZipChanged;
   final VoidCallback onContinue;
+
+  /// True while the OS prompt or the ZIP lookup is running.
+  final bool busy;
+
+  /// Plain note under the share button, e.g. after the shopper says no.
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
@@ -958,10 +966,23 @@ class WhereToLookStep extends StatelessWidget {
         const OnboardingLead('We need this to show cars near you.'),
         const SizedBox(height: 18),
         OnboardingCta(
-          label: draft.locationGranted ? '✓ Location shared' : 'Share my location',
+          label: busy
+              ? 'Finding you…'
+              : draft.locationGranted
+              ? '✓ Location shared'
+              : 'Share my location',
           icon: draft.locationGranted ? LucideIcons.check : LucideIcons.mapPin,
-          onPressed: onShareLocation,
+          enabled: !busy,
+          onPressed: busy ? null : onShareLocation,
         ),
+        if (note != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            note!,
+            textAlign: TextAlign.center,
+            style: text.callout.copyWith(color: colors.muted),
+          ),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(
@@ -991,8 +1012,8 @@ class WhereToLookStep extends StatelessWidget {
         const Spacer(),
         OnboardingCta(
           label: 'Continue',
-          enabled: draft.hasLocation,
-          onPressed: draft.hasLocation ? onContinue : null,
+          enabled: draft.hasLocation && !busy,
+          onPressed: draft.hasLocation && !busy ? onContinue : null,
         ),
       ],
     );
