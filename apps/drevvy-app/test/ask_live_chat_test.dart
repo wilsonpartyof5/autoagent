@@ -21,7 +21,11 @@ const _live = PurchaseConfig(
   mode: DrevvyDataMode.live,
 );
 
-const _convo = '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51';
+// #165 shape: lowercase uuid + '.' + 64-char lowercase hex HMAC = 101 chars.
+const _convo =
+    '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const _convoNext =
+    '3f1c2a4e-9b7d-4c1e-8a2f-0d9e8b7c6a51.abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
 const _sentence = '150s under \$45k in fort mill South Carolina';
 
 const _f150 = Listing(
@@ -109,18 +113,133 @@ void main() {
         expect(thread.messages.last.listings, [_f150]);
         expect(repo.askConversationId, _convo);
 
+        expect(_convo.length, 101);
+        expect(_convoNext.length, 101);
+
         final second = repo.sendMessage('What about 2021s?');
         ask.last.complete(
-          const AskResult(reply: 'Sure.', conversationId: _convo),
+          const AskResult(reply: 'Sure.', conversationId: _convoNext),
         );
         final next = await second;
         expect(ask.calls[1].conversationId, _convo);
+        expect(repo.askConversationId, _convoNext);
         expect(next.messages.map((m) => m.text), [
           _sentence,
           'Here are some F-150s.',
           'What about 2021s?',
           'Sure.',
         ]);
+
+        final third = repo.sendMessage('Any cheaper?');
+        ask.last.complete(
+          const AskResult(reply: 'A few.', conversationId: _convoNext),
+        );
+        await third;
+        expect(ask.calls[2].conversationId, _convoNext);
+      },
+    );
+
+    test(
+      'conversation_forbidden clears the id and retries once with no id',
+      () async {
+        final ask = _FakeAsk();
+        final repo = _repo(ask);
+
+        final first = repo.sendMessage('hi');
+        ask.last.complete(
+          const AskResult(reply: 'Hello.', conversationId: _convo),
+        );
+        await first;
+        expect(repo.askConversationId, _convo);
+
+        final second = repo.sendMessage('still there?');
+        ask.last.completeError(
+          const AskException(
+            code: 'conversation_forbidden',
+            message: AskCopy.network,
+            status: 403,
+            canRetry: true,
+          ),
+        );
+        await Future<void>.value();
+        expect(repo.askConversationId, isNull);
+        expect(ask.calls, hasLength(3));
+        expect(ask.calls[1].conversationId, _convo);
+        expect(ask.calls[1].message, 'still there?');
+        expect(ask.calls[2].conversationId, isNull);
+        expect(ask.calls[2].message, 'still there?');
+
+        ask.last.complete(
+          const AskResult(reply: 'Starting fresh.', conversationId: _convoNext),
+        );
+        final thread = await second;
+        expect(ask.calls, hasLength(3));
+        expect(ask.calls[2].conversationId, isNull);
+        expect(ask.calls[2].message, 'still there?');
+        expect(thread.messages.last.text, 'Starting fresh.');
+        expect(
+          thread.messages.last.contentType,
+          isNot(MessageContentType.error),
+        );
+        expect(repo.askConversationId, _convoNext);
+      },
+    );
+
+    test('conversation_forbidden retry failure shows the send copy, not dealer copy', () async {
+      final ask = _FakeAsk();
+      final repo = _repo(ask);
+
+      final first = repo.sendMessage('hi');
+      ask.last.complete(
+        const AskResult(reply: 'Hello.', conversationId: _convo),
+      );
+      await first;
+
+      final second = repo.sendMessage('still there?');
+      ask.last.completeError(
+        const AskException(
+          code: 'conversation_forbidden',
+          message: AskCopy.network,
+          status: 403,
+          canRetry: true,
+        ),
+      );
+      await Future<void>.value();
+      ask.last.completeError(
+        const AskException(
+          code: 'conversation_forbidden',
+          message: AskCopy.network,
+          status: 403,
+          canRetry: true,
+        ),
+      );
+      final thread = await second;
+      expect(ask.calls, hasLength(3));
+      expect(ask.calls[2].conversationId, isNull);
+      expect(thread.messages.last.contentType, MessageContentType.error);
+      expect(thread.messages.last.text, AskCopy.network);
+      expect(thread.messages.last.text, isNot(AskCopy.dealerAccount));
+      expect(thread.messages.last.canRetry, isTrue);
+      expect(repo.askConversationId, isNull);
+    });
+
+    test(
+      'dealer_account is not retried and stays "Ask is for shoppers."',
+      () async {
+        final ask = _FakeAsk();
+        final repo = _repo(ask);
+        final first = repo.sendMessage('hi');
+        ask.last.completeError(
+          const AskException(
+            code: 'dealer_account',
+            message: AskCopy.dealerAccount,
+            status: 403,
+          ),
+        );
+        final thread = await first;
+        expect(ask.calls, hasLength(1));
+        expect(thread.messages.last.text, AskCopy.dealerAccount);
+        expect(thread.messages.last.canRetry, isFalse);
       },
     );
 
