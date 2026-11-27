@@ -70,7 +70,8 @@ class AskResult {
 /// the thread. A malformed id is replaced by the server, not rejected.
 /// Errors: `{success:false, error:{code, message}}` with 400 invalid_request,
 /// 401 unauthorized, 403 dealer_account, 403 conversation_forbidden,
-/// 429 rate_limited, 503 ask_unavailable. Ask spends no keys.
+/// 413 invalid_request (body over 8KB), 429 rate_limited,
+/// 503 ask_unavailable. The backend never returns 500. Ask spends no keys.
 abstract class AskEndpoint {
   const AskEndpoint();
 
@@ -291,6 +292,7 @@ class HttpAskEndpoint extends AskEndpoint {
     final status = response.statusCode;
     switch (status) {
       case 400:
+      case 413:
         return AskException(
           code: code ?? 'invalid_request',
           message: AskCopy.invalidRequest,

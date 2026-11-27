@@ -226,6 +226,24 @@ void main() {
     );
   });
 
+  test(
+    '413 invalid_request uses the 400 copy, with the error envelope',
+    () async {
+      final endpoint = _endpoint(
+        MockClient((_) async => _err(413, 'invalid_request', envelope: true)),
+      );
+      await expectLater(
+        endpoint.ask(message: 'hi'),
+        _askError(
+          status: 413,
+          message: AskCopy.invalidRequest,
+          canRetry: false,
+          code: 'invalid_request',
+        ),
+      );
+    },
+  );
+
   test('signed out shows sign in and makes no call', () async {
     var calls = 0;
     final endpoint = _endpoint(
