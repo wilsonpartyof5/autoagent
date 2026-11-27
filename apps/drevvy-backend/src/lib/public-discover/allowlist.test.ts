@@ -214,6 +214,43 @@ test('photo-less listings sort after photos only at the same distance', () => {
   assert.equal(JSON.stringify([blank, pictured, distant]).includes('Example Independent'), false);
 });
 
+test('a coming-soon file is not a photo and sorts with the photo-less rows', () => {
+  const origin = { latitude: 35.0071, longitude: -80.9398 };
+  const near = {
+    latitude: 35.006611,
+    longitude: -80.946295,
+    dealerName: 'Example Independent Lot',
+    dealerCity: 'Charlotte',
+    dealerState: 'NC',
+  };
+  const soon = publicListingFromSearchVehicle(liveVehicle({
+    id: 'soon',
+    photoUrls: [
+      'https://cdn.example.test/comingsoon.jpg',
+      'http://cdn.example.test/coming-soon.png',
+    ],
+    primaryPhotoUrl: 'https://cdn.example.test/coming_soon.webp',
+    thumbnailUrl: 'https://cdn.example.test/ComingSoon.JPEG',
+    location: near,
+  }), origin);
+  const pictured = publicListingFromSearchVehicle(liveVehicle({
+    id: 'real',
+    photoUrls: ['https://cdn.example.test/comingsoon/1.jpg'],
+    primaryPhotoUrl: 'https://cdn.example.test/comingsoon/1.jpg',
+    thumbnailUrl: undefined,
+    location: near,
+  }), origin);
+  assert.ok(soon && pictured);
+  assert.deepEqual(soon.media.photo_links, []);
+  assert.deepEqual(pictured.media.photo_links, ['https://cdn.example.test/comingsoon/1.jpg']);
+  assert.equal(soon.dist, pictured.dist);
+  assert.deepEqual(
+    rankPhotoLessListingsLast([soon, pictured]).map((listing) => listing.id),
+    ['real', 'soon'],
+  );
+  assert.equal(JSON.stringify(soon).includes('Example Independent'), false);
+});
+
 test('payloads with dealer keys are flagged', () => {
   assert.equal(publicListingsContainForbiddenKey({ dealer: { phone: '1' } }), true);
   assert.equal(publicListingsContainForbiddenKey({ vdp_url: 'https://dealer.example' }), true);

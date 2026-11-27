@@ -17,6 +17,7 @@ import {
   marketCheckPhotoHostKind,
   proxyMarketCheckPhoto,
   clientPhotoUrlDropped,
+  inspectClientPhoto,
   toClientPhotoUrl,
 } from './photos';
 import { containsSecret } from './secrets';
@@ -346,6 +347,40 @@ test('http photo URLs upgrade to https only when the host rules allow them', () 
   assert.equal(toClientPhotoUrl('http://cdn.dealer.example:8080/a.jpg'), undefined);
   assert.equal(toClientPhotoUrl('http://cdn.dealer.example/a.jpg?utm_source=lot'), undefined);
   assert.equal(toClientPhotoUrl('javascript:alert(1)'), undefined);
+});
+
+test('photo reject reasons stay scheme, host, query, or other, and a coming-soon file is not a photo', () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  process.env.DREVVY_PUBLIC_ORIGIN = 'https://app.example';
+  const cases: Array<{ raw: string; reason: 'scheme' | 'host' | 'query' | 'other' | null }> = [
+    { raw: 'javascript:alert(1)', reason: 'scheme' },
+    { raw: 'https://user:pass@cdn.example.test/a.jpg', reason: 'host' },
+    { raw: 'https://cdn.example.test:8080/a.jpg', reason: 'host' },
+    { raw: `https://cdn.example.test/a.jpg?api_key=${SECRET}`, reason: 'query' },
+    { raw: 'https://cdn.example.test/a.jpg?X-Amz-Signature=abc', reason: 'query' },
+    { raw: 'https://cdn.example.test/a.jpg?utm_source=lot', reason: 'query' },
+    { raw: 'https://cdn.example.test/API_KEY/a.jpg', reason: 'other' },
+    { raw: 'https://cdn.example.test/comingsoon.jpg', reason: 'other' },
+    { raw: 'http://cdn.example.test/coming-soon.png', reason: 'other' },
+    { raw: 'https://cdn.example.test/ComingSoon.JPEG', reason: 'other' },
+    { raw: 'https://cdn.example.test/coming_soon.webp', reason: 'other' },
+    { raw: 'https://cdn.example.test/comingsoon/1.jpg', reason: null },
+    { raw: 'https://images.carsforsale.com/nv200/1.jpg?width=640', reason: null },
+    { raw: 'http://api.marketcheck.com/v2/image/cache/car/abc', reason: null },
+    { raw: `https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`, reason: null },
+  ];
+  const now = 1_700_000_000_000;
+  cases.forEach((sample, index) => {
+    const inspected = inspectClientPhoto(sample.raw, now);
+    assert.equal(inspected.reason, sample.reason, String(index));
+    assert.equal(toClientPhotoUrl(sample.raw, now), inspected.url, String(index));
+    if (sample.reason) assert.equal(inspected.url, undefined, String(index));
+    else assert.equal(typeof inspected.url, 'string', String(index));
+  });
+  const proxied = inspectClientPhoto(`https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`, now);
+  assert.match(proxied.url ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
+  assert.equal(containsSecret(proxied.url ?? ''), false);
+  assert.equal((proxied.url ?? '').includes('api.marketcheck.com'), false);
 });
 
 test('photo URLs built inside a request use that origin', async () => {

@@ -159,23 +159,54 @@ function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+export type PhotoDropReason = 'scheme' | 'host' | 'query' | 'other';
+
+/** DealerSync names the stock "no photo" file comingsoon.jpg (also coming-soon / coming_soon). */
+export function isComingSoonPlaceholder(pathname: string): boolean {
+  const segment = pathname.split('/').filter(Boolean).pop() ?? '';
+  const base = segment.replace(/\.[a-z0-9]{2,5}$/i, '');
+  return /^coming[-_]?soon$/i.test(base);
+}
+
+function queryDrop(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw, 'https://photos.invalid');
+  } catch {
+    return false;
+  }
+  for (const name of url.searchParams.keys()) {
+    if (photoUrlCarriesSecret(name) || !PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return true;
+  }
+  const path = url.pathname;
+  const proxy = path === '/api/inventory/photo' || path.endsWith('/api/inventory/photo');
+  if (proxy) return false;
+  for (const value of url.searchParams.values()) {
+    if (photoUrlCarriesSecret(value)) return true;
+  }
+  return raw.includes(';') && photoUrlCarriesSecret(raw);
+}
+
 /**
- * Client-facing photo URL. Credentialed MarketCheck hosts become a signed
- * proxy URL. The MarketCheck API key is never included.
+ * Same accept/reject decision as toClientPhotoUrl. reason is null when url is set.
+ * Counts only: callers must not log the raw string.
  */
-export function toClientPhotoUrl(raw: string | undefined, now = Date.now()): string | undefined {
-  if (!raw) return undefined;
+export function inspectClientPhoto(
+  raw: string | undefined,
+  now = Date.now(),
+): { url?: string; reason: PhotoDropReason | null } {
+  if (!raw || !raw.trim()) return { reason: 'other' };
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
-    return undefined;
+    return { reason: 'scheme' };
   }
-  if (parsed.username || parsed.password) return undefined;
+  if (parsed.username || parsed.password) return { reason: 'host' };
   const http = parsed.protocol === 'http:';
-  if (parsed.protocol !== 'https:' && !http) return undefined;
-  // Port 80 is only the http default. Any other non-443 port is not a public photo.
-  if (parsed.port && parsed.port !== '443' && !(http && parsed.port === '80')) return undefined;
+  if (parsed.protocol !== 'https:' && !http) return { reason: 'scheme' };
+  if (parsed.port && parsed.port !== '443' && !(http && parsed.port === '80')) return { reason: 'host' };
+  if (!parsed.hostname) return { reason: 'host' };
   // Dealer feeds still publish http photo_links. Upgrade first, then apply the
   // same host and query rules. A host is not probed for TLS.
   if (http) {
@@ -185,20 +216,29 @@ export function toClientPhotoUrl(raw: string | undefined, now = Date.now()): str
 
   const kind = marketCheckPhotoHostKind(parsed.hostname);
   const canonical = canonicalPhotoUrl(parsed);
-  if (photoUrlCarriesSecret(canonical)) return undefined;
-  if (kind !== 'credentialed') {
-    if (clientPhotoUrlDropped(raw)) return undefined;
-    return canonical;
+  if (photoUrlCarriesSecret(canonical)) return { reason: 'other' };
+  if (kind !== 'credentialed' && clientPhotoUrlDropped(raw)) {
+    return { reason: queryDrop(raw) ? 'query' : 'other' };
   }
+  if (isComingSoonPlaceholder(new URL(canonical).pathname)) return { reason: 'other' };
+  if (kind !== 'credentialed') return { url: canonical, reason: null };
 
   const secret = signingSecret();
-  if (!secret) return undefined;
+  if (!secret) return { reason: 'other' };
   const exp = now + PHOTO_LINK_TTL_MS;
   const signature = sign(canonical, exp, secret);
   const payload = Buffer.from(canonical, 'utf8').toString('base64url');
   const path = `/api/inventory/photo?u=${payload}&e=${exp}&s=${signature}`;
   const origin = currentPhotoOrigin();
-  return origin ? `${origin}${path}` : path;
+  return { url: origin ? `${origin}${path}` : path, reason: null };
+}
+
+/**
+ * Client-facing photo URL. Credentialed MarketCheck hosts become a signed
+ * proxy URL. The MarketCheck API key is never included.
+ */
+export function toClientPhotoUrl(raw: string | undefined, now = Date.now()): string | undefined {
+  return inspectClientPhoto(raw, now).url;
 }
 
 function fail(status: number, code: string, message: string): PhotoProxyFailure {

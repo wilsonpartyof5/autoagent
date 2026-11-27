@@ -15,7 +15,9 @@
  * identical shape regardless of whether data came from REST or MCP.
  */
 
-import { toClientPhotoUrl } from './photos';
+import { createHash } from 'node:crypto';
+
+import { inspectClientPhoto, toClientPhotoUrl, type PhotoDropReason } from './photos';
 import { redactSecrets } from './secrets';
 import {
   callMcpTool,
@@ -333,6 +335,87 @@ function uniqueClientPhotos(urls: Array<string | undefined>): string[] {
  * and photo_url are the same pictures, so they are used only when every dealer
  * URL is dropped. An empty gallery is undefined so `photoUrls ?? primary` can run.
  */
+export type ListingPhotoCounts = {
+  photoLinks: number;
+  photoLinksCached: number;
+  primary: number;
+  kept: number;
+  rejected: Record<PhotoDropReason, number>;
+};
+
+function emptyPhotoCounts(): ListingPhotoCounts {
+  return {
+    photoLinks: 0,
+    photoLinksCached: 0,
+    primary: 0,
+    kept: 0,
+    rejected: { scheme: 0, host: 0, query: 0, other: 0 },
+  };
+}
+
+/** Array length, one string, or one object. Missing and blank are zero. */
+function photoFieldEntries(value: unknown): unknown[] {
+  if (typeof value === 'string') return value.trim() ? [value] : [];
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return [value];
+  return [];
+}
+
+function tallyPhotoEntries(entries: unknown[], counts: ListingPhotoCounts, now: number): void {
+  for (const entry of entries) {
+    if (typeof entry !== 'string' || !entry.trim()) {
+      counts.rejected.other += 1;
+      continue;
+    }
+    const inspected = inspectClientPhoto(entry, now);
+    if (inspected.url) counts.kept += 1;
+    else counts.rejected[inspected.reason ?? 'other'] += 1;
+  }
+}
+
+/**
+ * Raw photo_links, photo_links_cached, and primary_photo_url counts, plus how
+ * many of those values were kept or rejected. No URLs or hosts.
+ */
+export function summarizeListingPhotos(
+  listing: { media?: { photo_links?: unknown; photo_links_cached?: unknown; primary_photo_url?: unknown } } | null | undefined,
+  now = Date.now(),
+): ListingPhotoCounts {
+  const counts = emptyPhotoCounts();
+  const media = listing?.media;
+  const dealer = photoFieldEntries(media?.photo_links);
+  const cached = photoFieldEntries(media?.photo_links_cached);
+  const primary = photoFieldEntries(media?.primary_photo_url);
+  counts.photoLinks = dealer.length;
+  counts.photoLinksCached = cached.length;
+  counts.primary = primary.length;
+  tallyPhotoEntries(dealer, counts, now);
+  tallyPhotoEntries(cached, counts, now);
+  tallyPhotoEntries(primary, counts, now);
+  return counts;
+}
+
+function photoLogId(id: string | undefined): string | undefined {
+  if (!id || !id.trim()) return undefined;
+  return createHash('sha256').update(id).digest('hex').slice(0, 12);
+}
+
+/** Counts only. The id is a 12-char hash, never a VIN, URL, or host. */
+function logListingPhotos(source: 'search' | 'detail', listing: MCListing | null | undefined, id: string | undefined): void {
+  const counts = summarizeListingPhotos(listing);
+  const hashed = photoLogId(id);
+  console.log(JSON.stringify({
+    event: 'mc_listing_photos',
+    source,
+    ...(hashed ? { id: hashed } : {}),
+    photoLinks: counts.photoLinks,
+    photoLinksCached: counts.photoLinksCached,
+    primary: counts.primary,
+    kept: counts.kept,
+    rejected: counts.rejected,
+  }));
+}
+
 function listingClientPhotos(listing: MCListing | null | undefined): {
   photoUrls?: string[];
   primaryPhotoUrl?: string;
@@ -482,6 +565,10 @@ async function searchOnePage(
   // MCP wraps MarketCheck REST response in a `data` envelope
   const listings = raw.data?.listings ?? [];
   const numFound = raw.data?.num_found ?? 0;
+  for (const listing of listings) {
+    const id = typeof listing.id === 'string' ? listing.id : undefined;
+    logListingPhotos('search', listing, id);
+  }
   const normalized = listings.map(normalizeListing).filter((v): v is LiveVehicle => v !== null);
   const vehicles = applyClientFilters(normalized);
 
@@ -636,6 +723,8 @@ export async function getVehicleDetailMcp(
   }
 
   const photos = listingClientPhotos(listing);
+  const detailId = typeof listing?.id === 'string' && listing.id.trim() ? listing.id : listingId;
+  logListingPhotos('detail', listing, detailId);
 
   // Build features list — combine VIN decode + listing build info
   const buildFeatures: string[] = [];
