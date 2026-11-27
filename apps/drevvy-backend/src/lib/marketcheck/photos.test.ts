@@ -17,7 +17,10 @@ import {
   marketCheckPhotoHostKind,
   proxyMarketCheckPhoto,
   clientPhotoUrlDropped,
+  capQueryNames,
   inspectClientPhoto,
+  isSecretLikeQueryName,
+  photoPathname,
   toClientPhotoUrl,
 } from './photos';
 import { containsSecret } from './secrets';
@@ -345,7 +348,10 @@ test('http photo URLs upgrade to https only when the host rules allow them', () 
   assert.equal(toClientPhotoUrl('http://cdn.dealer.example/a.jpg?token=abc'), undefined);
   assert.equal(toClientPhotoUrl('http://user:pass@cdn.dealer.example/a.jpg'), undefined);
   assert.equal(toClientPhotoUrl('http://cdn.dealer.example:8080/a.jpg'), undefined);
-  assert.equal(toClientPhotoUrl('http://cdn.dealer.example/a.jpg?utm_source=lot'), undefined);
+  assert.equal(
+    toClientPhotoUrl('http://cdn.dealer.example/a.jpg?utm_source=lot'),
+    'https://cdn.dealer.example/a.jpg',
+  );
   assert.equal(toClientPhotoUrl('javascript:alert(1)'), undefined);
 });
 
@@ -358,13 +364,15 @@ test('photo reject reasons stay scheme, host, query, or other, and a coming-soon
     { raw: 'https://cdn.example.test:8080/a.jpg', reason: 'host' },
     { raw: `https://cdn.example.test/a.jpg?api_key=${SECRET}`, reason: 'query' },
     { raw: 'https://cdn.example.test/a.jpg?X-Amz-Signature=abc', reason: 'query' },
-    { raw: 'https://cdn.example.test/a.jpg?utm_source=lot', reason: 'query' },
+    { raw: 'https://cdn.example.test/a.jpg?utm_source=lot', reason: null },
     { raw: 'https://cdn.example.test/API_KEY/a.jpg', reason: 'other' },
     { raw: 'https://cdn.example.test/comingsoon.jpg', reason: 'other' },
     { raw: 'http://cdn.example.test/coming-soon.png', reason: 'other' },
     { raw: 'https://cdn.example.test/ComingSoon.JPEG', reason: 'other' },
     { raw: 'https://cdn.example.test/coming_soon.webp', reason: 'other' },
-    { raw: 'https://cdn.example.test/comingsoon/1.jpg', reason: null },
+    { raw: 'https://cdn.example.test/comingsoon/1.jpg', reason: 'other' },
+    { raw: 'https://cdn.example.test/inventory/coming-soon/2.png', reason: 'other' },
+    { raw: 'https://cdn.example.test/photos/1.jpg', reason: null },
     { raw: 'https://images.carsforsale.com/nv200/1.jpg?width=640', reason: null },
     { raw: 'http://api.marketcheck.com/v2/image/cache/car/abc', reason: null },
     { raw: `https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`, reason: null },
@@ -381,6 +389,52 @@ test('photo reject reasons stay scheme, host, query, or other, and a coming-soon
   assert.match(proxied.url ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
   assert.equal(containsSecret(proxied.url ?? ''), false);
   assert.equal((proxied.url ?? '').includes('api.marketcheck.com'), false);
+});
+
+test('dealer cache params stay, unknown image params are stripped, and secrets still drop', () => {
+  const hash = 'abc123';
+  const dealersync = `http://images.example-cdn.test/3229/Photos/1/car.jpg?_=${hash}&width=450`;
+  assert.equal(
+    toClientPhotoUrl(dealersync),
+    `https://images.example-cdn.test/3229/Photos/1/car.jpg?_=${hash}&width=450`,
+  );
+  assert.equal(
+    toClientPhotoUrl('https://cdn.example.test/a.jpg?v=1711647378&ver=2&ts=3&t=4&cb=5'),
+    'https://cdn.example.test/a.jpg?cb=5&t=4&ts=3&v=1711647378&ver=2',
+  );
+  assert.equal(
+    toClientPhotoUrl('https://cdn.example.test/a.jpg?width=640&utm_source=lot'),
+    'https://cdn.example.test/a.jpg?width=640',
+  );
+  const secretAndUnknown = toClientPhotoUrl(`https://cdn.example.test/a.jpg?utm_source=lot&api_key=${SECRET}`);
+  assert.equal(secretAndUnknown, undefined);
+
+  const nonImage = inspectClientPhoto('https://cdn.example.test/render?utm_source=lot&foo=1');
+  assert.equal(nonImage.reason, 'query');
+  assert.equal(nonImage.url, undefined);
+  assert.deepEqual(nonImage.queryNames, ['foo', 'utm_source']);
+
+  const signed = inspectClientPhoto('https://cdn.example.test/a.jpg?X-Amz-Signature=abc&SIG=abc');
+  assert.equal(signed.reason, 'query');
+  assert.deepEqual(signed.queryNames, ['secret_like']);
+  assert.equal(JSON.stringify(signed).includes('X-Amz'), false);
+  assert.equal(JSON.stringify(signed).includes('SIG'), false);
+  assert.equal(isSecretLikeQueryName('sig'), true);
+  assert.equal(isSecretLikeQueryName('expires'), true);
+  assert.equal(isSecretLikeQueryName('policy'), true);
+  assert.equal(isSecretLikeQueryName('_'), false);
+
+  const many = inspectClientPhoto(
+    'https://cdn.example.test/render?aa=1&bb=1&cc=1&dd=1&ee=1&ff=1&bad.name=1',
+  );
+  assert.equal(many.reason, 'query');
+  assert.deepEqual(many.queryNames, ['aa', 'bb', 'cc', 'dd', 'ee']);
+  assert.deepEqual(capQueryNames(['sig', 'utm_source', 'a.b', 'X-Amz-Credential']), ['secret_like', 'utm_source']);
+
+  assert.equal(photoPathname('https://cdn.example.test/photos/1.jpg'), '/photos/1.jpg');
+  assert.equal(photoPathname('not a url'), null);
+  assert.equal(photoPathname('http://['), null);
+  assert.doesNotThrow(() => inspectClientPhoto('https://cdn.example.test/%'));
 });
 
 test('photo URLs built inside a request use that origin', async () => {

@@ -228,6 +228,8 @@ test('a coming-soon file is not a photo and sorts with the photo-less rows', () 
     photoUrls: [
       'https://cdn.example.test/comingsoon.jpg',
       'http://cdn.example.test/coming-soon.png',
+      'https://cdn.example.test/comingsoon/2.jpg',
+      'https://cdn.example.test/inventory/coming_soon/3.webp',
     ],
     primaryPhotoUrl: 'https://cdn.example.test/coming_soon.webp',
     thumbnailUrl: 'https://cdn.example.test/ComingSoon.JPEG',
@@ -235,14 +237,14 @@ test('a coming-soon file is not a photo and sorts with the photo-less rows', () 
   }), origin);
   const pictured = publicListingFromSearchVehicle(liveVehicle({
     id: 'real',
-    photoUrls: ['https://cdn.example.test/comingsoon/1.jpg'],
-    primaryPhotoUrl: 'https://cdn.example.test/comingsoon/1.jpg',
+    photoUrls: ['https://cdn.example.test/photos/1.jpg'],
+    primaryPhotoUrl: 'https://cdn.example.test/photos/1.jpg',
     thumbnailUrl: undefined,
     location: near,
   }), origin);
   assert.ok(soon && pictured);
   assert.deepEqual(soon.media.photo_links, []);
-  assert.deepEqual(pictured.media.photo_links, ['https://cdn.example.test/comingsoon/1.jpg']);
+  assert.deepEqual(pictured.media.photo_links, ['https://cdn.example.test/photos/1.jpg']);
   assert.equal(soon.dist, pictured.dist);
   assert.deepEqual(
     rankPhotoLessListingsLast([soon, pictured]).map((listing) => listing.id),

@@ -71,6 +71,25 @@ void main() {
     expect(listing.media.photoLinks, ['https://cdn.example/civic.jpg?width=640']);
   });
 
+  test('a dealersync cache-buster stays and a signed query is dropped', () {
+    final listing = Listing.fromJson({
+      'id': 'mc_sync',
+      'price': 6995,
+      'build': {'year': 2016, 'make': 'Nissan', 'model': 'NV200'},
+      'media': {
+        'photo_links': [
+          'https://cdn.example/Photos/1/car.jpg?_=abc123&width=450',
+          'https://cdn.example/a.jpg?X-Amz-Signature=abc',
+          'https://cdn.example/a.jpg?SIG=abc',
+        ],
+      },
+    });
+
+    expect(listing.media.photoLinks, [
+      'https://cdn.example/Photos/1/car.jpg?_=abc123&width=450',
+    ]);
+  });
+
   test('a decimal price rounds and does not throw', () {
     final listing = Listing.fromJson({
       'id': 'mc_rav',

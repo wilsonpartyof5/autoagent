@@ -341,9 +341,16 @@ export type ListingPhotoCounts = {
   primary: number;
   kept: number;
   rejected: Record<PhotoDropReason, number>;
+  /** Sanitized rejected query names, most frequent first, at most five. */
+  queryNames: string[];
 };
 
-function emptyPhotoCounts(): ListingPhotoCounts {
+type PhotoTally = {
+  counts: Omit<ListingPhotoCounts, 'queryNames'>;
+  nameCounts: Map<string, number>;
+};
+
+function emptyPhotoCounts(): Omit<ListingPhotoCounts, 'queryNames'> {
   return {
     photoLinks: 0,
     photoLinksCached: 0,
@@ -351,6 +358,13 @@ function emptyPhotoCounts(): ListingPhotoCounts {
     kept: 0,
     rejected: { scheme: 0, host: 0, query: 0, other: 0 },
   };
+}
+
+function topQueryNames(nameCounts: Map<string, number>): string[] {
+  return [...nameCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+    .map(([name]) => name);
 }
 
 /** Array length, one string, or one object. Missing and blank are zero. */
@@ -361,38 +375,52 @@ function photoFieldEntries(value: unknown): unknown[] {
   return [];
 }
 
-function tallyPhotoEntries(entries: unknown[], counts: ListingPhotoCounts, now: number): void {
+function tallyPhotoEntries(entries: unknown[], tally: PhotoTally, now: number): void {
   for (const entry of entries) {
     if (typeof entry !== 'string' || !entry.trim()) {
-      counts.rejected.other += 1;
+      tally.counts.rejected.other += 1;
       continue;
     }
     const inspected = inspectClientPhoto(entry, now);
-    if (inspected.url) counts.kept += 1;
-    else counts.rejected[inspected.reason ?? 'other'] += 1;
+    if (inspected.url) tally.counts.kept += 1;
+    else tally.counts.rejected[inspected.reason ?? 'other'] += 1;
+    if (inspected.reason === 'query') {
+      for (const name of inspected.queryNames) {
+        tally.nameCounts.set(name, (tally.nameCounts.get(name) ?? 0) + 1);
+      }
+    }
   }
+}
+
+function tallyListingPhotos(
+  listing: { media?: { photo_links?: unknown; photo_links_cached?: unknown; primary_photo_url?: unknown } } | null | undefined,
+  now = Date.now(),
+): PhotoTally {
+  const tally: PhotoTally = { counts: emptyPhotoCounts(), nameCounts: new Map() };
+  const media = listing?.media;
+  const dealer = photoFieldEntries(media?.photo_links);
+  const cached = photoFieldEntries(media?.photo_links_cached);
+  const primary = photoFieldEntries(media?.primary_photo_url);
+  tally.counts.photoLinks = dealer.length;
+  tally.counts.photoLinksCached = cached.length;
+  tally.counts.primary = primary.length;
+  tallyPhotoEntries(dealer, tally, now);
+  tallyPhotoEntries(cached, tally, now);
+  tallyPhotoEntries(primary, tally, now);
+  return tally;
 }
 
 /**
  * Raw photo_links, photo_links_cached, and primary_photo_url counts, plus how
- * many of those values were kept or rejected. No URLs or hosts.
+ * many of those values were kept or rejected. Query names are sanitized.
+ * No URLs, hosts, or values.
  */
 export function summarizeListingPhotos(
   listing: { media?: { photo_links?: unknown; photo_links_cached?: unknown; primary_photo_url?: unknown } } | null | undefined,
   now = Date.now(),
 ): ListingPhotoCounts {
-  const counts = emptyPhotoCounts();
-  const media = listing?.media;
-  const dealer = photoFieldEntries(media?.photo_links);
-  const cached = photoFieldEntries(media?.photo_links_cached);
-  const primary = photoFieldEntries(media?.primary_photo_url);
-  counts.photoLinks = dealer.length;
-  counts.photoLinksCached = cached.length;
-  counts.primary = primary.length;
-  tallyPhotoEntries(dealer, counts, now);
-  tallyPhotoEntries(cached, counts, now);
-  tallyPhotoEntries(primary, counts, now);
-  return counts;
+  const tally = tallyListingPhotos(listing, now);
+  return { ...tally.counts, queryNames: topQueryNames(tally.nameCounts) };
 }
 
 function photoLogId(id: string | undefined): string | undefined {
@@ -400,19 +428,56 @@ function photoLogId(id: string | undefined): string | undefined {
   return createHash('sha256').update(id).digest('hex').slice(0, 12);
 }
 
-/** Counts only. The id is a 12-char hash, never a VIN, URL, or host. */
-function logListingPhotos(source: 'search' | 'detail', listing: MCListing | null | undefined, id: string | undefined): void {
+function photoCountFields(counts: Omit<ListingPhotoCounts, 'queryNames'>, queryNames: string[]) {
+  return {
+    photoLinks: counts.photoLinks,
+    photoLinksCached: counts.photoLinksCached,
+    primary: counts.primary,
+    kept: counts.kept,
+    rejected: counts.rejected,
+    queryNames,
+  };
+}
+
+/** One line for a search page. Summed counts and the top rejected query names. */
+function logSearchPhotoPage(listings: readonly MCListing[]): void {
+  const totals = emptyPhotoCounts();
+  const nameCounts = new Map<string, number>();
+  for (const listing of listings) {
+    const tally = tallyListingPhotos(listing);
+    totals.photoLinks += tally.counts.photoLinks;
+    totals.photoLinksCached += tally.counts.photoLinksCached;
+    totals.primary += tally.counts.primary;
+    totals.kept += tally.counts.kept;
+    totals.rejected.scheme += tally.counts.rejected.scheme;
+    totals.rejected.host += tally.counts.rejected.host;
+    totals.rejected.query += tally.counts.rejected.query;
+    totals.rejected.other += tally.counts.rejected.other;
+    for (const [name, count] of tally.nameCounts) {
+      nameCounts.set(name, (nameCounts.get(name) ?? 0) + count);
+    }
+  }
+  console.log(JSON.stringify({
+    event: 'mc_listing_photos',
+    source: 'search',
+    ...photoCountFields(totals, topQueryNames(nameCounts)),
+  }));
+}
+
+/** Detail only. The id is a 12-char hash, never a VIN, URL, or host. */
+function logListingPhotos(listing: MCListing | null | undefined, id: string | undefined): void {
   const counts = summarizeListingPhotos(listing);
   const hashed = photoLogId(id);
   console.log(JSON.stringify({
     event: 'mc_listing_photos',
-    source,
+    source: 'detail',
     ...(hashed ? { id: hashed } : {}),
     photoLinks: counts.photoLinks,
     photoLinksCached: counts.photoLinksCached,
     primary: counts.primary,
     kept: counts.kept,
     rejected: counts.rejected,
+    queryNames: counts.queryNames,
   }));
 }
 
@@ -565,10 +630,7 @@ async function searchOnePage(
   // MCP wraps MarketCheck REST response in a `data` envelope
   const listings = raw.data?.listings ?? [];
   const numFound = raw.data?.num_found ?? 0;
-  for (const listing of listings) {
-    const id = typeof listing.id === 'string' ? listing.id : undefined;
-    logListingPhotos('search', listing, id);
-  }
+  logSearchPhotoPage(listings);
   const normalized = listings.map(normalizeListing).filter((v): v is LiveVehicle => v !== null);
   const vehicles = applyClientFilters(normalized);
 
@@ -724,7 +786,7 @@ export async function getVehicleDetailMcp(
 
   const photos = listingClientPhotos(listing);
   const detailId = typeof listing?.id === 'string' && listing.id.trim() ? listing.id : listingId;
-  logListingPhotos('detail', listing, detailId);
+  logListingPhotos(listing, detailId);
 
   // Build features list — combine VIN decode + listing build info
   const buildFeatures: string[] = [];

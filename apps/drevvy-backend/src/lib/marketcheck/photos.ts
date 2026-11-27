@@ -32,8 +32,9 @@ const CREDENTIALED_EXACT = new Set([
 const PUBLIC_CDN = new Set(['images.marketcheck.com']);
 
 /**
- * Query names a shopper photo URL may keep. Any other name drops the URL.
+ * Presentation query names a shopper photo URL may keep.
  * `u`, `e`, and `s` are the signed proxy link, not a MarketCheck secret.
+ * Cache-busters live in BENIGN_QUERY_NAMES and are kept intact.
  */
 export const PHOTO_QUERY_ALLOWLIST = new Set([
   'w',
@@ -51,6 +52,16 @@ export const PHOTO_QUERY_ALLOWLIST = new Set([
   'e',
   's',
 ]);
+
+/**
+ * Version and cache-buster names. DealerSync vehicle photos use `_` (a content
+ * hash) plus sometimes `width`. These stay on the URL. They are not signatures.
+ */
+const BENIGN_QUERY_NAMES = new Set(['v', 'ver', 'version', 'ts', 't', 'cb', '_']);
+
+const QUERY_NAME_RE = /^[a-z0-9_-]{1,32}$/;
+const IMAGE_PATH_RE = /\.(?:jpe?g|png|gif|webp|avif)$/i;
+const MAX_LOGGED_QUERY_NAMES = 5;
 
 /** Case-insensitive. Matches the path as well as the query. */
 const SECRET_URL_PATTERN = /key|token|secret|auth/i;
@@ -92,17 +103,101 @@ export function photoUrlCarriesSecret(value: string): boolean {
   return SECRET_URL_PATTERN.test(value);
 }
 
+function queryNameKept(name: string): boolean {
+  const lower = name.toLowerCase();
+  return PHOTO_QUERY_ALLOWLIST.has(lower) || BENIGN_QUERY_NAMES.has(lower);
+}
+
 export function photoQueryAllowed(names: Iterable<string>): boolean {
   for (const name of names) {
-    if (!PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return false;
+    if (!queryNameKept(name)) return false;
   }
   return true;
 }
 
+/** Signed or credential query names. Logged as secret_like, never the raw name. */
+export function isSecretLikeQueryName(name: string): boolean {
+  const n = name.toLowerCase();
+  if (photoUrlCarriesSecret(n)) return true;
+  if (n === 'sig' || n.includes('signature')) return true;
+  if (n.includes('expires') || n.includes('expiry') || n.includes('expiration')) return true;
+  if (n.includes('policy')) return true;
+  if (n.includes('credential')) return true;
+  if (n.startsWith('x-amz-') || n.startsWith('x-goog-')) return true;
+  return false;
+}
+
+/** A name safe to log: secret_like, or a short lowercase token. Never a value. */
+export function loggableQueryName(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower === 'secret_like' || isSecretLikeQueryName(lower)) return 'secret_like';
+  if (QUERY_NAME_RE.test(lower)) return lower;
+  return null;
+}
+
+export function capQueryNames(names: Iterable<string>): string[] {
+  const unique = [...new Set(
+    [...names].map((name) => loggableQueryName(name)).filter((name): name is string => !!name),
+  )];
+  unique.sort((a, b) => {
+    if (a === 'secret_like' && b !== 'secret_like') return -1;
+    if (b === 'secret_like' && a !== 'secret_like') return 1;
+    return a.localeCompare(b);
+  });
+  return unique.slice(0, MAX_LOGGED_QUERY_NAMES);
+}
+
+function isImagePath(pathname: string): boolean {
+  const segment = pathname.split('/').filter(Boolean).pop() ?? '';
+  return IMAGE_PATH_RE.test(segment);
+}
+
+function isPhotoProxyPath(pathname: string): boolean {
+  return pathname === '/api/inventory/photo' || pathname.endsWith('/api/inventory/photo');
+}
+
 /**
- * True when a shopper must not see this URL. A query name off the allowlist
- * drops it. So does key, token, secret, or auth anywhere in the URL, including
- * the path and a semicolon param the parser does not split.
+ * Secret-like params drop the whole URL. An unknown non-secret name is stripped
+ * when the path is an image file, and drops the URL otherwise. Benign cache
+ * names are not a drop.
+ */
+function dealerQueryDrop(url: URL, raw: string): { drop: boolean; names: string[] } {
+  const logged: string[] = [];
+  let secret = false;
+  const unknown: string[] = [];
+  const seen = new Set<string>();
+  for (const name of url.searchParams.keys()) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (isSecretLikeQueryName(name)) {
+      secret = true;
+      logged.push(name);
+      continue;
+    }
+    if (!isPhotoProxyPath(url.pathname)) {
+      for (const value of url.searchParams.getAll(name)) {
+        if (photoUrlCarriesSecret(value)) {
+          secret = true;
+          logged.push('secret_like');
+        }
+      }
+    }
+    if (!queryNameKept(name)) unknown.push(name);
+  }
+  if (!isPhotoProxyPath(url.pathname) && raw.includes(';') && photoUrlCarriesSecret(raw)) {
+    secret = true;
+    logged.push('secret_like');
+  }
+  if (secret) return { drop: true, names: capQueryNames(logged) };
+  if (unknown.length === 0) return { drop: false, names: [] };
+  if (isImagePath(url.pathname)) return { drop: false, names: [] };
+  return { drop: true, names: capQueryNames(unknown) };
+}
+
+/**
+ * True when a shopper must not see this URL. Secret-like query names and
+ * values drop it, including a semicolon param the parser does not split.
+ * A path that contains key, token, secret, or auth drops it too.
  */
 export function clientPhotoUrlDropped(raw: string): boolean {
   let url: URL;
@@ -112,22 +207,12 @@ export function clientPhotoUrlDropped(raw: string): boolean {
     return photoUrlCarriesSecret(raw);
   }
   if (photoUrlCarriesSecret(url.pathname) || photoUrlCarriesSecret(url.hash)) return true;
-  for (const name of url.searchParams.keys()) {
-    if (photoUrlCarriesSecret(name) || !PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return true;
-  }
-  const path = url.pathname;
-  const proxy = path === '/api/inventory/photo' || path.endsWith('/api/inventory/photo');
-  if (proxy) return false;
-  for (const value of url.searchParams.values()) {
-    if (photoUrlCarriesSecret(value)) return true;
-  }
-  if (raw.includes(';') && photoUrlCarriesSecret(raw)) return true;
-  return false;
+  return dealerQueryDrop(url, raw).drop;
 }
 
 function dropDisallowedParams(url: URL): void {
   for (const name of [...url.searchParams.keys()]) {
-    if (!PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) url.searchParams.delete(name);
+    if (!queryNameKept(name)) url.searchParams.delete(name);
   }
 }
 
@@ -161,30 +246,28 @@ function safeEqual(left: string, right: string): boolean {
 
 export type PhotoDropReason = 'scheme' | 'host' | 'query' | 'other';
 
-/** DealerSync names the stock "no photo" file comingsoon.jpg (also coming-soon / coming_soon). */
+const COMING_SOON_SEGMENT = /^coming[-_]?soon$/i;
+
+/**
+ * DealerSync placeholders are a comingsoon file, or an image whose last
+ * directory is comingsoon / coming-soon / coming_soon.
+ */
 export function isComingSoonPlaceholder(pathname: string): boolean {
-  const segment = pathname.split('/').filter(Boolean).pop() ?? '';
-  const base = segment.replace(/\.[a-z0-9]{2,5}$/i, '');
-  return /^coming[-_]?soon$/i.test(base);
+  const segments = pathname.split('/').filter(Boolean);
+  const file = segments.pop() ?? '';
+  const base = file.replace(/\.[a-z0-9]{2,5}$/i, '');
+  if (COMING_SOON_SEGMENT.test(base)) return true;
+  const dir = segments.pop() ?? '';
+  return COMING_SOON_SEGMENT.test(dir);
 }
 
-function queryDrop(raw: string): boolean {
-  let url: URL;
+/** Path of a canonical photo URL. Null when the string is not a URL. */
+export function photoPathname(canonical: string): string | null {
   try {
-    url = new URL(raw, 'https://photos.invalid');
+    return new URL(canonical).pathname;
   } catch {
-    return false;
+    return null;
   }
-  for (const name of url.searchParams.keys()) {
-    if (photoUrlCarriesSecret(name) || !PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return true;
-  }
-  const path = url.pathname;
-  const proxy = path === '/api/inventory/photo' || path.endsWith('/api/inventory/photo');
-  if (proxy) return false;
-  for (const value of url.searchParams.values()) {
-    if (photoUrlCarriesSecret(value)) return true;
-  }
-  return raw.includes(';') && photoUrlCarriesSecret(raw);
 }
 
 /**
@@ -194,19 +277,19 @@ function queryDrop(raw: string): boolean {
 export function inspectClientPhoto(
   raw: string | undefined,
   now = Date.now(),
-): { url?: string; reason: PhotoDropReason | null } {
-  if (!raw || !raw.trim()) return { reason: 'other' };
+): { url?: string; reason: PhotoDropReason | null; queryNames: string[] } {
+  if (!raw || !raw.trim()) return { reason: 'other', queryNames: [] };
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
-    return { reason: 'scheme' };
+    return { reason: 'scheme', queryNames: [] };
   }
-  if (parsed.username || parsed.password) return { reason: 'host' };
+  if (parsed.username || parsed.password) return { reason: 'host', queryNames: [] };
   const http = parsed.protocol === 'http:';
-  if (parsed.protocol !== 'https:' && !http) return { reason: 'scheme' };
-  if (parsed.port && parsed.port !== '443' && !(http && parsed.port === '80')) return { reason: 'host' };
-  if (!parsed.hostname) return { reason: 'host' };
+  if (parsed.protocol !== 'https:' && !http) return { reason: 'scheme', queryNames: [] };
+  if (parsed.port && parsed.port !== '443' && !(http && parsed.port === '80')) return { reason: 'host', queryNames: [] };
+  if (!parsed.hostname) return { reason: 'host', queryNames: [] };
   // Dealer feeds still publish http photo_links. Upgrade first, then apply the
   // same host and query rules. A host is not probed for TLS.
   if (http) {
@@ -215,22 +298,25 @@ export function inspectClientPhoto(
   }
 
   const kind = marketCheckPhotoHostKind(parsed.hostname);
+  const query = dealerQueryDrop(parsed, raw);
   const canonical = canonicalPhotoUrl(parsed);
-  if (photoUrlCarriesSecret(canonical)) return { reason: 'other' };
-  if (kind !== 'credentialed' && clientPhotoUrlDropped(raw)) {
-    return { reason: queryDrop(raw) ? 'query' : 'other' };
+  if (photoUrlCarriesSecret(canonical)) return { reason: 'other', queryNames: [] };
+  if (kind !== 'credentialed' && query.drop) {
+    return { reason: 'query', queryNames: query.names };
   }
-  if (isComingSoonPlaceholder(new URL(canonical).pathname)) return { reason: 'other' };
-  if (kind !== 'credentialed') return { url: canonical, reason: null };
+  const pathname = photoPathname(canonical);
+  if (!pathname) return { reason: 'other', queryNames: [] };
+  if (isComingSoonPlaceholder(pathname)) return { reason: 'other', queryNames: [] };
+  if (kind !== 'credentialed') return { url: canonical, reason: null, queryNames: [] };
 
   const secret = signingSecret();
-  if (!secret) return { reason: 'other' };
+  if (!secret) return { reason: 'other', queryNames: [] };
   const exp = now + PHOTO_LINK_TTL_MS;
   const signature = sign(canonical, exp, secret);
   const payload = Buffer.from(canonical, 'utf8').toString('base64url');
   const path = `/api/inventory/photo?u=${payload}&e=${exp}&s=${signature}`;
   const origin = currentPhotoOrigin();
-  return { url: origin ? `${origin}${path}` : path, reason: null };
+  return { url: origin ? `${origin}${path}` : path, reason: null, queryNames: [] };
 }
 
 /**
