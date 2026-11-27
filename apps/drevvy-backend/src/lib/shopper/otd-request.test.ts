@@ -133,6 +133,60 @@ test('an in-network listing cannot use the off-network OTD request', async () =>
   assert.equal(analytics.events.length, 0);
 });
 
+test('an off-network OTD uses the listing identity cache and stops at the per-user cap', async () => {
+  const { MemoryRateLimitStore } = await import('@/lib/public-discover/rate-limit');
+  const { OTD_POST_USER_PER_MINUTE } = await import('./off-network-lookup-limit');
+  const repo = memoryOtdRequestRepository();
+  const store = new MemoryRateLimitStore();
+  let fetches = 0;
+  const rooftops = {
+    listOnboardedRooftops: async () => [HONDA],
+    lookupListingIdentity: async () => {
+      fetches += 1;
+      return {
+        status: 'found' as const,
+        identity: {
+          listingId: 'mc-otd-cache',
+          listingUrl: 'https://independent.example/vdp/1',
+          dealerWebsite: 'https://independent.example',
+          marketcheckDealerId: '555',
+        },
+      };
+    },
+  };
+  const now = new Date('2026-11-22T18:00:00.000Z');
+  const first = await requestOffNetworkOtd('shopper-otd-cache', { listingId: 'mc-otd-cache' }, {
+    now,
+    repo,
+    rooftops,
+    rateLimitStore: store,
+  });
+  assert.equal(first.created, true);
+  assert.equal(first.request.dealerDomain, 'independent.example');
+  assert.equal(first.request.marketcheckDealerId, '555');
+  for (let i = 1; i < OTD_POST_USER_PER_MINUTE; i += 1) {
+    const again = await requestOffNetworkOtd('shopper-otd-cache', { listingId: 'mc-otd-cache' }, {
+      now,
+      repo,
+      rooftops,
+      rateLimitStore: store,
+    });
+    assert.equal(again.created, false);
+  }
+  assert.equal(fetches, 1);
+  await assert.rejects(
+    () => requestOffNetworkOtd('shopper-otd-cache', { listingId: 'mc-otd-cache' }, {
+      now,
+      repo,
+      rooftops,
+      rateLimitStore: store,
+    }),
+    (error: unknown) => error instanceof ShopperDealError && error.status === 429,
+  );
+  assert.equal(fetches, 1);
+  assert.equal(repo.rows.length, 1);
+});
+
 test('the iOS OTD alias body maps url onto listingUrl', () => {
   assert.deepEqual(
     otdRequestBodyFromHttp({ url: 'https://www.cars.com/vehicledetail/9', free: true }, 'mc-listing-9'),

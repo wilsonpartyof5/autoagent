@@ -9,6 +9,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { shopperFirstNameOnly } from '@/lib/dealer/rooftop-match';
 import { ShopperDealError } from './deals';
+import {
+  enforceShopperMessageLimit,
+  enforceShopperReadLimit,
+  type ShopperMessageLimitOptions,
+} from './thread-rate-limit';
 
 const MESSAGE_LIMIT = 2000;
 
@@ -102,7 +107,15 @@ export async function readShopperThread(
   supabase: SupabaseClient,
   userId: string,
   dealId: string,
+  limits?: ShopperMessageLimitOptions,
 ): Promise<ShopperThread> {
+  await enforceShopperReadLimit({
+    userId,
+    route: 'messages',
+    nowMs: limits?.nowMs,
+    store: limits?.store,
+    env: limits?.env,
+  });
   const row = await ownedConversation(supabase, userId, dealId);
   const messages = await loadMessages(supabase, dealId);
   if (messages.length === 0 && row.opener) {
@@ -123,11 +136,19 @@ export async function postShopperThreadMessage(
   dealId: string,
   body: string,
   now = new Date(),
+  limits?: ShopperMessageLimitOptions,
 ): Promise<ShopperThread> {
   const text = body.trim();
   if (!text) throw new ShopperDealError('Write a message first.', 400, 'empty_message');
   if (text.length > MESSAGE_LIMIT) throw new ShopperDealError('That message is too long.', 400, 'message_too_long');
   const row = await ownedConversation(supabase, userId, dealId);
+  await enforceShopperMessageLimit({
+    userId,
+    dealId,
+    nowMs: limits?.nowMs ?? now.getTime(),
+    store: limits?.store,
+    env: limits?.env,
+  });
   const saved = await supabase.from('shopper_dealer_messages').insert({
     deal_id: dealId,
     author: 'shopper',

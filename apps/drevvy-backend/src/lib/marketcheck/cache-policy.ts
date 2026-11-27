@@ -33,7 +33,7 @@ const TOOL_ENDPOINT: Record<string, MarketCheckCacheEndpoint> = {
   get_incentives: 'incentives',
   // Fair price uses marketCheckPriceCacheKey (VIN + ZIP area + miles) in
   // getMarketCheckPrice. A generic args key must not become a second store.
-  get_marketcheck_price: 'marketcheck_price',
+  predict_price_with_comparables: 'marketcheck_price',
 };
 
 type Stored = { value: unknown; expiresAt: number };
@@ -115,6 +115,15 @@ export function marketCheckStoredKeyCount(): number {
 export function resetMarketCheckCacheForTests(): void {
   stored.clear();
   inflight.clear();
+}
+
+/** Read a stored value without loading. Expired and missing keys return null. */
+export function peekMarketCheck<T>(endpoint: MarketCheckCacheEndpoint, key: string, now: () => number): T | null {
+  const policy = MARKETCHECK_CACHE_POLICY[endpoint];
+  if (!policy.allowed || policy.ttlMs <= 0) return null;
+  const hit = stored.get(`${endpoint}:${key}`);
+  if (!hit || now() >= hit.expiresAt) return null;
+  return hit.value as T;
 }
 
 export function stableStringify(value: unknown): string {

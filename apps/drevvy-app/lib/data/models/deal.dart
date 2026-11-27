@@ -24,6 +24,7 @@ class Deal extends Equatable {
     this.changedOffer,
     this.tryOnceMoreUsed = false,
     this.dealerTimelines = const [],
+    this.serverThread = false,
   });
 
   final String id;
@@ -48,6 +49,10 @@ class Deal extends Equatable {
   /// Per-dealership written quotes. Empty means the screen builds one
   /// timeline from this deal's own offers.
   final List<DealerTimeline> dealerTimelines;
+
+  /// The shopper deals API created or listed this deal.
+  /// Live chat sends and polls only for these. Demo deals stay false.
+  final bool serverThread;
 
   Offer? get latestOffer => offers.isNotEmpty ? offers.last : null;
   
@@ -117,6 +122,7 @@ class Deal extends Equatable {
     Offer? changedOffer,
     bool? tryOnceMoreUsed,
     List<DealerTimeline>? dealerTimelines,
+    bool? serverThread,
   }) {
     return Deal(
       id: id ?? this.id,
@@ -138,6 +144,7 @@ class Deal extends Equatable {
       changedOffer: changedOffer ?? this.changedOffer,
       tryOnceMoreUsed: tryOnceMoreUsed ?? this.tryOnceMoreUsed,
       dealerTimelines: dealerTimelines ?? this.dealerTimelines,
+      serverThread: serverThread ?? this.serverThread,
     );
   }
 }

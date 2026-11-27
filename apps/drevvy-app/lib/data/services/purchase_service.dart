@@ -194,10 +194,9 @@ class FakePurchaseService implements PurchaseService {
 const purchasesNotConfiguredMessage =
     'Purchases are not configured for this build.';
 
-/// A RevenueCat key is present, but this build does not accept it.
-/// Debug accepts `test_` only. Release and profile accept iOS `appl_` only.
+/// Shopper copy when a store key is present but this build will not use it.
 const platformKeyNotSandboxMessage =
-    'Key purchases are off. The RevenueCat key is not accepted for this build.';
+    "Purchases aren't available in this version.";
 
 /// Copy for a finished pack purchase. Demo keys are labeled as samples.
 /// A zero credit count does not say that keys were added.

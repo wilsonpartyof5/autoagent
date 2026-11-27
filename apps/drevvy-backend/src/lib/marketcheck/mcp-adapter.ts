@@ -88,6 +88,7 @@ interface MCListing {
     hours?: Record<string, string>;
     rating?: number;
     review_count?: number;
+    dealer_type?: string;
   };
   seller_comments?: string;
   description?: string;
@@ -243,6 +244,7 @@ export interface DetailResponse {
     dealerReviewCount?: number;
     dealerHours?: Record<string, string>;
   };
+  dealerType?: 'franchise' | 'independent';
   enrichedAt: string;
   partial: boolean;
   /** Sections whose MarketCheck calls ran for this response. */
@@ -277,9 +279,9 @@ function normalizeCondition(listing: MCListing): 'new' | 'used' | 'certified' {
 }
 
 /**
- * Client photo URL. Dealer CDNs and the public MarketCheck image CDN are
- * returned with any API key removed. Hosts that require the key are rewritten
- * to the photo proxy, which adds the credential server-side.
+ * Client photo URL. A dealer or public URL that carries a secret is dropped.
+ * Hosts that require the key are rewritten to the photo proxy, which adds
+ * the credential server-side.
  */
 function clientPhoto(url: string | undefined): string | undefined {
   return toClientPhotoUrl(url);
@@ -678,6 +680,9 @@ export async function getVehicleDetailMcp(
       dealerReviewCount: dealerSource?.review_count,
       dealerHours: dealerSource?.hours,
     },
+    dealerType: dealerSource?.dealer_type === 'independent' || dealerSource?.dealer_type === 'franchise'
+      ? dealerSource.dealer_type
+      : undefined,
     enrichedAt: new Date().toISOString(),
     partial: (needListing && !listing) || (wantVin && !vinData) || (wantHistory && historyList.length === 0),
     loadedSections: [

@@ -82,7 +82,7 @@ void main() {
     expect(body.keys.toSet(), {'listingId'});
     expect(body['listingId'], 'listing_001');
     expect(match.classifiedInNetwork, isTrue);
-    expect(match.isInNetwork, isFalse);
+    expect(match.isInNetwork, isTrue);
     expect(match.rooftopId, isNull);
     expect(match.vdpUrl, isNull);
     expect(match.source, RooftopMatchSource.live);
@@ -243,7 +243,11 @@ void main() {
       expect(result.dealId, 'deal-live-1');
       expect(result.balance?.balance, 2);
       expect(result.balance?.totalPurchased, 0);
+      expect(body.keys.toSet(), {'listingId', 'vehicle'});
+      expect(body.containsKey('rooftopId'), isFalse);
+      expect(body.containsKey('listingUrl'), isFalse);
       final vehicle = body['vehicle'] as Map<String, dynamic>;
+      expect(vehicle.keys.toSet(), {'year', 'make', 'model', 'price'});
       expect(vehicle['year'], 2024);
       expect(vehicle['make'], 'Toyota');
       expect(vehicle['model'], 'RAV4');

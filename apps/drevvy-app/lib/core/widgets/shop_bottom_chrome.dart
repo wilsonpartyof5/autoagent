@@ -10,9 +10,10 @@ enum ShopChromePhase { shown, hidden, searchFocused }
 
 enum ShopChromeScrollDecision { none, show, hide }
 
-/// Distances and timings for the Shop search pill + tab bar unit.
+/// Distances and timings for the Discover ask pill.
+/// The bottom tab bar is gone, so clearance is the pill plus the home indicator.
 abstract final class ShopBottomChromeMetrics {
-  /// Router branch index of the Shop tab in [router.dart].
+  /// Kept so older call sites can still name the Discover surface.
   static const shopBranchIndex = 0;
 
   static const pillKey = Key('shop-bottom-chrome-pill');
@@ -29,25 +30,20 @@ abstract final class ShopBottomChromeMetrics {
   static const showDuration = Duration(milliseconds: 220);
   static const reducedDuration = Duration(milliseconds: 120);
 
-  /// Pill, the gap above the tab bar, the tab bar, and its bottom inset.
-  /// The safe area is added separately so the hidden unit clears the home indicator.
-  static const chromeHeight =
-      DrevvySpace.composerMinHeight +
-      DrevvySpace.composerTabBarGap +
-      DrevvySpace.tabBarHeight +
-      DrevvySpace.tabBarBottomInset;
+  /// Gap between the ask pill and the keyboard or the home indicator.
+  static const keyboardGap = 8.0;
+
+  /// Pill plus the gap under it. The safe area is added separately.
+  static const chromeHeight = DrevvySpace.composerMinHeight + keyboardGap;
 
   static double travel(double safeBottom) => chromeHeight + safeBottom;
 
-  /// Constant list padding so the last card clears the visible chrome.
+  /// Constant list padding so the last card clears the pill and home indicator.
   static double listBottomPadding(double safeBottom) =>
       travel(safeBottom) + listClearancePx;
 
   static double restingComposerBottom(double safeBottom) =>
-      DrevvySpace.tabBarBottomInset +
-      DrevvySpace.tabBarHeight +
-      DrevvySpace.composerTabBarGap +
-      safeBottom;
+      safeBottom + keyboardGap;
 }
 
 /// Accumulates user scroll and commits show/hide. Pure: no widgets.
@@ -291,11 +287,10 @@ class ShopBottomChromeModel extends ChangeNotifier {
   }
 
   double composerBottom(double safeBottom) {
-    final dock =
-        phase == ShopChromePhase.searchFocused &&
-        keyboardInset > 0 &&
-        !_accessibleNavigation;
-    if (dock) return DrevvySpace.composerTabBarGap;
+    // The scaffold already shrinks for the keyboard. Sit on that edge.
+    if (keyboardInset > 0 && !_accessibleNavigation) {
+      return ShopBottomChromeMetrics.keyboardGap;
+    }
     return ShopBottomChromeMetrics.restingComposerBottom(safeBottom);
   }
 

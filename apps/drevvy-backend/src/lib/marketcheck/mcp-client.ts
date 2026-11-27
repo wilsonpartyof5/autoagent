@@ -45,13 +45,21 @@ export class McpRateLimitError extends Error {
   }
 }
 
-/** Timeout, 5xx, or a tool error. A strict caller refunds instead of treating this as "no listing". */
+export type MarketCheckUpstreamKind = 'http' | 'timeout' | 'transport' | 'tool';
+
+/** Timeout, 5xx, transport, or a tool error. A strict caller refunds instead of treating this as "no listing". */
 export class MarketCheckUpstreamError extends Error {
   readonly status: number | null;
-  constructor(message: string, status: number | null = null) {
+  readonly kind: MarketCheckUpstreamKind;
+  constructor(
+    message: string,
+    status: number | null = null,
+    kind: MarketCheckUpstreamKind = 'http',
+  ) {
     super(message);
     this.name = 'MarketCheckUpstreamError';
     this.status = status;
+    this.kind = kind;
   }
 }
 
@@ -192,7 +200,7 @@ async function callMcpToolNetwork<T = unknown>(
         }),
       );
       if (options?.strict) {
-        throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed (${res.status})`, res.status);
+        throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed (${res.status})`, res.status, 'http');
       }
       return null;
     }
@@ -233,6 +241,8 @@ async function callMcpToolNetwork<T = unknown>(
     if (options?.strict) {
       throw new MarketCheckUpstreamError(
         isTimeout ? `MarketCheck ${toolName} timed out` : `MarketCheck ${toolName} failed`,
+        null,
+        isTimeout ? 'timeout' : 'transport',
       );
     }
     return null;
@@ -253,7 +263,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string, strict = 
         message: redactSecrets(json.error.message),
       }),
     );
-    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`);
+    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`, null, 'tool');
     return null;
   }
 
@@ -263,7 +273,7 @@ function extractContent<T>(json: McpJsonRpcResponse, toolName: string, strict = 
   if (result.isError) {
     const msg = redactSecrets(result.content?.[0]?.text ?? 'unknown MCP tool error');
     console.error(JSON.stringify({ event: 'mc_mcp_tool_error', tool: toolName, msg }));
-    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`);
+    if (strict) throw new MarketCheckUpstreamError(`MarketCheck ${toolName} failed`, null, 'tool');
     return null;
   }
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseRooftopDirectory } from '@/lib/dealer/rooftop-store';
+import { withListingCarLimits } from '@/lib/marketcheck/listing-car-limit';
+import { discoverClientIp } from '@/lib/public-discover/client-ip';
 import { startDealerConversation } from '@/lib/shopper/conversation';
 import { readRequestJson, shopperDeps } from '@/lib/shopper/deal-actions';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
@@ -25,11 +27,14 @@ export async function POST(request: NextRequest) {
     const body = await readRequestJson(request);
     const deps = await shopperDeps(auth.userId);
     const supabase = deps.supabase ?? createAdminClient();
-    const result = await startDealerConversation(auth.userId, body, {
-      ...deps,
-      supabase,
-      rooftops: supabaseRooftopDirectory(supabase),
-    });
+    const result = await withListingCarLimits(
+      { ip: discoverClientIp(request.headers) },
+      () => startDealerConversation(auth.userId, body, {
+        ...deps,
+        supabase,
+        rooftops: supabaseRooftopDirectory(supabase),
+      }),
+    );
     return NextResponse.json({
       success: true,
       data: result.deal,

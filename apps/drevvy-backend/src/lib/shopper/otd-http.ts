@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseRooftopDirectory } from '@/lib/dealer/rooftop-store';
+import { withListingCarLimits } from '@/lib/marketcheck/listing-car-limit';
+import { discoverClientIp } from '@/lib/public-discover/client-ip';
 import { readRequestJson } from '@/lib/shopper/deal-actions';
 import { supabaseOtdAnalytics } from '@/lib/shopper/otd-analytics';
 import {
@@ -18,12 +20,15 @@ export async function postConsumerOtdRequest(
   const auth = await requireShopperAuth(request);
   const body = otdRequestBodyFromHttp(await readRequestJson(request), listingIdFromPath);
   const supabase = createAdminClient();
-  const result = await requestOffNetworkOtd(auth.userId, body, {
-    now: new Date(),
-    repo: supabaseOtdRequestRepository(supabase),
-    rooftops: supabaseRooftopDirectory(supabase),
-    analytics: supabaseOtdAnalytics(supabase),
-  });
+  const result = await withListingCarLimits(
+    { ip: discoverClientIp(request.headers) },
+    () => requestOffNetworkOtd(auth.userId, body, {
+      now: new Date(),
+      repo: supabaseOtdRequestRepository(supabase),
+      rooftops: supabaseRooftopDirectory(supabase),
+      analytics: supabaseOtdAnalytics(supabase),
+    }),
+  );
   return NextResponse.json({
     success: true,
     data: result.request,

@@ -5,11 +5,11 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:shopper": "tsx --test src/lib/shopper/*.test.ts src/lib/analytics/*.test.ts src/lib/consumer/*.test.ts src/lib/push/*.test.ts src/lib/dealer/*.test.ts",
+    "test:shopper": "tsx --tsconfig tsconfig.jsx-test.json --test src/lib/shopper/*.test.ts src/lib/analytics/*.test.ts src/lib/consumer/*.test.ts src/lib/push/*.test.ts src/lib/dealer/*.test.ts",
     "test:get": "tsx --test src/lib/store-links.test.ts",
     "test:shopper-deals": "tsx --test src/lib/shopper/deals.test.ts",
     "test:admin": "tsx --test src/lib/admin/*.test.ts",

@@ -5,6 +5,7 @@ export 'deal_brain_chip.dart';
 export 'deal_chip_inputs.dart';
 export 'listing.dart';
 export 'market_context.dart';
+export 'market_intel_brief.dart';
 export 'rooftop_match.dart';
 export 'saved_car.dart';
 export 'search_profile.dart';

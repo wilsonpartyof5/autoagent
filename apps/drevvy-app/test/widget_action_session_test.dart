@@ -65,16 +65,7 @@ void main() {
   }
 
   Future<void> sendShop(WidgetTester tester) async {
-    await tester.tap(find.text('Shop'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    final field = find.byWidgetPredicate(
-      (widget) =>
-          widget is TextField &&
-          widget.decoration?.hintText == 'Search cars nearby...',
-    );
-    await tester.enterText(field, 'old suv');
-    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.tap(find.text('Cars under \$25k'));
     await tester.pump();
   }
 
@@ -102,14 +93,14 @@ void main() {
   }
 
   Future<void> closeAccount(WidgetTester tester, _ActionRepo repo) async {
-    await tester.tap(find.text('DW'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 800));
-    expect(find.byType(AccountSheet), findsOneWidget);
+    // Discover no longer opens the account sheet. A session change still
+    // reloads the shop profile, which is the late-result path these tests cover.
     repo.stallNextProfile = true;
-    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    store.session = const ShopperSession(
+      accessToken: 'jwt-reload',
+      consumerUserId: 'user-reload',
+    );
     await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
   }
 
   testWidgets('shop drops a late send after sign-out', (tester) async {

@@ -129,6 +129,8 @@ unavailable. The screen does not submit `POST /api/consumer/otd-requests`.
 Email sign-in, Ask, and account deletion say they are unavailable. Demo keeps
 Dana, the labeled stubs, and Matters step 6 Sample.
 
+Local shopper API: from `apps/drevvy-backend`, `npm run dev` starts Next on `127.0.0.1`.
+
 ## Two-key VDP review (simulators)
 
 Demo listings:

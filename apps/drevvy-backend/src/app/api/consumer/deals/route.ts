@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseRooftopDirectory } from '@/lib/dealer/rooftop-store';
+import { withListingCarLimits } from '@/lib/marketcheck/listing-car-limit';
+import { discoverClientIp } from '@/lib/public-discover/client-ip';
 import { startDealerConversation } from '@/lib/shopper/conversation';
 import { listShopperCars, readRequestJson, shopperDeps } from '@/lib/shopper/deal-actions';
 import { shopperDealErrorResponse } from '@/lib/shopper/deals';
@@ -16,15 +18,16 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * Create body:
  * {
  *   "listingId": "mc-listing-1",
- *   "vehicle": { "year": 2024, "make": "Chevrolet", "model": "Tahoe", "price": 52900 },
- *   "zip": "29730"
+ *   "vehicle": { "year": 2024, "make": "Chevrolet", "model": "Tahoe", "price": 52900 }
  * }
  *
  * Creating a deal spends a dealer-conversation key only when the listing matches
  * an onboarded rooftop. Off-network listings return 409 off_network — use
  * POST /api/consumer/otd-requests. Market details and save are a separate key.
- * `zip` is used for MarketCheck Price and is not stored. Listing deals does not
- * load fair price.
+ * Fair price uses the onboarded rooftop ZIP (`dealerships.marketcheck_zip`),
+ * then the shopper profile ZIP. A zip on the body is ignored and is not
+ * stored. Listing detail is not fetched to learn the ZIP. Listing deals
+ * does not load fair price.
  *
  * Deal JSON includes listing id, status, outreachLockedUntilPaid, and the
  * vehicle snapshot. It does not include dealer name, phone, email, website,
@@ -51,11 +54,14 @@ export async function POST(request: NextRequest) {
     const body = await readRequestJson(request);
     const deps = await shopperDeps(auth.userId);
     const supabase = deps.supabase ?? createAdminClient();
-    const result = await startDealerConversation(auth.userId, body, {
-      ...deps,
-      supabase,
-      rooftops: supabaseRooftopDirectory(supabase),
-    });
+    const result = await withListingCarLimits(
+      { ip: discoverClientIp(request.headers) },
+      () => startDealerConversation(auth.userId, body, {
+        ...deps,
+        supabase,
+        rooftops: supabaseRooftopDirectory(supabase),
+      }),
+    );
     return NextResponse.json({
       success: true,
       data: result.deal,
