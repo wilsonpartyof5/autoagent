@@ -1,14 +1,19 @@
 /**
  * Deterministic shopper-ask parse.
  *
- * Runs before the shopping model and again when AI_GATEWAY_API_KEY and
- * VERCEL_OIDC_TOKEN are both missing or the model call fails. It does not
- * call a network API. City and ZIP text is geocoded later by geocodeLocation.
+ * Runs before the model and again when the gateway and direct OpenAI calls
+ * are both missing or both fail. It does not call a network API. City and
+ * ZIP text is geocoded later by geocodeLocation.
  */
 
 import type { ParsedFilters, ParseOpenAIResult } from './parse-inventory-query';
-import { parseQueryWithOpenAI } from './parse-inventory-query';
-import { shoppingGatewayCredential } from './shopping-llm';
+import { parseQueryWithOpenAI, scrubShopperMessage, toMapboxPlace } from './parse-inventory-query';
+import {
+  ASK_PARSE_MAX_TOKENS,
+  callAskModel,
+  type AskModelContext,
+  type AskModelResult,
+} from '../shopper/ask-model';
 
 const TRUCKS: Array<{ pattern: RegExp; make: string; model: string }> = [
   { pattern: /\bf[-\s]?350s?\b/i, make: 'Ford', model: 'F-350' },
@@ -258,25 +263,55 @@ export function mergeAskParses(
 }
 
 /**
- * Pre-parse with the deterministic rules, then fill from the shopping model
- * when a gateway credential is present. Model failures keep the pre-parse.
+ * Pre-parse with the deterministic rules, then fill from the gateway or,
+ * when that credential is missing or rejects the call, from OpenAI directly.
+ * Model failures keep the pre-parse.
  */
 export async function parseAskQuery(
   message: string,
   options: {
     env?: Record<string, string | undefined>;
     parseWithModel?: (message: string) => Promise<ParseOpenAIResult>;
+    askModel?: <T>(
+      env: Record<string, string | undefined>,
+      run: (ctx: AskModelContext) => Promise<T>,
+    ) => Promise<AskModelResult<T>>;
+    onProvider?: (provider: 'gateway' | 'openai' | 'parser') => void;
   } = {},
 ): Promise<ParseOpenAIResult | null> {
   const deterministic = deterministicParse(message);
   const env = options.env ?? process.env;
-  if (!shoppingGatewayCredential(env)) return mergeAskParses(deterministic, null);
-
-  let llm: ParseOpenAIResult | null = null;
-  try {
-    llm = await (options.parseWithModel ?? parseQueryWithOpenAI)(message);
-  } catch {
-    llm = null;
+  const forModel = scrubShopperMessage(message);
+  if (options.parseWithModel) {
+    try {
+      const llm = await options.parseWithModel(forModel);
+      return placeSafeParse(mergeAskParses(deterministic, llm));
+    } catch {
+      options.onProvider?.('parser');
+      return placeSafeParse(mergeAskParses(deterministic, null));
+    }
   }
-  return mergeAskParses(deterministic, llm);
+
+  const askModel = options.askModel ?? callAskModel;
+  const called = await askModel(env, (ctx) => parseQueryWithOpenAI(forModel, {
+    signal: ctx.signal,
+    maxTokens: ASK_PARSE_MAX_TOKENS,
+    client: ctx.client,
+    model: ctx.model,
+    preserveError: true,
+  }));
+  options.onProvider?.(called.ok ? called.provider : 'parser');
+  return placeSafeParse(mergeAskParses(deterministic, called.ok ? called.value : null));
+}
+
+function placeSafeParse(parsed: ParseOpenAIResult | null): ParseOpenAIResult | null {
+  if (!parsed?.filters.locationText) return parsed;
+  const place = toMapboxPlace(parsed.filters.locationText);
+  if (!place) {
+    const explicitFields = parsed.explicitFields.filter((field) => field !== 'locationText');
+    const filters = { ...parsed.filters };
+    delete filters.locationText;
+    return { ...parsed, filters, explicitFields };
+  }
+  return { ...parsed, filters: { ...parsed.filters, locationText: place } };
 }

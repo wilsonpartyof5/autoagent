@@ -442,6 +442,32 @@ test('MarketCheck Price is cached for the same VIN and ZIP area', async () => {
   else process.env.FAIR_PRICE_SPEND_ENABLED = previousSpend;
 });
 
+test('search page logs keep the radius and omit coordinates', async () => {
+  process.env.MARKETCHECK_API_KEY = SECRET;
+  resetMarketCheckCacheForTests();
+  await withFetch(() => jsonRpc(listingPayload('https://cdn.example/a.jpg')), async (_calls, logs) => {
+    await searchActiveCarsMcp({ latitude: 34.92431, longitude: -81.02654, radiusMiles: 10 });
+    const joined = logs.join('\n');
+    assert.match(joined, /mc_mcp_search_page/);
+    assert.match(joined, /"radiusMiles":10/);
+    assert.equal(joined.includes('34.92431'), false);
+    assert.equal(joined.includes('-81.02654'), false);
+    assert.equal(joined.includes('"lat"'), false);
+    assert.equal(joined.includes('"lng"'), false);
+  });
+  resetMarketCheckCacheForTests();
+  await withFetch(() => jsonRpc({ data: null }), async (_calls, _logs, errors) => {
+    const empty = await searchActiveCarsMcp({ latitude: 34.92431, longitude: -81.02654, radiusMiles: 10 });
+    assert.equal(empty.upstreamFailed, true);
+    const joined = errors.join('\n');
+    assert.match(joined, /mc_mcp_search_empty_envelope/);
+    assert.equal(joined.includes('34.92431'), false);
+    assert.equal(joined.includes('-81.02654'), false);
+    assert.equal(joined.includes('"lat"'), false);
+    assert.equal(joined.includes('"lng"'), false);
+  });
+});
+
 test('upstream errors that echo the API key are redacted in logs', async () => {
   process.env.MARKETCHECK_API_KEY = SECRET;
   resetMarketCheckCacheForTests();

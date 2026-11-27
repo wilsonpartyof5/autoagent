@@ -24,6 +24,7 @@ import {
 } from './parse-inventory-query';
 import {
   resolveCanonicalFilters,
+  upstreamErrorLog,
   type CanonicalFilters,
 } from './resolve-canonical-filters';
 
@@ -63,6 +64,8 @@ export async function searchResolvedInventory(input: {
   rows?: number;
   /** Ask sets this so the shopper message is not written to logs. */
   quiet?: boolean;
+  /** Ask sets this so model and geocode calls stop and fall back. */
+  upstreamTimeoutMs?: number;
   geocode?: (locationText: string) => Promise<LocationData | null>;
   resolveCanonical?: typeof resolveCanonicalFilters;
   search?: (params: {
@@ -157,11 +160,13 @@ export async function searchResolvedInventory(input: {
       latitude: center.latitude,
       longitude: center.longitude,
       radiusMiles: DEFAULT_SEARCH_RADIUS_MILES,
+      quiet: input.quiet,
+      ...(input.upstreamTimeoutMs ? { timeoutMs: input.upstreamTimeoutMs } : {}),
     });
     canonicalFilters = resolved.canonicalFilters;
   } catch (err) {
     if (!input.quiet) {
-      console.error('[chat-search] Canonical resolution failed (non-fatal):', err);
+      console.error(JSON.stringify(upstreamErrorLog('canonical_resolution_failed', err)));
     }
   }
 
