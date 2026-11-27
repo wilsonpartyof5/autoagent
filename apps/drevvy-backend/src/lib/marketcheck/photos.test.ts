@@ -369,14 +369,15 @@ test('photo reject reasons stay scheme, host, query, or other, and a coming-soon
     { raw: 'http://api.marketcheck.com/v2/image/cache/car/abc', reason: null },
     { raw: `https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`, reason: null },
   ];
-  for (const sample of cases) {
-    const inspected = inspectClientPhoto(sample.raw);
-    assert.equal(inspected.reason, sample.reason, sample.raw);
-    assert.equal(toClientPhotoUrl(sample.raw), inspected.url, sample.raw);
-    if (sample.reason) assert.equal(inspected.url, undefined, sample.raw);
-    else assert.equal(typeof inspected.url, 'string', sample.raw);
-  }
-  const proxied = inspectClientPhoto(`https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`);
+  const now = 1_700_000_000_000;
+  cases.forEach((sample, index) => {
+    const inspected = inspectClientPhoto(sample.raw, now);
+    assert.equal(inspected.reason, sample.reason, String(index));
+    assert.equal(toClientPhotoUrl(sample.raw, now), inspected.url, String(index));
+    if (sample.reason) assert.equal(inspected.url, undefined, String(index));
+    else assert.equal(typeof inspected.url, 'string', String(index));
+  });
+  const proxied = inspectClientPhoto(`https://api.marketcheck.com/v2/image/cache/car/abc?api_key=${SECRET}`, now);
   assert.match(proxied.url ?? '', /^https:\/\/app\.example\/api\/inventory\/photo\?/);
   assert.equal(containsSecret(proxied.url ?? ''), false);
   assert.equal((proxied.url ?? '').includes('api.marketcheck.com'), false);
