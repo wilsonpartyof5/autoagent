@@ -182,6 +182,7 @@ interface ResolvedValue {
 async function resolveAllCategoricalFields(
   intents: Record<string, string>,
   facets: Record<string, string[]>,
+  options?: { quiet?: boolean; timeoutMs?: number },
 ): Promise<Record<string, ResolvedValue>> {
   const results: Record<string, ResolvedValue> = {};
   const needsAI: Record<string, string> = {};
@@ -247,7 +248,7 @@ Return format: {"fieldName": "chosen value or null", ...}`;
       max_tokens: 2000,
       temperature: 0,
       response_format: { type: 'json_object' },
-    });
+    }, options?.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : undefined);
 
     const content = resp.choices[0]?.message?.content?.trim();
     const parsed: Record<string, string | null> = content ? JSON.parse(content) : {};
@@ -275,12 +276,9 @@ Return format: {"fieldName": "chosen value or null", ...}`;
       }
     }
   } catch (err) {
-    console.error(
-      JSON.stringify({
-        event: 'canonical_resolver_ai_error',
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
+    if (!options?.quiet) {
+      console.error(JSON.stringify(upstreamErrorLog('canonical_resolver_ai_error', err)));
+    }
     for (const [field, intent] of Object.entries(needsAI)) {
       results[field] = { value: intent, source: 'fallback', confidence: 0.5 };
     }
@@ -308,12 +306,45 @@ Return format: {"fieldName": "chosen value or null", ...}`;
  * @param apiFilters   Normalized intent from validateAndNormalize()
  * @param context      Location used to scope facets (lat/lng required)
  */
+/** Safe log shape: field name and match source. Never the shopper's text. */
+export function canonicalResolveLogRecord(meta: ResolutionMeta): {
+  event: 'canonical_resolve_complete';
+  latencyMs: number;
+  facetSource: ResolutionMeta['facetSource'];
+  fields: Array<{ field: string; source: string }>;
+} {
+  return {
+    event: 'canonical_resolve_complete',
+    latencyMs: meta.latencyMs,
+    facetSource: meta.facetSource,
+    fields: Object.entries(meta.fields).map(([field, value]) => ({
+      field,
+      source: value.source,
+    })),
+  };
+}
+
+export function upstreamErrorLog(event: string, err: unknown): { event: string; name: string; code?: string | number } {
+  const record: { event: string; name: string; code?: string | number } = {
+    event,
+    name: err instanceof Error ? err.name : 'Error',
+  };
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string' || typeof code === 'number') record.code = code;
+  }
+  return record;
+}
+
 export async function resolveCanonicalFilters(
   apiFilters: ApiCompatibleFilters,
   context: {
     latitude: number;
     longitude: number;
     radiusMiles?: number;
+    /** Ask sets this so shopper text is not written to logs. */
+    quiet?: boolean;
+    timeoutMs?: number;
   },
 ): Promise<ResolveResult> {
   const t0 = Date.now();
@@ -381,7 +412,10 @@ export async function resolveCanonicalFilters(
       if (!fromCache) facetSource = 'mcp';
       meta.facetSource = facetSource;
 
-      const pass1Results = await resolveAllCategoricalFields(pass1Intents, pass1Facets);
+      const pass1Results = await resolveAllCategoricalFields(pass1Intents, pass1Facets, {
+        quiet: context.quiet,
+        timeoutMs: context.timeoutMs,
+      });
 
       for (const [field, resolved] of Object.entries(pass1Results)) {
         if (resolved.value !== null) {
@@ -415,6 +449,7 @@ export async function resolveCanonicalFilters(
       const pass2Results = await resolveAllCategoricalFields(
         { model: apiFilters.model },
         pass2Facets,
+        { quiet: context.quiet, timeoutMs: context.timeoutMs },
       );
       const modelRes = pass2Results['model'];
       if (modelRes?.value) {
@@ -430,31 +465,17 @@ export async function resolveCanonicalFilters(
     }
   } catch (err) {
     // Any MCP/AI failure — canonical already holds passthrough normalized values
-    console.error(
-      JSON.stringify({
-        event: 'canonical_resolver_error',
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
+    if (!context.quiet) {
+      console.error(JSON.stringify(upstreamErrorLog('canonical_resolver_error', err)));
+    }
     meta.facetSource = 'none';
   }
 
   meta.latencyMs = Date.now() - t0;
 
-  console.log(
-    JSON.stringify({
-      event: 'canonical_resolve_complete',
-      latencyMs: meta.latencyMs,
-      facetSource: meta.facetSource,
-      fields: Object.entries(meta.fields).map(([k, v]) => ({
-        field: k,
-        intent: v.intent,
-        resolved: v.resolved,
-        source: v.source,
-        confidence: v.confidence,
-      })),
-    }),
-  );
+  if (!context.quiet) {
+    console.log(JSON.stringify(canonicalResolveLogRecord(meta)));
+  }
 
   return { canonicalFilters: canonical, meta };
 }

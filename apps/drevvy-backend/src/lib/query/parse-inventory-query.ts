@@ -10,6 +10,8 @@
  *   functions – parseQueryWithOpenAI, validateAndNormalize, geocodeLocation
  */
 
+import type OpenAI from 'openai';
+
 import { createShoppingModelClient, SHOPPING_MODEL } from './shopping-llm';
 
 // ---------------------------------------------------------------------------
@@ -391,10 +393,49 @@ export function validateAndNormalize(
 }
 
 // ---------------------------------------------------------------------------
+// Shopper text sent to the model or Mapbox
+// ---------------------------------------------------------------------------
+
+const SHOPPER_EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const SHOPPER_PHONE = /(?<!\d)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g;
+const SHOPPER_STREET = /\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s+){0,5}(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|court|ct|way|place|pl|parkway|pkwy|highway|hwy|circle|cir|terrace|ter)\b\.?/gi;
+
+/** Emails, phone numbers, and street addresses become [redacted]. */
+export function scrubShopperMessage(value: string): string {
+  return value
+    .replace(SHOPPER_EMAIL, '[redacted]')
+    .replace(SHOPPER_PHONE, '[redacted]')
+    .replace(SHOPPER_STREET, '[redacted]')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * City, state, or ZIP for Mapbox. Street addresses, emails, and phones are removed.
+ * Returns null when nothing place-like remains.
+ */
+export function toMapboxPlace(value: string): string | null {
+  let text = value
+    .replace(SHOPPER_EMAIL, ' ')
+    .replace(SHOPPER_PHONE, ' ')
+    .replace(SHOPPER_STREET, ' ')
+    .replace(/\[redacted\]/gi, ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  text = text.replace(/^(?:near|in)\s+/i, '');
+  text = text.replace(/^[,.\s]+|[,.\s]+$/g, '').trim();
+  if (!text) return null;
+  if (/^\d+\s+\S/.test(text) && !/\b\d{5}(?:-\d{4})?\b/.test(text)) return null;
+  return text.slice(0, 80);
+}
+
+// ---------------------------------------------------------------------------
 // geocodeLocation (Mapbox)
 // ---------------------------------------------------------------------------
 
-export async function geocodeLocation(locationText: string): Promise<LocationData | null> {
+export async function geocodeLocation(
+  locationText: string,
+  options?: { signal?: AbortSignal },
+): Promise<LocationData | null> {
   const normalizedText = locationText.trim().toLowerCase();
 
   const cached = geocodeCache.get(normalizedText);
@@ -414,7 +455,7 @@ export async function geocodeLocation(locationText: string): Promise<LocationDat
     }
 
     const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanLocation)}.json?access_token=${mapboxToken}&limit=1`;
-    const response = await fetch(geocodeUrl);
+    const response = await fetch(geocodeUrl, options?.signal ? { signal: options.signal } : undefined);
     if (!response.ok) return null;
 
     const data = await response.json() as { features?: Array<{ center: [number, number] }> };
@@ -502,23 +543,35 @@ Rules for explicitFields:
 - "7-seat hybrid" → ["seatingCapacity", "powertrainType"]
 - "just show me cars" → []`;
 
-export async function parseQueryWithOpenAI(query: string): Promise<ParseOpenAIResult> {
-  const openai = createShoppingModelClient();
+export async function parseQueryWithOpenAI(
+  query: string,
+  options?: {
+    signal?: AbortSignal;
+    /** Ask sets this. Chat-search omits it and the request stays uncapped. */
+    maxTokens?: number;
+    client?: OpenAI;
+    model?: string;
+    /** Ask rethrows so a 401 can try the next provider. Chat-search keeps the wrapped error. */
+    preserveError?: boolean;
+  },
+): Promise<ParseOpenAIResult> {
+  const openai = options?.client ?? createShoppingModelClient();
 
   interface ParsedResponse { filters: ParsedFilters; explicitFields: string[] }
 
   try {
     const completion = await openai.beta.chat.completions.parse({
-      model: SHOPPING_MODEL,
+      model: options?.model ?? SHOPPING_MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: query },
       ],
+      ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
       response_format: {
         type: 'json_schema',
         json_schema: { name: 'vehicle_filters', strict: true, schema: RESPONSE_SCHEMA as any },
       },
-    });
+    }, options?.signal ? { signal: options.signal } : undefined);
 
     let parsed = completion.choices[0]?.message?.parsed as ParsedResponse | null | undefined;
 
@@ -538,6 +591,7 @@ export async function parseQueryWithOpenAI(query: string): Promise<ParseOpenAIRe
 
     return { filters: parsed.filters, explicitFields: parsed.explicitFields, confidence };
   } catch (error) {
+    if (options?.preserveError) throw error;
     throw new Error(`Failed to parse query with OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

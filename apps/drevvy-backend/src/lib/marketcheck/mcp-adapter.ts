@@ -554,8 +554,6 @@ async function searchOnePage(
   if (!raw || raw.data == null) {
     console.error(JSON.stringify({
       event: 'mc_mcp_search_empty_envelope',
-      lat: params.latitude.toFixed(4),
-      lng: params.longitude.toFixed(4),
       radiusMiles: params.radiusMiles,
       latencyMs,
     }));
@@ -574,8 +572,6 @@ async function searchOnePage(
 
   console.log(JSON.stringify({
     event: 'mc_mcp_search_page',
-    lat: params.latitude.toFixed(4),
-    lng: params.longitude.toFixed(4),
     radiusMiles: params.radiusMiles,
     rows,
     start,
