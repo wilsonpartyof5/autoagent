@@ -1,4 +1,5 @@
 import type { DetailResponse, LiveVehicle } from '../marketcheck/mcp-adapter';
+import { clientPhotoUrlDropped, toClientPhotoUrl } from '../marketcheck/photos';
 import { payloadContainsSecret } from '../marketcheck/secrets';
 
 import { DiscoverApiError } from './errors';
@@ -149,14 +150,9 @@ function httpsPhotos(urls: string[] | undefined): string[] {
   const out: string[] = [];
   for (const raw of urls) {
     if (typeof raw !== 'string') continue;
-    try {
-      const parsed = new URL(raw);
-      if (parsed.protocol !== 'https:') continue;
-      if ([...parsed.searchParams.keys()].some((key) => /key|token|secret|auth/i.test(key))) continue;
-      out.push(parsed.toString());
-    } catch {
-      continue;
-    }
+    const client = toClientPhotoUrl(raw);
+    if (!client || clientPhotoUrlDropped(client)) continue;
+    out.push(client);
     if (out.length >= 20) break;
   }
   return out;

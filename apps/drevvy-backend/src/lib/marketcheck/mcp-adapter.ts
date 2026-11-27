@@ -279,9 +279,9 @@ function normalizeCondition(listing: MCListing): 'new' | 'used' | 'certified' {
 }
 
 /**
- * Client photo URL. Dealer CDNs and the public MarketCheck image CDN are
- * returned with any API key removed. Hosts that require the key are rewritten
- * to the photo proxy, which adds the credential server-side.
+ * Client photo URL. A dealer or public URL that carries a secret is dropped.
+ * Hosts that require the key are rewritten to the photo proxy, which adds
+ * the credential server-side.
  */
 function clientPhoto(url: string | undefined): string | undefined {
   return toClientPhotoUrl(url);

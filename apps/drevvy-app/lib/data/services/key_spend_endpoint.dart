@@ -7,6 +7,7 @@ import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/car_pack.dart';
 import '../models/listing.dart';
+import '../models/market_intel_brief.dart';
 import '../models/rooftop_match.dart';
 import 'purchase_config.dart';
 import 'shopper_session_store.dart';
@@ -21,6 +22,10 @@ class KeySpendResult {
     this.message,
     this.errorCode,
     this.statusCode,
+    this.brief,
+    this.refunded = false,
+    this.held = false,
+    this.unlockState,
   });
 
   final bool ok;
@@ -28,6 +33,15 @@ class KeySpendResult {
   final String? dealId;
   final KeySpendSource source;
   final String? message;
+  final MarketIntelBrief? brief;
+
+  /// True only when the server confirmed the key was returned.
+  final bool refunded;
+
+  /// True when a key is still held and the lookup is not finished.
+  final bool held;
+
+  final String? unlockState;
 
   /// Server `error.code` when the response included one. Null on success.
   final String? errorCode;
@@ -42,7 +56,11 @@ class KeySpendResult {
       source = KeySpendSource.missing,
       message = null,
       errorCode = null,
-      statusCode = null;
+      statusCode = null,
+      brief = null,
+      refunded = false,
+      held = false,
+      unlockState = null;
 
   /// Live mode refused a local spend. [ok] is false.
   const KeySpendResult.blocked(this.message, {this.errorCode})
@@ -50,7 +68,11 @@ class KeySpendResult {
       balance = null,
       dealId = null,
       source = KeySpendSource.blocked,
-      statusCode = null;
+      statusCode = null,
+      brief = null,
+      refunded = false,
+      held = false,
+      unlockState = null;
 }
 
 enum KeySpendSource { live, stub, missing, blocked }
@@ -167,6 +189,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
       {'listingId': listing.id, 'vin': listing.vin},
       surface: 'market_save',
       requiresSignIn: true,
+      timeout: const Duration(seconds: 90),
     );
   }
 
@@ -225,6 +248,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     required String surface,
     bool requiresSignIn = false,
     bool conversation = false,
+    Duration? timeout,
   }) async {
     if (requiresSignIn && _sessionStore.accessToken == null) {
       if (strict) {
@@ -238,7 +262,7 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     try {
       final response = await _client
           .post(_uri(path), headers: _headers(), body: jsonEncode(body))
-          .timeout(timeout);
+          .timeout(timeout ?? this.timeout);
       if (_endpointMissing(response.statusCode)) {
         if (strict) {
           return KeySpendResult.blocked(
@@ -312,14 +336,25 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     } else if (conversation && payload['id'] is String) {
       dealId = payload['id'] as String;
     }
+    final refused =
+        root['unlocked'] == false ||
+        root['available'] == false ||
+        root['reason'] == 'market_unavailable';
+    final message = root['message'];
     return KeySpendResult(
       ok:
           root['success'] != false &&
           payload['ok'] != false &&
-          payload['success'] != false,
+          payload['success'] != false &&
+          !refused,
       balance: balance,
       dealId: dealId,
       source: KeySpendSource.live,
+      message: message is String ? message : null,
+      brief: MarketIntelBrief.tryParse(root['market']),
+      refunded: root['refunded'] == true,
+      held: root['held'] == true,
+      unlockState: root['unlockState'] is String ? root['unlockState'] as String : null,
     );
   }
 
@@ -398,4 +433,20 @@ class HttpKeySpendEndpoint extends KeySpendEndpoint {
     }
     return null;
   }
+}
+
+/// Keeps the balance on screen from disagreeing with the unlock message.
+///
+/// A confirmed refund must not show a lower balance than the spend response.
+/// A key that is still held must not show a higher balance than that response.
+int reconcileUnlockBalance({
+  required int responseBalance,
+  required int? refreshed,
+  required bool keyBack,
+  required bool stillHeld,
+}) {
+  if (refreshed == null) return responseBalance;
+  if (keyBack && refreshed < responseBalance) return responseBalance;
+  if (stillHeld && refreshed > responseBalance) return responseBalance;
+  return refreshed;
 }

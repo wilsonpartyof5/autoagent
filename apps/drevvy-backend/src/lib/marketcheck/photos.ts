@@ -31,17 +31,29 @@ const CREDENTIALED_EXACT = new Set([
 
 const PUBLIC_CDN = new Set(['images.marketcheck.com']);
 
-const SECRET_PARAMS = new Set([
-  'api_key',
-  'apikey',
-  'api-key',
-  'api_secret',
-  'access_token',
-  'auth_token',
-  'authorization',
-  'token',
-  'secret',
+/**
+ * Query names a shopper photo URL may keep. Any other name drops the URL.
+ * `u`, `e`, and `s` are the signed proxy link, not a MarketCheck secret.
+ */
+export const PHOTO_QUERY_ALLOWLIST = new Set([
+  'w',
+  'h',
+  'width',
+  'height',
+  'fit',
+  'crop',
+  'quality',
+  'q',
+  'format',
+  'auto',
+  'dpr',
+  'u',
+  'e',
+  's',
 ]);
+
+/** Case-insensitive. Matches the path as well as the query. */
+const SECRET_URL_PATTERN = /key|token|secret|auth/i;
 
 const IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -76,10 +88,46 @@ function signingSecret(): string | null {
   return process.env.MARKETCHECK_API_KEY || process.env.INVENTORY_SEARCH_API_KEY || null;
 }
 
-function stripSecretParams(url: URL): void {
-  const names = [...url.searchParams.keys()];
+export function photoUrlCarriesSecret(value: string): boolean {
+  return SECRET_URL_PATTERN.test(value);
+}
+
+export function photoQueryAllowed(names: Iterable<string>): boolean {
   for (const name of names) {
-    if (SECRET_PARAMS.has(name.toLowerCase())) url.searchParams.delete(name);
+    if (!PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return false;
+  }
+  return true;
+}
+
+/**
+ * True when a shopper must not see this URL. A query name off the allowlist
+ * drops it. So does key, token, secret, or auth anywhere in the URL, including
+ * the path and a semicolon param the parser does not split.
+ */
+export function clientPhotoUrlDropped(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw, 'https://photos.invalid');
+  } catch {
+    return photoUrlCarriesSecret(raw);
+  }
+  if (photoUrlCarriesSecret(url.pathname) || photoUrlCarriesSecret(url.hash)) return true;
+  for (const name of url.searchParams.keys()) {
+    if (photoUrlCarriesSecret(name) || !PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) return true;
+  }
+  const path = url.pathname;
+  const proxy = path === '/api/inventory/photo' || path.endsWith('/api/inventory/photo');
+  if (proxy) return false;
+  for (const value of url.searchParams.values()) {
+    if (photoUrlCarriesSecret(value)) return true;
+  }
+  if (raw.includes(';') && photoUrlCarriesSecret(raw)) return true;
+  return false;
+}
+
+function dropDisallowedParams(url: URL): void {
+  for (const name of [...url.searchParams.keys()]) {
+    if (!PHOTO_QUERY_ALLOWLIST.has(name.toLowerCase())) url.searchParams.delete(name);
   }
 }
 
@@ -91,7 +139,7 @@ export function canonicalPhotoUrl(input: URL): string {
   url.hash = '';
   url.username = '';
   url.password = '';
-  stripSecretParams(url);
+  dropDisallowedParams(url);
   const entries = [...url.searchParams.entries()].sort(
     (left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]),
   );
@@ -128,7 +176,11 @@ export function toClientPhotoUrl(raw: string | undefined, now = Date.now()): str
 
   const kind = marketCheckPhotoHostKind(parsed.hostname);
   const canonical = canonicalPhotoUrl(parsed);
-  if (kind !== 'credentialed') return canonical;
+  if (photoUrlCarriesSecret(canonical)) return undefined;
+  if (kind !== 'credentialed') {
+    if (clientPhotoUrlDropped(raw)) return undefined;
+    return canonical;
+  }
 
   const secret = signingSecret();
   if (!secret) return undefined;

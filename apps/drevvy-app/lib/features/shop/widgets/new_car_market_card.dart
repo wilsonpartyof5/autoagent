@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/models.dart';
@@ -100,12 +99,8 @@ class NewCarMarketCard extends StatelessWidget {
 
           const SizedBox(height: DrevvySpace.s4),
 
-          // Incentives section (if any)
-          if (market.msrpDiscount != null && market.msrpDiscount! > 0) ...[
-            Divider(color: colors.line),
-            const SizedBox(height: DrevvySpace.s3),
-            _IncentivesSection(),
-          ],
+          // Maker deals: shown only from real MarketCheck OEM offers
+          // (market-intel v1 `maker_deals` line). No hard-coded offers.
         ],
       ),
     );
@@ -237,78 +232,10 @@ class _LocalListingsBar extends StatelessWidget {
 
         // Caption
         Text(
-          '${market.comparablesCount} new ${market.comparablesCount == 1 ? 'listing' : 'listings'} within 50 mi',
+          '${market.comparablesCount} new ${market.comparablesCount == 1 ? 'listing' : 'listings'} like this',
           style: text.callout.copyWith(color: colors.muted),
         ),
       ],
-    );
-  }
-}
-
-class _IncentivesSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(LucideIcons.tag, size: 16, color: colors.violet),
-            const SizedBox(width: DrevvySpace.s2),
-            Text('Available incentives', style: text.bodyStrong),
-          ],
-        ),
-        const SizedBox(height: DrevvySpace.s3),
-        _IncentiveRow(
-          title: 'Manufacturer rebate',
-          detail: '\$1,500 cash back',
-          endDate: 'Ends Dec 31',
-        ),
-        _IncentiveRow(
-          title: 'Special APR',
-          detail: '2.9% for 60 months',
-          endDate: 'Ends Nov 30',
-        ),
-      ],
-    );
-  }
-}
-
-class _IncentiveRow extends StatelessWidget {
-  const _IncentiveRow({
-    required this.title,
-    required this.detail,
-    required this.endDate,
-  });
-
-  final String title;
-  final String detail;
-  final String endDate;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.drevvy;
-    final text = context.drevvyText;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: DrevvySpace.s2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: text.body),
-                Text(detail, style: text.callout.copyWith(color: colors.mint)),
-              ],
-            ),
-          ),
-          Text(endDate, style: text.micro.copyWith(color: colors.muted)),
-        ],
-      ),
     );
   }
 }

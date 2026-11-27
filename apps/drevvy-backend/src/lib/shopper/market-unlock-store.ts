@@ -197,8 +197,11 @@ export async function reserveMarketSaveKey(
 
 /**
  * Gives back a market-save key when the lookup produced nothing to store.
- * The spend row stays, with a refund row as the reversal. The active
- * idempotency key is archived so the next attempt is charged again.
+ * The spend row is never updated or deleted. The refund row, when the held
+ * SQL is applied, is refund:market_save:<listing id>:<spend event id> with
+ * refund_reason null. A second call is a no-op. Until that file is applied,
+ * a database error means the refund was not confirmed, and this returns
+ * refunded false.
  */
 export async function refundUnstoredMarketSave(
   supabase: SupabaseClient,
