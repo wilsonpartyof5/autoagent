@@ -78,10 +78,12 @@ already had a loaded balance, the restore reports that balance's increase.
 When the before-balance was not loaded for this account, the restore says the
 server confirmed it and does not say that zero keys were added. A demo
 purchase says the keys are sample keys. A restore whose known count is zero
-does not say keys were added. The server grants keys only after RevenueCat
-confirms a sandbox transaction (`is_sandbox` is true) or an authenticated
-webhook whose `environment` is exactly `SANDBOX`. Production, missing, and
-invalid flags grant nothing.
+does not say keys were added. The server grants keys for an App Store production purchase after RevenueCat
+confirms it (`is_sandbox` false, or a webhook `environment` of exactly
+`PRODUCTION`). A sandbox purchase grants only for an allowlisted shopper.
+Test Store and promotional purchases never grant. A `PRODUCTION` webhook
+grants only after RevenueCat's subscriber API confirms that transaction.
+Missing, null, and non-boolean flags, and any other environment, grant nothing.
 
 ### TestFlight
 
