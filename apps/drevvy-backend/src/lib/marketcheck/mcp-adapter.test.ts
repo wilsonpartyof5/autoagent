@@ -564,7 +564,7 @@ test('http dealer photo_links upgrade, and a dropped gallery falls back to cache
       dealer: lot,
       photo_url: 'http://images.example-cdn.test/only-photo-url.jpg',
       media: {
-        photo_links: 'http://images.example-cdn.test/tracked.jpg?utm_source=lot',
+        photo_links: 'http://images.example-cdn.test/track?utm_source=lot',
       },
     },
     {
@@ -685,8 +685,10 @@ test('listing photo logs are counts only, and a coming-soon file is dropped', as
   assert.equal(counts.primary, 1);
   assert.equal(counts.kept, 1);
   assert.deepEqual(counts.rejected, { scheme: 1, host: 1, query: 1, other: 2 });
+  assert.deepEqual(counts.queryNames, ['secret_like']);
   assert.equal(counts.kept + counts.rejected.scheme + counts.rejected.host + counts.rejected.query + counts.rejected.other, 6);
   assert.equal(JSON.stringify(counts).includes('cdn.example'), false);
+  assert.equal(JSON.stringify(counts).includes('api_key'), false);
   assert.equal(JSON.stringify(counts).includes(SECRET), false);
   assert.equal(JSON.stringify(counts).includes('comingsoon'), false);
 
@@ -739,6 +741,36 @@ test('listing photo logs are counts only, and a coming-soon file is dropped', as
         ],
       },
     },
+    {
+      id: 'photo-sync',
+      vin: '1N4AL3AP8JC100004',
+      price: 9300,
+      miles: 83000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer,
+      media: {
+        photo_links: [
+          'http://images.example-cdn.test/3229/Photos/1/car.jpg?_=abc123&width=450',
+          'https://images.example-cdn.test/comingsoon/placeholder.jpg',
+        ],
+      },
+    },
+    {
+      id: 'photo-query',
+      vin: '1N4AL3AP8JC100005',
+      price: 9400,
+      miles: 84000,
+      inventory_type: 'used',
+      build: { year: 2016, make: 'Nissan', model: 'NV200' },
+      dealer,
+      media: {
+        photo_links: [
+          'https://images.example-cdn.test/render?utm_source=lot&foo=1',
+          `https://images.example-cdn.test/a.jpg?api_key=${SECRET}&X-Amz-Signature=abc`,
+        ],
+      },
+    },
   ];
 
   await withFetch(() => jsonRpc({ data: { num_found: listings.length, listings } }), async (_calls, logs) => {
@@ -754,39 +786,45 @@ test('listing photo logs are counts only, and a coming-soon file is dropped', as
     assert.deepEqual(publicById.get('photo-empty')?.media.photo_links, []);
     assert.deepEqual(publicById.get('photo-soon')?.media.photo_links, []);
     assert.deepEqual(publicById.get('photo-real')?.media.photo_links, ['https://images.carsforsale.com/nv200/1.jpg']);
+    assert.deepEqual(publicById.get('photo-sync')?.media.photo_links, [
+      'https://images.example-cdn.test/3229/Photos/1/car.jpg?_=abc123&width=450',
+    ]);
+    assert.deepEqual(publicById.get('photo-query')?.media.photo_links, []);
 
     const photoLogs = logs
       .filter((line) => line.includes('"event":"mc_listing_photos"'))
       .map((line) => JSON.parse(line) as {
         source: string;
-        id: string;
+        id?: string;
         photoLinks: number;
         kept: number;
         rejected: { scheme: number; host: number; query: number; other: number };
+        queryNames: string[];
       });
-    assert.equal(photoLogs.length, 3);
-    const soon = photoLogs.find((row) => row.id === photoLogId('photo-soon'));
-    assert.ok(soon);
-    assert.equal(soon.source, 'search');
-    assert.equal(soon.photoLinks, 1);
-    assert.equal(soon.kept, 0);
-    assert.equal(soon.rejected.other, 1);
-    const empty = photoLogs.find((row) => row.id === photoLogId('photo-empty'));
-    assert.equal(empty?.photoLinks, 0);
-    assert.equal(empty?.kept, 0);
-    const real = photoLogs.find((row) => row.id === photoLogId('photo-real'));
-    assert.equal(real?.photoLinks, 2);
-    assert.equal(real?.kept, 1);
-    assert.equal(real?.rejected.other, 1);
-    const joined = photoLogs.map((row) => JSON.stringify(row)).join('\n');
+    assert.equal(photoLogs.length, 1);
+    const page = photoLogs[0];
+    assert.ok(page);
+    assert.equal(page.source, 'search');
+    assert.equal(page.id, undefined);
+    assert.equal(page.photoLinks, 7);
+    assert.equal(page.kept, 2);
+    assert.equal(page.rejected.other, 3);
+    assert.equal(page.rejected.query, 2);
+    assert.deepEqual(page.queryNames, ['foo', 'secret_like', 'utm_source']);
+    const joined = JSON.stringify(page);
     assert.equal(joined.includes('example-cdn'), false);
     assert.equal(joined.includes('carsforsale'), false);
     assert.equal(joined.includes('comingsoon'), false);
     assert.equal(joined.includes('coming-soon'), false);
     assert.equal(joined.includes('photo-soon'), false);
+    assert.equal(joined.includes('photo-sync'), false);
     assert.equal(joined.includes('1N4AL3AP'), false);
+    assert.equal(joined.includes('abc123'), false);
+    assert.equal(joined.includes('api_key'), false);
+    assert.equal(joined.includes('X-Amz'), false);
     assert.equal(joined.includes(SECRET), false);
     assert.equal(containsSecret(joined), false);
+    assert.equal(joined.includes(photoLogId('photo-soon')), false);
   });
 
   resetMarketCheckCacheForTests();
@@ -798,7 +836,13 @@ test('listing photo logs are counts only, and a coming-soon file is dropped', as
     inventory_type: 'used',
     build: { year: 2016, make: 'Nissan', model: 'NV200' },
     dealer,
-    media: { photo_links: ['http://images.example-cdn.test/coming_soon.webp'] },
+    media: {
+      photo_links: [
+        'http://images.example-cdn.test/coming_soon.webp',
+        'https://images.example-cdn.test/render?utm_source=lot',
+        'https://images.example-cdn.test/a.jpg?SIG=abc',
+      ],
+    },
   }), { status: 200, headers: { 'content-type': 'application/json' } }), async (_calls, logs) => {
     const detail = await getVehicleDetailMcp('photo-soon', undefined, ['listing']);
     assert.equal(detail?.photoUrls, undefined);
@@ -806,17 +850,27 @@ test('listing photo logs are counts only, and a coming-soon file is dropped', as
     assert.deepEqual(listing?.media.photo_links, []);
     const photoLogs = logs
       .filter((line) => line.includes('"event":"mc_listing_photos"'))
-      .map((line) => JSON.parse(line) as { source: string; id: string; photoLinks: number; kept: number; rejected: { other: number } });
+      .map((line) => JSON.parse(line) as {
+        source: string;
+        id: string;
+        photoLinks: number;
+        kept: number;
+        rejected: { query: number; other: number };
+        queryNames: string[];
+      });
     assert.equal(photoLogs.length, 1);
     assert.equal(photoLogs[0]?.source, 'detail');
     assert.equal(photoLogs[0]?.id, photoLogId('photo-soon'));
-    assert.equal(photoLogs[0]?.photoLinks, 1);
+    assert.equal(photoLogs[0]?.photoLinks, 3);
     assert.equal(photoLogs[0]?.kept, 0);
     assert.equal(photoLogs[0]?.rejected.other, 1);
+    assert.equal(photoLogs[0]?.rejected.query, 2);
+    assert.deepEqual(photoLogs[0]?.queryNames, ['secret_like', 'utm_source']);
     const joined = JSON.stringify(photoLogs[0]);
     assert.equal(joined.includes('example-cdn'), false);
     assert.equal(joined.includes('coming'), false);
     assert.equal(joined.includes('photo-soon'), false);
+    assert.equal(joined.includes('SIG'), false);
     assert.equal(containsSecret(joined), false);
   });
 });

@@ -282,6 +282,13 @@ class ListingMedia extends Equatable {
     'u',
     'e',
     's',
+    'v',
+    'ver',
+    'version',
+    'ts',
+    't',
+    'cb',
+    '_',
   };
 
   static final _secretUrl = RegExp(r'key|token|secret|auth', caseSensitive: false);
