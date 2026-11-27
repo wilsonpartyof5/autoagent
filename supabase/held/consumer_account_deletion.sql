@@ -492,13 +492,18 @@ begin
   where message.deal_id = any (v_deal_ids);
 
   update public.dealer_otd_warnings as warning
-  set body = private.scrub_deleted_shopper_text(warning.body, v_names, v_zips)
+  set body = private.scrub_deleted_shopper_text(warning.body, v_names, v_zips),
+      removal_notice = private.scrub_deleted_shopper_text(warning.removal_notice, v_names, v_zips)
   where warning.deal_id = any (v_deal_ids);
 
+  -- recording_path is an object key for the sound file. This function does
+  -- not rewrite that file. Name and ZIP in the text columns are scrubbed.
   update public.brain_vendor_events as event
   set transcript = private.scrub_deleted_shopper_text(event.transcript, v_names, v_zips),
       summary = private.scrub_deleted_shopper_text(event.summary, v_names, v_zips),
-      payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text, v_zips)
+      body = private.scrub_deleted_shopper_text(event.body, v_names, v_zips),
+      payload = private.scrub_deleted_shopper_json(event.payload, v_names, p_user_id::text, v_zips),
+      structured = private.scrub_deleted_shopper_json(event.structured, v_names, p_user_id::text, v_zips)
   where event.deal_id = any (
     select pg_catalog.unnest(v_deal_ids)::text
   )

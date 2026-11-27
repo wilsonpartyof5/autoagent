@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Footer } from '@/components/landing/footer';
+import { legalDraftPublishEnabled } from '@/lib/legal-publish';
 import {
   DRAFT_DELETE_ACCOUNT_ALREADY_SENT,
   DRAFT_DELETE_ACCOUNT_DELETED,
@@ -14,12 +16,16 @@ import {
   LEGAL,
 } from '@/lib/legal-constants';
 
-export const metadata: Metadata = {
-  title: 'Delete your account - Drevvy',
-  description: 'How to delete a Drevvy shopper account from the app or by email, and what we delete or keep.',
-};
+export function generateMetadata(): Metadata {
+  if (!legalDraftPublishEnabled()) notFound();
+  return {
+    title: 'Delete your account - Drevvy',
+    description: 'How to delete a Drevvy shopper account from the app or by email, and what we delete or keep.',
+  };
+}
 
 export default function DeleteAccountPage() {
+  if (!legalDraftPublishEnabled()) notFound();
   return (
     <main className="min-h-screen bg-background">
       <header className="border-b border-border">

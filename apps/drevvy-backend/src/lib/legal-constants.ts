@@ -90,7 +90,7 @@ export const DRAFT_DELETE_ACCOUNT_DELETED =
   'We delete these right away: the cars you saved, the ZIP code on your profile, the saved place we use to ping your phone, and your sign-in. The email you use to sign in goes away with the sign-in.';
 
 export const DRAFT_DELETE_ACCOUNT_KEPT =
-  'We keep dealer chats so the dealer still has the conversation. We take your first name out of those chats. We also take out the ZIP code that was on your profile. One email address we made for the dealer still starts with your first name, so a reply can find the chat. That address is not your real email. We keep the list of keys you bought or used so we can fix a purchase. We keep notes the law tells us to keep. We keep them for as long as the dealer, the purchase, or the law needs them. A lawyer still has to pick the exact number of days.';
+  'We keep dealer chats so the dealer still has the conversation. We take your first name out of those chats. We also take out the ZIP code that was on your profile. One email address we made for the dealer still starts with your first name, so a reply can find the chat. That address is not your real email. A saved phone call can still say your first name or ZIP code. We do not change that sound file. We keep the list of keys you bought or used so we can fix a purchase. We keep notes the law tells us to keep. We keep them for as long as the dealer, the purchase, or the law needs them. A lawyer still has to pick the exact number of days.';
 
 export const DRAFT_DELETE_ACCOUNT_MESSAGES =
   'Words you typed in a dealer chat are replaced with a short note that the message was removed. The dealer\'s own words can stay.';

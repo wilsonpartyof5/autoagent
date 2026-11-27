@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { LEGAL } from '@/lib/legal-constants';
+import { legalDraftPublishEnabled } from '@/lib/legal-publish';
 import { Logo } from '@/components/landing/logo';
 
 const linkClass =
@@ -39,9 +40,11 @@ export function Footer() {
           <Link href="/sms" className={linkClass}>
             SMS Program
           </Link>
-          <Link href="/delete-account" className={linkClass}>
-            Delete account
-          </Link>
+          {legalDraftPublishEnabled() ? (
+            <Link href="/delete-account" className={linkClass}>
+              Delete account
+            </Link>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2.5">

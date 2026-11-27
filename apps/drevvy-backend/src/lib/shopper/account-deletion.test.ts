@@ -142,8 +142,11 @@ class MemoryAdmin {
       else row.body = scrubShopperText(row.body, names, zips);
     }
     for (const row of this.tables.dealer_otd_warnings ?? []) {
-      if (!dealIds.has(String(row.deal_id)) || typeof row.body !== 'string') continue;
-      row.body = scrubShopperText(row.body, names, zips);
+      if (!dealIds.has(String(row.deal_id))) continue;
+      if (typeof row.body === 'string') row.body = scrubShopperText(row.body, names, zips);
+      if (typeof row.removal_notice === 'string') {
+        row.removal_notice = scrubShopperText(row.removal_notice, names, zips);
+      }
     }
     for (const row of this.tables.brain_vendor_events ?? []) {
       const linked = dealIds.has(String(row.deal_id))
@@ -151,7 +154,9 @@ class MemoryAdmin {
       if (!linked) continue;
       if (typeof row.transcript === 'string') row.transcript = scrubShopperText(row.transcript, names, zips);
       if (typeof row.summary === 'string') row.summary = scrubShopperText(row.summary, names, zips);
+      if (typeof row.body === 'string') row.body = scrubShopperText(row.body, names, zips);
       row.payload = scrubPayload(row.payload, names, zips, userId);
+      if (row.structured) row.structured = scrubPayload(row.structured, names, zips, userId);
     }
     const flowIds = new Set<string>();
     for (const row of this.tables.app_events ?? []) {
@@ -267,13 +272,17 @@ function seed(): Record<string, Row[]> {
       id: 'warn-1',
       deal_id: 'deal-1',
       body: 'Maya withheld the price. ZIP 62701',
+      removal_notice: 'Maya at 62701 is off the network',
     }],
     brain_vendor_events: [{
       id: 'brain-1',
       deal_id: 'deal-1',
       transcript: 'Maya said hello. ZIP 62701',
       summary: 'Talked with Maya',
+      body: 'Maya wrote from 62701',
+      recording_path: 'calls/rec-12345678.mp3',
       payload: { note: 'Maya called', consumer_user_id: USER, zip: '62701' },
+      structured: { note: 'Maya at 62701' },
     }, {
       id: 'brain-by-identity',
       deal_id: 'other-deal',
@@ -396,9 +405,13 @@ test('delete account calls one rpc, then sign-out, then the auth user', async ()
   assert.equal(rows.shopper_deal_events[0].detail, 'A shopper opened the deal');
   assert.equal(rows.shopper_deal_lifecycle[0].consumer_user_id, null);
   assert.equal(rows.dealer_otd_warnings[0].body, 'A shopper withheld the price');
+  assert.equal(rows.dealer_otd_warnings[0].removal_notice, 'A shopper at is off the network');
   assert.equal(rows.brain_vendor_events[0].transcript, 'A shopper said hello');
   assert.equal(rows.brain_vendor_events[0].summary, 'Talked with A shopper');
+  assert.equal(rows.brain_vendor_events[0].body, 'A shopper wrote from');
+  assert.equal(rows.brain_vendor_events[0].recording_path, 'calls/rec-12345678.mp3');
   assert.deepEqual(rows.brain_vendor_events[0].payload, { note: 'A shopper called' });
+  assert.deepEqual(rows.brain_vendor_events[0].structured, { note: 'A shopper at' });
   assert.equal(rows.brain_vendor_events[1].transcript, 'A shopper on the open thread');
   assert.equal(rows.brain_vendor_events[1].summary, 'A shopper called back');
   assert.equal(rows.brain_vendor_events[2].transcript, 'Maya stays because this is another shopper');
@@ -667,11 +680,14 @@ test('the profile route delegates DELETE and the schema change stays out of migr
 
   const legal = readFileSync(join(HERE, '../legal-constants.ts'), 'utf8');
   const privacy = readFileSync(join(HERE, '../../app/(public)/privacy/page.tsx'), 'utf8');
+  const privacyDraft = readFileSync(join(HERE, '../../app/(public)/privacy/privacy-draft.tsx'), 'utf8');
   const deletionPage = readFileSync(join(HERE, '../../app/(public)/delete-account/page.tsx'), 'utf8');
   assert.match(legal, /TODO\(DW and counsel\)/);
   assert.match(legal, /export const LEGAL_DRAFT_DO_NOT_SHIP = '\[BUSINESS ADDRESS\]'/);
   assert.match(legal, /BUSINESS_ADDRESS: LEGAL_DRAFT_DO_NOT_SHIP/);
-  assert.equal(privacy.includes('within 30 days'), false);
+  assert.match(privacy, /legalDraftPublishEnabled/);
+  assert.equal(privacy.includes('DRAFT_'), false);
+  assert.equal(privacyDraft.includes('within 30 days'), false);
   for (const name of [
     'DRAFT_PRIVACY_POSTHOG',
     'DRAFT_PRIVACY_SUPERWALL',
@@ -681,8 +697,9 @@ test('the profile route delegates DELETE and the schema change stays out of migr
     'DRAFT_DELETE_ACCOUNT_DELETED',
     'DRAFT_DELETE_ACCOUNT_KEPT',
   ]) {
-    assert.match(privacy, new RegExp(name));
+    assert.match(privacyDraft, new RegExp(name));
   }
+  assert.match(deletionPage, /notFound\(\)/);
   assert.match(deletionPage, /DRAFT_DELETE_ACCOUNT_IN_APP/);
   assert.match(deletionPage, /LEGAL\.PRIVACY_EMAIL/);
   assert.equal(deletionPage.toLowerCase().includes('password'), false);
