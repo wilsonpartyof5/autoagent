@@ -1,5 +1,8 @@
 import 'package:drevvy_app/core/providers/app_services.dart';
 import 'package:drevvy_app/core/theme/drevvy_theme.dart';
+import 'package:drevvy_app/data/location/location_providers.dart';
+import 'package:drevvy_app/data/location/location_sources.dart';
+import 'package:drevvy_app/data/location/shop_location.dart';
 import 'package:drevvy_app/data/notifications/local_flags.dart';
 import 'package:drevvy_app/data/models/car_pack.dart';
 import 'package:drevvy_app/data/models/listing.dart';
@@ -111,7 +114,12 @@ void main() {
   ) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [localFlagsProvider.overrideWithValue(MemoryFlags())],
+        overrides: [
+          localFlagsProvider.overrideWithValue(MemoryFlags()),
+          deviceLocationSourceProvider.overrideWithValue(
+            _GrantedDeviceLocation(),
+          ),
+        ],
         child: const DrevvyApp(),
       ),
     );
@@ -323,4 +331,14 @@ void main() {
     expect(unlocked, isTrue);
     expect(find.text('RECOMMENDED'), findsNothing);
   });
+}
+
+/// OS said yes. Fort Mill, SC.
+class _GrantedDeviceLocation implements DeviceLocationSource {
+  @override
+  Future<ShopLocation> current() async => const ShopLocation(
+    latitude: 35.0071,
+    longitude: -80.9398,
+    label: 'Current location',
+  );
 }

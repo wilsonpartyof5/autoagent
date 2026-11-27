@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/analytics/product_analytics.dart';
+import '../../../data/location/location_providers.dart';
+import '../../../data/location/location_sources.dart';
+import '../../../data/location/zip_location.dart';
 import '../matters_v5.dart';
 import '../onboarding_controller.dart';
 import '../widgets/onboarding_chrome.dart';
@@ -24,6 +27,8 @@ class _OnboardingFlowScreenState extends ConsumerState<OnboardingFlowScreen> {
   Timer? _advance;
   late final TextEditingController _zipController;
   late final TextEditingController _customAskController;
+  bool _locating = false;
+  String? _locationNote;
 
   @override
   void initState() {
@@ -78,6 +83,69 @@ class _OnboardingFlowScreenState extends ConsumerState<OnboardingFlowScreen> {
     _advance = Timer(mattersV5AutoAdvance, () {
       if (mounted) _next();
     });
+  }
+
+  /// Asks the OS for location. A no falls back to the ZIP field.
+  Future<void> _shareLocation() async {
+    if (_locating) return;
+    setState(() {
+      _locating = true;
+      _locationNote = null;
+    });
+    try {
+      final place = await ref.read(deviceLocationSourceProvider).current();
+      await ref.read(shopLocationStoreProvider).write(place);
+      if (!mounted) return;
+      ProductAnalytics.instance.track(
+        AnalyticsEvents.locationPermissionGranted,
+        {'surface': 'onboarding'},
+      );
+      _update((d) => d.copyWith(locationGranted: true));
+    } catch (error) {
+      if (!mounted) return;
+      if (error is LocationFailure) {
+        ProductAnalytics.instance.track(
+          AnalyticsEvents.locationPermissionDenied,
+          {'surface': 'onboarding', 'reason': 'os_denied'},
+        );
+      }
+      _update((d) => d.copyWith(locationGranted: false));
+      _locationNote = 'We could not get your location. Type your zip instead.';
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// Shared location is already saved. A ZIP becomes a map point through the
+  /// OS geocoder so Discover can search near it. If that fails, keep going.
+  Future<void> _continueFromLocation(OnboardingDraft draft) async {
+    if (_locating) return;
+    if (draft.locationGranted) {
+      _next();
+      return;
+    }
+    ProductAnalytics.instance.track(AnalyticsEvents.locationPermissionDenied, {
+      'surface': 'onboarding',
+      'reason': 'zip_instead',
+      'has_zip': true,
+    });
+    setState(() => _locating = true);
+    try {
+      final place = await locationForZip(
+        ref.read(placeSearchProvider),
+        draft.zip ?? '',
+      );
+      if (place != null) {
+        await ref.read(shopLocationStoreProvider).write(place);
+      }
+    } catch (_) {
+      // Discover will ask for a place. Onboarding still moves on.
+    } finally {
+      if (mounted) {
+        setState(() => _locating = false);
+        _next();
+      }
+    }
   }
 
   Future<void> _finish() async {
@@ -191,13 +259,9 @@ class _OnboardingFlowScreenState extends ConsumerState<OnboardingFlowScreen> {
       7 => WhereToLookStep(
           draft: draft,
           zipController: _zipController,
-          onShareLocation: () {
-            ProductAnalytics.instance.track(
-              AnalyticsEvents.locationPermissionGranted,
-              {'surface': 'onboarding'},
-            );
-            _update((d) => d.copyWith(locationGranted: true, clearZip: false));
-          },
+          busy: _locating,
+          note: _locationNote,
+          onShareLocation: _shareLocation,
           onZipChanged: (value) {
             final digits = value.replaceAll(RegExp(r'\D'), '');
             if (digits != value) {
@@ -213,21 +277,7 @@ class _OnboardingFlowScreenState extends ConsumerState<OnboardingFlowScreen> {
             }
             _update((d) => d.copyWith(zip: digits));
           },
-          onContinue: () {
-            if (draft.locationGranted) {
-              // Share is the preferred path.
-            } else {
-              ProductAnalytics.instance.track(
-                AnalyticsEvents.locationPermissionDenied,
-                {
-                  'surface': 'onboarding',
-                  'reason': 'zip_instead',
-                  'has_zip': true,
-                },
-              );
-            }
-            _next();
-          },
+          onContinue: () => _continueFromLocation(draft),
         ),
       8 => CarTypeStep(
           draft: draft,
