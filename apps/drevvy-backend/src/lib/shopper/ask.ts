@@ -1,18 +1,22 @@
 /**
  * POST /api/consumer/ask
  *
- * Shopper JWT only. The shared inventory key is rejected by requireConsumerAuth.
+ * Shopper JWT only. requireConsumerAuth checks the bearer token with
+ * Supabase auth.getUser. The shared inventory key is rejected there.
  * A user_dealerships row is a dealer account, the same membership check as
  * delete_consumer_account, and this route answers 403 dealer_account.
  *
- * conversationId is a client-side thread id. This route does not write it,
- * or anything else, to the database. There is no new table. When the client
- * omits it, the response carries a new uuid v4 so the app can keep the thread.
+ * conversationId is `<uuid>.<hmac>`. The hmac is HMAC-SHA256 of
+ * `${userId}.${uuid}` with SUPABASE_JWT_SECRET, or CRON_SECRET when that
+ * is unset. Those are the same server-only secrets that already sign demo
+ * desk sessions. Nothing is written to the database. A missing or malformed
+ * id is replaced with a new one. A well-formed id signed for a different
+ * shopper is 403 conversation_forbidden.
  *
  * Ask does not spend shopper keys or call the market intel routes.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { NextResponse } from 'next/server';
 
@@ -31,11 +35,13 @@ import { createShoppingModelClient, SHOPPING_MODEL, shoppingGatewayCredential } 
 import { createAdminClient } from '@/lib/supabase/admin';
 
 import { DurableRateLimitUnavailable, takeDurableLimits, type DurableWindow } from './durable-rate-limit';
+import { hashShopperIp, shopperClientIp } from './market-lookup-guard';
 import { redactShopperDealerIdentity } from './redact-dealer';
 
 export const ASK_MESSAGE_MAX = 500;
 export const ASK_PER_HOUR = 20;
 export const ASK_PER_DAY = 100;
+export const ASK_PER_IP_HOUR = 60;
 export const ASK_HOUR_MS = DISCOVER_MINUTE_MS * 60;
 
 const HOUR_COPY = 'Slow down a little. Try again in an hour.';
@@ -45,12 +51,12 @@ const DEALER_COPY = 'Dealer accounts can\'t use Ask.';
 const SIGN_IN = 'Sign in is required.';
 
 const ASK_KEYS = new Set(['message', 'conversationId', 'lat', 'lng', 'zip']);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const ASK_ERROR_CODES = [
   'invalid_request',
   'unauthorized',
   'dealer_account',
+  'conversation_forbidden',
   'rate_limited',
   'ask_unavailable',
 ] as const;
@@ -70,12 +76,57 @@ export class AskError extends Error {
 
 export type AskRequest = {
   message: string;
-  /** Client-side thread id. Not stored. */
+  /** Presented thread id. Verified, then echoed or replaced. Not stored. */
   conversationId?: string;
   lat?: number;
   lng?: number;
   zip?: string;
 };
+
+const SIGNED_CONVERSATION = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([0-9a-f]{64})$/i;
+
+/**
+ * Same secret demo desk sessions already use for HMAC.
+ * SUPABASE_JWT_SECRET, then CRON_SECRET. No new env var.
+ */
+export function askConversationSecret(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env.SUPABASE_JWT_SECRET || env.CRON_SECRET || '';
+  return value.length >= 16 ? value : null;
+}
+
+function conversationMac(userId: string, id: string, secret: string): string {
+  return createHmac('sha256', secret).update(`${userId}.${id}`).digest('hex');
+}
+
+export function issueAskConversationId(userId: string, secret: string, uuid: () => string = randomUUID): string {
+  const id = uuid().toLowerCase();
+  return `${id}.${conversationMac(userId, id, secret)}`;
+}
+
+export function resolveAskConversation(input: {
+  userId: string;
+  presented?: string;
+  secret: string | null;
+  uuid?: () => string;
+}): { ok: true; conversationId: string } | { ok: false; reason: 'mismatch' | 'unconfigured' } {
+  if (!input.secret) return { ok: false, reason: 'unconfigured' };
+  const presented = input.presented?.trim() ?? '';
+  if (!presented) {
+    return { ok: true, conversationId: issueAskConversationId(input.userId, input.secret, input.uuid) };
+  }
+  const match = presented.match(SIGNED_CONVERSATION);
+  if (!match) {
+    return { ok: true, conversationId: issueAskConversationId(input.userId, input.secret, input.uuid) };
+  }
+  const id = match[1].toLowerCase();
+  const given = Buffer.from(match[2], 'hex');
+  const expected = conversationMac(input.userId, id, input.secret);
+  const right = Buffer.from(expected, 'hex');
+  if (given.length !== right.length || !timingSafeEqual(given, right)) {
+    return { ok: false, reason: 'mismatch' };
+  }
+  return { ok: true, conversationId: `${id}.${expected}` };
+}
 
 export type AskLogRecord = {
   event: 'consumer_ask';
@@ -108,21 +159,24 @@ export function askErrorResponse(error: AskError): NextResponse {
   return NextResponse.json(askErrorBody(error.code, error.message), { status: error.status });
 }
 
-export function askLimitWindows(userId: string): DurableWindow[] {
+export function askLimitWindows(userId: string, ip: string, env?: NodeJS.ProcessEnv): DurableWindow[] {
   const user = createHash('sha256').update(userId).digest('hex');
+  const ipHash = hashShopperIp(ip, env);
   return [
     { bucket: `ask:u:${user}:h`, windowMs: ASK_HOUR_MS, limit: ASK_PER_HOUR },
     { bucket: `ask:u:${user}:d`, windowMs: DISCOVER_DAY_MS, limit: ASK_PER_DAY },
+    { bucket: `ask:ip:${ipHash}:h`, windowMs: ASK_HOUR_MS, limit: ASK_PER_IP_HOUR },
   ];
 }
 
 export async function enforceAskLimit(input: {
   userId: string;
+  ip: string;
   nowMs?: number;
   store?: RateLimitStore;
   env?: NodeJS.ProcessEnv;
 }): Promise<void> {
-  const windows = askLimitWindows(input.userId);
+  const windows = askLimitWindows(input.userId, input.ip, input.env);
   for (const window of windows) {
     if (window.bucket.length < 8 || window.bucket.length > 180) {
       throw new AskError(UNAVAILABLE, 503, 'ask_unavailable');
@@ -173,7 +227,7 @@ async function defaultDealerLookup(userId: string): Promise<boolean> {
   }
 }
 
-export function readAskRequest(body: unknown, uuid: () => string = randomUUID): AskRequest & { conversationId: string } {
+export function readAskRequest(body: unknown): AskRequest {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new AskError('Send a message.', 400, 'invalid_request');
   }
@@ -191,13 +245,13 @@ export function readAskRequest(body: unknown, uuid: () => string = randomUUID): 
     throw new AskError('Keep the message under 500 characters.', 400, 'invalid_request');
   }
 
-  let conversationId: string;
+  let conversationId: string | undefined;
   if (record.conversationId == null || record.conversationId === '') {
-    conversationId = uuid();
-  } else if (typeof record.conversationId !== 'string' || !UUID.test(record.conversationId.trim())) {
-    throw new AskError('Send a conversation id as a UUID, or leave it out.', 400, 'invalid_request');
+    conversationId = undefined;
+  } else if (typeof record.conversationId !== 'string') {
+    throw new AskError('Send a conversation id as text, or leave it out.', 400, 'invalid_request');
   } else {
-    conversationId = record.conversationId.trim();
+    conversationId = record.conversationId.trim() || undefined;
   }
 
   const lat = optionalCoord(record.lat, -90, 90, 'lat');
@@ -209,7 +263,8 @@ export function readAskRequest(body: unknown, uuid: () => string = randomUUID): 
     throw new AskError('Send a real latitude and longitude.', 400, 'invalid_request');
   }
 
-  const request: AskRequest & { conversationId: string } = { message, conversationId };
+  const request: AskRequest = { message };
+  if (conversationId) request.conversationId = conversationId;
   if (lat != null && lng != null) {
     request.lat = lat;
     request.lng = lng;
@@ -334,7 +389,10 @@ async function groundedReply(input: {
     const text = input.complete
       ? await input.complete(context)
       : await defaultReply(context);
-    const scrubbed = redactShopperDealerIdentity({ assistantMessage: text.trim() }).assistantMessage?.trim() ?? '';
+    const scrubbed = redactShopperDealerIdentity({
+      assistantMessage: text.trim(),
+      vehicles: input.vehicles,
+    }).assistantMessage?.trim() ?? '';
     return scrubbed || fallback;
   } catch {
     return fallback;
@@ -428,14 +486,29 @@ export async function handleConsumerAsk(request: Request, deps: AskHandlerDeps =
     } catch {
       return finish(askErrorResponse(new AskError('Send a message.', 400, 'invalid_request')));
     }
-    const ask = readAskRequest(body, deps.uuid ?? randomUUID);
+    const ask = readAskRequest(body);
 
     await enforceAskLimit({
       userId: auth.userId,
+      ip: shopperClientIp(request.headers),
       nowMs: deps.nowMs,
       store: deps.store,
       env: deps.env,
     });
+
+    const secret = askConversationSecret(deps.env ?? process.env);
+    const thread = resolveAskConversation({
+      userId: auth.userId,
+      presented: ask.conversationId,
+      secret,
+      uuid: deps.uuid,
+    });
+    if (!thread.ok) {
+      const error = thread.reason === 'mismatch'
+        ? new AskError('That conversation belongs to another shopper.', 403, 'conversation_forbidden')
+        : new AskError(UNAVAILABLE, 503, 'ask_unavailable');
+      return finish(askErrorResponse(error));
+    }
 
     const parsed = await (deps.parse ?? ((message: string) => parseAskQuery(message, { env: deps.env })))(ask.message)
       ?? { filters: {}, explicitFields: [], confidence: 0 };
@@ -510,7 +583,7 @@ export async function handleConsumerAsk(request: Request, deps: AskHandlerDeps =
 
     const payload = {
       reply,
-      conversationId: ask.conversationId,
+      conversationId: thread.conversationId,
       filters,
       listings,
       total: searched.total,

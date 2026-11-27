@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -16,17 +17,21 @@ import type { CanonicalFilters } from '@/lib/query/resolve-canonical-filters';
 import {
   ASK_PER_DAY,
   ASK_PER_HOUR,
+  ASK_PER_IP_HOUR,
   askLimitWindows,
   handleConsumerAsk,
+  issueAskConversationId,
   shopperHasDealerMembership,
   type AskHandlerDeps,
 } from './ask';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const USER = '11111111-2222-4333-8444-555555555555';
+const OTHER = '99999999-8888-4777-8666-555555555555';
 const FORT_MILL = '150s under $45k in fort mill South Carolina';
 const GENERATED = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-const ECHO = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+const SIGNING = 'test-signing-secret-value';
+const PEPPER = 'test-ip-pepper';
 
 function vehicle(): LiveVehicle {
   return {
@@ -54,14 +59,26 @@ function vehicle(): LiveVehicle {
   };
 }
 
-function askRequest(body: unknown, authorization = 'Bearer shopper-jwt'): Request {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+function askRequest(body: unknown, authorization = 'Bearer shopper-jwt', ip = '203.0.113.10'): Request {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'x-forwarded-for': ip,
+  };
   if (authorization) headers.authorization = authorization;
   return new Request('https://api.drevvy.com/api/consumer/ask', {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
   });
+}
+
+function testEnv(extra: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
+  return {
+    NODE_ENV: 'test',
+    SUPABASE_JWT_SECRET: SIGNING,
+    DREVVY_IP_HASH_PEPPER: PEPPER,
+    ...extra,
+  };
 }
 
 function harness(overrides: AskHandlerDeps = {}) {
@@ -71,7 +88,7 @@ function harness(overrides: AskHandlerDeps = {}) {
     requireAuth: async () => ({ userId: USER }),
     dealerLookup: async () => false,
     store: new MemoryRateLimitStore(),
-    env: { NODE_ENV: 'test' },
+    env: testEnv(),
     nowMs: 1_700_000_000_000,
     uuid: () => GENERATED,
     geocode: async (text: string) => ({ raw: text, lat: 35.0076, lng: -80.945, source: 'geocode' }),
@@ -203,7 +220,7 @@ test('discover rejects a dollar sign in a name and Ask sends parsed filters', as
   assert.equal(calls[0]?.model, 'F-150');
   assert.equal(calls[0]?.maxPrice, 45000);
   assert.equal(body.total, 3);
-  assert.equal(body.conversationId, GENERATED);
+  assert.equal(body.conversationId, issueAskConversationId(USER, SIGNING, () => GENERATED));
   const listing = JSON.stringify(body.listings);
   assert.equal(listing.includes('Secret Motors'), false);
   assert.equal(listing.includes('803-555-0199'), false);
@@ -257,7 +274,7 @@ test('ask errors use the consumer error object', async () => {
   assertConsumerError(await errorBody(badZip), 'invalid_request');
 
   const thread = harness();
-  const badThread = await handleConsumerAsk(askRequest({ message: FORT_MILL, conversationId: 'not-a-uuid' }), thread.deps);
+  const badThread = await handleConsumerAsk(askRequest({ message: FORT_MILL, conversationId: 12 }), thread.deps);
   assert.equal(badThread.status, 400);
   assertConsumerError(await errorBody(badThread), 'invalid_request');
 
@@ -270,24 +287,53 @@ test('ask errors use the consumer error object', async () => {
   assert.equal(unavailable.calls.length, 0);
 });
 
-test('a shopper conversation id is echoed or generated and is not stored', async () => {
+test('a conversation id is signed for this shopper and is not stored', async () => {
+  const expected = issueAskConversationId(USER, SIGNING, () => GENERATED);
   const generated = harness();
   const first = await handleConsumerAsk(askRequest({ message: FORT_MILL }), generated.deps);
   const firstBody = await first.json() as { conversationId: string };
   assert.equal(first.status, 200);
-  assert.equal(firstBody.conversationId, GENERATED);
+  assert.equal(firstBody.conversationId, expected);
+  assert.equal(firstBody.conversationId.startsWith(`${GENERATED}.`), true);
+  assert.equal(firstBody.conversationId.includes(USER), false);
 
   const echoed = harness();
   const second = await handleConsumerAsk(
-    askRequest({ message: FORT_MILL, conversationId: ECHO }),
+    askRequest({ message: FORT_MILL, conversationId: firstBody.conversationId }),
     echoed.deps,
   );
   const secondBody = await second.json() as { conversationId: string };
-  assert.equal(secondBody.conversationId, ECHO);
+  assert.equal(secondBody.conversationId, firstBody.conversationId);
+
+  const malformed = harness();
+  const replaced = await handleConsumerAsk(
+    askRequest({ message: FORT_MILL, conversationId: 'not-a-uuid' }),
+    malformed.deps,
+  );
+  const replacedBody = await replaced.json() as { conversationId: string };
+  assert.equal(replaced.status, 200);
+  assert.equal(replacedBody.conversationId, expected);
+
+  const stolen = issueAskConversationId(OTHER, SIGNING, () => GENERATED);
+  const mismatch = harness();
+  const forbidden = await handleConsumerAsk(
+    askRequest({ message: FORT_MILL, conversationId: stolen }),
+    mismatch.deps,
+  );
+  assert.equal(forbidden.status, 403);
+  assertConsumerError(await errorBody(forbidden), 'conversation_forbidden');
+  assert.equal(mismatch.calls.length, 0);
+
+  const unsigned = harness({ env: testEnv({ SUPABASE_JWT_SECRET: '', CRON_SECRET: '' }) });
+  const down = await handleConsumerAsk(askRequest({ message: FORT_MILL }), unsigned.deps);
+  assert.equal(down.status, 503);
+  assertConsumerError(await errorBody(down), 'ask_unavailable');
 
   const source = readFileSync(join(HERE, 'ask.ts'), 'utf8');
   const route = readFileSync(join(HERE, '../../app/api/consumer/ask/route.ts'), 'utf8');
-  assert.match(source, /client-side thread id/);
+  assert.match(source, /createHmac\('sha256'/);
+  assert.match(source, /SUPABASE_JWT_SECRET/);
+  assert.match(source, /CRON_SECRET/);
   assert.match(route, /not written to the database/);
   assert.equal(source.includes('.insert('), false);
   assert.equal(source.includes('.upsert('), false);
@@ -296,10 +342,12 @@ test('a shopper conversation id is echoed or generated and is not stored', async
 });
 
 test('ask is limited to 20 an hour and 100 a day per shopper', async () => {
-  const windows = askLimitWindows(USER);
+  const windows = askLimitWindows(USER, '203.0.113.10', testEnv());
   assert.equal(windows[0]?.limit, ASK_PER_HOUR);
   assert.equal(windows[1]?.limit, ASK_PER_DAY);
+  assert.equal(windows[2]?.limit, ASK_PER_IP_HOUR);
   assert.equal(windows[0]?.windowMs, 60 * 60 * 1000);
+  assert.equal(windows[2]?.bucket.includes('203.0.113.10'), false);
   const store = new MemoryRateLimitStore();
   const { deps } = harness({ store });
   for (let i = 0; i < ASK_PER_HOUR; i += 1) {
@@ -314,10 +362,22 @@ test('ask is limited to 20 an hour and 100 a day per shopper', async () => {
 test('ask logs a user hash, status, and latency only', async () => {
   const { lines, deps } = harness();
   const message = `${FORT_MILL} from Dana Blake jane@example.com`;
-  const response = await handleConsumerAsk(
-    askRequest({ message }, 'Bearer eyJhbGciOi-secret-jwt'),
-    deps,
-  );
+  const leaked: string[] = [];
+  const originals = { log: console.log, error: console.error, warn: console.warn };
+  console.log = (...args: unknown[]) => { leaked.push(args.map(String).join(' ')); };
+  console.error = (...args: unknown[]) => { leaked.push(args.map(String).join(' ')); };
+  console.warn = (...args: unknown[]) => { leaked.push(args.map(String).join(' ')); };
+  let response: Response;
+  try {
+    response = await handleConsumerAsk(
+      askRequest({ message, lat: 41.40338, lng: -81.90944, zip: '44114' }, 'Bearer eyJhbGciOi-secret-jwt'),
+      deps,
+    );
+  } finally {
+    console.log = originals.log;
+    console.error = originals.error;
+    console.warn = originals.warn;
+  }
   assert.equal(response.status, 200);
   assert.equal(lines.length, 1);
   const line = lines[0] ?? '';
@@ -328,6 +388,15 @@ test('ask logs a user hash, status, and latency only', async () => {
   assert.equal(line.includes('Bearer'), false);
   assert.equal(line.includes(USER), false);
   assert.equal(line.includes('Secret Motors'), false);
+  assert.equal(line.includes('41.40338'), false);
+  assert.equal(line.includes('-81.90944'), false);
+  assert.equal(line.includes('44114'), false);
+  const consoleText = leaked.join('\n');
+  assert.equal(consoleText.includes(message), false);
+  assert.equal(consoleText.includes('41.40338'), false);
+  assert.equal(consoleText.includes('-81.90944'), false);
+  assert.equal(consoleText.includes('44114'), false);
+  assert.equal(consoleText.includes('jane@example.com'), false);
   const parsed = JSON.parse(line) as { event: string; user: string; status: number; latencyMs: number };
   assert.deepEqual(Object.keys(parsed).sort(), ['event', 'latencyMs', 'status', 'user']);
   assert.equal(parsed.event, 'consumer_ask');
@@ -352,8 +421,115 @@ test('a dealer membership is the same user_dealerships check, and ask spends no 
   assert.match(source, /user_dealerships/);
   assert.match(source, /requireConsumerAuth/);
   assert.match(source, /SHOPPING_MODEL/);
+  assert.match(source, /model: SHOPPING_MODEL/);
+  const model = readFileSync(join(HERE, '../query/shopping-llm.ts'), 'utf8');
+  assert.match(model, /openai\/gpt-6-luna/);
   assert.equal(search.includes('getMarketCheckPrice'), false);
   assert.match(search, /searchActiveCarsMcp/);
+});
+
+test('ask limits each IP to 60 an hour on the same counter', async () => {
+  const ip = '203.0.113.50';
+  const windows = askLimitWindows(USER, ip, testEnv());
+  assert.equal(windows[2]?.limit, ASK_PER_IP_HOUR);
+  assert.equal(windows[2]?.windowMs, 60 * 60 * 1000);
+  assert.equal(windows[2]?.bucket.includes(ip), false);
+  const store = new MemoryRateLimitStore();
+  for (let i = 0; i < ASK_PER_IP_HOUR; i += 1) {
+    const userId = `22222222-2222-4222-8222-${String(i).padStart(12, '0')}`;
+    const { deps } = harness({ store, requireAuth: async () => ({ userId }) });
+    const response = await handleConsumerAsk(askRequest({ message: FORT_MILL }, 'Bearer shopper-jwt', ip), deps);
+    assert.equal(response.status, 200);
+  }
+  const blocked = harness({
+    store,
+    requireAuth: async () => ({ userId: '33333333-3333-4333-8333-333333333333' }),
+  });
+  const limited = await handleConsumerAsk(askRequest({ message: FORT_MILL }, 'Bearer shopper-jwt', ip), blocked.deps);
+  assert.equal(limited.status, 429);
+  assertConsumerError(await errorBody(limited), 'rate_limited');
+
+  const other = harness({
+    store,
+    requireAuth: async () => ({ userId: '44444444-4444-4444-8444-444444444444' }),
+  });
+  const allowed = await handleConsumerAsk(
+    askRequest({ message: FORT_MILL }, 'Bearer shopper-jwt', '198.51.100.8'),
+    other.deps,
+  );
+  assert.equal(allowed.status, 200);
+});
+
+test('the model reply and the listings omit dealer phone, email, and name', async () => {
+  const { deps } = harness({
+    reply: async () => 'Call Secret Motors at 803-555-0199 or sales@secret.test today.',
+  });
+  const response = await handleConsumerAsk(askRequest({ message: FORT_MILL }), deps);
+  assert.equal(response.status, 200);
+  const body = await response.json() as { reply: string; listings: Array<Record<string, unknown>> };
+  assert.equal(body.reply.includes('803-555-0199'), false);
+  assert.equal(body.reply.includes('sales@secret.test'), false);
+  assert.equal(body.reply.includes('Secret Motors'), false);
+  const listing = JSON.stringify(body.listings);
+  assert.equal(listing.includes('803-555-0199'), false);
+  assert.equal(listing.includes('sales@secret.test'), false);
+  assert.equal(listing.includes('Secret Motors'), false);
+  assert.equal(publicListingsContainForbiddenKey(body.listings), false);
+});
+
+test('ask verifies the shopper JWT with Supabase getUser and does not decode it', async () => {
+  const auth = readFileSync(join(HERE, '../consumer/auth.ts'), 'utf8');
+  const source = readFileSync(join(HERE, 'ask.ts'), 'utf8');
+  const route = readFileSync(join(HERE, '../../app/api/consumer/ask/route.ts'), 'utf8');
+  assert.match(auth, /auth\.getUser\(/);
+  assert.match(source, /requireConsumerAuth/);
+  const getUserAt = auth.indexOf('auth.getUser(');
+  const decodeAt = auth.search(/jwt\.decode|jsonwebtoken|atob\(/);
+  assert.ok(getUserAt >= 0);
+  assert.equal(decodeAt, -1);
+  assert.equal(/jwt\.decode|jsonwebtoken|atob\(/.test(source), false);
+  assert.equal(/jwt\.decode|jsonwebtoken|atob\(/.test(route), false);
+
+  const hits: string[] = [];
+  const server = createServer((req, res) => {
+    hits.push(req.url ?? '');
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ message: 'invalid JWT' }));
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('test auth server did not bind');
+  const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const previousKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${address.port}`;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-test-key';
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ sub: 'attacker-shopper', role: 'authenticated' })).toString('base64url');
+  try {
+    const response = await handleConsumerAsk(new Request('https://api.drevvy.com/api/consumer/ask', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${header}.${payload}.sig`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: FORT_MILL }),
+    }));
+    assert.equal(response.status, 401);
+    const body = await errorBody(response);
+    assertConsumerError(body, 'unauthorized');
+    assert.equal(JSON.stringify(body).includes('attacker-shopper'), false);
+    assert.ok(hits.some((url) => url.includes('/auth/v1/user')));
+  } finally {
+    if (previousUrl == null) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
+    if (previousKey == null) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = previousKey;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });
 
 test('chat-search still requires the shared key and keeps its shopping model', async () => {
