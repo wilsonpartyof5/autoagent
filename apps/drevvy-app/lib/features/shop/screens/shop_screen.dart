@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -87,6 +89,11 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _reportedShopEmpty = false;
   late final ShopperAccountWatch _accountWatch;
   int? _discoverAccount;
+
+  /// Bumped whenever the visible chat changes on this screen (send, retry,
+  /// new chat, open from history). A slower [_loadData] read started before
+  /// the change must not put an older thread back.
+  int _threadRevision = 0;
 
   bool _sameAccount(int account) => mounted && _accountWatch.same(account);
 
@@ -193,6 +200,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _loadData() async {
     final account = _accountWatch.capture();
+    final threadRevision = _threadRevision;
     try {
       final thread = await _repo.getChatThread();
       final searchProfile = await _repo.getSearchProfile();
@@ -212,7 +220,9 @@ class _ShopScreenState extends State<ShopScreen> {
       if (!mounted || !_accountWatch.same(account)) return;
 
       setState(() {
-        _thread = thread;
+        if (threadRevision == _threadRevision) {
+          _thread = thread;
+        }
         _searchProfile = searchProfile;
         _enabledMemoryIds = searchProfile.items.map((item) => item.id).toSet();
         if (heartGeneration == _heartGeneration) {
@@ -237,24 +247,68 @@ class _ShopScreenState extends State<ShopScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _sendMessage(String text, {String source = 'composer'}) async {
-    if (text.isEmpty || !mounted) return;
+  /// The chosen Discover place, sent with Ask so answers and cars are local.
+  ({double? lat, double? lng, String? zip}) _askPlace() {
+    final location = _discover?.location;
+    if (location == null || !location.isUsable) {
+      return (lat: null, lng: null, zip: null);
+    }
+    final label = location.label.trim();
+    final zip = RegExp(r'^\d{5}$').hasMatch(label) ? label : null;
+    return (lat: location.latitude, lng: location.longitude, zip: zip);
+  }
+
+  /// Composer entry for Ask. Returns true once the shopper's message is in
+  /// the visible thread, so the composer clears only after that.
+  bool _submitAsk(String text) {
+    if (text.trim().isEmpty || _isLoading || !mounted) return false;
+    return _sendMessage(text);
+  }
+
+  /// Adds the shopper's message right away, shows "Thinking…", and then the
+  /// reply or a plain error with a retry. Returns false if nothing was sent.
+  bool _sendMessage(String text, {String source = 'composer'}) {
+    if (text.trim().isEmpty || !mounted || _isLoading) return false;
     final account = _accountWatch.capture();
     ProductAnalytics.instance.track(
       AnalyticsEvents.searchSubmitted,
       searchEventProperties(surface: 'ask', query: text, source: source),
     );
-
-    setState(() => _isLoading = true);
-
+    final place = _askPlace();
+    final revision = ++_threadRevision;
+    final Future<ChatThread> pending;
     try {
-      final thread = await _repo.sendMessage(
+      pending = _repo.sendMessage(
         text,
         enabledMemoryIds: _enabledMemoryIds,
+        lat: place.lat,
+        lng: place.lng,
+        zip: place.zip,
       );
+    } catch (_) {
+      _showStaleAccountError(account, _askFailedCopy);
+      return false;
+    }
+    setState(() {
+      _thread = _repo.currentChatThread;
+      _isLoading = true;
+    });
+    unawaited(_awaitAnswer(pending, account, revision));
+    return true;
+  }
+
+  static const _askFailedCopy = "We couldn't send that. Try again.";
+
+  Future<void> _awaitAnswer(
+    Future<ChatThread> pending,
+    int account,
+    int revision,
+  ) async {
+    try {
+      final thread = await pending;
       if (!_sameAccount(account)) return;
       setState(() {
-        _thread = thread;
+        if (revision == _threadRevision) _thread = thread;
         _isLoading = false;
       });
     } on ApiConfigException catch (error) {
@@ -264,7 +318,25 @@ class _ShopScreenState extends State<ShopScreen> {
     } catch (_) {
       if (!_sameAccount(account)) return;
       setState(() => _isLoading = false);
+      _showStaleAccountError(account, _askFailedCopy);
     }
+  }
+
+  void _retryAsk() {
+    if (_isLoading || !mounted) return;
+    final account = _accountWatch.capture();
+    final place = _askPlace();
+    final revision = ++_threadRevision;
+    final pending = _repo.retryLastAsk(
+      lat: place.lat,
+      lng: place.lng,
+      zip: place.zip,
+    );
+    setState(() {
+      _thread = _repo.currentChatThread;
+      _isLoading = true;
+    });
+    unawaited(_awaitAnswer(pending, account, revision));
   }
 
   Future<void> _search(
@@ -424,12 +496,17 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _startNewChat() {
     ProductAnalytics.instance.track(AnalyticsEvents.chatStarted);
+    _threadRevision++;
+    final fresh = _repo.startNewAskChat();
     setState(() {
-      _thread = ChatThread(
-        id: 'chat_${DateTime.now().millisecondsSinceEpoch}',
-        mode: ChatMode.ask,
-        createdAt: DateTime.now(),
-      );
+      _thread = fresh.isEmpty
+          ? fresh
+          : ChatThread(
+              id: 'chat_${DateTime.now().millisecondsSinceEpoch}',
+              mode: ChatMode.ask,
+              createdAt: DateTime.now(),
+            );
+      _isLoading = false;
       _mode = ChatMode.ask;
       _listings = null;
       _enabledMemoryIds = _searchProfile?.items.map((item) => item.id).toSet();
@@ -440,6 +517,7 @@ class _ShopScreenState extends State<ShopScreen> {
     ProductAnalytics.instance.track(AnalyticsEvents.chatOpened, {
       'mode': chat.mode == ChatMode.ask ? 'ask' : 'shop',
     });
+    _threadRevision++;
     setState(() {
       _thread = chat;
       _mode = chat.mode;
@@ -509,7 +587,12 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
           ShopComposerOverlay(
             mode: _mode,
-            onSend: _mode == ChatMode.ask ? _sendMessage : _search,
+            onSend: _mode == ChatMode.ask
+                ? _submitAsk
+                : (query) {
+                    _search(query);
+                    return true;
+                  },
             isLoading: _isLoading,
           ),
         ],
@@ -551,6 +634,8 @@ class _ShopScreenState extends State<ShopScreen> {
         thread: _thread!,
         isLoading: _isLoading,
         onShopTap: (query) => _search(query, source: 'ask_handoff'),
+        onRetry: _retryAsk,
+        onListingTap: (listing) => context.push('/vdp/${listing.id}'),
         memoryItems: _searchProfile?.personalize == true
             ? _searchProfile?.items
             : null,

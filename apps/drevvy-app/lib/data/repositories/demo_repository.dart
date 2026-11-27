@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../core/config/api_config_exception.dart';
 import '../analytics/product_analytics.dart';
 import '../models/models.dart';
+import '../services/ask_endpoint.dart';
 import '../services/consumer_deals_endpoint.dart';
 import '../services/market_intel_endpoint.dart';
 import '../services/credits_endpoint.dart';
@@ -64,10 +65,9 @@ class DealThreadRefresh {
 /// - Key A: market intel + save (not refunded)
 /// - Key B: in-network dealer conversation (refunded on 7-day no-reply or sold)
 ///
-/// TODO: Replace with real API calls to:
-/// - https://api.drevvy.com (Drevvy backend)
-/// - Supabase auth
-/// - RevenueCat/Superwall for billing (products: drevvy_keys_1/5/10/25)
+/// Live mode calls the Drevvy backend through the endpoint classes passed in
+/// (credits, saved cars, market intel, Ask, and more). Demo mode keeps the
+/// sample data below.
 class DemoRepository {
   DemoRepository({
     PurchaseConfig? config,
@@ -80,6 +80,7 @@ class DemoRepository {
     ShopperProfileEndpoint? profile,
     ConsumerDealsEndpoint? consumerDeals,
     MarketIntelEndpoint? marketIntel,
+    AskEndpoint? ask,
     http.Client? httpClient,
     this._networkDelay = const Duration(milliseconds: 500),
     CarCreditBalance? initialBalance,
@@ -95,6 +96,7 @@ class DemoRepository {
         MarketIntelEndpoint.fromConfig(resolved, client: httpClient);
     _credits =
         credits ?? CreditsEndpoint.fromConfig(resolved, client: httpClient);
+    _ask = ask ?? AskEndpoint.fromConfig(resolved, client: httpClient);
     _purchaseService = purchaseService ?? buildPurchaseService(resolved);
     _rooftopMatch =
         rooftopMatch ??
@@ -411,6 +413,7 @@ class DemoRepository {
   }
 
   void _clearLiveAccount() {
+    _resetLiveAsk();
     _currentUser = _signedOutLiveUser;
     _creditBalance = const CarCreditBalance.withBalance(0);
     _balanceKnown = false;
@@ -477,7 +480,6 @@ class DemoRepository {
 
   static const signedInShopperLabel = 'Signed in';
   static const signedOutShopperLabel = 'Not signed in';
-  static const askUnavailableMessage = 'Ask is not available yet.';
 
   static final _signedOutLiveUser = User(
     id: 'signed_out',
@@ -1924,12 +1926,46 @@ class DemoRepository {
     ),
   ];
 
+  /// The thread as it is now. In live mode the shopper's message is already
+  /// in here as soon as [sendMessage] is called, before the answer arrives.
+  ChatThread get currentChatThread => _chatThread;
+
+  /// Server Ask conversation id. The server is stateless, so the app sends
+  /// this back with each message in the same chat.
+  String? get askConversationId => _askConversationId;
+
+  late final AskEndpoint _ask;
+  String? _askConversationId;
+
+  void _resetLiveAsk() {
+    _askConversationId = null;
+    _chatThread = ChatThread(
+      id: 'chat_${DateTime.now().microsecondsSinceEpoch}',
+      mode: ChatMode.ask,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Starts a fresh Ask chat. Live mode also drops the server conversation id.
+  /// Demo mode keeps its single sample thread.
+  ChatThread startNewAskChat() {
+    if (_live) _resetLiveAsk();
+    return _chatThread;
+  }
+
+  /// Sends [text]. The shopper's message is added to the thread right away,
+  /// before any await. Live mode then calls `POST /api/consumer/ask` and adds
+  /// either the reply (with any matching cars) or a plain error with a retry.
+  /// It never drops the message and never spends a key.
   Future<ChatThread> sendMessage(
     String text, {
     Set<String>? enabledMemoryIds,
+    double? lat,
+    double? lng,
+    String? zip,
   }) async {
     final userMsg = ChatMessage(
-      id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
       role: MessageRole.user,
       contentType: MessageContentType.text,
       text: text,
@@ -1941,17 +1977,7 @@ class DemoRepository {
     );
 
     if (_live) {
-      final unavailable = ChatMessage(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}_agent',
-        role: MessageRole.agent,
-        contentType: MessageContentType.error,
-        text: askUnavailableMessage,
-        timestamp: DateTime.now(),
-      );
-      _chatThread = _chatThread.copyWith(
-        messages: [..._chatThread.messages, unavailable],
-      );
-      return _chatThread;
+      return _answerLive(text, lat: lat, lng: lng, zip: zip);
     }
 
     // Simulate agent response
@@ -1974,6 +2000,89 @@ class DemoRepository {
 
     return _chatThread;
   }
+
+  /// Sends the last shopper message again after a retryable error.
+  /// The error bubble is removed. The shopper's message is not added twice.
+  Future<ChatThread> retryLastAsk({double? lat, double? lng, String? zip}) async {
+    if (!_live) return _chatThread;
+    final messages = List<ChatMessage>.from(_chatThread.messages);
+    if (messages.isEmpty ||
+        messages.last.contentType != MessageContentType.error) {
+      return _chatThread;
+    }
+    messages.removeLast();
+    final lastUser = messages.lastWhere(
+      (message) => message.isUser && (message.text ?? '').trim().isNotEmpty,
+      orElse: () => const ChatMessage(
+        id: '',
+        role: MessageRole.user,
+        contentType: MessageContentType.text,
+      ),
+    );
+    _chatThread = _chatThread.copyWith(messages: messages);
+    final text = lastUser.text;
+    if (text == null || text.trim().isEmpty) return _chatThread;
+    return _answerLive(text, lat: lat, lng: lng, zip: zip);
+  }
+
+  Future<ChatThread> _answerLive(
+    String text, {
+    double? lat,
+    double? lng,
+    String? zip,
+  }) async {
+    final generation = _accountGeneration;
+    final threadId = _chatThread.id;
+    ChatMessage answer;
+    try {
+      final result = await _ask.ask(
+        message: text,
+        conversationId: _askConversationId,
+        lat: lat,
+        lng: lng,
+        zip: zip,
+      );
+      if (generation != _accountGeneration || threadId != _chatThread.id) {
+        return _chatThread;
+      }
+      if (result.conversationId.isNotEmpty) {
+        _askConversationId = result.conversationId;
+      }
+      answer = ChatMessage(
+        id: 'msg_${DateTime.now().microsecondsSinceEpoch}_agent',
+        role: MessageRole.agent,
+        contentType: result.listings.isEmpty
+            ? MessageContentType.text
+            : MessageContentType.listings,
+        text: result.reply,
+        listings: result.listings.isEmpty ? null : result.listings,
+        timestamp: DateTime.now(),
+      );
+    } on AskException catch (error) {
+      if (generation != _accountGeneration || threadId != _chatThread.id) {
+        return _chatThread;
+      }
+      answer = _askError(error.message, canRetry: error.canRetry);
+    } on Exception {
+      if (generation != _accountGeneration || threadId != _chatThread.id) {
+        return _chatThread;
+      }
+      answer = _askError(AskCopy.network, canRetry: true);
+    }
+    _chatThread = _chatThread.copyWith(
+      messages: [..._chatThread.messages, answer],
+    );
+    return _chatThread;
+  }
+
+  ChatMessage _askError(String copy, {required bool canRetry}) => ChatMessage(
+    id: 'msg_${DateTime.now().microsecondsSinceEpoch}_error',
+    role: MessageRole.agent,
+    contentType: MessageContentType.error,
+    text: copy,
+    timestamp: DateTime.now(),
+    canRetry: canRetry,
+  );
 
   /// Rewrites the latest answer so toggles in the memory sheet apply to this chat only.
   Future<ChatThread> applyChatMemory(Set<String> enabledIds) async {

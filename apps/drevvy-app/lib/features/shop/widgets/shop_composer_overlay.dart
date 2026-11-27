@@ -18,7 +18,7 @@ class ShopComposerOverlay extends StatelessWidget {
   });
 
   final ChatMode mode;
-  final ValueChanged<String> onSend;
+  final ComposerSend onSend;
   final bool isLoading;
 
   @override

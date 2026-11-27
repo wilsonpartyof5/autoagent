@@ -6,6 +6,7 @@ import 'package:drevvy_app/core/theme/drevvy_theme.dart';
 import 'package:drevvy_app/data/models/listing.dart';
 import 'package:drevvy_app/data/models/rooftop_match.dart';
 import 'package:drevvy_app/data/repositories/demo_repository.dart';
+import 'package:drevvy_app/data/services/ask_endpoint.dart';
 import 'package:drevvy_app/data/services/key_spend_endpoint.dart';
 import 'package:drevvy_app/data/services/otd_request_client.dart';
 import 'package:drevvy_app/data/services/purchase_config.dart';
@@ -260,10 +261,23 @@ void main() {
     );
   });
 
-  test('live Ask does not answer with the demo paragraph', () async {
-    final repo = DemoRepository(config: _live, networkDelay: Duration.zero);
+  test('live Ask signed out says sign in, not the demo paragraph', () async {
+    var calls = 0;
+    final repo = DemoRepository(
+      config: _live,
+      networkDelay: Duration.zero,
+      ask: HttpAskEndpoint(
+        baseUrl: 'https://api.drevvy.com',
+        sessionStore: ShopperSessionStore(),
+        client: MockClient((request) async {
+          calls++;
+          return http.Response('{}', 500);
+        }),
+      ),
+    );
     final thread = await repo.sendMessage('Is the RAV4 a fair price?');
-    expect(thread.messages.last.text, DemoRepository.askUnavailableMessage);
+    expect(thread.messages.last.text, AskCopy.signedOut);
+    expect(calls, 0);
     expect(thread.messages.last.text, isNot(contains('214')));
     expect(thread.sourcesCount, isNull);
     expect(await repo.getChatHistory(), isEmpty);

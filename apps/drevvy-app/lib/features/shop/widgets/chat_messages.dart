@@ -3,7 +3,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/drevvy_theme.dart';
 import '../../../core/theme/drevvy_tokens.dart';
 import '../../../data/models/chat.dart';
+import '../../../data/models/listing.dart';
 import '../../../data/models/search_profile.dart';
+import 'inventory_card.dart';
 import 'memory_sheet.dart';
 
 /// Chat messages view with "Using your past searches" chip per spec §6.14 (v1.6.1)
@@ -16,6 +18,8 @@ class ChatMessages extends StatelessWidget {
     this.memoryItems,
     this.enabledMemoryIds,
     this.onMemoryItemsChanged,
+    this.onRetry,
+    this.onListingTap,
   });
 
   final ChatThread thread;
@@ -24,6 +28,12 @@ class ChatMessages extends StatelessWidget {
   final List<MemoryItem>? memoryItems;
   final Set<String>? enabledMemoryIds;
   final ValueChanged<Set<String>>? onMemoryItemsChanged;
+
+  /// Sends the last message again from a retryable error bubble.
+  final VoidCallback? onRetry;
+
+  /// Opens a car shown under an Ask reply.
+  final ValueChanged<Listing>? onListingTap;
 
   void _showMemorySheet(BuildContext context) {
     if (memoryItems == null || memoryItems!.isEmpty) return;
@@ -61,7 +71,34 @@ class ChatMessages extends StatelessWidget {
         if (message.isUser) {
           return _UserBubble(text: message.text ?? '');
         }
-        
+
+        if (message.contentType == MessageContentType.error) {
+          final isLast = index == thread.messages.length - 1;
+          return AskErrorBubble(
+            text: message.text ?? '',
+            onRetry: message.canRetry && isLast && !isLoading ? onRetry : null,
+          );
+        }
+
+        final cars = message.listings ?? const <Listing>[];
+        if (cars.isNotEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _AgentMessage(text: message.text ?? ''),
+              for (final car in cars)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DrevvySpace.s3),
+                  child: InventoryCard(
+                    listing: car,
+                    showEstimatedMarket: false,
+                    onTap: () => onListingTap?.call(car),
+                  ),
+                ),
+            ],
+          );
+        }
+
         return _AgentMessage(
           text: message.text ?? '',
           sourcesCount: thread.sourcesCount,
@@ -202,6 +239,39 @@ class _AgentMessage extends StatelessWidget {
   }
 }
 
+/// A plain error under the shopper's message. Never silent.
+class AskErrorBubble extends StatelessWidget {
+  const AskErrorBubble({super.key, required this.text, this.onRetry});
+
+  final String text;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.drevvy;
+    final textStyles = context.drevvyText;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: DrevvySpace.s4, left: 42),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.tile,
+          borderRadius: BorderRadius.circular(DrevvyRadius.sm),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, color: colors.muted, size: 16),
+            const SizedBox(width: DrevvySpace.s2),
+            Expanded(child: Text(text, style: textStyles.body)),
+            if (onRetry != null)
+              TextButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SourceRow extends StatelessWidget {
   const _SourceRow({required this.count});
 
@@ -314,7 +384,7 @@ class _ThinkingIndicatorState extends State<_ThinkingIndicator>
                   Icon(LucideIcons.search, color: colors.muted, size: 12),
                   const SizedBox(width: 4),
                   Text(
-                    'Checking recent prices...',
+                    'Thinking…',
                     style: text.callout.copyWith(color: colors.muted),
                   ),
                 ],

@@ -419,7 +419,7 @@ class _ShopProbe extends StatelessWidget {
     return Stack(
       children: [
         ShopResults(listings: listings, isLoading: false, onListingTap: (_) {}),
-        ShopComposerOverlay(mode: ChatMode.shop, onSend: (_) {}),
+        ShopComposerOverlay(mode: ChatMode.shop, onSend: (_) => true),
       ],
     );
   }

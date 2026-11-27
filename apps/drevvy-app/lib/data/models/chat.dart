@@ -126,6 +126,7 @@ class ChatMessage extends Equatable {
     this.handoff,
     this.timestamp,
     this.memoryItemIds = const [],
+    this.canRetry = false,
   });
 
   final String id;
@@ -139,6 +140,9 @@ class ChatMessage extends Equatable {
   /// IDs of memory items used to generate this message (v1.6.1)
   final List<String> memoryItemIds;
 
+  /// An error bubble the shopper can retry (network, timeout, busy server).
+  final bool canRetry;
+
   bool get isUser => role == MessageRole.user;
   bool get isAgent => role == MessageRole.agent;
   bool get isTyping => contentType == MessageContentType.typing;
@@ -146,7 +150,7 @@ class ChatMessage extends Equatable {
   bool get usedMemory => memoryItemIds.isNotEmpty;
 
   @override
-  List<Object?> get props => [id, role, contentType];
+  List<Object?> get props => [id, role, contentType, text, canRetry];
 }
 
 class ChatHandoff extends Equatable {
